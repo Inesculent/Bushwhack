@@ -16,12 +16,15 @@ ds1 = "ronantakizawa/github-codereview"
 ds2 = "Alibaba-Aone/aacr-bench"
 ds3 = "foundry-ai/swe-prbench"
 
-dataset = ds3
+dsSet = {ds1, ds2, ds3}
 
 
 
-if dataset == "ronantakizawa/github-codereview":
-    ds = load_dataset(dataset)
+
+if ds1 in dsSet:
+    ds = load_dataset(ds1)
+
+    print("Loaded dataset:", ds1)
 
     keys = ds["train"].features.keys()
     print(f"Dataset keys: {keys}")
@@ -32,9 +35,12 @@ if dataset == "ronantakizawa/github-codereview":
     output_string = "\n".join(f"{key}: {value}" for key, value in record.items())
     print(output_string)
 
-elif dataset == "Alibaba-Aone/aacr-bench":
-    ds = load_dataset(dataset)
 
+    print('=' * 40 + "End of ds1 sample record" + '=' * 40)
+
+if ds2 in dsSet:
+    ds = load_dataset(ds2)
+    print("Loaded dataset:", ds2)
     keys = ds["train"].features.keys()
     print(f"Dataset keys: {keys}")
     python_reviews = ds['train'].filter(lambda x: x['project_main_language'] == "Python")
@@ -43,9 +49,11 @@ elif dataset == "Alibaba-Aone/aacr-bench":
     output_string = "\n".join(f"{key}: {value}" for key, value in record.items())
     print(output_string)
 
-elif dataset == "foundry-ai/swe-prbench":
-    ds = load_dataset(dataset,'prs')
+    print('=' * 40 + "End of ds2 sample record" + '=' * 40)
 
+if ds3 in dsSet:
+    ds = load_dataset(ds3,'prs')
+    print("Loaded dataset:", ds3)
     keys = ds["train"].features.keys()
     print(f"Dataset keys: {keys}")
     python_reviews = ds['train'].filter(lambda x: x.get('language') == "Python")
@@ -58,3 +66,4 @@ elif dataset == "foundry-ai/swe-prbench":
         value = record.get(key, "Key not found") 
         output_lines.append(f"{key}: {value}")
     print("\n".join(output_lines))
+    print('=' * 40 + "End of ds3 sample record" + '=' * 40)
