@@ -1,0 +1,38 @@
+.env
+.venv/
+.vscode/
+__pycache__/
+
+# Keep template env files if added.
+!.env.example
+
+# Python artifacts
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+build/
+dist/
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+Desktop.ini
+.idea/
+
+# Local/temp files
+*.log
+*.tmp
+tmp/
+temp/
+
+# Planning/reference docs not intended for initial commit
+reference.md
+structure.txt
