@@ -91,6 +91,30 @@ Useful settings:
 - `REVIEW_AST_MCP_ARGS=["mcp/fs-mcp/server.py"]`
 - `REVIEW_AST_MCP_TIMEOUT_SECONDS=30`
 
+## 2.1) Run Redis For LangGraph Checkpointing (Optional)
+
+Start Redis from repo root:
+
+```powershell
+docker compose -f docker-compose.redis.yml up -d
+```
+
+Stop Redis:
+
+```powershell
+docker compose -f docker-compose.redis.yml down
+```
+
+This Redis container is separate from MCP Dockerfiles in `mcp/fs-mcp` and `mcp/github-mcp`.
+Those Dockerfiles are for MCP server processes, while this compose service is only for shared state/checkpoint storage.
+
+Recommended `.env` values for upcoming Redis integration:
+
+- `REVIEW_REDIS_ENABLED=true`
+- `REVIEW_REDIS_URL=redis://localhost:6379/0`
+- `REVIEW_REDIS_NAMESPACE=langgraph`
+- `REVIEW_REDIS_TTL_SECONDS=3600`
+
 ## 3) Run the API Gateway
 
 Start FastAPI:
@@ -128,6 +152,49 @@ You can also scope to infrastructure tests:
 ```powershell
 pytest src/infrastructure/tests -q
 ```
+
+## 6) Run Research Dataset Pipeline
+
+The repository now includes a modular two-phase dataset pipeline for:
+
+- `foundry-ai/swe-prbench` (PR-level macro evaluation)
+- `Alibaba-Aone/aacr-bench` (comment-level micro evaluation + GitHub enrichment)
+
+Run from repo root:
+
+```powershell
+python -m src.data.run_research_pipeline
+```
+
+Set a GitHub PAT in `.env` before running AACR enrichment:
+
+- `GITHUB_PERSONAL_ACCESS_TOKEN=...`
+
+(`REVIEW_GITHUB_PERSONAL_ACCESS_TOKEN` is also supported.)
+
+Optional flags:
+
+- `--target-languages Python`
+- `--skip-plots`
+- `--no-raw-dump`
+
+Outputs are generated automatically:
+
+- `data/raw/`
+- `data/processed/swe_prbench_graph_ready.csv`
+- `data/processed/aacr_bench_graph_ready.csv`
+- `plots/dataset_composition/`
+- `plots/metric_distributions/`
+- `logs/research_pipeline.log`
+
+Processed CSVs now also include `repo_size_kb` (GitHub repository size in KB) for additional scaling analyses.
+
+Repository structure complexity metrics are also included:
+
+- `repo_total_files`
+- `repo_python_files`
+- `repo_total_directories`
+- `repo_max_directory_depth`
 
 ## Development Notes
 

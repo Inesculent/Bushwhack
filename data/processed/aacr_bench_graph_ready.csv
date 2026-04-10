@@ -1,0 +1,663 @@
+dataset,target_language,repo,repo_url,pr_url,base_commit,head_commit,path,from_line,to_line,note,category,pr_files_changed,pr_lines_added,pr_lines_removed,pr_total_lines_changed,num_comments,repo_size_kb,repo_total_files,repo_python_files,repo_total_directories,repo_max_directory_depth
+aacr_bench,python,comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI/pull/7952,4936d01872b8719ede33f9a11dc8e898c33d39e4,924d771e18000f4cb223575189daa6d2c6c5a9c1,comfy_extras/nodes_string.py,5,5,The newly added `normalize_path` function is unused and constitutes unnecessary code that should be removed.,Maintainability and Readability,2,323,0,323,7,86773,776,575,160,4
+aacr_bench,python,comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI/pull/7952,4936d01872b8719ede33f9a11dc8e898c33d39e4,924d771e18000f4cb223575189daa6d2c6c5a9c1,comfy_extras/nodes_string.py,189,194,"`execute` does not return a value for unexpected `mode` values (or if a new mode is added later). In ComfyUI nodes, missing return can surface as `None` and crash downstream. Add an `else` branch that returns `(False,)` (or raise a clear error) to guarantee a tuple return for all paths.
+
+```suggestion
+        if mode == ""Equal"":
+            return (a == b,)
+        elif mode == ""StartsWith"":
+            return (a.startswith(b),)
+        elif mode == ""EndsWith"":
+            return (a.endswith(b),)
+        else:
+            return (False,)
+```",Code Defect,2,323,0,323,7,86773,776,575,160,4
+aacr_bench,python,comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI/pull/7952,4936d01872b8719ede33f9a11dc8e898c33d39e4,924d771e18000f4cb223575189daa6d2c6c5a9c1,comfy_extras/nodes_string.py,275,283,"In ""All Matches"" mode, when the regex pattern contains capturing groups, re.findall returns tuples where each tuple contains the groups for one match. Currently, the code extracts only the first group (m[0]) from each match, potentially losing data from other groups. If the intention is to retrieve all full matched substrings (regardless of grouping), consider using re.finditer and accessing the full match via .group(0). Alternatively, if keeping only the first group is intended, consider clarifying this behavior.
+",Code Defect,2,323,0,323,7,86773,776,575,160,4
+aacr_bench,python,comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI/pull/7952,4936d01872b8719ede33f9a11dc8e898c33d39e4,924d771e18000f4cb223575189daa6d2c6c5a9c1,comfy_extras/nodes_string.py,285,290,"Off-by-one bug: `len(match.groups()) >= group_index` is incorrect for `group_index` because `groups()` excludes group 0. For example, with 1 capturing group and `group_index=1`, `len(groups())` is 1, so `>= 1` passes, OK; but with `group_index=2` it correctly fails. The real issue is when `group_index=0`: `len(groups()) >= 0` passes but `match.group(0)` is the full match, not a group. If you intend to allow 0 meaning the full match, handle it explicitly; otherwise enforce `min=1` and validate `group_index` as `1 <= group_index <= match.re.groups`.
+
+```suggestion
+            elif mode == ""First Group"":
+                match = re.search(regex_pattern, string, flags)
+                if not match:
+                    result = """"
+                elif group_index == 0:
+                    result = match.group(0)  # full match
+                elif 1 <= group_index <= match.re.groups:
+                    result = match.group(group_index)
+                else:
+                    result = """"
+```",Code Defect,2,323,0,323,7,86773,776,575,160,4
+aacr_bench,python,comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI/pull/7952,4936d01872b8719ede33f9a11dc8e898c33d39e4,924d771e18000f4cb223575189daa6d2c6c5a9c1,comfy_extras/nodes_string.py,296,297,"Logic issue: The condition `match.groups()` evaluates to False if the regex pattern contains no capturing groups (e.g., `\d+`), which prevents the code from entering the block even if `group_index` is 0. This makes it impossible to extract the whole match (group 0) in 'All Groups' mode for patterns without capturing groups.
+
+Additionally, `match.group(group_index)` can return `None` for optional groups that didn't match, which would cause `join_delimiter.join(results)` to raise a TypeError. It is recommended to handle `None` values.
+",Code Defect,2,323,0,323,7,86773,776,575,160,4
+aacr_bench,python,comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI/pull/8446,4dcd698e489da69294ee01de0350a9a02e3e4b41,c7b25784b141a298d8ee5f0d830a29da6e8a3d54,comfy/ldm/cosmos/blocks.py,799,800,"Potential API/logic issue: the checkpoint path calls `block` with *positional* args only, while the normal path passes `rope_emb_L_1_1_D` and `adaln_lora_B_3D` as keyword args. If `block.forward` defines these as keyword-only (or the positional order differs), the checkpointed call will pass wrong values or raise a `TypeError`, causing training-only failures. Safer: wrap `block` in a lambda/closure and pass kwargs explicitly, keeping the same call signature as the non-checkpoint branch (also improves readability).
+
+Also consider the 2.0+ API: `torch.utils.checkpoint.checkpoint(function, *args, use_reentrant=...)` supports kwargs in recent PyTorch, but for compatibility, a closure is most robust.
+
+```suggestion
+            if self.training:
+                def _blk(_x, _emb, _ctx, _mask, _rope, _adaln):
+                    return block(
+                        _x,
+                        _emb,
+                        _ctx,
+                        _mask,
+                        rope_emb_L_1_1_D=_rope,
+                        adaln_lora_B_3D=_adaln,
+                    )
+                x = torch.utils.checkpoint.checkpoint(
+                    _blk,
+                    x,
+                    emb_B_D,
+                    crossattn_emb,
+                    crossattn_mask,
+                    rope_emb_L_1_1_D,
+                    adaln_lora_B_3D,
+                    use_reentrant=False,
+                )
+```",Code Defect,12,948,23,971,22,86773,776,575,160,4
+aacr_bench,python,comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI/pull/8446,4dcd698e489da69294ee01de0350a9a02e3e4b41,c7b25784b141a298d8ee5f0d830a29da6e8a3d54,comfy/ldm/cosmos/blocks.py,800,800,"The checkpointing implementation exclusively processes blocks during training, omitting the forward pass for evaluation which breaks inference. This critical logic gap requires adding non-checkpointed block execution for non-training scenarios.",Code Defect,12,948,23,971,22,86773,776,575,160,4
+aacr_bench,python,comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI/pull/8446,4dcd698e489da69294ee01de0350a9a02e3e4b41,c7b25784b141a298d8ee5f0d830a29da6e8a3d54,comfy/ldm/modules/attention.py,756,756,"Consider retaining `+=` for potential performance benefits associated with in-place accumulation unless deliberate copy semantics intended.
+",Performance,12,948,23,971,22,86773,776,575,160,4
+aacr_bench,python,comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI/pull/8446,4dcd698e489da69294ee01de0350a9a02e3e4b41,c7b25784b141a298d8ee5f0d830a29da6e8a3d54,comfy/ldm/modules/attention.py,796,801,"Inconsistent residual connection pattern. This line was changed from `x += n` to `x = n + x`, but line 713 in the same method still uses `x += x_skip`. The inconsistency in both operation type (in-place vs out-of-place) and operand order within the same method may indicate incomplete refactoring.
+",Maintainability and Readability,12,948,23,971,22,86773,776,575,160,4
+aacr_bench,python,comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI/pull/8446,4dcd698e489da69294ee01de0350a9a02e3e4b41,c7b25784b141a298d8ee5f0d830a29da6e8a3d54,comfy/weight_adapter/base.py,15,16,"The `dora_scale` argument is defined as `torch.Tensor` which implies it is mandatory. However, in many cases (like standard LoRA), this scale is not present. It is recommended to change the type hint to `Optional[torch.Tensor]` and possibly provide a default value of `None` to allow flexibility for subclasses and callers.
+",Code Defect,12,948,23,971,22,86773,776,575,160,4
+aacr_bench,python,comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI/pull/8446,4dcd698e489da69294ee01de0350a9a02e3e4b41,c7b25784b141a298d8ee5f0d830a29da6e8a3d54,comfy/weight_adapter/base.py,21,27,"The base class `WeightAdapterBase` defines `create_train` as a required classmethod (raises NotImplementedError). However, subclasses OFTAdapter, LoHaAdapter, BOFTAdapter, GLoRAAdapter, and LoKrAdapter do not implement this method. Only LoRAAdapter implements it. This will cause NotImplementedError when trying to call `create_train` on these adapter types. Consider either implementing the method in all subclasses or providing a default implementation in the base class.",Code Defect,12,948,23,971,22,86773,776,575,160,4
+aacr_bench,python,comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI/pull/8446,4dcd698e489da69294ee01de0350a9a02e3e4b41,c7b25784b141a298d8ee5f0d830a29da6e8a3d54,comfy/weight_adapter/base.py,48,48,"`WeightAdapterTrainBase` is an `nn.Module`; overriding `__call__` is risky because PyTorch `Module.__call__` wraps `forward()` (handles hooks, autocast, etc.). Defining `__call__` as abstract will bypass that machinery in subclasses. Prefer defining `forward(self, w)` as the abstract method instead, and let `__call__` remain from `nn.Module`.",Code Defect,12,948,23,971,22,86773,776,575,160,4
+aacr_bench,python,comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI/pull/8446,4dcd698e489da69294ee01de0350a9a02e3e4b41,c7b25784b141a298d8ee5f0d830a29da6e8a3d54,comfy/weight_adapter/base.py,128,129,"Possible shape logic issue: `up.reshape(up.size(0), up.size(1))` (and same for `down`) will fail for conv weights where `up`/`down` are 4D (out,in,kh,kw) unless `kh*kw == 1`. If the intent is to flatten the remaining dims, use `reshape(up.size(0), -1)` / `reshape(down.size(0), -1)` (or `.flatten(1)`) to be robust.
+
+```suggestion
+    up = up.reshape(up.size(0), -1)
+    down = down.reshape(down.size(0), -1)
+```",Code Defect,12,948,23,971,22,86773,776,575,160,4
+aacr_bench,python,comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI/pull/8446,4dcd698e489da69294ee01de0350a9a02e3e4b41,c7b25784b141a298d8ee5f0d830a29da6e8a3d54,comfy/weight_adapter/base.py,133,135,"There is an inconsistency in the expected input shapes between this function and `tucker_weight_from_conv`. 
+
+`tucker_weight_from_conv` expects `up` to be `(out, rank)`. 
+Here, `wa` (if it corresponds to the `up` matrix) is used as `(rank, out)` in the einsum (contracting on the first dimension `i`).
+
+This implicit expectation of a transposed input for `wa` can be confusing. Consider aligning the expected shapes (e.g., expecting `(out, rank)` and using `""i j ..., r i -> r j ...""`) or adding documentation to clarify that `wa` expects a transposed shape.
+",Maintainability and Readability,12,948,23,971,22,86773,776,575,160,4
+aacr_bench,python,comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI/pull/8446,4dcd698e489da69294ee01de0350a9a02e3e4b41,c7b25784b141a298d8ee5f0d830a29da6e8a3d54,comfy/weight_adapter/lora.py,18,18,"Design Flaw: Hardcoded indexing into unpacked tuple ('weights') reduces maintainability and increases risk of future mismatches if structure evolves. Prefer named attributes or stricter validation.
+",Maintainability and Readability,12,948,23,971,22,86773,776,575,160,4
+aacr_bench,python,comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI/pull/8446,4dcd698e489da69294ee01de0350a9a02e3e4b41,c7b25784b141a298d8ee5f0d830a29da6e8a3d54,comfy_extras/nodes_train.py,46,51,"Incomplete error handling: If the RuntimeError is caught and logged, the 'loss' variable won't be defined, but loss.backward() on line 50 will still be executed, causing a NameError. Consider re-raising the exception after logging, or returning early if the error occurs.
+",Code Defect,12,948,23,971,22,86773,776,575,160,4
+aacr_bench,python,comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI/pull/8446,4dcd698e489da69294ee01de0350a9a02e3e4b41,c7b25784b141a298d8ee5f0d830a29da6e8a3d54,comfy_extras/nodes_train.py,56,57,"Debug code commented out - consider removing or properly handling memory debugging functionality.
+",Maintainability and Readability,12,948,23,971,22,86773,776,575,160,4
+aacr_bench,python,comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI/pull/8446,4dcd698e489da69294ee01de0350a9a02e3e4b41,c7b25784b141a298d8ee5f0d830a29da6e8a3d54,comfy_extras/nodes_train.py,111,112,"`load_and_process_images`: for resize_method == ""Pad"" you currently just `resize` (same as Stretch), which is logically incorrect (pad should preserve aspect ratio and add borders). Either implement true padding or rename option to avoid misleading behavior.
+
+```suggestion
+            elif resize_method == ""Pad"":
+                # Preserve aspect ratio and pad to (w, h)
+                img.thumbnail((w, h), Image.Resampling.LANCZOS)
+                canvas = Image.new(""RGB"", (w, h), (0, 0, 0))
+                canvas.paste(img, ((w - img.size[0]) // 2, (h - img.size[1]) // 2))
+                img = canvas
+```",Code Defect,12,948,23,971,22,86773,776,575,160,4
+aacr_bench,python,comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI/pull/8446,4dcd698e489da69294ee01de0350a9a02e3e4b41,c7b25784b141a298d8ee5f0d830a29da6e8a3d54,comfy_extras/nodes_train.py,346,346,Invalid default value 'bf32' specified for lora_dtype parameter; valid options are only 'bf16' and 'fp32'.,Code Defect,12,948,23,971,22,86773,776,575,160,4
+aacr_bench,python,comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI/pull/8446,4dcd698e489da69294ee01de0350a9a02e3e4b41,c7b25784b141a298d8ee5f0d830a29da6e8a3d54,comfy_extras/nodes_train.py,402,403,"Potential error in existing_steps extraction: if filename doesn't match expected format 'trained_lora_10_steps_20250225_203716', this will raise ValueError when converting to int.
+",Code Defect,12,948,23,971,22,86773,776,575,160,4
+aacr_bench,python,comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI/pull/8446,4dcd698e489da69294ee01de0350a9a02e3e4b41,c7b25784b141a298d8ee5f0d830a29da6e8a3d54,comfy_extras/nodes_train.py,508,508,"Training loop: `sigma = torch.tensor([sigma])` creates a CPU tensor by default. If the model runs on GPU, this can cause device mismatch errors. Create `sigma` on the same device as `encoded`/model (e.g., `device=encoded.device`).
+
+```suggestion
+                    sigma = torch.tensor([sigma], device=encoded.device)
+```",Code Defect,12,948,23,971,22,86773,776,575,160,4
+aacr_bench,python,comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI/pull/8446,4dcd698e489da69294ee01de0350a9a02e3e4b41,c7b25784b141a298d8ee5f0d830a29da6e8a3d54,comfy_extras/nodes_train.py,637,638,"Potential division by zero if min_loss equals max_loss (all loss values are the same).
+",Code Defect,12,948,23,971,22,86773,776,575,160,4
+aacr_bench,python,comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI/pull/8446,4dcd698e489da69294ee01de0350a9a02e3e4b41,c7b25784b141a298d8ee5f0d830a29da6e8a3d54,folder_paths.py,404,425,"Potential issues in recursive folder listing:
+1) `dirs` is unused; either use it (e.g., to filter) or replace with `_`.
+2) `os.walk()` can raise `PermissionError`/`OSError` on unreadable dirs; current code only catches `FileNotFoundError`, so this may crash in real environments.
+3) Consider preventing symlink loops (set `followlinks=False` explicitly, and/or prune `dirs` of symlinks) to avoid infinite traversal.
+Suggestion: catch `(OSError, PermissionError)` and normalize output, and drop the unused `dirs` variable.
+
+```suggestion
+def get_input_subfolders() -> list[str]:
+    """"""Returns a list of all subfolder paths in the input directory, recursively.
+
+    Returns:
+        List of folder paths relative to the input directory, excluding the root directory.
+    """"""
+    input_dir = get_input_directory()
+
+    if not os.path.exists(input_dir):
+        return []
+
+    folders: list[str] = []
+    try:
+        for root, _, _ in os.walk(input_dir, followlinks=False):
+            rel_path = os.path.relpath(root, input_dir)
+            if rel_path != ""."":
+                folders.append(rel_path.replace(os.sep, ""/""))
+    except (OSError, PermissionError):
+        return []
+
+    return sorted(folders)
+```",Code Defect,12,948,23,971,22,86773,776,575,160,4
+aacr_bench,python,comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI/pull/6033,0bb60235132cc72daea81427107a40ba1ccb5ddf,6c0377f43e7b6ed58d48ae05cff9bc45b52ef5e0,api_server/routes/internal/internal_routes.py,43,43,"The function `get_logs` is redefined for the `/logs/raw` route, overwriting the previous definition for the `/logs` endpoint. Rename one handler function to prevent route collision and ensure both endpoints remain accessible.",Code Defect,9,12,18,30,7,86773,776,575,160,4
+aacr_bench,python,comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI/pull/6033,0bb60235132cc72daea81427107a40ba1ccb5ddf,6c0377f43e7b6ed58d48ae05cff9bc45b52ef5e0,comfy/controlnet.py,824,824,"The format string has only one placeholder `{}`, but the argument list contains a trailing comma after `i`. This is a syntax issue - either remove the trailing comma or check if `j` was intended to be used here. Based on the context where `j` was removed from the format string, the trailing comma should be removed.
+
+```suggestion
+            prefix_replace[""adapter.body.{}."".format(i)] = ""body.{}."".format(i * 2)
+```",Maintainability and Readability,9,12,18,30,7,86773,776,575,160,4
+aacr_bench,python,comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI/pull/6033,0bb60235132cc72daea81427107a40ba1ccb5ddf,6c0377f43e7b6ed58d48ae05cff9bc45b52ef5e0,comfy_extras/nodes_clip_sdxl.py,31,31,The added 'clip' key duplicates an existing key in the INPUT_TYPES dictionary.,Code Defect,9,12,18,30,7,86773,776,575,160,4
+aacr_bench,python,comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI/pull/6033,0bb60235132cc72daea81427107a40ba1ccb5ddf,6c0377f43e7b6ed58d48ae05cff9bc45b52ef5e0,notebooks/comfyui_colab.ipynb,241,243,"The `time`, `socket`, `subprocess`, and `urllib.request` module imports were removed. However, if any of these modules are used in the code below (particularly `time` which is commonly used in threading functions with `time.sleep()`), this will cause a `NameError` at runtime.
+
+Please verify that none of these removed imports are actually used in this code cell. Based on the similar pattern in the cell at line 287 where `time.sleep()` is used, this cell likely also uses `time.sleep()` and requires the `import time` statement.",Code Defect,9,12,18,30,7,86773,776,575,160,4
+aacr_bench,python,comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI/pull/6033,0bb60235132cc72daea81427107a40ba1ccb5ddf,6c0377f43e7b6ed58d48ae05cff9bc45b52ef5e0,notebooks/comfyui_colab.ipynb,287,287,"The `time` module import was removed, but the code below still uses `time.sleep(0.5)` in the `iframe_thread` function. This will cause a `NameError: name 'time' is not defined` at runtime.
+
+The import statement `import time` must be retained for this cell to function correctly.",Code Defect,9,12,18,30,7,86773,776,575,160,4
+aacr_bench,python,comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI/pull/6033,0bb60235132cc72daea81427107a40ba1ccb5ddf,6c0377f43e7b6ed58d48ae05cff9bc45b52ef5e0,ruff.toml,7,10,"Switching from selecting only F401/F841 to selecting the entire `F` (Pyflakes) rule family will significantly broaden lint coverage (e.g., F821 undefined-name, F811 redefinition, etc.). If the repo still has known F821 violations (as hinted by the removed TODO), CI/lint may start failing unexpectedly. Consider either (1) enabling `F` but explicitly ignoring known-problematic rules for now (e.g., add `lint.ignore += [""F821""]`), or (2) keep a narrower select list until remaining violations are fixed. Also, add a trailing newline at EOF to satisfy POSIX/editor conventions and avoid diff noise.
+
+```suggestion
+    # The ""F"" series in Ruff stands for ""Pyflakes"" rules.
+    # See: https://docs.astral.sh/ruff/rules/#pyflakes-f
+    ""F"",
+]
+
+# If there are still legacy violations, consider temporarily ignoring specific rules:
+# lint.ignore = [""ALL"", ""F821""]
+```",Code Defect,9,12,18,30,7,86773,776,575,160,4
+aacr_bench,python,comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI/pull/6033,0bb60235132cc72daea81427107a40ba1ccb5ddf,6c0377f43e7b6ed58d48ae05cff9bc45b52ef5e0,server.py,587,587,"Function name collision where `get_history` was redefined within the same scope. The second definition with `@routes.get(""/history/{prompt_id}"")` decorator incorrectly overwrote the original implementation.",Code Defect,9,12,18,30,7,86773,776,575,160,4
+aacr_bench,python,comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI/pull/9560,cfc312296c0b9f255bba6b4b2789ac7bbc66a7cb,a86aaa430183068e2a264495c802c81d05eb350a,server.py,57,57,"**Issue: Inconsistent case handling for file extensions**
+
+The check for `.js`, `.css`, and `index.json` uses case-sensitive matching, while the image extension check on line 59 uses case-insensitive matching (`.lower().endswith()`). This means files like `script.JS` or `styles.CSS` will not get the intended `no-cache` header.
+
+**Suggested Fix:**
+
+```python
+if request.path.lower().endswith(('.js', '.css')) or request.path.endswith('index.json'):
+```
+
+Or for complete consistency:
+
+```python
+if request.path.lower().endswith(('.js', '.css', 'index.json')):
+```
+
+This ensures all JavaScript and CSS files get the `no-cache` header regardless of case.",Code Defect,4,311,8,319,7,86773,776,575,160,4
+aacr_bench,python,comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI/pull/9560,cfc312296c0b9f255bba6b4b2789ac7bbc66a7cb,a86aaa430183068e2a264495c802c81d05eb350a,server.py,59,59,"Bug: `request.path` in aiohttp excludes the query string. So `request.path.lower().endswith(IMG_EXTENSIONS)` will be false for URLs like `/image.jpg?v=123` (common cache-busting pattern), meaning no Cache-Control header will be set. Your unit test `test_query_strings_ignored` would fail against this implementation. Consider using `request.path` (already no query) but ensure the request is constructed correctly, or explicitly parse `request.rel_url.path` / `request.raw_path` depending on intended behavior. If you want to ignore query strings while handling real requests, keep `request.path` and adjust tests; if you want to handle raw URLs with `?` included, use `request.raw_path` and split on `?`.",Code Defect,4,311,8,319,7,86773,776,575,160,4
+aacr_bench,python,comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI/pull/9560,cfc312296c0b9f255bba6b4b2789ac7bbc66a7cb,a86aaa430183068e2a264495c802c81d05eb350a,server.py,60,62,"The reviewer suggests modifying the image cache handling condition to exclude 304 responses by adding `and response.status != 304` to the IMG_EXTENSIONS check, rather than using a nested conditional for 304 status handling.",Maintainability and Readability,4,311,8,319,7,86773,776,575,160,4
+aacr_bench,python,comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI/pull/9560,cfc312296c0b9f255bba6b4b2789ac7bbc66a7cb,a86aaa430183068e2a264495c802c81d05eb350a,server.py,63,64,"Caching 404 responses for 1 hour (`ONE_HOUR`) is risky for image resources. If an image is generated shortly after a failed request (e.g., in a polling scenario or asynchronous generation), the client might continue to see the cached 404 error instead of the new image. Consider using `no-cache` or a much shorter duration for 404s.
+",Code Defect,4,311,8,319,7,86773,776,575,160,4
+aacr_bench,python,comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI/pull/9560,cfc312296c0b9f255bba6b4b2789ac7bbc66a7cb,a86aaa430183068e2a264495c802c81d05eb350a,server.py,65,69,"The code contains redundant conditional logic for cache header assignment. Both successful responses (200-299) and permanent redirects (301/308) set identical ""public, max-age=86400"" cache headers but are handled in separate elif branches, creating unnecessary code duplication.",Maintainability and Readability,4,311,8,319,7,86773,776,575,160,4
+aacr_bench,python,comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI/pull/9560,cfc312296c0b9f255bba6b4b2789ac7bbc66a7cb,a86aaa430183068e2a264495c802c81d05eb350a,server.py,72,72,"The reviewer suggested unifying duplicate 'no-cache' header assignments across asset types to reduce code repetition, but the developer argued for maintaining asset-type-specific organization to preserve logical grouping and ease future modifications of cache rules per asset type.",Maintainability and Readability,4,311,8,319,7,86773,776,575,160,4
+aacr_bench,python,comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI/pull/6542,b55c2247654476fbc744e572ba7a834fd9378745,832e3f5ca3c357e527fdf811502357bd2798425e,comfy/clip_model.py,109,109,"The DirectML branch for causal mask initialization fails to set uninitialized tensor values to negative infinity, causing blank image generation. Replace `torch.empty().triu_(1)` with `torch.full(..., -torch.finfo(x.dtype).max).triu_(1)` to properly initialize the mask.",Code Defect,3,13,2,15,2,86773,776,575,160,4
+aacr_bench,python,comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI/pull/6542,b55c2247654476fbc744e572ba7a834fd9378745,832e3f5ca3c357e527fdf811502357bd2798425e,comfy/model_management.py,993,998,"The logic in this function is unnecessarily verbose. Since `directml_enabled` is already a boolean variable, you can simply return it directly without using an if statement. Additionally, the `global` declaration is redundant here because you're only reading the variable, not modifying it.
+
+```suggestion
+def is_directml_enabled():
+    return directml_enabled
+```",Maintainability and Readability,3,13,2,15,2,86773,776,575,160,4
+aacr_bench,python,browser-use/browser-use,https://github.com/browser-use/browser-use,https://github.com/browser-use/browser-use/pull/1482,0b21e50ca640581ecd46990475c8b223eaa05045,fa461585f1fc2d4a430e68e6c115a12f4936fe73,browser_use/browser/browser.py,82,83,"Typo: ""use to when"" should be ""use when"".
+",Code Defect,5,113,20,133,9,30929,473,365,97,4
+aacr_bench,python,browser-use/browser-use,https://github.com/browser-use/browser-use,https://github.com/browser-use/browser-use/pull/1482,0b21e50ca640581ecd46990475c8b223eaa05045,fa461585f1fc2d4a430e68e6c115a12f4936fe73,browser_use/browser/browser.py,290,292,"`self.config.chrome_remote_debugging_port` is typed as `int | None`. If it is `None`, `socket.connect_ex` will raise a `TypeError` because it expects an integer port. Suggest adding a check for `None` or ensuring it is a valid integer before using it here.
+",Code Defect,5,113,20,133,9,30929,473,365,97,4
+aacr_bench,python,browser-use/browser-use,https://github.com/browser-use/browser-use,https://github.com/browser-use/browser-use/pull/857,aab7b3bb54e2b15ee3b32ad7de74c91fc8b22f52,515b94225aa86c40dc2c20034055ab8bcc88c6ae,browser_use/browser/browser.py,283,283,"The hardcoding of `channel='chrome'` in the browser launch call is invalid for non-Chromium browsers (Firefox/WebKit), as the `channel` parameter is exclusively supported by Chromium-based browsers and will cause runtime errors if used with other browser types.",Code Defect,11,38,57,95,4,30929,473,365,97,4
+aacr_bench,python,browser-use/browser-use,https://github.com/browser-use/browser-use,https://github.com/browser-use/browser-use/pull/857,aab7b3bb54e2b15ee3b32ad7de74c91fc8b22f52,515b94225aa86c40dc2c20034055ab8bcc88c6ae,docs/customize/agent-settings.mdx,95,95,"Documentation inconsistency: The import statement has been updated to use `patchright.async_api`, but the surrounding documentation text still references 'Playwright' (e.g., line 91 mentions 'A Playwright browser context' and lines 120-121 link to Playwright documentation). Consider updating these references to 'Patchright' for consistency, or add a note explaining that Patchright is a Playwright-compatible library being used in the codebase.
+",Maintainability and Readability,11,38,57,95,4,30929,473,365,97,4
+aacr_bench,python,browser-use/browser-use,https://github.com/browser-use/browser-use,https://github.com/browser-use/browser-use/pull/3172,72f1585f9add5b72e829eaee3b5bff684e0b08d3,e85a547378b236c9788802d28e816f10940a7e53,browser_use/llm/google/chat.py,202,202,"Hardcoded thinking_budget value of -1 overrides user-provided values, preventing users from controlling the thinking budget parameter as intended.",Code Defect,1,174,150,324,3,30929,473,365,97,4
+aacr_bench,python,browser-use/browser-use,https://github.com/browser-use/browser-use,https://github.com/browser-use/browser-use/pull/3172,72f1585f9add5b72e829eaee3b5bff684e0b08d3,e85a547378b236c9788802d28e816f10940a7e53,browser_use/llm/google/chat.py,376,376,"**Critical Issue**: Removed retry logic without replacement
+
+The manual retry loop was removed (lines with `for attempt in range(10):`), but the comment says ""Let Google client handle retries internally"". However:
+
+1. **No evidence the Google client has automatic retries** for all error types that were previously handled
+2. The old code had explicit retry logic for rate limits, server errors, and connection issues
+3. **Breaking change**: This could cause failures for users experiencing transient network issues or rate limits that would have previously been handled
+
+**Required verification**:
+- Does the Google Generative AI client (`google-genai`) actually retry on rate limits (429), server errors (500/502/503), and connection timeouts?
+- If not, this is a **regression** that will break existing functionality
+
+**Recommendation**: Either:
+1. Verify and document that the Google client handles these retries, OR
+2. Keep the retry logic but optimize the backoff strategy (which seems to be the actual performance issue)",Code Defect,1,174,150,324,3,30929,473,365,97,4
+aacr_bench,python,infiniflow/ragflow,https://github.com/infiniflow/ragflow,https://github.com/infiniflow/ragflow/pull/7151,f189316eae1c199a5891f7a8bc47d53bb1b5c818,8362ab405c35d260dd2328dc207aefcf30778f66,graphrag/utils.py,417,417,"The condition 'if not res.total == 0:' is logically correct but could be misinterpreted. Consider using 'if res.total != 0:' for better clarity.
+",Maintainability and Readability,4,137,70,207,13,115501,2824,745,520,10
+aacr_bench,python,infiniflow/ragflow,https://github.com/infiniflow/ragflow,https://github.com/infiniflow/ragflow/pull/7151,f189316eae1c199a5891f7a8bc47d53bb1b5c818,8362ab405c35d260dd2328dc207aefcf30778f66,graphrag/utils.py,417,417,"**Critical Logic Error**: This condition is inverted and will cause incorrect behavior.
+
+The code changes from:
+```python
+if res.total == 0:
+    return None
+```
+
+to:
+```python
+if not res.total == 0:
+```
+
+This means ""if total is NOT zero, then iterate through results"", but the for loop that follows is NOT inside an else block. This will cause the code to:
+1. When `res.total == 0`: Skip the condition and execute the for loop on empty results
+2. When `res.total != 0`: Enter the condition block (which has no body now) and still execute the for loop
+
+**Suggested fix:**
+```python
+if res.total == 0:
+    return None
+# Keep the for loop here (unindented)
+```
+
+Or if you want to keep the inverted logic:
+```python
+if res.total > 0:
+    for id in res.ids:
+        # ... rest of the code indented inside this block
+```",Code Defect,4,137,70,207,13,115501,2824,745,520,10
+aacr_bench,python,infiniflow/ragflow,https://github.com/infiniflow/ragflow,https://github.com/infiniflow/ragflow/pull/7151,f189316eae1c199a5891f7a8bc47d53bb1b5c818,8362ab405c35d260dd2328dc207aefcf30778f66,graphrag/utils.py,568,572,"Switching from getTotal() to len(es_res) might introduce logical issues if these don't return the same value. The getTotal() method might return the total number of matching documents across all pages, while len(es_res) only counts the documents in the current page. This could cause premature termination of the loop.
+",Code Defect,4,137,70,207,13,115501,2824,745,520,10
+aacr_bench,python,infiniflow/ragflow,https://github.com/infiniflow/ragflow,https://github.com/infiniflow/ragflow/pull/7151,f189316eae1c199a5891f7a8bc47d53bb1b5c818,8362ab405c35d260dd2328dc207aefcf30778f66,rag/utils/infinity_conn.py,45,49,"Inconsistent indentation - this function uses 8 spaces instead of 4 spaces like the rest of the code
+",Code Defect,4,137,70,207,13,115501,2824,745,520,10
+aacr_bench,python,infiniflow/ragflow,https://github.com/infiniflow/ragflow,https://github.com/infiniflow/ragflow/pull/7151,f189316eae1c199a5891f7a8bc47d53bb1b5c818,8362ab405c35d260dd2328dc207aefcf30778f66,rag/utils/infinity_conn.py,83,84,"SQL injection vulnerability: Single quotes in `v` are not escaped here, unlike list items on line 73. If `v` contains a single quote, it will break the SQL syntax. Add the same escaping: `v.replace(""'"", ""''"")`
+
+```suggestion
+            else:
+                v = v.replace(""'"", ""''"") if isinstance(v, str) else v
+                cond.append(f""filter_fulltext('{k}', '{v}')"")
+```",Security Vulnerability,4,137,70,207,13,115501,2824,745,520,10
+aacr_bench,python,infiniflow/ragflow,https://github.com/infiniflow/ragflow,https://github.com/infiniflow/ragflow/pull/7151,f189316eae1c199a5891f7a8bc47d53bb1b5c818,8362ab405c35d260dd2328dc207aefcf30778f66,rag/utils/infinity_conn.py,577,577,"The code accesses `clmns[v]` without verifying `v` exists as a key, risking KeyError during 'remove' handling when `v` is a string.",Code Defect,4,137,70,207,13,115501,2824,745,520,10
+aacr_bench,python,infiniflow/ragflow,https://github.com/infiniflow/ragflow,https://github.com/infiniflow/ragflow/pull/7151,f189316eae1c199a5891f7a8bc47d53bb1b5c818,8362ab405c35d260dd2328dc207aefcf30778f66,rag/utils/infinity_conn.py,581,584,"Logic error: `del newValue[k]` is only executed in the `else` block. If `v` is a string (the `if` block), the ""remove"" key remains in `newValue`, causing the subsequent `update` call to try updating a non-existent column named ""remove"".
+",Code Defect,4,137,70,207,13,115501,2824,745,520,10
+aacr_bench,python,infiniflow/ragflow,https://github.com/infiniflow/ragflow,https://github.com/infiniflow/ragflow/pull/7151,f189316eae1c199a5891f7a8bc47d53bb1b5c818,8362ab405c35d260dd2328dc207aefcf30778f66,rag/utils/infinity_conn.py,588,602,"Severe: likely runtime exception when `table_instance` is None. `remove_opt` computation unconditionally uses `table_instance.output(...)` if `removeValue` is set, but `table_instance` can be None (you only guard it when building `clmns`). Add a guard or fail fast before using `table_instance`.
+
+Additionally, `old_v[k]` is assumed to be a list with `.copy()` and `.remove()`. If stored as string/None, this will fail; consider normalizing/validating type first.
+
+```suggestion
+        remove_opt = {}     # ""[k,new_value]"": [id_to_update, ...]
+        if removeValue:
+            if table_instance is None:
+                raise RuntimeError(""table_instance is None; cannot apply removeValue updates"")
+            col_to_remove = list(removeValue.keys())
+            row_to_opt = table_instance.output(col_to_remove + ['id']).filter(filter).to_df()
+            row_to_opt = self.getFields(row_to_opt, col_to_remove)
+            for id, old_v in row_to_opt.items():
+                for k, remove_v in removeValue.items():
+                    cur = old_v.get(k)
+                    if not isinstance(cur, list):
+                        continue
+                    if remove_v in cur:
+                        new_v = cur.copy()
+                        new_v.remove(remove_v)
+                        kv_key = json.dumps([k, new_v])
+                        remove_opt.setdefault(kv_key, []).append(id)
+```",Code Defect,4,137,70,207,13,115501,2824,745,520,10
+aacr_bench,python,infiniflow/ragflow,https://github.com/infiniflow/ragflow,https://github.com/infiniflow/ragflow/pull/7151,f189316eae1c199a5891f7a8bc47d53bb1b5c818,8362ab405c35d260dd2328dc207aefcf30778f66,rag/utils/infinity_conn.py,605,607,"Potential syntax error: If `filter` is an empty string (which happens if `condition` is empty), the resulting string will start with `"" AND ...""`, which is likely invalid syntax.
+
+Suggestion: Handle the empty filter case.
+",Code Defect,4,137,70,207,13,115501,2824,745,520,10
+aacr_bench,python,infiniflow/ragflow,https://github.com/infiniflow/ragflow,https://github.com/infiniflow/ragflow/pull/7151,f189316eae1c199a5891f7a8bc47d53bb1b5c818,8362ab405c35d260dd2328dc207aefcf30778f66,rag/utils/infinity_conn.py,607,607,"SQL injection vulnerability - concatenating user input directly into SQL query. This is extremely dangerous and should use parameterized queries.
+",Security Vulnerability,4,137,70,207,13,115501,2824,745,520,10
+aacr_bench,python,infiniflow/ragflow,https://github.com/infiniflow/ragflow,https://github.com/infiniflow/ragflow/pull/6691,a63caa1087852ada98964678be26b7c4d8363af6,0a42e5777eb966b26aaf8f2a7d593ae99a4aa87a,graphrag/entity_resolution.py,114,114,"Accessing `.nodes` on the result of `nx.connected_components` (which returns node sets, not graph objects) causes AttributeError; use the set of nodes directly.",Code Defect,3,5,6,11,6,115501,2824,745,520,10
+aacr_bench,python,infiniflow/ragflow,https://github.com/infiniflow/ragflow,https://github.com/infiniflow/ragflow/pull/6691,a63caa1087852ada98964678be26b7c4d8363af6,0a42e5777eb966b26aaf8f2a7d593ae99a4aa87a,graphrag/entity_resolution.py,115,115,"Critical bug: Lambda function captures loop variable by reference. All async tasks will use the last value of `merging_nodes` instead of their intended values. This will cause incorrect node merging behavior. Fix by using a default argument to capture the value: `lambda nodes=merging_nodes: self._merge_graph_nodes(graph, nodes, change)`
+
+```suggestion
+                nursery.start_soon(lambda nodes=merging_nodes: self._merge_graph_nodes(graph, nodes, change))
+```",Code Defect,3,5,6,11,6,115501,2824,745,520,10
+aacr_bench,python,infiniflow/ragflow,https://github.com/infiniflow/ragflow,https://github.com/infiniflow/ragflow/pull/6691,a63caa1087852ada98964678be26b7c4d8363af6,0a42e5777eb966b26aaf8f2a7d593ae99a4aa87a,graphrag/general/extractor.py,205,205,"The direct access to `node1_attrs[""source_id""]` risks KeyError if the attribute is missing; replace with `.get(""source_id"", [])` to safely handle absent attributes during list extension.",Code Defect,3,5,6,11,6,115501,2824,745,520,10
+aacr_bench,python,infiniflow/ragflow,https://github.com/infiniflow/ragflow,https://github.com/infiniflow/ragflow/pull/6691,a63caa1087852ada98964678be26b7c4d8363af6,0a42e5777eb966b26aaf8f2a7d593ae99a4aa87a,graphrag/general/extractor.py,216,217,"Similar to prior corrections applied to node merging logic, suggest applying consistent idiom here too i.e., prefer creating new combined collection over mutating existing one e.g.: `edge0_attrs[""keywords""] = list(set(edge0_attrs[""keywords""] + edge1_attrs[""keywords""]))`. Improves readability & reduces mutation-related confusion.
+",Maintainability and Readability,3,5,6,11,6,115501,2824,745,520,10
+aacr_bench,python,infiniflow/ragflow,https://github.com/infiniflow/ragflow,https://github.com/infiniflow/ragflow/pull/6691,a63caa1087852ada98964678be26b7c4d8363af6,0a42e5777eb966b26aaf8f2a7d593ae99a4aa87a,graphrag/general/extractor.py,216,219,"Type/ordering consistency: for edges you deduplicate with `list(set(...))`, which produces non-deterministic order. Elsewhere you use `sorted(set(...))` (node source_id). If downstream relies on stable ordering (e.g., tests, hashing, serialization diffs), consider using `sorted(set(...))` consistently for both `keywords` and `source_id`. Also ensure the attributes exist and are lists before calling `extend`.
+
+```suggestion
+                        if isinstance(edge0_attrs.get(""keywords""), list) and isinstance(edge1_attrs.get(""keywords""), list):
+                            edge0_attrs[""keywords""].extend(edge1_attrs[""keywords""])
+                            edge0_attrs[""keywords""] = sorted(set(edge0_attrs[""keywords""]))
+                        
+                        if isinstance(edge0_attrs.get(""source_id""), list) and isinstance(edge1_attrs.get(""source_id""), list):
+                            edge0_attrs[""source_id""].extend(edge1_attrs[""source_id""])
+                            edge0_attrs[""source_id""] = sorted(set(edge0_attrs[""source_id""]))
+```",Code Defect,3,5,6,11,6,115501,2824,745,520,10
+aacr_bench,python,infiniflow/ragflow,https://github.com/infiniflow/ragflow,https://github.com/infiniflow/ragflow/pull/6691,a63caa1087852ada98964678be26b7c4d8363af6,0a42e5777eb966b26aaf8f2a7d593ae99a4aa87a,graphrag/utils.py,442,442,"The change replaces concurrent edge deletion (via `nursery.start_soon`) with sequential execution (via `await trio.to_thread.run_sync`), causing unnecessary performance degradation when removing multiple edges.",Performance,3,5,6,11,6,115501,2824,745,520,10
+aacr_bench,python,infiniflow/ragflow,https://github.com/infiniflow/ragflow,https://github.com/infiniflow/ragflow/pull/6553,705123406ec7cd5eb1f9be26f6c5c31357aeffc9,b1c874698469ac999d210cd8cde59425781e4da2,api/apps/api_app.py,618,621,"The method `DocumentService.get_doc_ids_by_doc_names` returns `None` if no documents are found. This will cause a `TypeError` when checking `if doc_id not in doc_ids` and an `AttributeError` when calling `doc_ids.append(doc_id)`. Please ensure `doc_ids` is initialized to an empty list if the service returns `None`.
+",Code Defect,4,33,4,37,6,115501,2824,745,520,10
+aacr_bench,python,infiniflow/ragflow,https://github.com/infiniflow/ragflow,https://github.com/infiniflow/ragflow/pull/6553,705123406ec7cd5eb1f9be26f6c5c31357aeffc9,b1c874698469ac999d210cd8cde59425781e4da2,api/db/services/common_service.py,267,275,"Potential SQL error when `pids` is an empty list. In Peewee ORM, using `.in_([])` generates invalid SQL `IN ()` which causes a database exception. Looking at the usage in `user_canvas_version.py`, `delete_ids` could be empty if the count is exactly 20 or less. Consider adding an empty list check before executing the delete operation.
+
+```suggestion
+    @classmethod
+    @DB.connection_context()
+    def delete_by_ids(cls, pids):
+        # Delete multiple records by their IDs
+        # Args:
+        #     pids: List of record IDs
+        # Returns:
+        #     Number of records deleted
+        if not pids:
+            return 0
+        return cls.model.delete().where(cls.model.id.in_(pids)).execute()
+```",Code Defect,4,33,4,37,6,115501,2824,745,520,10
+aacr_bench,python,infiniflow/ragflow,https://github.com/infiniflow/ragflow,https://github.com/infiniflow/ragflow/pull/6553,705123406ec7cd5eb1f9be26f6c5c31357aeffc9,b1c874698469ac999d210cd8cde59425781e4da2,api/db/services/common_service.py,269,269,The new `delete_by_ids` method processes multiple deletions without transactional integrity. Add `@DB.atomic()` to ensure all deletions succeed or fail atomically.,Code Defect,4,33,4,37,6,115501,2824,745,520,10
+aacr_bench,python,infiniflow/ragflow,https://github.com/infiniflow/ragflow,https://github.com/infiniflow/ragflow/pull/6553,705123406ec7cd5eb1f9be26f6c5c31357aeffc9,b1c874698469ac999d210cd8cde59425781e4da2,api/db/services/document_service.py,339,339,"The new method `get_doc_ids_by_doc_names` has two critical issues:  
+- Always returns `None` due to missing return statement for query results when documents are found.  
+- Fails with empty `doc_names` input, causing invalid SQL from `IN ()` clause.",Code Defect,4,33,4,37,6,115501,2824,745,520,10
+aacr_bench,python,infiniflow/ragflow,https://github.com/infiniflow/ragflow,https://github.com/infiniflow/ragflow/pull/6553,705123406ec7cd5eb1f9be26f6c5c31357aeffc9,b1c874698469ac999d210cd8cde59425781e4da2,api/db/services/user_canvas_version.py,38,38,The class method `delete_all_versions` uses a hardcoded service reference instead of the class reference `cls` for bulk deletion. Replace `UserCanvasVersionService.delete_by_ids` with `cls.delete_by_ids` to properly support inheritance and maintain encapsulation.,Maintainability and Readability,4,33,4,37,6,115501,2824,745,520,10
+aacr_bench,python,infiniflow/ragflow,https://github.com/infiniflow/ragflow,https://github.com/infiniflow/ragflow/pull/6553,705123406ec7cd5eb1f9be26f6c5c31357aeffc9,b1c874698469ac999d210cd8cde59425781e4da2,api/db/services/user_canvas_version.py,38,38,"Good performance improvement! Using bulk delete with `delete_by_ids()` instead of multiple individual `delete()` calls reduces database round trips from O(n) to O(1).
+
+Minor suggestion: Consider adding a check to avoid the delete query if `delete_ids` is empty:
+```python
+if delete_ids:
+    UserCanvasVersionService.delete_by_ids(delete_ids)
+```",Performance,4,33,4,37,6,115501,2824,745,520,10
+aacr_bench,python,infiniflow/ragflow,https://github.com/infiniflow/ragflow,https://github.com/infiniflow/ragflow/pull/5065,2d06022b78536bd22a0fd83f38804f39aa34cce8,469460483665000f522b6c9a6583bb34f17a954b,agent/component/rewrite.py,49,49,"**Issue: Typo in prompt text**
+
+The text ""If the user's latest question is completely"" is incomplete and grammatically incorrect. It should say something like ""If the user's latest question is complete"" or ""If the user's latest question is completely self-contained"".
+
+**Suggested fix:**
+```python
+    - If the user's latest question is complete, don't do anything, just return the original question.
+```
+
+This typo exists in the original code too, but since you're refactoring this section, it's a good opportunity to fix it.",Maintainability and Readability,4,63,2,65,9,115501,2824,745,520,10
+aacr_bench,python,infiniflow/ragflow,https://github.com/infiniflow/ragflow,https://github.com/infiniflow/ragflow/pull/5065,2d06022b78536bd22a0fd83f38804f39aa34cce8,469460483665000f522b6c9a6583bb34f17a954b,web/src/components/api-service/embed-modal/index.tsx,42,49,"Semantic mismatch: The checkbox label is 'avatarHidden' but when checked, it adds 'visible_avatar=1' to the URL. This is confusing. If the label means 'hide avatar', checking it should hide the avatar (not make it visible). Consider either: 1) Renaming the state to 'hideAvatar' and inverting the logic (!hideAvatar for URL param), or 2) Changing the label to something like 'showAvatar' or 'visibleAvatar' to match the current behavior.
+",Maintainability and Readability,4,63,2,65,9,115501,2824,745,520,10
+aacr_bench,python,infiniflow/ragflow,https://github.com/infiniflow/ragflow,https://github.com/infiniflow/ragflow/pull/5065,2d06022b78536bd22a0fd83f38804f39aa34cce8,469460483665000f522b6c9a6583bb34f17a954b,web/src/components/api-service/embed-modal/index.tsx,45,56,"The `iframeSrc` is computed by calling `generateIframeSrc()` during render, but this function is only called once at component initialization. When `visibleAvatar` or `locale` state changes via the Checkbox or Select components, the `iframeSrc` variable won't be recalculated, so the displayed iframe code won't reflect the user's selected options. The `text` template will always show the initial iframe src.
+
+**Suggestion**: Move the `generateIframeSrc` logic inside the component body to recalculate on every render, or use `useMemo` to memoize the computed value based on state dependencies:
+
+```typescript
+const iframeSrc = useMemo(() => {
+  let src = `${location.origin}/chat/share?shared_id=${token}&from=${form}&auth=${beta}`;
+  if (visibleAvatar) {
+    src += '&visible_avatar=1';
+  }
+  if (locale) {
+    src += `&locale=${locale}`;
+  }
+  return src;
+}, [token, form, beta, visibleAvatar, locale]);
+```
+
+```suggestion
+  const iframeSrc = useMemo(() => {
+    let src = `${location.origin}/chat/share?shared_id=${token}&from=${form}&auth=${beta}`;
+    if (visibleAvatar) {
+      src += '&visible_avatar=1';
+    }
+    if (locale) {
+      src += `&locale=${locale}`;
+    }
+    return src;
+  }, [token, form, beta, visibleAvatar, locale]);
+```",Code Defect,4,63,2,65,9,115501,2824,745,520,10
+aacr_bench,python,infiniflow/ragflow,https://github.com/infiniflow/ragflow,https://github.com/infiniflow/ragflow/pull/5065,2d06022b78536bd22a0fd83f38804f39aa34cce8,469460483665000f522b6c9a6583bb34f17a954b,web/src/components/api-service/embed-modal/index.tsx,56,56,"Performance: The iframeSrc is recalculated on every render. Since it depends on state variables, consider wrapping it with useMemo to avoid unnecessary recalculations: `const iframeSrc = useMemo(() => generateIframeSrc(), [visibleAvatar, locale, token, form, beta]);`
+",Performance,4,63,2,65,9,115501,2824,745,520,10
+aacr_bench,python,infiniflow/ragflow,https://github.com/infiniflow/ragflow,https://github.com/infiniflow/ragflow/pull/5065,2d06022b78536bd22a0fd83f38804f39aa34cce8,469460483665000f522b6c9a6583bb34f17a954b,web/src/components/api-service/embed-modal/index.tsx,81,81,"Label 'avatarHidden' implies checking hides avatar, but implementation shows avatar when checked. Consider renaming label to 'showAvatar' or invert logic for intuitive UX.
+",Code Defect,4,63,2,65,9,115501,2824,745,520,10
+aacr_bench,python,vllm-project/vllm,https://github.com/vllm-project/vllm,https://github.com/vllm-project/vllm/pull/12608,075f1b5b8015e343f25b45d36ccff571cb39739b,7a8987dac5f0ed0c798a73e8b4ec8f5e640bc63a,vllm/v1/core/kv_cache_manager.py,116,116,"The `new_computed_blocks` parameter should be made optional with a default value of `None`, then initialized to an empty list internally to eliminate the need for callers to explicitly pass empty lists.",Maintainability and Readability,3,78,116,194,7,187026,4549,2903,535,7
+aacr_bench,python,vllm-project/vllm,https://github.com/vllm-project/vllm,https://github.com/vllm-project/vllm/pull/12608,075f1b5b8015e343f25b45d36ccff571cb39739b,7a8987dac5f0ed0c798a73e8b4ec8f5e640bc63a,vllm/v1/core/kv_cache_manager.py,154,155,"There is a spelling error in the comment: 'cacheing' should be 'caching'.
+
+```suggestion
+        # The number of computed tokens is the number of computed tokens plus
+        # the new prefix caching hits
+```",Maintainability and Readability,3,78,116,194,7,187026,4549,2903,535,7
+aacr_bench,python,vllm-project/vllm,https://github.com/vllm-project/vllm,https://github.com/vllm-project/vllm/pull/12608,075f1b5b8015e343f25b45d36ccff571cb39739b,7a8987dac5f0ed0c798a73e8b4ec8f5e640bc63a,vllm/v1/core/kv_cache_manager.py,425,438,"The `_untouch` method violates LRU cache policy by appending freed blocks to the end of `free_block_queue`, making them least likely to be reused immediately. During memory pressure (when allocation fails), these blocks should be prioritized for reuse as they represent the least recently used candidates and must be added to the front of the queue.",Code Defect,3,78,116,194,7,187026,4549,2903,535,7
+aacr_bench,python,vllm-project/vllm,https://github.com/vllm-project/vllm,https://github.com/vllm-project/vllm/pull/12608,075f1b5b8015e343f25b45d36ccff571cb39739b,7a8987dac5f0ed0c798a73e8b4ec8f5e640bc63a,vllm/v1/core/kv_cache_manager.py,426,432,"Documentation Error: The verb form should be ""Untouching"" to match the sentence structure. Also, the parameter description incorrectly states ""blocks to touch"" when it should be ""blocks to untouch"".
+",Maintainability and Readability,3,78,116,194,7,187026,4549,2903,535,7
+aacr_bench,python,vllm-project/vllm,https://github.com/vllm-project/vllm,https://github.com/vllm-project/vllm/pull/12608,075f1b5b8015e343f25b45d36ccff571cb39739b,7a8987dac5f0ed0c798a73e8b4ec8f5e640bc63a,vllm/v1/core/kv_cache_manager.py,426,426,"Minor wording improvement: 'Untouch a block decreases' should be 'Untouch blocks decrease' since the method handles multiple blocks
+",Maintainability and Readability,3,78,116,194,7,187026,4549,2903,535,7
+aacr_bench,python,vllm-project/vllm,https://github.com/vllm-project/vllm,https://github.com/vllm-project/vllm/pull/12608,075f1b5b8015e343f25b45d36ccff571cb39739b,7a8987dac5f0ed0c798a73e8b4ec8f5e640bc63a,vllm/v1/core/scheduler.py,141,142,"Serious logical issue: allocate_slots is called with an empty list for new_computed_blocks parameter, but the method expects blocks that have hit prefix caching. For RUNNING requests, computed blocks should be retrieved first using get_computed_blocks() and passed instead of an empty list.
+",Code Defect,3,78,116,194,7,187026,4549,2903,535,7
+aacr_bench,python,vllm-project/vllm,https://github.com/vllm-project/vllm,https://github.com/vllm-project/vllm/pull/15998,a800045d0e2473ce173865edb83967cd210dec4c,5e125e74d1b9739025ccb81106e28ce9b0dd4ea5,benchmarks/README.md,196,196,"Inconsistent script path prefix: This example uses `vllm/benchmarks/benchmark_serving.py` while the throughput benchmark example at line 301 uses `benchmarks/benchmark_throughput.py` (without the `vllm/` prefix).
+
+For consistency and to avoid user confusion, both examples should use the same path convention. Based on the actual file structure and the throughput example, this should likely be `benchmarks/benchmark_serving.py` (without the `vllm/` prefix).
+
+```
+Fix benchmarks/README.md:196: Remove 'vllm/' prefix from the script path to match the convention used in other examples throughout the document
+```",Maintainability and Readability,2,44,11,55,4,187026,4549,2903,535,7
+aacr_bench,python,vllm-project/vllm,https://github.com/vllm-project/vllm,https://github.com/vllm-project/vllm/pull/15998,a800045d0e2473ce173865edb83967cd210dec4c,5e125e74d1b9739025ccb81106e28ce9b0dd4ea5,benchmarks/benchmark_throughput.py,335,338,"The AIMODataset condition hardcodes dataset_split to 'train' while other dataset types use args.hf_split. This inconsistency may limit flexibility when users want to use different splits for AIMODataset. Consider using args.hf_split like other dataset types for consistency.
+",Code Defect,2,44,11,55,4,187026,4549,2903,535,7
+aacr_bench,python,vllm-project/vllm,https://github.com/vllm-project/vllm,https://github.com/vllm-project/vllm/pull/24425,6217b0c46176fa51196d862e02e1b3722eefa4de,f4962a6d55a340ebb569d377c842deff7611d8f7,vllm/distributed/kv_transfer/kv_connector/v1/multi_connector.py,96,97,"Redundant exception message in logger.exception call: the current implementation includes the exception string in the format specifier, but logger.exception automatically appends full exception details, causing duplication. Remove the `: %s` format specifier and `str(e)` argument.",Code Defect,1,12,0,12,2,187026,4549,2903,535,7
+aacr_bench,python,vllm-project/vllm,https://github.com/vllm-project/vllm,https://github.com/vllm-project/vllm/pull/19756,3fe18934d7f33b98812d7402463fe171c24efc77,c3bf9bad11193ee684ed6083b6692d0b5bf2bac7,vllm/model_executor/models/qwen2_vl.py,822,823,"Hardcoded token limits (16384 for images, 98304 for videos) in `get_max_tokens_per_item` should be replaced with named constants to improve readability and maintainability.",Maintainability and Readability,3,50,1,51,4,187026,4549,2903,535,7
+aacr_bench,python,vllm-project/vllm,https://github.com/vllm-project/vllm,https://github.com/vllm-project/vllm/pull/19756,3fe18934d7f33b98812d7402463fe171c24efc77,c3bf9bad11193ee684ed6083b6692d0b5bf2bac7,vllm/model_executor/models/qwen2_vl.py,822,823,"`get_max_tokens_per_item()` now hard-codes max token counts for image/video. Please verify these values are correct for **Qwen2-VL** and match the intended *token* definition used by vLLM (i.e., number of vision tokens produced by the encoder after preprocessing), not context length or pixels. If these are off by a factor (e.g., frames vs tokens), it can either (a) allow inputs that later OOM, or (b) unnecessarily reject valid inputs / underutilize capacity. Consider deriving these from the HF config (vision grid/patch/merge sizes, max frames) or referencing a shared constant used elsewhere to avoid silent drift.",Code Defect,3,50,1,51,4,187026,4549,2903,535,7
+aacr_bench,python,vllm-project/vllm,https://github.com/vllm-project/vllm,https://github.com/vllm-project/vllm/pull/19756,3fe18934d7f33b98812d7402463fe171c24efc77,c3bf9bad11193ee684ed6083b6692d0b5bf2bac7,vllm/multimodal/processing.py,1104,1104,"The docstring for `get_max_tokens_per_item` lacks precision regarding the scope of token limits. It should specify ""per item"" as suggested in the review comment to accurately describe that the method returns maximum tokens per individual item rather than global modality limits.",Maintainability and Readability,3,50,1,51,4,187026,4549,2903,535,7
+aacr_bench,python,vllm-project/vllm,https://github.com/vllm-project/vllm,https://github.com/vllm-project/vllm/pull/19756,3fe18934d7f33b98812d7402463fe171c24efc77,c3bf9bad11193ee684ed6083b6692d0b5bf2bac7,vllm/multimodal/profiling.py,256,258,"The implementation incorrectly returns per-modality max tokens without aggregating to the required total max tokens (sum of max tokens per modality multiplied by counts).  
+- Video modality handling is broken due to removal of `_get_dummy_mm_inputs` call, which uses sequence length to determine maximum frames.",Code Defect,3,50,1,51,4,187026,4549,2903,535,7
+aacr_bench,python,vllm-project/vllm,https://github.com/vllm-project/vllm,https://github.com/vllm-project/vllm/pull/17425,134705b1474ddcfac234a0a01313874f7c8b59bc,d8037867313eef09779b265ea4bace76d2d118ba,vllm/logger.py,55,58,"Serious logic issue: The @lru_cache decorator caches based on ALL arguments including *args, which breaks the 'print once' semantics. When the same message format is logged with different argument values (e.g., logger.info_once('Value: %s', 1) then logger.info_once('Value: %s', 2)), both will be printed because they create different cache entries. The cache should only consider the message format string, not the formatting arguments. Consider using a different caching strategy that only caches based on (logger, msg) or implementing a custom cache that ignores the *args for cache key generation.
+",Code Defect,13,75,79,154,11,187026,4549,2903,535,7
+aacr_bench,python,vllm-project/vllm,https://github.com/vllm-project/vllm,https://github.com/vllm-project/vllm/pull/17425,134705b1474ddcfac234a0a01313874f7c8b59bc,d8037867313eef09779b265ea4bace76d2d118ba,vllm/logger.py,55,58,"Potential memory growth: these functions are decorated with @lru_cache and now include `*args` in the cache key. If call sites pass many distinct argument combinations (e.g., dynamic values), the cache can grow without bound over a long-running process. Consider setting `@lru_cache(maxsize=...)`, caching only on the formatted message key you intend to dedupe, or using a bounded set per logger.",Performance,13,75,79,154,11,187026,4549,2903,535,7
+aacr_bench,python,vllm-project/vllm,https://github.com/vllm-project/vllm,https://github.com/vllm-project/vllm/pull/17425,134705b1474ddcfac234a0a01313874f7c8b59bc,d8037867313eef09779b265ea4bace76d2d118ba,vllm/model_executor/model_loader/weight_utils.py,718,721,"Potential issue: this change switches `warning_once` from f-string to %-style formatting with extra args. Please confirm `logger.warning_once` supports the standard logging signature `warning_once(msg, *args, **kwargs)` and forwards args to the logger. If `warning_once` only accepts a single pre-formatted string, this will raise `TypeError` at runtime and also break the intended message. If it doesn’t support args, keep f-strings or explicitly format via `msg % (..)` / `.format()` before passing.",Code Defect,13,75,79,154,11,187026,4549,2903,535,7
+aacr_bench,python,vllm-project/vllm,https://github.com/vllm-project/vllm,https://github.com/vllm-project/vllm/pull/17425,134705b1474ddcfac234a0a01313874f7c8b59bc,d8037867313eef09779b265ea4bace76d2d118ba,vllm/model_executor/model_loader/weight_utils.py,719,719,"Formatting issue: There are two spaces before `noqa` instead of one. Should be `# noqa:` not `#  noqa:`.
+
+**Suggested Fix:**
+```python
+""Found kv_scale in the checkpoint (e.g. %s), but not found the expected name in the model (e.g. %s). kv_scale is not loaded."",  # noqa: E501
+```",Maintainability and Readability,13,75,79,154,11,187026,4549,2903,535,7
+aacr_bench,python,vllm-project/vllm,https://github.com/vllm-project/vllm,https://github.com/vllm-project/vllm/pull/17425,134705b1474ddcfac234a0a01313874f7c8b59bc,d8037867313eef09779b265ea4bace76d2d118ba,vllm/model_executor/models/qwen2_moe.py,465,465,"Formatting issue: There are two spaces before `noqa` instead of one. Should be `# noqa:` not `#  noqa:`.
+
+**Suggested Fix:**
+```python
+""Found kv_scale in the checkpoint (e.g. %s), but not found the expected name in the model (e.g. %s). kv_scale is not loaded."",  # noqa: E501
+```",Maintainability and Readability,13,75,79,154,11,187026,4549,2903,535,7
+aacr_bench,python,vllm-project/vllm,https://github.com/vllm-project/vllm,https://github.com/vllm-project/vllm/pull/17425,134705b1474ddcfac234a0a01313874f7c8b59bc,d8037867313eef09779b265ea4bace76d2d118ba,vllm/multimodal/profiling.py,218,224,"Potential formatting issue: the placeholder for `self._get_mm_num_tokens(mm_inputs)` is `%s`, but the value appears to be numeric (token count). Prefer `%d` to avoid accidental non-int formatting and to communicate intent; also consider casting to `int` if it can be a numpy scalar/torch scalar to avoid surprising output.
+
+```suggestion
+                ""The encoder sequence length used for profiling (max_num_batched_tokens / max_num_seqs = %d) ""  # noqa: E501
+                ""is too short to hold the multi-modal embeddings in the worst case (%d tokens in total, out of which %d are reserved for multi-modal embeddings). ""  # noqa: E501
+                ""This may cause certain multi-modal inputs to fail during inference, even when the input text is short. ""  # noqa: E501
+                ""To avoid this, you should increase `max_model_len`, reduce `max_num_seqs`, and/or reduce `mm_counts`."",  # noqa: E501
+                seq_len,
+                total_len,
+                int(self._get_mm_num_tokens(mm_inputs)),
+            )
+```",Code Defect,13,75,79,154,11,187026,4549,2903,535,7
+aacr_bench,python,vllm-project/vllm,https://github.com/vllm-project/vllm,https://github.com/vllm-project/vllm/pull/17425,134705b1474ddcfac234a0a01313874f7c8b59bc,d8037867313eef09779b265ea4bace76d2d118ba,vllm/multimodal/profiling.py,243,249,"Same as above: use `%d` for token count placeholder (and possibly `int(...)`) to keep formatting consistent and avoid unexpected stringification if the return type is a scalar tensor/np scalar.
+
+```suggestion
+                ""The sequence length used for profiling (max_num_batched_tokens / max_num_seqs = %d) ""  # noqa: E501
+                ""is too short to hold the multi-modal embeddings in the worst case (%d tokens in total, out of which %d are reserved for multi-modal embeddings). ""  # noqa: E501
+                ""This may cause certain multi-modal inputs to fail during inference, even when the input text is short. ""  # noqa: E501
+                ""To avoid this, you should increase `max_model_len`, reduce `max_num_seqs`, and/or reduce `mm_counts`."",  # noqa: E501
+                seq_len,
+                total_len,
+                int(self._get_mm_num_tokens(mm_inputs)),
+            )
+```",Code Defect,13,75,79,154,11,187026,4549,2903,535,7
+aacr_bench,python,vllm-project/vllm,https://github.com/vllm-project/vllm,https://github.com/vllm-project/vllm/pull/17425,134705b1474ddcfac234a0a01313874f7c8b59bc,d8037867313eef09779b265ea4bace76d2d118ba,vllm/multimodal/profiling.py,249,249,"The change to % formatting passes unhashable objects as arguments to `logger.warning_once`, which is wrapped in `lru_cache` and requires hashable inputs for caching. This breaks when non-hashable values (e.g., complex objects from `self._get_mm_num_tokens()`) are logged.",Code Defect,13,75,79,154,11,187026,4549,2903,535,7
+aacr_bench,python,langflow-ai/langflow,https://github.com/langflow-ai/langflow,https://github.com/langflow-ai/langflow/pull/6044,bcfe6f9ded091cd360b3212b6e9f5a58cbcdac5e,5bcf4d001f1174ed9e63b7115f10e5dbe1bcca9f,src/backend/base/langflow/components/vectorstores/pinecone.py,47,51,"Exception semantics: catching `ImportError` and re-raising `ValueError` can break callers/tests that expect missing optional dependencies to raise `ImportError`/`ModuleNotFoundError`. Prefer re-raising `ImportError` with the helpful install message, or use a project-specific exception type consistently used elsewhere for missing extras.
+
+```suggestion
+        try:
+            from langchain_pinecone import PineconeVectorStore
+        except ImportError as e:
+            msg = (
+                ""langchain-pinecone is not installed. Please install it with `pip install langchain-pinecone`.""
+            )
+            raise ImportError(msg) from e
+```",Code Defect,20,696,186,882,12,1223499,4642,1937,1282,13
+aacr_bench,python,langflow-ai/langflow,https://github.com/langflow-ai/langflow,https://github.com/langflow-ai/langflow/pull/6044,bcfe6f9ded091cd360b3212b6e9f5a58cbcdac5e,5bcf4d001f1174ed9e63b7115f10e5dbe1bcca9f,src/backend/base/langflow/components/vectorstores/pinecone.py,64,67,API compatibility risk: switching from `Pinecone` to `PineconeVectorStore` is correct only for certain `langchain-pinecone` versions. Please double-check the target dependency version in this repo (requirements/lock) and confirm `PineconeVectorStore(...)` supports `index_name/embedding/text_key/namespace/distance_strategy` params as used here; otherwise this will fail at runtime.,Code Defect,20,696,186,882,12,1223499,4642,1937,1282,13
+aacr_bench,python,langflow-ai/langflow,https://github.com/langflow-ai/langflow,https://github.com/langflow-ai/langflow/pull/6044,bcfe6f9ded091cd360b3212b6e9f5a58cbcdac5e,5bcf4d001f1174ed9e63b7115f10e5dbe1bcca9f,src/backend/base/langflow/graph/utils.py,163,165,"Potential behavior change: serialize() applies default truncation (MAX_TEXT_LENGTH=20000, MAX_ITEMS_LENGTH=1000). Previously serialize_field() did not truncate. This may silently cut off vertex build `data`/`artifacts` persisted in DB/logs. If full fidelity is required for debugging/auditing, consider passing `max_length=None, max_items=None` here or using a dedicated `serialize_or_str`/configurable limits.
+
+```suggestion
+            data=serialize(data, max_length=None, max_items=None),
+            # Serialize artifacts using our custom serializer
+            artifacts=serialize(artifacts, max_length=None, max_items=None) if artifacts else None,
+```",Code Defect,20,696,186,882,12,1223499,4642,1937,1282,13
+aacr_bench,python,langflow-ai/langflow,https://github.com/langflow-ai/langflow,https://github.com/langflow-ai/langflow/pull/6044,bcfe6f9ded091cd360b3212b6e9f5a58cbcdac5e,5bcf4d001f1174ed9e63b7115f10e5dbe1bcca9f,src/backend/base/langflow/graph/vertex/vertex_types.py,481,484,"Potential runtime error: dict_to_codeblock() now uses serialization.serialize(), whose fallback may return the original object (non-JSON-serializable). Then json.dumps(serialized) can raise `TypeError: Object of type ... is not JSON serializable`.
+
+Suggestion: ensure dict_to_codeblock always produces JSON-safe values, e.g. call `serialize(val, to_str=True)` (or `serialize_or_str`) or pass `default=str` to `json.dumps` as a last-resort fallback.
+
+```suggestion
+def dict_to_codeblock(d: dict) -> str:
+    serialized = {key: serialize(val, to_str=True) for key, val in d.items()}
+    json_str = json.dumps(serialized, indent=4)
+    return f""```",Code Defect,20,696,186,882,12,1223499,4642,1937,1282,13
+aacr_bench,python,langflow-ai/langflow,https://github.com/langflow-ai/langflow,https://github.com/langflow-ai/langflow/pull/6044,bcfe6f9ded091cd360b3212b6e9f5a58cbcdac5e,5bcf4d001f1174ed9e63b7115f10e5dbe1bcca9f,src/backend/base/langflow/schema/schema.py,113,113,"Potential behavioral change: The previous recursive_serialize_or_str function likely included automatic fallback to string representation for unserializable objects. The new serialize function requires explicit to_str=True parameter for this behavior. Consider using serialize(item, to_str=True) to maintain backward compatibility.
+",Code Defect,20,696,186,882,12,1223499,4642,1937,1282,13
+aacr_bench,python,langflow-ai/langflow,https://github.com/langflow-ai/langflow,https://github.com/langflow-ai/langflow/pull/6044,bcfe6f9ded091cd360b3212b6e9f5a58cbcdac5e,5bcf4d001f1174ed9e63b7115f10e5dbe1bcca9f,src/backend/base/langflow/serialization/serialization.py,19,20,"The `_serialize_str` function fails to handle string truncation when `max_length` is provided, returning `None` instead of a truncated string for inputs exceeding the length limit, violating its `str` return type annotation.",Code Defect,20,696,186,882,12,1223499,4642,1937,1282,13
+aacr_bench,python,langflow-ai/langflow,https://github.com/langflow-ai/langflow,https://github.com/langflow-ai/langflow/pull/6044,bcfe6f9ded091cd360b3212b6e9f5a58cbcdac5e,5bcf4d001f1174ed9e63b7115f10e5dbe1bcca9f,src/backend/base/langflow/serialization/serialization.py,87,91,"Potential logic bug: `_serialize_primitive` returns `None` both for the valid primitive value `None` and for “not a primitive”. Then `_serialize_dispatcher` does `if obj is None: return obj` but for other cases, `primitive = _serialize_primitive(...)` and `if primitive is not None: return primitive`. This means the special-case comment (“None is a valid primitive”) is misleading and the function can’t distinguish non-primitive from a primitive-None result. Suggest making `_serialize_primitive` return a sentinel for “not handled”, or remove the redundant `obj is None`/comment to avoid confusion and future regressions.
+
+```suggestion
+_NOT_PRIMITIVE = object()
+
+
+def _serialize_primitive(obj: Any, *_) -> Any:
+    if obj is None or isinstance(obj, (int, float, bool, complex, str)):
+        return obj
+    return _NOT_PRIMITIVE
+
+# ...
+primitive = _serialize_primitive(obj, max_length, max_items)
+if primitive is not _NOT_PRIMITIVE:
+    return primitive
+```",Code Defect,20,696,186,882,12,1223499,4642,1937,1282,13
+aacr_bench,python,langflow-ai/langflow,https://github.com/langflow-ai/langflow,https://github.com/langflow-ai/langflow/pull/6044,bcfe6f9ded091cd360b3212b6e9f5a58cbcdac5e,5bcf4d001f1174ed9e63b7115f10e5dbe1bcca9f,src/backend/base/langflow/serialization/serialization.py,158,167,"Critical Logic Issue: The specific object type cases (lines 161-165) for Enum, TypeVar, and Type alias/generic types are unreachable because they come after the generic `case object() if not isinstance(obj, type):` on line 159. In Python's match statement, cases are evaluated in order and the first matching case is executed. Since line 159 matches any instance that's not a class, it will match Enums, TypeVars, and Type aliases before they can reach their specific handlers.
+
+Suggestion: Move the specific object type cases (Enum, TypeVar, Type alias) before the generic object() instance case.
+",Code Defect,20,696,186,882,12,1223499,4642,1937,1282,13
+aacr_bench,python,langflow-ai/langflow,https://github.com/langflow-ai/langflow,https://github.com/langflow-ai/langflow/pull/6044,bcfe6f9ded091cd360b3212b6e9f5a58cbcdac5e,5bcf4d001f1174ed9e63b7115f10e5dbe1bcca9f,src/backend/base/langflow/serialization/serialization.py,182,182,"Missing max_length and max_items parameters in recursive serialize call. This could cause numpy object arrays to not respect truncation limits.
+",Code Defect,20,696,186,882,12,1223499,4642,1937,1282,13
+aacr_bench,python,langflow-ai/langflow,https://github.com/langflow-ai/langflow,https://github.com/langflow-ai/langflow/pull/5388,b1cbdbad29eb3fe3895de1663b2e77b3943b1aef,f9b2ce18a4945c04ab786e66e6fc10e4b49e2677,src/backend/base/langflow/graph/graph/utils.py,149,150,The proxy check introduces an unnecessary intermediate variable; replace the separate assignment and condition with an assignment expression for conciseness: `if proxy := target_handle.get('proxy'):`,Maintainability and Readability,1,15,7,22,3,1223499,4642,1937,1282,13
+aacr_bench,python,langflow-ai/langflow,https://github.com/langflow-ai/langflow,https://github.com/langflow-ai/langflow/pull/5388,b1cbdbad29eb3fe3895de1663b2e77b3943b1aef,f9b2ce18a4945c04ab786e66e6fc10e4b49e2677,src/backend/base/langflow/graph/graph/utils.py,185,191,"Potential runtime error introduced: when `node_data.get(""flow"")` is truthy, the code unconditionally indexes `node_data[""template""][field][""proxy""]`. If `template`/`field`/`proxy` is missing or `proxy` is None, this raises KeyError/TypeError. Consider guarding with `.get()` (and only adding `new_target_handle[""proxy""]` when present) or raising a clearer error to avoid unexpected crashes.",Code Defect,1,15,7,22,3,1223499,4642,1937,1282,13
+aacr_bench,python,langflow-ai/langflow,https://github.com/langflow-ai/langflow,https://github.com/langflow-ai/langflow/pull/5388,b1cbdbad29eb3fe3895de1663b2e77b3943b1aef,f9b2ce18a4945c04ab786e66e6fc10e4b49e2677,src/backend/base/langflow/graph/graph/utils.py,193,194,The change replacing the walrus operator with a two-step assignment for `input_types` is unnecessary; revert to the concise assignment expression as it provides no performance benefit while reducing readability.,Maintainability and Readability,1,15,7,22,3,1223499,4642,1937,1282,13
+aacr_bench,python,langflow-ai/langflow,https://github.com/langflow-ai/langflow,https://github.com/langflow-ai/langflow/pull/5896,9513d152197e5336fbc00eb6b891f1ffb25ad62d,d035e41e631f0da97bdc0e93e7afdae78d5e94da,src/backend/base/langflow/graph/vertex/base.py,636,638,"Deadlock risk: This method is called by `_get_result`, which is invoked by `get_result` inside an `async with self._lock:` block. Attempting to acquire `self._lock` again here will cause a deadlock because `asyncio.Lock` is not reentrant. 
+
+Additionally, awaiting `asyncio.gather(*tasks)` inside the lock serializes logging and blocks the vertex execution until previous logs are processed, which may significantly impact performance.
+",Code Defect,3,27,10,37,6,1223499,4642,1937,1282,13
+aacr_bench,python,langflow-ai/langflow,https://github.com/langflow-ai/langflow,https://github.com/langflow-ai/langflow/pull/5896,9513d152197e5336fbc00eb6b891f1ffb25ad62d,d035e41e631f0da97bdc0e93e7afdae78d5e94da,src/backend/base/langflow/graph/vertex/base.py,654,660,"There is a logical error in the outer `asyncio.CancelledError` exception handler. The inner code clears `self.log_transaction_tasks` before calling `asyncio.gather(*tasks)`, so when a `CancelledError` is caught in the outer handler, `self.log_transaction_tasks` is already empty. The outer handler iterates over `self.log_transaction_tasks` instead of the local `tasks` variable, meaning no pending tasks will be cancelled when an error occurs from the outer context.",Code Defect,3,27,10,37,6,1223499,4642,1937,1282,13
+aacr_bench,python,langflow-ai/langflow,https://github.com/langflow-ai/langflow,https://github.com/langflow-ai/langflow/pull/5896,9513d152197e5336fbc00eb6b891f1ffb25ad62d,d035e41e631f0da97bdc0e93e7afdae78d5e94da,src/backend/base/langflow/graph/vertex/base.py,658,659,The `with suppress(asyncio.CancelledError)` context manager around `pending_task.cancel()` is redundant since `Task.cancel()` does not raise `CancelledError` (it only schedules cancellation); remove the unnecessary suppression.,Maintainability and Readability,3,27,10,37,6,1223499,4642,1937,1282,13
+aacr_bench,python,langflow-ai/langflow,https://github.com/langflow-ai/langflow,https://github.com/langflow-ai/langflow/pull/5896,9513d152197e5336fbc00eb6b891f1ffb25ad62d,d035e41e631f0da97bdc0e93e7afdae78d5e94da,src/backend/base/langflow/graph/vertex/vertex_types.py,109,110,"`await`ing the transaction logger changes behavior vs the previous fire-and-forget call: it can add latency to `_get_result` and, more importantly, any exception in `_log_transaction_async` will now propagate and can mask the original error (e.g., the ""not built"" `ValueError`) or break the success path. If logging is best-effort, consider wrapping with `try/except` (or `contextlib.suppress`) and/or scheduling it via `asyncio.create_task(...)` so result/error handling isn’t affected.
+
+```suggestion
+            if flow_id:
+                            try:
+                                # best-effort logging; don’t block or fail the main path
+                                asyncio.create_task(
+                                    self._log_transaction_async(
+                                        source=self, target=requester, flow_id=str(flow_id), status=""error""
+                                    )
+                                )
+                            except Exception:
+                                pass
+```",Code Defect,3,27,10,37,6,1223499,4642,1937,1282,13
+aacr_bench,python,langflow-ai/langflow,https://github.com/langflow-ai/langflow,https://github.com/langflow-ai/langflow/pull/6652,623929065f9ae45792afce2eb3185dad353df78e,a8f6ee4af97fe594eb2c84b655abc549f6d7c741,src/backend/base/langflow/components/processing/__init__.py,12,12,"Potential module name collision: introducing `from .parser import ParserComponent` adds a local module named `parser`, which can be confused with (or shadow) Python's stdlib `parser` module in some contexts/tools. While the relative import here is explicit, consider renaming the module to something less ambiguous (e.g., `data_parser.py` / `text_parser.py`) to reduce risk and improve clarity.",Maintainability and Readability,3,387,0,387,6,1223499,4642,1937,1282,13
+aacr_bench,python,langflow-ai/langflow,https://github.com/langflow-ai/langflow,https://github.com/langflow-ai/langflow/pull/6652,623929065f9ae45792afce2eb3185dad353df78e,a8f6ee4af97fe594eb2c84b655abc549f6d7c741,src/backend/base/langflow/components/processing/parser.py,96,98,"Inconsistent list handling: _validate_input() accepts list type but _clean_args() explicitly rejects lists of Data objects. This could cause confusion for users. Consider making the validation consistent throughout the component.
+",Code Defect,3,387,0,387,6,1223499,4642,1937,1282,13
+aacr_bench,python,langflow-ai/langflow,https://github.com/langflow-ai/langflow,https://github.com/langflow-ai/langflow/pull/6652,623929065f9ae45792afce2eb3185dad353df78e,a8f6ee4af97fe594eb2c84b655abc549f6d7c741,src/backend/base/langflow/components/processing/parser.py,105,108,"Ambiguous dict handling: The logic uses 'columns' key presence to determine if input is DataFrame or Data, but this could be unreliable since Data objects might also contain 'columns' in some cases. Consider using more specific type indicators or providing separate inputs for different data types.
+",Code Defect,3,387,0,387,6,1223499,4642,1937,1282,13
+aacr_bench,python,langflow-ai/langflow,https://github.com/langflow-ai/langflow,https://github.com/langflow-ai/langflow/pull/6652,623929065f9ae45792afce2eb3185dad353df78e,a8f6ee4af97fe594eb2c84b655abc549f6d7c741,src/backend/base/langflow/components/processing/parser.py,129,131,"Logical issue: When formatting a Data object, only `text=data.get_text()` is passed to the template, which limits the template to using only the `{text}` placeholder. This is inconsistent with DataFrame handling (line 126) where all columns are available via `**row.to_dict()`. If a Data object contains multiple fields in its `data` dictionary (e.g., `{""name"": ""John"", ""age"": 30, ""text"": ""...""}`), users cannot access fields like `{name}` or `{age}` in the template. Consider using `template.format(**data.data)` instead to make all Data fields available to the template, similar to the DataFrame approach.",Code Defect,3,387,0,387,6,1223499,4642,1937,1282,13
+aacr_bench,python,langflow-ai/langflow,https://github.com/langflow-ai/langflow,https://github.com/langflow-ai/langflow/pull/6652,623929065f9ae45792afce2eb3185dad353df78e,a8f6ee4af97fe594eb2c84b655abc549f6d7c741,src/backend/base/langflow/components/processing/parser.py,142,145,"The `_validate_input` method incorrectly rejects dictionary inputs despite `_clean_args` processing them, causing valid structured data to fail validation. Update the type check to accept dictionaries with a required 'data' key containing Data or DataFrame objects.",Code Defect,3,387,0,387,6,1223499,4642,1937,1282,13
+aacr_bench,python,langflow-ai/langflow,https://github.com/langflow-ai/langflow,https://github.com/langflow-ai/langflow/pull/6652,623929065f9ae45792afce2eb3185dad353df78e,a8f6ee4af97fe594eb2c84b655abc549f6d7c741,src/backend/base/langflow/components/processing/parser.py,159,159,"Potential AttributeError: The clean_data attribute is dynamically added in update_build_config when stringify is True, but _safe_convert uses hasattr(self, 'clean_data') which might fail if the component wasn't properly configured. Consider using getattr with a default value or ensuring clean_data is always available when stringify is enabled.
+",Code Defect,3,387,0,387,6,1223499,4642,1937,1282,13
+aacr_bench,python,comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI/pull/7952,4936d01872b8719ede33f9a11dc8e898c33d39e4,924d771e18000f4cb223575189daa6d2c6c5a9c1,comfy_extras/nodes_string.py,71,71,The CaseConverter class uses incorrect syntax for the mode combo input parameter. It should follow the project's preferred combo syntax convention documented in node_typing.py (lines 166-172).,Code Defect,2,323,0,323,7,86773,776,575,160,4
+aacr_bench,python,comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI/pull/7952,4936d01872b8719ede33f9a11dc8e898c33d39e4,924d771e18000f4cb223575189daa6d2c6c5a9c1,nodes.py,56,56,"`StringCompare.execute` does not return a value when `mode` is not one of the three expected strings. This will implicitly return `None`, which violates `RETURN_TYPES = (IO.BOOLEAN,)` and may crash downstream. Add an explicit default return (e.g., `False`) or handle an `else` branch.
+
+This is a functional/logic issue, not just style.",Code Defect,2,323,0,323,7,86773,776,575,160,4
+aacr_bench,python,comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI/pull/8446,4dcd698e489da69294ee01de0350a9a02e3e4b41,c7b25784b141a298d8ee5f0d830a29da6e8a3d54,comfy_extras/nodes_train.py,191,191,"**Inconsistency: Different extension lists between loader nodes**
+
+`LoadImageSetNode` supports extensions: `["".png"", "".jpg"", "".jpeg"", "".webp"", "".bmp"", "".gif"", "".jpe"", "".apng"", "".tif"", "".tiff""]`
+
+But `LoadImageSetFromFolderNode` (line 191) only supports: `["".png"", "".jpg"", "".jpeg"", "".webp""]`
+
+This inconsistency is confusing for users. Both nodes should support the same set of image formats.",Maintainability and Readability,12,948,23,971,22,86773,776,575,160,4
+aacr_bench,python,comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI/pull/8446,4dcd698e489da69294ee01de0350a9a02e3e4b41,c7b25784b141a298d8ee5f0d830a29da6e8a3d54,comfy_extras/nodes_train.py,245,248,"Severe logical error in checkpointing wrapper. The current approach packs *args/**kwargs into separate arguments for the checkpointed function, which violates standard PyTorch convention. torch.utils.checkpoint.checkpoint expects the wrapped function to accept unpacked arguments directly. This will likely lead to runtime errors or unexpected behavior. Consider revising to pass arguments normally.
+",Code Defect,12,948,23,971,22,86773,776,575,160,4
+aacr_bench,python,comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI/pull/8446,4dcd698e489da69294ee01de0350a9a02e3e4b41,c7b25784b141a298d8ee5f0d830a29da6e8a3d54,comfy_extras/nodes_train.py,386,386,"The TrainLoraNode should accept latent inputs directly rather than requiring VAE encoding of images, improving flexibility and avoiding redundant processing. This change eliminates the need for the node to handle image-to-latent conversion internally.",Performance,12,948,23,971,22,86773,776,575,160,4
+aacr_bench,python,comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI/pull/8446,4dcd698e489da69294ee01de0350a9a02e3e4b41,c7b25784b141a298d8ee5f0d830a29da6e8a3d54,nodes.py,2215,2215,"`nodes_train.py` was added to `extras_files`, but a repo-wide search found no file/reference named `nodes_train.py`. This will likely cause the extra-nodes import loop to warn/fail at runtime. Please verify the actual filename/path (e.g., `comfy_extras/nodes_train.py` or a different module name) and update this entry accordingly, or add/rename the file to match.",Code Defect,12,948,23,971,22,86773,776,575,160,4
+aacr_bench,python,comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI,https://github.com/comfyanonymous/ComfyUI/pull/9560,cfc312296c0b9f255bba6b4b2789ac7bbc66a7cb,a86aaa430183068e2a264495c802c81d05eb350a,server.py,67,70,"Serious logic issue: The condition for status codes 301 and 308 is unreachable. The condition `elif 300 <= response.status < 400` comes before and will catch all 3xx status codes (including 301 and 308) before they can reach the specific check. This means permanent redirects (301, 308) will get 'no-cache' instead of 'public, max-age={ONE_DAY}'. The specific checks for 301/308 should be placed before the general 3xx condition.
+
+```suggestion
+        elif response.status == 301 or response.status == 308:
+            # Permanent redirects - cache for 1 day
+            response.headers.setdefault('Cache-Control', f""public, max-age={ONE_DAY}"")
+        elif response.status == 302 or response.status == 303 or response.status == 307:
+            # Temporary redirects - no cache
+            response.headers.setdefault('Cache-Control', 'no-cache')
+        elif 300 <= response.status < 400:
+```",Code Defect,4,311,8,319,7,86773,776,575,160,4
+aacr_bench,python,browser-use/browser-use,https://github.com/browser-use/browser-use,https://github.com/browser-use/browser-use/pull/1482,0b21e50ca640581ecd46990475c8b223eaa05045,fa461585f1fc2d4a430e68e6c115a12f4936fe73,browser_use/agent/service.py,1225,1225,"The linter rule `RUF006` is specifically for `asyncio.create_task` calls where the return value is not stored (to prevent garbage collection). 
+
+Here, `self.llm.invoke` is called and the result is assigned to `response`, so `RUF006` is not applicable. 
+
+The previous `noqa: ASYNC` suggests the intention was to suppress a warning about a blocking call in an async context. Please verify the correct rule to suppress (e.g., `ASYNC101` if using flake8-async rules in Ruff) or remove the suppression if it's no longer needed.
+",Maintainability and Readability,5,113,20,133,9,30929,473,365,97,4
+aacr_bench,python,browser-use/browser-use,https://github.com/browser-use/browser-use,https://github.com/browser-use/browser-use/pull/1482,0b21e50ca640581ecd46990475c8b223eaa05045,fa461585f1fc2d4a430e68e6c115a12f4936fe73,browser_use/browser/browser.py,219,219,"The set construction syntax is incorrect. Using `*{...}` to unpack items inside a set literal is not valid Python syntax. The `*` unpacking operator cannot be used directly inside a set literal with braces. This will cause a `SyntaxError`. The correct approach is to create a set from an iterable or use a different data structure like a list. Looking at line 274, `chrome_args` is also defined as a set, so this pattern is consistent but syntactically invalid.",Code Defect,5,113,20,133,9,30929,473,365,97,4
+aacr_bench,python,browser-use/browser-use,https://github.com/browser-use/browser-use,https://github.com/browser-use/browser-use/pull/1482,0b21e50ca640581ecd46990475c8b223eaa05045,fa461585f1fc2d4a430e68e6c115a12f4936fe73,browser_use/browser/browser.py,220,220,"The Chrome debugging port argument in the launch configuration uses dictionary-based string formatting, which reduces readability compared to a direct f-string implementation. Replace `CHROME_DEBUGGING_ARG % {...}` with an f-string for the `--remote-debugging-port` flag.",Maintainability and Readability,5,113,20,133,9,30929,473,365,97,4
+aacr_bench,python,browser-use/browser-use,https://github.com/browser-use/browser-use,https://github.com/browser-use/browser-use/pull/1482,0b21e50ca640581ecd46990475c8b223eaa05045,fa461585f1fc2d4a430e68e6c115a12f4936fe73,browser_use/browser/browser.py,229,235,"Runtime bug: `asyncio.create_subprocess_exec` does **not** accept `shell=` (only `create_subprocess_shell` does). This will raise `TypeError` when launching Chrome.
+
+Fix: remove `shell=False` (and optionally add `stdin=subprocess.DEVNULL` if desired).
+
+```suggestion
+		chrome_sub_process = await asyncio.create_subprocess_exec(
+			self.config.browser_binary_path,
+			*chrome_launch_args,
+			stdout=subprocess.DEVNULL,
+			stderr=subprocess.DEVNULL,
+		)
+```",Code Defect,5,113,20,133,9,30929,473,365,97,4
+aacr_bench,python,browser-use/browser-use,https://github.com/browser-use/browser-use,https://github.com/browser-use/browser-use/pull/1482,0b21e50ca640581ecd46990475c8b223eaa05045,fa461585f1fc2d4a430e68e6c115a12f4936fe73,browser_use/browser/browser.py,277,277,Replace `CHROME_DEBUGGING_ARG` constant usage with a hardcoded string for the remote debugging port argument to reduce indirection and improve grep-ability.,Maintainability and Readability,5,113,20,133,9,30929,473,365,97,4
+aacr_bench,python,browser-use/browser-use,https://github.com/browser-use/browser-use,https://github.com/browser-use/browser-use/pull/1482,0b21e50ca640581ecd46990475c8b223eaa05045,fa461585f1fc2d4a430e68e6c115a12f4936fe73,browser_use/browser/browser.py,286,286,"chrome_args is created using curly braces {}, which makes it a set. However, sets don't have a remove() method - they have discard(). This will cause a runtime AttributeError. Change curly braces to square brackets [] to create a list instead.
+",Code Defect,5,113,20,133,9,30929,473,365,97,4
+aacr_bench,python,browser-use/browser-use,https://github.com/browser-use/browser-use,https://github.com/browser-use/browser-use/pull/1482,0b21e50ca640581ecd46990475c8b223eaa05045,fa461585f1fc2d4a430e68e6c115a12f4936fe73,browser_use/browser/chrome.py,97,99,"CHROME_ARGS no longer includes any '--remote-debugging-port=...' flag (the previous f-string using CHROME_DEBUG_PORT was removed). The newly added CHROME_DEBUGGING_ARG is a format template but is not used here, so Chrome may start without a remote debugging port unless another code path injects it. If the intent is to make the port configurable, ensure this template is actually applied (e.g., appended to CHROME_ARGS after formatting) and consider removing/repurposing CHROME_DEBUG_PORT if it's now obsolete to avoid dead/contradictory config.",Code Defect,5,113,20,133,9,30929,473,365,97,4
+aacr_bench,python,browser-use/browser-use,https://github.com/browser-use/browser-use,https://github.com/browser-use/browser-use/pull/857,aab7b3bb54e2b15ee3b32ad7de74c91fc8b22f52,515b94225aa86c40dc2c20034055ab8bcc88c6ae,browser_use/agent/service.py,261,261,"Potential logic flaw detected! Manually enforcing equality between outer config's disable_security and inner new_context_config's disable_security overrides independent configurability designed elsewhere. Consider removing forced sync unless strong justification exists.
+",Code Defect,11,38,57,95,4,30929,473,365,97,4
+aacr_bench,python,browser-use/browser-use,https://github.com/browser-use/browser-use,https://github.com/browser-use/browser-use/pull/857,aab7b3bb54e2b15ee3b32ad7de74c91fc8b22f52,515b94225aa86c40dc2c20034055ab8bcc88c6ae,browser_use/browser/context.py,414,416,"Logic error: Hardcoding no_viewport=False contradicts the configurable no_viewport field and creates inconsistent behavior. Should respect self.config.no_viewport when provided, otherwise default appropriately based on headless mode.
+",Code Defect,11,38,57,95,4,30929,473,365,97,4
+aacr_bench,python,browser-use/browser-use,https://github.com/browser-use/browser-use,https://github.com/browser-use/browser-use/pull/3172,72f1585f9add5b72e829eaee3b5bff684e0b08d3,e85a547378b236c9788802d28e816f10940a7e53,browser_use/llm/google/chat.py,78,78,"Changing the default value of `thinking_budget` from `None` to `0` unintentionally enables `thinking_config` for all requests, causing an unintended behavioral regression.",Code Defect,1,174,150,324,3,30929,473,365,97,4
+aacr_bench,python,infiniflow/ragflow,https://github.com/infiniflow/ragflow,https://github.com/infiniflow/ragflow/pull/7151,f189316eae1c199a5891f7a8bc47d53bb1b5c818,8362ab405c35d260dd2328dc207aefcf30778f66,graphrag/utils.py,575,575,"The assertion changed from 'relation' to 'entity' but the field being checked is still 'knowledge_graph_kwd'. This might be incorrect if the field should contain 'relation' for this part of the code.
+",Code Defect,4,137,70,207,13,115501,2824,745,520,10
+aacr_bench,python,infiniflow/ragflow,https://github.com/infiniflow/ragflow,https://github.com/infiniflow/ragflow/pull/7151,f189316eae1c199a5891f7a8bc47d53bb1b5c818,8362ab405c35d260dd2328dc207aefcf30778f66,graphrag/utils.py,577,577,"**Typo**: `json.load` should be `json.loads`
+
+Changed from:
+```python
+attrs = json.load(d[""content_with_weight""])
+```
+
+to:
+```python
+attrs = json.loads(d[""content_with_weight""])
+```
+
+Good fix! `json.load()` is for file objects, while `json.loads()` is for strings.",Code Defect,4,137,70,207,13,115501,2824,745,520,10
+aacr_bench,python,infiniflow/ragflow,https://github.com/infiniflow/ragflow,https://github.com/infiniflow/ragflow/pull/7151,f189316eae1c199a5891f7a8bc47d53bb1b5c818,8362ab405c35d260dd2328dc207aefcf30778f66,rag/utils/infinity_conn.py,550,550,"Variable name 'clmns' appears to be a typo for 'columns'
+",Maintainability and Readability,4,137,70,207,13,115501,2824,745,520,10
+aacr_bench,python,infiniflow/ragflow,https://github.com/infiniflow/ragflow,https://github.com/infiniflow/ragflow/pull/5065,2d06022b78536bd22a0fd83f38804f39aa34cce8,469460483665000f522b6c9a6583bb34f17a954b,agent/component/rewrite.py,41,41,"Removing the explicit language requirement in the prompt may cause low-performance models to generate responses in an incorrect language, particularly when the `language` parameter is empty.",Code Defect,4,63,2,65,9,115501,2824,745,520,10
+aacr_bench,python,infiniflow/ragflow,https://github.com/infiniflow/ragflow,https://github.com/infiniflow/ragflow/pull/5065,2d06022b78536bd22a0fd83f38804f39aa34cce8,469460483665000f522b6c9a6583bb34f17a954b,agent/component/rewrite.py,45,45,"**Issue: Incorrect indentation**
+
+The `else` block and its content have incorrect indentation. The `else` clause should align with the `if language:` statement. Additionally, the closing triple quotes inside the else block should not have extra indentation.
+
+**Suggested fix:**
+```python
+if language:
+    prompt += f""""""
+    - Text generated MUST be in {language}""""""
+else:
+    prompt += """"""
+    - Text generated MUST be in the same language of the original user's question.
+    """"""
+```
+
+This improves code readability and maintains consistent formatting.",Maintainability and Readability,4,63,2,65,9,115501,2824,745,520,10
+aacr_bench,python,infiniflow/ragflow,https://github.com/infiniflow/ragflow,https://github.com/infiniflow/ragflow/pull/5065,2d06022b78536bd22a0fd83f38804f39aa34cce8,469460483665000f522b6c9a6583bb34f17a954b,web/src/components/api-service/embed-modal/index.tsx,50,52,"When locale is selected and then cleared, it might result in an empty locale parameter (&locale=) in the URL. Consider checking if locale has a truthy value before appending it: `if (locale) { src += \`&locale=${locale}\`; }`
+",Code Defect,4,63,2,65,9,115501,2824,745,520,10
+aacr_bench,python,infiniflow/ragflow,https://github.com/infiniflow/ragflow,https://github.com/infiniflow/ragflow/pull/5065,2d06022b78536bd22a0fd83f38804f39aa34cce8,469460483665000f522b6c9a6583bb34f17a954b,web/src/components/api-service/embed-modal/index.tsx,80,80,"Consider translating the 'Option' heading using the same translation mechanism (useTranslate) for consistency.
+",Maintainability and Readability,4,63,2,65,9,115501,2824,745,520,10
+aacr_bench,python,vllm-project/vllm,https://github.com/vllm-project/vllm,https://github.com/vllm-project/vllm/pull/12608,075f1b5b8015e343f25b45d36ccff571cb39739b,7a8987dac5f0ed0c798a73e8b4ec8f5e640bc63a,vllm/v1/core/kv_cache_manager.py,143,144,The error message for zero `num_tokens` should be simplified to state only the requirement without including the specific value detail.,Maintainability and Readability,3,78,116,194,7,187026,4549,2903,535,7
+aacr_bench,python,vllm-project/vllm,https://github.com/vllm-project/vllm,https://github.com/vllm-project/vllm/pull/15998,a800045d0e2473ce173865edb83967cd210dec4c,5e125e74d1b9739025ccb81106e28ce9b0dd4ea5,benchmarks/README.md,306,306,The added benchmark command for the AI-MO/aimo-validation-aime dataset includes an unnecessary `--hf-split train` argument that should be removed.,Code Defect,2,44,11,55,4,187026,4549,2903,535,7
+aacr_bench,python,vllm-project/vllm,https://github.com/vllm-project/vllm,https://github.com/vllm-project/vllm/pull/15998,a800045d0e2473ce173865edb83967cd210dec4c,5e125e74d1b9739025ccb81106e28ce9b0dd4ea5,benchmarks/benchmark_throughput.py,337,337,AIMODataset does not require dataset subsets; set `common_kwargs['dataset_subset']` to None instead of `args.hf_subset` to prevent potential errors from passing unnecessary arguments.,Code Defect,2,44,11,55,4,187026,4549,2903,535,7
+aacr_bench,python,vllm-project/vllm,https://github.com/vllm-project/vllm,https://github.com/vllm-project/vllm/pull/24425,6217b0c46176fa51196d862e02e1b3722eefa4de,f4962a6d55a340ebb569d377c842deff7611d8f7,vllm/distributed/kv_transfer/kv_connector/v1/multi_connector.py,90,100,"`MultiConnector.shutdown()` unconditionally calls `c.shutdown()`. This is only safe if *all* concrete connectors implement `shutdown()` (ideally declared/implemented in `KVConnectorBase_V1`). Otherwise an `AttributeError` will occur during cleanup.
+
+Also, you collect exceptions but re-raise only the first one, which loses failure context (even though all are logged). Consider raising an aggregated exception (Py3.11 `ExceptionGroup`) or raising a single `RuntimeError` that summarizes count and chains the first exception, while continuing best-effort shutdown for all connectors.",Code Defect,1,12,0,12,2,187026,4549,2903,535,7
+aacr_bench,python,vllm-project/vllm,https://github.com/vllm-project/vllm,https://github.com/vllm-project/vllm/pull/19231,acfaec4e0f99ffd81078428355662a166c1f5b60,aa49f148322a39727be110da51a6782d43a2f5d8,tests/tpu/test_moe_pallas.py,30,30,The test suite lacks coverage for the kernel's required constraint that `num_tokens * topk` must be a multiple of 16. Add a test case with parameters ensuring this condition is satisfied to validate correct operation under valid inputs.,Code Defect,3,8,7,15,1,187026,4549,2903,535,7
+aacr_bench,python,vllm-project/vllm,https://github.com/vllm-project/vllm,https://github.com/vllm-project/vllm/pull/17425,134705b1474ddcfac234a0a01313874f7c8b59bc,d8037867313eef09779b265ea4bace76d2d118ba,vllm/config.py,500,504,"The argument order matches the format specifiers correctly (model_type -> %s, backend -> %s, sliding_window_len_min -> %s). However, there is a trailing comma after the last argument which, while not causing an error in multi-line function calls, is unnecessary and inconsistent with Python style guidelines. If this follows a project-specific style convention that always uses trailing commas in multi-line calls, it is acceptable to keep it.
+
+```suggestion
+                    ""%s has interleaved attention, which is currently not supported by the %s backend. Disabling sliding window and capping the max length to the sliding window size (%s)."",  # noqa: E501
+                        self.hf_text_config.model_type,
+                        backend,
+                        sliding_window_len_min
+                    )
+```",Maintainability and Readability,13,75,79,154,11,187026,4549,2903,535,7
+aacr_bench,python,vllm-project/vllm,https://github.com/vllm-project/vllm,https://github.com/vllm-project/vllm/pull/17425,134705b1474ddcfac234a0a01313874f7c8b59bc,d8037867313eef09779b265ea4bace76d2d118ba,vllm/logger.py,55,58,"The `@lru_cache` decorator requires all arguments to be hashable. The `logger` parameter is a Logger instance, which is not hashable (doesn't implement `__hash__`). This will cause a `TypeError: unhashable type: 'Logger'` at runtime when `_print_info_once` or `_print_warning_once` is called. The lru_cache cannot work with non-hashable arguments like Logger instances.
+
+```suggestion
+def _print_info_once(logger: Logger, msg: str, *args: Hashable) -> None:
+    # Set the stacklevel to 2 to print the original caller's line info
+    logger.info(msg, *args, stacklevel=2)
+```",Code Defect,13,75,79,154,11,187026,4549,2903,535,7
+aacr_bench,python,vllm-project/vllm,https://github.com/vllm-project/vllm,https://github.com/vllm-project/vllm/pull/17425,134705b1474ddcfac234a0a01313874f7c8b59bc,d8037867313eef09779b265ea4bace76d2d118ba,vllm/multimodal/profiling.py,224,224,"The logger call was changed from f-string formatting to parameterized arguments to safely handle non-string return values from `self._get_mm_num_tokens(mm_inputs)`, addressing the issue where dictionary return values would cause logging failures due to improper string conversion.",Code Defect,13,75,79,154,11,187026,4549,2903,535,7
+aacr_bench,python,langflow-ai/langflow,https://github.com/langflow-ai/langflow,https://github.com/langflow-ai/langflow/pull/6044,bcfe6f9ded091cd360b3212b6e9f5a58cbcdac5e,5bcf4d001f1174ed9e63b7115f10e5dbe1bcca9f,src/backend/base/langflow/api/v1/schemas.py,273,273,"Potential behavior regression: previously truncation added an explicit marker like `... [truncated]` (and list truncation added `... [truncated N items]`). The new `serialize()` truncates strings by appending just `...` (and `_truncate_value` truncates without any marker). If clients/tests rely on the old markers, responses may silently change. Consider preserving the previous marker format (or making it configurable) to avoid breaking API expectations.",Code Defect,20,696,186,882,12,1223499,4642,1937,1282,13
+aacr_bench,python,langflow-ai/langflow,https://github.com/langflow-ai/langflow,https://github.com/langflow-ai/langflow/pull/6044,bcfe6f9ded091cd360b3212b6e9f5a58cbcdac5e,5bcf4d001f1174ed9e63b7115f10e5dbe1bcca9f,src/backend/base/langflow/serialization/serialization.py,101,102,"The `_truncate_value` function incorrectly orders conditional checks, potentially causing TypeError when comparing string length with None. Move `max_length is not None` check before type-specific length comparisons to prevent runtime errors through proper short-circuit evaluation.",Code Defect,20,696,186,882,12,1223499,4642,1937,1282,13
+aacr_bench,python,langflow-ai/langflow,https://github.com/langflow-ai/langflow,https://github.com/langflow-ai/langflow/pull/6044,bcfe6f9ded091cd360b3212b6e9f5a58cbcdac5e,5bcf4d001f1174ed9e63b7115f10e5dbe1bcca9f,src/backend/base/langflow/serialization/serialization.py,212,216,"The type handling code block (lines 184-189) is unreachable for plain class types. When a plain class type (e.g., a regular class like 'MyClass') is passed to `serialize()`, the `_serialize_dispatcher` function matches it in the `case _:` branch and returns the object directly. This causes `serialize()` to return early at line 183 (`if result is not None: return result`), never reaching the type handling logic below. Consider either: 1) Returning None from the dispatcher for unhandled types, or 2) Moving the type handling logic into the dispatcher's match statement.
+",Code Defect,20,696,186,882,12,1223499,4642,1937,1282,13
+aacr_bench,python,langflow-ai/langflow,https://github.com/langflow-ai/langflow,https://github.com/langflow-ai/langflow/pull/5896,9513d152197e5336fbc00eb6b891f1ffb25ad62d,d035e41e631f0da97bdc0e93e7afdae78d5e94da,src/backend/base/langflow/graph/vertex/base.py,644,644,The try-except block for `asyncio.CancelledError` around `asyncio.gather` is redundant because cancellation is automatically propagated to all pending tasks by `asyncio.gather` per Python's documentation. Remove the unnecessary exception handling.,Maintainability and Readability,3,27,10,37,6,1223499,4642,1937,1282,13
+aacr_bench,python,langflow-ai/langflow,https://github.com/langflow-ai/langflow,https://github.com/langflow-ai/langflow/pull/5896,9513d152197e5336fbc00eb6b891f1ffb25ad62d,d035e41e631f0da97bdc0e93e7afdae78d5e94da,src/backend/base/langflow/graph/vertex/base.py,654,654,"The added `CancelledError` handling in `_log_transaction_async` is unnecessary because the exception would only occur if the current task is cancelled (not due to task completion), making manual task cancellation redundant; the actual unhandled `CancelledError` originates from `task.result()` calls in `chat.py`.",Maintainability and Readability,3,27,10,37,6,1223499,4642,1937,1282,13

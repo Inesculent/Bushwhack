@@ -2,7 +2,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import List, Optional
 
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -57,6 +57,14 @@ class Settings(BaseSettings):
 	ast_fallback_to_search: bool = Field(
 		default=True,
 		description="Keep non-AST fallback paths available when MCP is unavailable.",
+	)
+	github_personal_access_token: Optional[str] = Field(
+		default=None,
+		validation_alias=AliasChoices(
+			"REVIEW_GITHUB_PERSONAL_ACCESS_TOKEN",
+			"GITHUB_PERSONAL_ACCESS_TOKEN",
+		),
+		description="GitHub personal access token for PR API enrichment.",
 	)
 
 	def get_ast_mcp_cwd(self) -> str:

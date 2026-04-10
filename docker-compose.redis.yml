@@ -1,0 +1,24 @@
+services:
+  redis:
+    image: redis:7.2-alpine
+    container_name: langgraph-redis
+    command:
+      - redis-server
+      - --appendonly
+      - yes
+      - --save
+      - "60"
+      - "1000"
+    ports:
+      - "6379:6379"
+    volumes:
+      - langgraph_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  langgraph_redis_data:
