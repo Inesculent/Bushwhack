@@ -4,6 +4,7 @@ from typing import Optional
 
 from src.config import Settings, get_settings
 from src.domain.interfaces import IASTParser, ICacheService, ICodeSearcher, IPreflightService
+from src.infrastructure.ast.native_parser import NativeASTParser
 from src.infrastructure.cache.memory_cache import InMemoryCache
 from src.infrastructure.mcp.ast_parser import MCPASTParser
 from src.infrastructure.mcp.client import MCPClient
@@ -29,7 +30,7 @@ def build_preflight_service() -> IPreflightService:
     return PreflightManifestService()
 
 
-def build_ast_parser(settings: Settings, cache: ICacheService) -> IASTParser:
+def build_mcp_ast_parser(settings: Settings, cache: ICacheService) -> IASTParser:
     mcp_client = MCPClient(
         command=settings.ast_mcp_command,
         args=settings.ast_mcp_args,
@@ -46,6 +47,20 @@ def build_ast_parser(settings: Settings, cache: ICacheService) -> IASTParser:
     )
 
 
+def build_native_ast_parser(settings: Settings, cache: ICacheService) -> IASTParser:
+    return NativeASTParser(
+        cache=cache,
+        cache_ttl_seconds=settings.ast_cache_ttl_seconds,
+        parser_version=f"{settings.ast_parser_version}-native",
+    )
+
+
+def build_ast_parser(settings: Settings, cache: ICacheService) -> IASTParser:
+    if settings.ast_mcp_enabled:
+        return build_mcp_ast_parser(settings=settings, cache=cache)
+    return build_native_ast_parser(settings=settings, cache=cache)
+
+
 def build_repository_understanding_adapters(
     sandbox: RepoSandbox,
     settings: Optional[Settings] = None,
@@ -57,7 +72,7 @@ def build_repository_understanding_adapters(
     searcher = RipgrepSearcher(sandbox=sandbox)
     ast_parser: Optional[IASTParser] = None
 
-    if resolved_settings.ast_mcp_enabled:
+    if resolved_settings.ast_enabled:
         try:
             ast_parser = build_ast_parser(settings=resolved_settings, cache=resolved_cache)
         except Exception as exc:

@@ -15,9 +15,14 @@ class Settings(BaseSettings):
 		extra="ignore",
 	)
 
+	ast_enabled: bool = Field(
+		default=True,
+		description="Enable AST parsing for repository understanding.",
+	)
+
 	ast_mcp_enabled: bool = Field(
 		default=False,
-		description="Enable the AST parser over MCP for repository understanding.",
+		description="Use MCP transport for AST parsing when enabled; otherwise use native in-process parsing.",
 	)
 	ast_mcp_command: str = Field(
 		default="python",

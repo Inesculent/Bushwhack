@@ -242,5 +242,11 @@ class PreflightSummary(BaseModel):
     has_ambiguity: bool = False
 
 
+class StructuralExtractionGap(BaseModel):
+    filepath: str = Field(description="Repository-relative file path using '/' separators.")
+    reason: str = Field(description="Stable reason for degraded structural extraction.")
+    detail: Optional[str] = None
+
+
 
 

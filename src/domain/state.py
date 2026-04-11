@@ -6,6 +6,7 @@ from .schemas import (
     RepositoryMap,
     ReviewTask,
     ReviewFinding,
+    StructuralExtractionGap,
     TaskStatus,
 )
 
@@ -28,6 +29,8 @@ class GraphState(TypedDict, total=False):
     preflight_summary: NotRequired[PreflightSummary]
     preflight_errors: Annotated[List[PreflightParseIssue], operator.add]
     preflight_warnings: Annotated[List[str], operator.add]
+    structural_graph_node_link: NotRequired[Dict[str, Any]]
+    structural_extraction_gaps: Annotated[List[StructuralExtractionGap], operator.add]
 
     # Task state: canonical task payloads + lifecycle status by task id.
     # Dict union reducers support compact per-task updates that are cache-friendly.
