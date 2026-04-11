@@ -1,4 +1,4 @@
-# Verily Code Review Orchestrator
+# Bushwhack Code Review Orchestrator
 
 Autonomous multi-agent code review orchestrator for repository-wide, context-aware analysis.
 

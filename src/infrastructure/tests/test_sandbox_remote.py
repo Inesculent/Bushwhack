@@ -1,5 +1,5 @@
 import os
-
+import json
 import pytest
 
 
@@ -119,6 +119,31 @@ def test_start_from_remote_smoke_if_configured() -> None:
         sandbox.stop()
 
 
+@pytest.mark.integration
+def test_remote_preflight_and_ast_smoke_if_configured() -> None:
+    from src.infrastructure.remote_review_workflow import (
+        resolve_remote_commits_from_env,
+        run_remote_review_workflow,
+    )
+
+    repo_url, base_commit, head_commit = resolve_remote_commits_from_env()
+    if not repo_url or not head_commit:
+        pytest.skip("Set SANDBOX_REMOTE_TEST_URL and SANDBOX_REMOTE_TEST_HEAD (or SANDBOX_REMOTE_TEST_COMMIT)")
+
+    result = run_remote_review_workflow(
+        repo_url=repo_url,
+        head_commit=head_commit,
+        base_commit=base_commit,
+    )
+
+    _debug_print("Commit Diff", result.diff[:4000])
+    _debug_print("AST Summary", json.dumps(result.ast_summary, indent=2))
+
+    assert result.manifest.aggregate_metrics.total_files_changed >= 1
+    assert result.manifest.errors == []
+    assert result.ast_summary, "Expected at least one AST summary entry"
+
+
 
 if __name__ == "__main__":
     from pathlib import Path
@@ -127,13 +152,14 @@ if __name__ == "__main__":
     load_dotenv()  # Ensure .env variables are loaded for the test run.
 
     # Hardcoded remote smoke-test target for now.
-    os.environ["SANDBOX_REMOTE_TEST_URL"] = "https://github.com/Inesculent/LintLoop"
-    os.environ["SANDBOX_REMOTE_TEST_COMMIT"] = "bc1ce1b0c2a9b6792d9223846e6ac0f8c5918831"
+    os.environ["SANDBOX_REMOTE_TEST_URL"] = "https://github.com/Inesculent/AgenticReview"
+    os.environ["SANDBOX_REMOTE_TEST_HEAD"] = "19cf41ba3999d9294e89f6654c3b68b6c201effc"
+    os.environ.setdefault("SANDBOX_REMOTE_TEST_BASE", "19cf41ba3999d9294e89f6654c3b68b6c201effc^")
     os.environ.setdefault("SANDBOX_TEST_DEBUG", "1")
 
     pytest_args = [
         "-s",
-        f"{Path(__file__)}::test_start_from_remote_smoke_if_configured",
+        f"{Path(__file__)}::test_remote_preflight_and_ast_smoke_if_configured",
     ]
 
     raise SystemExit(pytest.main(pytest_args))

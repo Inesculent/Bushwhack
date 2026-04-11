@@ -1,6 +1,13 @@
 from typing import TypedDict, List, Annotated, Dict, Any, Literal, Required, NotRequired
 import operator
-from .schemas import RepositoryMap, ReviewTask, ReviewFinding, TaskStatus
+from .schemas import (
+    PreflightParseIssue,
+    PreflightSummary,
+    RepositoryMap,
+    ReviewTask,
+    ReviewFinding,
+    TaskStatus,
+)
 
 
 class GraphState(TypedDict, total=False):
@@ -17,6 +24,10 @@ class GraphState(TypedDict, total=False):
 
     # Optional references for externalized payloads (e.g., Redis-backed cache blobs)
     cache_refs: NotRequired[Dict[str, str]]
+    diff_manifest_ref: NotRequired[str]
+    preflight_summary: NotRequired[PreflightSummary]
+    preflight_errors: Annotated[List[PreflightParseIssue], operator.add]
+    preflight_warnings: Annotated[List[str], operator.add]
 
     # Task state: canonical task payloads + lifecycle status by task id.
     # Dict union reducers support compact per-task updates that are cache-friendly.

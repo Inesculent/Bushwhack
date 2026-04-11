@@ -3,10 +3,11 @@ from dataclasses import dataclass
 from typing import Optional
 
 from src.config import Settings, get_settings
-from src.domain.interfaces import IASTParser, ICacheService, ICodeSearcher
+from src.domain.interfaces import IASTParser, ICacheService, ICodeSearcher, IPreflightService
 from src.infrastructure.cache.memory_cache import InMemoryCache
 from src.infrastructure.mcp.ast_parser import MCPASTParser
 from src.infrastructure.mcp.client import MCPClient
+from src.infrastructure.preflight.service import PreflightManifestService
 from src.infrastructure.sandbox import RepoSandbox
 from src.infrastructure.search.ripgrep import RipgrepSearcher
 
@@ -22,6 +23,10 @@ class RepositoryUnderstandingAdapters:
 
 def build_cache_service() -> ICacheService:
     return InMemoryCache()
+
+
+def build_preflight_service() -> IPreflightService:
+    return PreflightManifestService()
 
 
 def build_ast_parser(settings: Settings, cache: ICacheService) -> IASTParser:

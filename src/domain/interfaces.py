@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from pydantic import BaseModel
 from typing import List, Optional, Any, Dict
-from .schemas import SearchResult, CodeEntity
+from .schemas import SearchResult, CodeEntity, DiffManifest, PreflightRequest
 
 """Domain ports.
 
@@ -95,6 +95,15 @@ class ILLMService(ABC):
     ) -> BaseModel:
         """
         Generate a structured completion matching the provided Pydantic response model.
+        """
+        pass
+
+
+class IPreflightService(ABC):
+    @abstractmethod
+    def build_diff_manifest(self, request: PreflightRequest) -> DiffManifest:
+        """
+        Build a deterministic diff manifest from run metadata and diff payload input.
         """
         pass
 
