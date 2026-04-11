@@ -58,6 +58,23 @@ class Settings(BaseSettings):
 		default=True,
 		description="Keep non-AST fallback paths available when MCP is unavailable.",
 	)
+	redis_enabled: bool = Field(
+		default=True,
+		description="Enable Redis-backed LangGraph checkpointing.",
+	)
+	redis_url: str = Field(
+		default="redis://localhost:6379/0",
+		description="Redis connection URL used for LangGraph checkpointing.",
+	)
+	redis_namespace: str = Field(
+		default="langgraph",
+		description="Namespace prefix for Redis checkpoint keys.",
+	)
+	redis_ttl_seconds: int = Field(
+		default=3600,
+		ge=1,
+		description="TTL for Redis checkpoint entries.",
+	)
 	github_personal_access_token: Optional[str] = Field(
 		default=None,
 		validation_alias=AliasChoices(

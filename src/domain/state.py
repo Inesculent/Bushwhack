@@ -10,6 +10,7 @@ class GraphState(TypedDict, total=False):
     git_diff: Required[str]
 
     # Context
+    user_goals: NotRequired[str]
     repo_map: NotRequired[RepositoryMap]
     next_step: NotRequired[Literal["explore", "plan", "review", "finalize"]]
     global_insights: Annotated[List[str], operator.add]
