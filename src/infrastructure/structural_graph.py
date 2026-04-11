@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from hashlib import sha1
-from typing import Any, Dict, List
+from pathlib import Path
+import re
+from typing import Any, Dict, List, Set
 
 import networkx as nx
 
@@ -17,7 +19,91 @@ class StructuralBuildResult:
 
 
 class StructuralGraphBuilder:
-    """Build deterministic structural graph snapshots from a diff manifest."""
+    """Build deterministic structural graph snapshots from repository source."""
+
+    _SUPPORTED_EXTENSIONS: Set[str] = {
+        ".py",
+        ".js",
+        ".jsx",
+        ".ts",
+        ".tsx",
+        ".java",
+        ".go",
+        ".rs",
+        ".c",
+        ".h",
+        ".cpp",
+        ".hpp",
+        ".cs",
+        ".php",
+        ".rb",
+    }
+
+    _SKIPPED_SEGMENTS: Set[str] = {
+        ".git",
+        ".venv",
+        "node_modules",
+        "vendor",
+        "third_party",
+        "external",
+        "deps",
+        "__pycache__",
+        ".pytest_cache",
+        ".mypy_cache",
+        ".ruff_cache",
+    }
+
+    _LANGUAGE_BY_EXTENSION: Dict[str, str] = {
+        ".py": "Python",
+        ".js": "JavaScript",
+        ".jsx": "JavaScript",
+        ".ts": "TypeScript",
+        ".tsx": "TypeScript",
+        ".java": "Java",
+        ".go": "Go",
+        ".rs": "Rust",
+        ".c": "C",
+        ".h": "C",
+        ".cpp": "C++",
+        ".hpp": "C++",
+        ".cs": "C#",
+        ".php": "PHP",
+        ".rb": "Ruby",
+    }
+
+    _CALL_PATTERN = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\(")
+    _CLASS_BASE_PATTERN = re.compile(r"class\s+[A-Za-z_][A-Za-z0-9_]*\s*\(([^)]*)\)")
+    _EXTENDS_PATTERN = re.compile(r"\bextends\s+([A-Za-z_][A-Za-z0-9_\.]*)")
+    _IDENTIFIER_PATTERN = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\b")
+    _RESERVED_WORDS: Set[str] = {
+        "if",
+        "for",
+        "while",
+        "return",
+        "def",
+        "class",
+        "with",
+        "lambda",
+        "print",
+        "len",
+        "range",
+        "and",
+        "or",
+        "not",
+        "try",
+        "except",
+        "finally",
+        "raise",
+        "assert",
+        "await",
+        "async",
+        "switch",
+        "case",
+        "new",
+        "super",
+        "this",
+        "self",
+    }
 
     def __init__(self, ast_parser: IASTParser | None) -> None:
         self.ast_parser = ast_parser
@@ -25,7 +111,9 @@ class StructuralGraphBuilder:
     def build(self, manifest: DiffManifest, repository_path: str) -> StructuralBuildResult:
         graph = nx.DiGraph()
         gaps: List[StructuralExtractionGap] = []
-        entries = self._eligible_entries(manifest)
+        entries = self._repository_entries(manifest=manifest, repository_path=repository_path)
+        entities_by_file: Dict[str, List[Any]] = {}
+        symbol_node_by_name: Dict[str, str] = {}
 
         for entry in entries:
             graph.add_node(
@@ -65,10 +153,12 @@ class StructuralGraphBuilder:
                 )
                 continue
 
+            entities_by_file[entry.filepath] = entities
             files_parsed += 1
             file_node_id = self._file_node_id(entry.filepath)
             for entity in sorted(entities, key=lambda item: (item.name, item.signature, item.type)):
                 symbol_node_id = self._symbol_node_id(entry.filepath, entity.name, entity.signature)
+                symbol_node_by_name[entity.name] = symbol_node_id
                 graph.add_node(
                     symbol_node_id,
                     node_type="symbol",
@@ -100,6 +190,62 @@ class StructuralGraphBuilder:
                         source_ref=entry.filepath,
                     )
 
+        # Second pass for broader structural relations.
+        for file_path in sorted(entities_by_file):
+            source_ref = file_path
+            for entity in sorted(entities_by_file[file_path], key=lambda item: (item.name, item.signature, item.type)):
+                symbol_node_id = symbol_node_by_name.get(entity.name)
+                if symbol_node_id is None:
+                    continue
+
+                for call_target in self._extract_call_targets(entity.body):
+                    target_node = self._resolve_symbol_target(call_target, symbol_node_by_name)
+                    self._add_structural_edge(
+                        graph=graph,
+                        source=symbol_node_id,
+                        target=target_node,
+                        edge_type="calls",
+                        source_ref=source_ref,
+                    )
+
+                for base_name in self._extract_base_types(entity.signature):
+                    target_node = self._resolve_symbol_target(base_name, symbol_node_by_name)
+                    self._add_structural_edge(
+                        graph=graph,
+                        source=symbol_node_id,
+                        target=target_node,
+                        edge_type="inherits",
+                        source_ref=source_ref,
+                    )
+
+                existing_call_targets = self._existing_targets_by_edge_type(
+                    graph=graph,
+                    source_node=symbol_node_id,
+                    edge_type="calls",
+                )
+                existing_inherit_targets = self._existing_targets_by_edge_type(
+                    graph=graph,
+                    source_node=symbol_node_id,
+                    edge_type="inherits",
+                )
+                for reference_name in self._extract_reference_targets(
+                    body=entity.body,
+                    known_symbols=set(symbol_node_by_name.keys()),
+                    source_symbol=entity.name,
+                ):
+                    target_node = symbol_node_by_name.get(reference_name)
+                    if target_node is None:
+                        continue
+                    if target_node in existing_call_targets or target_node in existing_inherit_targets:
+                        continue
+                    self._add_structural_edge(
+                        graph=graph,
+                        source=symbol_node_id,
+                        target=target_node,
+                        edge_type="references",
+                        source_ref=source_ref,
+                    )
+
         return StructuralBuildResult(
             graph=graph,
             gaps=gaps,
@@ -126,14 +272,56 @@ class StructuralGraphBuilder:
     def deserialize(payload: Dict[str, Any]) -> nx.DiGraph:
         return nx.node_link_graph(payload, edges="edges")
 
-    @staticmethod
-    def _eligible_entries(manifest: DiffManifest) -> List[DiffFileManifestEntry]:
-        entries = [
-            entry
+    @classmethod
+    def _repository_entries(cls, manifest: DiffManifest, repository_path: str) -> List[DiffFileManifestEntry]:
+        manifest_entries = {
+            entry.filepath: entry
             for entry in manifest.files
             if entry.change_type in {"A", "M", "R"} and not entry.is_binary
-        ]
-        return sorted(entries, key=lambda item: item.filepath)
+        }
+
+        repo_root = Path(repository_path)
+        discovered: Dict[str, DiffFileManifestEntry] = {}
+
+        if repo_root.is_dir():
+            for candidate in sorted(repo_root.rglob("*")):
+                if not candidate.is_file():
+                    continue
+
+                relative_path = candidate.relative_to(repo_root).as_posix()
+                if cls._is_skipped_path(relative_path):
+                    continue
+                if not cls._is_supported_ast_file(relative_path):
+                    continue
+
+                existing = manifest_entries.get(relative_path)
+                if existing is not None:
+                    discovered[relative_path] = existing
+                else:
+                    discovered[relative_path] = DiffFileManifestEntry(
+                        filepath=relative_path,
+                        change_type="M",
+                        language=cls._language_from_extension(relative_path),
+                    )
+
+        for path, entry in manifest_entries.items():
+            if path not in discovered and cls._is_supported_ast_file(path):
+                discovered[path] = entry
+
+        return sorted(discovered.values(), key=lambda item: item.filepath)
+
+    @classmethod
+    def _is_skipped_path(cls, filepath: str) -> bool:
+        segments = set(filepath.split("/"))
+        return any(segment in cls._SKIPPED_SEGMENTS for segment in segments)
+
+    @classmethod
+    def _is_supported_ast_file(cls, filepath: str) -> bool:
+        return Path(filepath).suffix.lower() in cls._SUPPORTED_EXTENSIONS
+
+    @classmethod
+    def _language_from_extension(cls, filepath: str) -> str | None:
+        return cls._LANGUAGE_BY_EXTENSION.get(Path(filepath).suffix.lower())
 
     @staticmethod
     def _file_node_id(filepath: str) -> str:
@@ -148,3 +336,92 @@ class StructuralGraphBuilder:
         seed = f"{filepath}|{symbol_name}|{signature}".encode("utf-8")
         digest = sha1(seed).hexdigest()[:16]
         return f"symbol:{digest}:{symbol_name}"
+
+    @staticmethod
+    def _external_symbol_node_id(symbol_name: str) -> str:
+        return f"external_symbol:{symbol_name}"
+
+    @classmethod
+    def _extract_call_targets(cls, body: str) -> List[str]:
+        targets = {
+            match.group(1)
+            for match in cls._CALL_PATTERN.finditer(body)
+            if match.group(1) not in cls._RESERVED_WORDS
+        }
+        return sorted(targets)
+
+    @classmethod
+    def _extract_base_types(cls, signature: str) -> List[str]:
+        results: Set[str] = set()
+
+        python_match = cls._CLASS_BASE_PATTERN.search(signature)
+        if python_match:
+            for item in python_match.group(1).split(","):
+                candidate = item.strip().split(".")[-1]
+                if candidate and candidate not in cls._RESERVED_WORDS:
+                    results.add(candidate)
+
+        for match in cls._EXTENDS_PATTERN.finditer(signature):
+            candidate = match.group(1).strip().split(".")[-1]
+            if candidate and candidate not in cls._RESERVED_WORDS:
+                results.add(candidate)
+
+        return sorted(results)
+
+    @classmethod
+    def _extract_reference_targets(
+        cls,
+        body: str,
+        known_symbols: Set[str],
+        source_symbol: str,
+    ) -> List[str]:
+        found = {
+            token
+            for token in cls._IDENTIFIER_PATTERN.findall(body)
+            if token in known_symbols and token != source_symbol and token not in cls._RESERVED_WORDS
+        }
+        return sorted(found)
+
+    @classmethod
+    def _resolve_symbol_target(cls, symbol_name: str, symbol_node_by_name: Dict[str, str]) -> str:
+        target = symbol_node_by_name.get(symbol_name)
+        if target is not None:
+            return target
+        return cls._external_symbol_node_id(symbol_name)
+
+    @staticmethod
+    def _existing_targets_by_edge_type(graph: nx.DiGraph, source_node: str, edge_type: str) -> Set[str]:
+        targets: Set[str] = set()
+        for _, target, edge_data in graph.out_edges(source_node, data=True):
+            if edge_data.get("edge_type") == edge_type:
+                targets.add(target)
+        return targets
+
+    @staticmethod
+    def _add_structural_edge(
+        graph: nx.DiGraph,
+        source: str,
+        target: str,
+        edge_type: str,
+        source_ref: str,
+    ) -> None:
+        if not graph.has_node(target):
+            if target.startswith("external_symbol:"):
+                graph.add_node(
+                    target,
+                    node_type="external_symbol",
+                    symbol_name=target.split(":", 1)[1],
+                )
+            else:
+                graph.add_node(target, node_type="symbol")
+
+        if graph.has_edge(source, target):
+            return
+
+        graph.add_edge(
+            source,
+            target,
+            edge_type=edge_type,
+            provenance="EXTRACTED",
+            source_ref=source_ref,
+        )
