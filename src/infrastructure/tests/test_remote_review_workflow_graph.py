@@ -64,6 +64,51 @@ def test_build_ast_summary_graph_creates_expected_nodes_and_edges() -> None:
     assert graph.number_of_edges() == 3
 
 
+def test_build_ast_summary_graph_resolves_file_and_symbol_import_dependencies() -> None:
+    graph = workflow.build_ast_summary_graph(
+        [
+            {
+                "file": "module_a.py",
+                "top_level_symbols": [{"name": "alpha_fn", "type": "FunctionDef"}],
+                "imports": [],
+            },
+            {
+                "file": "module_b.py",
+                "top_level_symbols": [{"name": "beta_fn", "type": "FunctionDef"}],
+                "imports": [
+                    {"type": "from", "module": "module_a", "names": ["alpha_fn"], "level": 0}
+                ],
+            },
+            {
+                "file": "module_c.py",
+                "top_level_symbols": [{"name": "gamma_fn", "type": "FunctionDef"}],
+                "imports": [
+                    {"type": "from", "module": "module_b", "names": ["beta_fn"], "level": 0}
+                ],
+            },
+        ]
+    )
+
+    file_edges = [
+        (src, dst, attrs)
+        for src, dst, attrs in graph.edges(data=True)
+        if attrs.get("edge_type") == "depends_on_file"
+    ]
+    symbol_edges = [
+        (src, dst, attrs)
+        for src, dst, attrs in graph.edges(data=True)
+        if attrs.get("edge_type") == "imports_symbol"
+    ]
+
+    file_edge_pairs = {(src, dst) for src, dst, _ in file_edges}
+    assert ("file:module_b.py", "file:module_a.py") in file_edge_pairs
+    assert ("file:module_c.py", "file:module_b.py") in file_edge_pairs
+
+    symbol_targets = {dst for _, dst, _ in symbol_edges}
+    assert any(dst.endswith(":alpha_fn") for dst in symbol_targets)
+    assert any(dst.endswith(":beta_fn") for dst in symbol_targets)
+
+
 def test_main_includes_graph_image_path_when_flag_set(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -84,6 +129,8 @@ def test_main_includes_graph_image_path_when_flag_set(
             base_commit="",
             ast_scope="repository",
             max_ast_files=0,
+            ast_dump_output="",
+            ast_dump_max_chars=0,
             graph_output="plots/ast_graph.png",
             graph_title="AST Graph",
         ),
@@ -100,3 +147,50 @@ def test_main_includes_graph_image_path_when_flag_set(
     captured = capsys.readouterr().out
     payload = json.loads(captured)
     assert payload["graph_image_path"] == "plots/ast_graph.png"
+
+
+def test_main_includes_ast_dump_path_when_flag_set(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    class _FakeResult:
+        ast_summary = [{"file": "src/demo.py", "top_level_nodes": ["FunctionDef"]}]
+        ast_dump = [{"file": "src/demo.py", "formatted_ast": "Module(...)"}]
+
+        @staticmethod
+        def as_dict() -> dict:
+            return {
+                "repo_url": "demo",
+                "head_commit": "abc",
+                "ast_dump": [{"file": "src/demo.py", "formatted_ast": "Module(...)"}],
+            }
+
+    monkeypatch.setattr(
+        workflow,
+        "_parse_args",
+        lambda: SimpleNamespace(
+            repo_url="https://example.com/repo.git",
+            head_commit="abc",
+            base_commit="",
+            ast_scope="repository",
+            max_ast_files=0,
+            ast_dump_output="artifacts/ast_dump.json",
+            ast_dump_max_chars=0,
+            graph_output="",
+            graph_title="AST Graph",
+        ),
+    )
+    monkeypatch.setattr(workflow, "run_remote_review_workflow", lambda **kwargs: _FakeResult())
+    monkeypatch.setattr(
+        workflow,
+        "write_ast_dump_file",
+        lambda ast_dump, output_path: output_path,
+    )
+
+    workflow.main()
+
+    captured = capsys.readouterr().out
+    payload = json.loads(captured)
+    assert payload["ast_dump_path"] == "artifacts/ast_dump.json"
+    assert payload["ast_dump_file_count"] == 1
+    assert "ast_dump" not in payload
