@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bushwhack"
+version = "0.1.0"
+description = "Autonomous multi-agent code review orchestrator"
+readme = "readme.md"
+requires-python = ">=3.12"
+
+[project.scripts]
+remote-review-workflow = "src.infrastructure.remote_review_workflow:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]

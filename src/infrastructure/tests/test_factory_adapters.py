@@ -1,5 +1,6 @@
 from src.config import Settings
-from src.infrastructure.factory import build_repository_understanding_adapters
+from src.domain.interfaces import IPreflightService
+from src.infrastructure.factory import build_preflight_service, build_repository_understanding_adapters
 from src.infrastructure.sandbox import RepoSandbox
 
 
@@ -17,3 +18,8 @@ def test_build_repository_understanding_adapters_with_ast_disabled() -> None:
     assert adapters.searcher is not None
     assert adapters.ast_parser is None
     assert adapters.ast_enabled is False
+
+
+def test_build_preflight_service_returns_domain_port() -> None:
+    service = build_preflight_service()
+    assert isinstance(service, IPreflightService)
