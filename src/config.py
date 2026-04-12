@@ -89,6 +89,36 @@ class Settings(BaseSettings):
 		description="GitHub personal access token for PR API enrichment.",
 	)
 
+	structural_topology_enabled: bool = Field(
+		default=True,
+		description="Run community detection and cohesion scoring after structural graph build.",
+	)
+	community_max_fraction: float = Field(
+		default=0.25,
+		ge=0.01,
+		le=1.0,
+		description="Communities larger than this fraction of clustering-graph nodes may be split.",
+	)
+	community_min_split_size: int = Field(
+		default=10,
+		ge=1,
+		description="Minimum node count before fractional split threshold applies.",
+	)
+	community_max_files: int = Field(
+		default=0,
+		ge=0,
+		description="If >0, split communities with more file nodes than this cap.",
+	)
+	community_max_symbols: int = Field(
+		default=0,
+		ge=0,
+		description="If >0, split communities with more symbol nodes than this cap.",
+	)
+	louvain_seed: int = Field(
+		default=42,
+		description="Random seed for NetworkX Louvain fallback (deterministic partitions).",
+	)
+
 	def get_ast_mcp_cwd(self) -> str:
 		"""Return an absolute working directory for MCP server startup."""
 		if self.ast_mcp_cwd:

@@ -63,6 +63,14 @@ def test_build_ast_summary_graph_creates_expected_nodes_and_edges() -> None:
     assert len(error_nodes) == 1
     assert graph.number_of_edges() == 3
 
+    for _, _, attrs in graph.edges(data=True):
+        assert attrs["relation"] == attrs["edge_type"]
+        assert attrs["provenance"] == "EXTRACTED"
+        assert attrs["confidence"] == "EXTRACTED"
+        assert attrs["source_ref"] == attrs["source_file"]
+        assert attrs["source_location"].startswith("L")
+        assert attrs["weight"] == 1.0
+
 
 def test_build_ast_summary_graph_resolves_file_and_symbol_import_dependencies() -> None:
     graph = workflow.build_ast_summary_graph(
@@ -76,14 +84,14 @@ def test_build_ast_summary_graph_resolves_file_and_symbol_import_dependencies() 
                 "file": "module_b.py",
                 "top_level_symbols": [{"name": "beta_fn", "type": "FunctionDef"}],
                 "imports": [
-                    {"type": "from", "module": "module_a", "names": ["alpha_fn"], "level": 0}
+                    {"type": "from", "module": "module_a", "names": ["alpha_fn"], "level": 0, "line": 7}
                 ],
             },
             {
                 "file": "module_c.py",
                 "top_level_symbols": [{"name": "gamma_fn", "type": "FunctionDef"}],
                 "imports": [
-                    {"type": "from", "module": "module_b", "names": ["beta_fn"], "level": 0}
+                    {"type": "from", "module": "module_b", "names": ["beta_fn"], "level": 0, "line": 11}
                 ],
             },
         ]
@@ -108,6 +116,8 @@ def test_build_ast_summary_graph_resolves_file_and_symbol_import_dependencies() 
     assert any(dst.endswith(":alpha_fn") for dst in symbol_targets)
     assert any(dst.endswith(":beta_fn") for dst in symbol_targets)
 
+    assert any(attrs.get("source_location") == "L7" for _, _, attrs in file_edges)
+
 
 def test_main_includes_graph_image_path_when_flag_set(
     monkeypatch: pytest.MonkeyPatch,
@@ -115,6 +125,8 @@ def test_main_includes_graph_image_path_when_flag_set(
 ) -> None:
     class _FakeResult:
         ast_summary = [{"file": "src/demo.py", "top_level_nodes": ["FunctionDef"]}]
+        manifest = None
+        structural_entities: dict = {}
 
         @staticmethod
         def as_dict() -> dict:
@@ -133,6 +145,14 @@ def test_main_includes_graph_image_path_when_flag_set(
             ast_dump_max_chars=0,
             graph_output="plots/ast_graph.png",
             graph_title="AST Graph",
+            structural_graph_json="",
+            structural_topology_json="",
+            topology_graph_output="",
+            topology_graph_title="Structural topology",
+            community_max_fraction=None,
+            community_min_split_size=None,
+            community_max_files=None,
+            community_max_symbols=None,
         ),
     )
     monkeypatch.setattr(workflow, "run_remote_review_workflow", lambda **kwargs: _FakeResult())
@@ -156,6 +176,8 @@ def test_main_includes_ast_dump_path_when_flag_set(
     class _FakeResult:
         ast_summary = [{"file": "src/demo.py", "top_level_nodes": ["FunctionDef"]}]
         ast_dump = [{"file": "src/demo.py", "formatted_ast": "Module(...)"}]
+        manifest = None
+        structural_entities: dict = {}
 
         @staticmethod
         def as_dict() -> dict:
@@ -178,6 +200,14 @@ def test_main_includes_ast_dump_path_when_flag_set(
             ast_dump_max_chars=0,
             graph_output="",
             graph_title="AST Graph",
+            structural_graph_json="",
+            structural_topology_json="",
+            topology_graph_output="",
+            topology_graph_title="Structural topology",
+            community_max_fraction=None,
+            community_min_split_size=None,
+            community_max_files=None,
+            community_max_symbols=None,
         ),
     )
     monkeypatch.setattr(workflow, "run_remote_review_workflow", lambda **kwargs: _FakeResult())

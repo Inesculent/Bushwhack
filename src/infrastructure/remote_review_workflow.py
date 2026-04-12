@@ -1,4 +1,5 @@
 import argparse
+import dataclasses
 import json
 import os
 from dataclasses import dataclass
@@ -7,9 +8,18 @@ from typing import Any, Literal, Optional
 
 import networkx as nx
 
+from src.config import get_settings
 from src.domain.schemas import DiffManifest, PreflightRequest, RunMetadata
 from src.infrastructure.preflight.service import PreflightManifestService
 from src.infrastructure.sandbox import RepoSandbox
+from src.infrastructure.structural_graph import StructuralGraphBuilder
+from src.infrastructure.structural_topology import (
+    apply_community_attributes,
+    build_topology_summary,
+    draw_topology_graph,
+    run_structural_topology,
+    write_topology_summary_json,
+)
 
 
 @dataclass(frozen=True)
@@ -23,6 +33,7 @@ class RemoteReviewWorkflowResult:
     scanned_python_files: list[str]
     ast_summary: list[dict[str, Any]]
     ast_dump: list[dict[str, Any]]
+    structural_entities: dict[str, Any] = dataclasses.field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -53,7 +64,13 @@ def build_ast_summary_graph(ast_summary: list[dict[str, Any]]) -> nx.DiGraph:
         if item.get("error"):
             error_node = f"error:{file_path}"
             graph.add_node(error_node, node_type="error", message=str(item["error"]))
-            graph.add_edge(file_node, error_node, edge_type="parse_error")
+            _add_graph_edge(
+                graph=graph,
+                source=file_node,
+                target=error_node,
+                edge_type="parse_error",
+                source_file=file_path,
+            )
             continue
 
         top_nodes = item.get("top_level_nodes")
@@ -64,6 +81,7 @@ def build_ast_summary_graph(ast_summary: list[dict[str, Any]]) -> nx.DiGraph:
                     continue
                 symbol_name = str(symbol.get("name", "unknown"))
                 symbol_type = str(symbol.get("type", "symbol"))
+                symbol_line = symbol.get("line")
                 symbol_node = f"symbol:{file_path}:{index}:{symbol_name}"
                 graph.add_node(
                     symbol_node,
@@ -73,7 +91,14 @@ def build_ast_summary_graph(ast_summary: list[dict[str, Any]]) -> nx.DiGraph:
                     file_path=file_path,
                 )
                 symbol_node_by_file_and_name[(file_path, symbol_name)] = symbol_node
-                graph.add_edge(file_node, symbol_node, edge_type="contains")
+                _add_graph_edge(
+                    graph=graph,
+                    source=file_node,
+                    target=symbol_node,
+                    edge_type="contains",
+                    source_file=file_path,
+                    source_location=_line_ref(symbol_line),
+                )
             continue
 
         if not isinstance(top_nodes, list):
@@ -82,7 +107,13 @@ def build_ast_summary_graph(ast_summary: list[dict[str, Any]]) -> nx.DiGraph:
         for index, node_type in enumerate(top_nodes):
             symbol_node = f"symbol:{file_path}:{index}:{node_type}"
             graph.add_node(symbol_node, node_type="symbol", symbol_type=str(node_type), file_path=file_path)
-            graph.add_edge(file_node, symbol_node, edge_type="contains")
+            _add_graph_edge(
+                graph=graph,
+                source=file_node,
+                target=symbol_node,
+                edge_type="contains",
+                source_file=file_path,
+            )
 
     module_to_file = _module_to_file_map(sorted(file_node_by_path.keys()))
     for item in sorted(ast_summary, key=lambda entry: str(entry.get("file", ""))):
@@ -107,13 +138,28 @@ def build_ast_summary_graph(ast_summary: list[dict[str, Any]]) -> nx.DiGraph:
             if not graph.has_node(module_node):
                 graph.add_node(module_node, node_type="module", module_name=module_name)
 
-            graph.add_edge(file_node, module_node, edge_type="imports")
+            source_location = _line_ref(import_entry.get("line"))
+            _add_graph_edge(
+                graph=graph,
+                source=file_node,
+                target=module_node,
+                edge_type="imports",
+                source_file=file_path,
+                source_location=source_location,
+            )
 
             target_file = _resolve_module_to_file(module_name, module_to_file)
             if target_file is not None:
                 target_file_node = file_node_by_path.get(target_file)
                 if target_file_node is not None:
-                    graph.add_edge(file_node, target_file_node, edge_type="depends_on_file")
+                    _add_graph_edge(
+                        graph=graph,
+                        source=file_node,
+                        target=target_file_node,
+                        edge_type="depends_on_file",
+                        source_file=file_path,
+                        source_location=source_location,
+                    )
 
                 imported_names = import_entry.get("names")
                 if isinstance(imported_names, list):
@@ -123,7 +169,14 @@ def build_ast_summary_graph(ast_summary: list[dict[str, Any]]) -> nx.DiGraph:
                             continue
                         target_symbol_node = symbol_node_by_file_and_name.get((target_file, symbol_name))
                         if target_symbol_node is not None:
-                            graph.add_edge(file_node, target_symbol_node, edge_type="imports_symbol")
+                            _add_graph_edge(
+                                graph=graph,
+                                source=file_node,
+                                target=target_symbol_node,
+                                edge_type="imports_symbol",
+                                source_file=file_path,
+                                source_location=source_location,
+                            )
                         else:
                             external_symbol_node = f"external_symbol:{module_name}.{symbol_name}"
                             if not graph.has_node(external_symbol_node):
@@ -132,9 +185,54 @@ def build_ast_summary_graph(ast_summary: list[dict[str, Any]]) -> nx.DiGraph:
                                     node_type="external_symbol",
                                     symbol_name=f"{module_name}.{symbol_name}",
                                 )
-                            graph.add_edge(file_node, external_symbol_node, edge_type="imports_symbol")
+                            _add_graph_edge(
+                                graph=graph,
+                                source=file_node,
+                                target=external_symbol_node,
+                                edge_type="imports_symbol",
+                                source_file=file_path,
+                                source_location=source_location,
+                            )
 
     return graph
+
+
+def _line_ref(line_number: Any) -> str:
+    if isinstance(line_number, int) and line_number > 0:
+        return f"L{line_number}"
+    return "L?"
+
+
+def _edge_payload(edge_type: str, source_file: str, source_location: str) -> dict[str, Any]:
+    return {
+        "edge_type": edge_type,
+        "relation": edge_type,
+        "provenance": "EXTRACTED",
+        "confidence": "EXTRACTED",
+        "source_ref": source_file,
+        "source_file": source_file,
+        "source_location": source_location,
+        "weight": 1.0,
+    }
+
+
+def _add_graph_edge(
+    graph: nx.DiGraph,
+    source: str,
+    target: str,
+    edge_type: str,
+    source_file: str,
+    source_location: str = "L?",
+) -> None:
+    graph.add_edge(
+        source,
+        target,
+        **_edge_payload(
+            edge_type=edge_type,
+            source_file=source_file,
+            source_location=source_location,
+        ),
+    )
 
 
 def _module_to_file_map(file_paths: list[str]) -> dict[str, str]:
@@ -250,13 +348,13 @@ def collect_python_ast_summary(sandbox: RepoSandbox, file_paths: list[str]) -> l
         "    imports = []\n"
         "    for node in tree.body:\n"
         "        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):\n"
-        "            symbols.append({'name': node.name, 'type': type(node).__name__})\n"
+        "            symbols.append({'name': node.name, 'type': type(node).__name__, 'line': getattr(node, 'lineno', None)})\n"
         "    for node in ast.walk(tree):\n"
         "        if isinstance(node, ast.Import):\n"
         "            for alias in node.names:\n"
-        "                imports.append({'type': 'import', 'module': alias.name, 'names': [], 'level': 0})\n"
+        "                imports.append({'type': 'import', 'module': alias.name, 'names': [], 'level': 0, 'line': getattr(node, 'lineno', None)})\n"
         "        elif isinstance(node, ast.ImportFrom):\n"
-        "            imports.append({'type': 'from', 'module': node.module or '', 'names': [alias.name for alias in node.names], 'level': node.level})\n"
+        "            imports.append({'type': 'from', 'module': node.module or '', 'names': [alias.name for alias in node.names], 'level': node.level, 'line': getattr(node, 'lineno', None)})\n"
         "    total_nodes = sum(1 for _ in ast.walk(tree))\n"
         "    out.append({'file': rel, 'total_top_level_nodes': len(top), 'top_level_nodes': top[:20], 'total_ast_nodes': total_nodes, 'top_level_symbols': symbols[:50], 'imports': imports[:200]})\n"
         "print(json.dumps(out))"
@@ -312,6 +410,305 @@ def collect_python_ast_dump(
     return json.loads(payload)
 
 
+# ---------------------------------------------------------------------------
+# Sandbox-side structural entity extraction
+# ---------------------------------------------------------------------------
+
+_STRUCTURAL_EXTRACT_SCRIPT = r"""
+import ast as stdlib_ast, json, os, pathlib, re, sys
+
+REPO = pathlib.Path("/repo")
+
+SUPPORTED = {
+    ".py", ".js", ".jsx", ".ts", ".tsx", ".java", ".go", ".rs",
+    ".c", ".h", ".cpp", ".hpp", ".cs", ".php", ".rb",
+}
+SKIP = {
+    ".git", ".venv", "node_modules", "vendor", "third_party",
+    "external", "deps", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache",
+}
+LANG_MAP = {
+    ".py": "Python", ".js": "JavaScript", ".jsx": "JavaScript",
+    ".ts": "TypeScript", ".tsx": "TypeScript", ".java": "Java",
+    ".go": "Go", ".rs": "Rust", ".c": "C", ".h": "C",
+    ".cpp": "C++", ".hpp": "C++", ".cs": "C#", ".php": "PHP", ".rb": "Ruby",
+}
+TS_LANG_MAP = {
+    ".py": "python", ".js": "javascript", ".jsx": "javascript",
+    ".ts": "typescript", ".tsx": "tsx", ".java": "java",
+    ".go": "go", ".rs": "rust", ".c": "c", ".h": "c",
+    ".cpp": "cpp", ".hpp": "cpp", ".cs": "c_sharp", ".php": "php", ".rb": "ruby",
+}
+ENTITY_NODE_TYPES = {
+    "function_definition", "method_definition", "class_definition",
+    "function_declaration", "class_declaration", "interface_declaration",
+    "enum_declaration", "struct_item", "impl_item",
+}
+IMPORT_RE = re.compile(r"^\s*(?:from|import)\s+([A-Za-z0-9_\.]+)", re.MULTILINE)
+
+have_ts = False
+try:
+    from tree_sitter import Node
+    from tree_sitter_language_pack import get_parser
+    have_ts = True
+except Exception:
+    pass
+
+
+def _skip(rel):
+    return bool(set(rel.split("/")) & SKIP)
+
+
+def _node_name(node, src_bytes):
+    for fn in ("name", "declarator"):
+        n = node.child_by_field_name(fn)
+        if n is not None:
+            return src_bytes[n.start_byte:n.end_byte].decode("utf-8", errors="replace")
+    for ch in node.children:
+        if ch.type in {"identifier", "type_identifier", "property_identifier"}:
+            return src_bytes[ch.start_byte:ch.end_byte].decode("utf-8", errors="replace")
+    return f"{node.type}@{node.start_point[0]+1}"
+
+
+def _node_is_entity(node):
+    if node.type in ENTITY_NODE_TYPES:
+        return True
+    if node.child_by_field_name("name") is None:
+        return False
+    lt = node.type.lower()
+    return any(t in lt for t in ("function", "method", "class", "interface", "enum", "struct"))
+
+
+def _norm_type(nt):
+    lt = nt.lower()
+    if "class" in lt: return "class"
+    if "method" in lt or "function" in lt: return "function"
+    if "interface" in lt: return "interface"
+    if "enum" in lt: return "enum"
+    if "struct" in lt: return "struct"
+    return "entity"
+
+
+def _deps(src):
+    return sorted({m.group(1) for m in IMPORT_RE.finditer(src)})
+
+
+def _ts_entities(source, lang):
+    parser = get_parser(lang)
+    sb = source.encode("utf-8")
+    tree = parser.parse(sb)
+    lines = source.splitlines()
+    ents = []
+    stack = [tree.root_node]
+    while stack:
+        node = stack.pop()
+        stack.extend(reversed(node.children))
+        if not _node_is_entity(node):
+            continue
+        sl = node.start_point[0]
+        sig = lines[sl].strip() if 0 <= sl < len(lines) else ""
+        body = sb[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
+        ents.append({
+            "name": _node_name(node, sb),
+            "type": _norm_type(node.type),
+            "signature": sig,
+            "body": body,
+            "dependencies": _deps(body),
+        })
+    return ents
+
+
+def _stdlib_entities(source):
+    try:
+        tree = stdlib_ast.parse(source)
+    except Exception:
+        return []
+    ents = []
+    for node in tree.body:
+        if not isinstance(node, (stdlib_ast.FunctionDef, stdlib_ast.AsyncFunctionDef, stdlib_ast.ClassDef)):
+            continue
+        sl = getattr(node, "lineno", 1) - 1
+        lines = source.splitlines()
+        sig = lines[sl].strip() if 0 <= sl < len(lines) else ""
+        el = getattr(node, "end_lineno", sl + 1)
+        body = "\n".join(lines[sl:el])
+        deps = []
+        for child in stdlib_ast.walk(node):
+            if isinstance(child, stdlib_ast.Import):
+                for alias in child.names:
+                    deps.append(alias.name)
+            elif isinstance(child, stdlib_ast.ImportFrom):
+                if child.module:
+                    deps.append(child.module)
+        ents.append({
+            "name": node.name,
+            "type": "class" if isinstance(node, stdlib_ast.ClassDef) else "function",
+            "signature": sig,
+            "body": body,
+            "dependencies": sorted(set(deps)),
+        })
+    return ents
+
+
+results = {"files": {}, "gaps": [], "file_languages": {}}
+for p in sorted(REPO.rglob("*")):
+    if not p.is_file():
+        continue
+    rel = p.relative_to(REPO).as_posix()
+    if _skip(rel):
+        continue
+    ext = p.suffix.lower()
+    if ext not in SUPPORTED:
+        continue
+    lang = LANG_MAP.get(ext)
+    results["file_languages"][rel] = lang
+    try:
+        src = p.read_text(encoding="utf-8", errors="replace")
+    except Exception as exc:
+        results["gaps"].append({"filepath": rel, "reason": "read_failed", "detail": str(exc)})
+        continue
+    ts_lang = TS_LANG_MAP.get(ext)
+    if have_ts and ts_lang:
+        try:
+            ents = _ts_entities(src, ts_lang)
+            results["files"][rel] = ents
+            continue
+        except Exception:
+            pass
+    if ext == ".py":
+        ents = _stdlib_entities(src)
+        results["files"][rel] = ents
+    else:
+        results["gaps"].append({
+            "filepath": rel,
+            "reason": "no_parser_available",
+            "detail": f"tree-sitter unavailable and no stdlib fallback for {ext}",
+        })
+
+print(json.dumps(results))
+"""
+
+
+def collect_structural_entities(
+    sandbox: RepoSandbox,
+) -> dict[str, Any]:
+    """Run entity extraction inside the sandbox and return the parsed result.
+
+    Returns a dict with keys ``files`` (path→entity list), ``gaps`` (list of
+    gap dicts), and ``file_languages`` (path→language string).
+    """
+    output = sandbox.execute(
+        ["python", "-c", _STRUCTURAL_EXTRACT_SCRIPT],
+        check_exit_code=True,
+    )
+    payload = output.strip()
+    if not payload:
+        return {"files": {}, "gaps": [], "file_languages": {}}
+    return json.loads(payload)
+
+
+def run_structural_preflight_explore(
+    sandbox_entities: dict[str, Any],
+    *,
+    structural_graph_json_path: str = "",
+    structural_topology_json_path: str = "",
+    topology_graph_output_path: str = "",
+    topology_graph_title: str = "Structural topology",
+    community_max_fraction: Optional[float] = None,
+    community_min_split_size: Optional[int] = None,
+    community_max_files: Optional[int] = None,
+    community_max_symbols: Optional[int] = None,
+    louvain_seed: Optional[int] = None,
+) -> dict[str, Any]:
+    """Build structural graph + optional topology from sandbox-extracted entities.
+
+    ``sandbox_entities`` is the dict returned by :func:`collect_structural_entities`
+    (keys: ``files``, ``gaps``, ``file_languages``).  All source reading happened
+    inside the sandbox — this function only does graph construction and topology
+    on the host.
+    """
+    from src.domain.schemas import CodeEntity, StructuralExtractionGap
+
+    settings = get_settings()
+    frac = settings.community_max_fraction if community_max_fraction is None else community_max_fraction
+    min_split = settings.community_min_split_size if community_min_split_size is None else community_min_split_size
+    max_f = settings.community_max_files if community_max_files is None else community_max_files
+    max_sym = settings.community_max_symbols if community_max_symbols is None else community_max_symbols
+    seed = settings.louvain_seed if louvain_seed is None else louvain_seed
+
+    entities_by_file: dict[str, list[CodeEntity]] = {}
+    for filepath, raw_entities in sandbox_entities.get("files", {}).items():
+        entities_by_file[filepath] = [CodeEntity.model_validate(e) for e in raw_entities]
+
+    extraction_gaps = [
+        StructuralExtractionGap.model_validate(g)
+        for g in sandbox_entities.get("gaps", [])
+    ]
+    file_languages: dict[str, str | None] = sandbox_entities.get("file_languages", {})
+
+    build_result = StructuralGraphBuilder.build_from_entities(
+        entities_by_file=entities_by_file,
+        file_languages=file_languages,
+        extraction_gaps=extraction_gaps,
+    )
+
+    payload: dict[str, Any] = {
+        "structural_node_count": build_result.graph.number_of_nodes(),
+        "structural_edge_count": build_result.graph.number_of_edges(),
+        "structural_files_attempted": build_result.files_attempted,
+        "structural_files_parsed": build_result.files_parsed,
+        "structural_extraction_gaps": [gap.model_dump() for gap in build_result.gaps],
+    }
+
+    need_topology = bool(structural_topology_json_path or topology_graph_output_path)
+    topology_summary = None
+    topo = None
+    if need_topology and build_result.graph.number_of_nodes() > 0:
+        topo = run_structural_topology(
+            build_result.graph,
+            max_fraction=frac,
+            min_split_size=min_split,
+            max_files=max_f,
+            max_symbols=max_sym,
+            louvain_seed=seed,
+        )
+        apply_community_attributes(build_result.graph, topo.partition)
+        config_snapshot = {
+            "community_max_fraction": frac,
+            "community_min_split_size": min_split,
+            "community_max_files": max_f,
+            "community_max_symbols": max_sym,
+            "louvain_seed": seed,
+        }
+        topology_summary = build_topology_summary(topo, build_result.graph, config_snapshot)
+        payload["topology_algorithm"] = topology_summary.algorithm
+        payload["topology_community_count"] = topology_summary.community_count
+        payload["topology_splits_applied"] = topology_summary.splits_applied
+
+    graph_payload = StructuralGraphBuilder.serialize(build_result.graph)
+
+    if structural_graph_json_path:
+        out_path = Path(structural_graph_json_path)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(json.dumps(graph_payload, indent=2), encoding="utf-8")
+        payload["structural_graph_json_path"] = str(out_path.resolve())
+
+    if structural_topology_json_path and topology_summary is not None:
+        payload["structural_topology_json_path"] = write_topology_summary_json(
+            topology_summary, structural_topology_json_path
+        )
+
+    if topology_graph_output_path and topo is not None:
+        payload["topology_graph_image_path"] = draw_topology_graph(
+            topo.clustering_graph,
+            topo.partition,
+            topology_graph_output_path,
+            title=topology_graph_title,
+        )
+
+    return payload
+
+
 def write_ast_dump_file(ast_dump: list[dict[str, Any]], output_path: str) -> str:
     output_file = Path(output_path)
     output_file.parent.mkdir(parents=True, exist_ok=True)
@@ -330,7 +727,19 @@ def run_remote_review_workflow(
     include_ast_dump: bool = False,
     ast_dump_max_chars: int = 0,
     fallback_python_files: int = 5,
-) -> RemoteReviewWorkflowResult:
+    include_structural_entities: bool = False,
+) -> "RemoteReviewWorkflowResult":
+    """Run the remote sandbox workflow.
+
+    When *sandbox* is provided by the caller the sandbox is **not** stopped on
+    return — the caller owns the lifecycle and may run additional sandbox
+    commands (e.g. structural entity extraction) before stopping it.
+
+    When *sandbox* is ``None`` an internal sandbox is created and stopped in
+    the ``finally`` block unless ``include_structural_entities`` is ``True``,
+    in which case the caller must stop the returned sandbox via
+    ``result.sandbox.stop()``.
+    """
     if not repo_url.strip():
         raise ValueError("repo_url is required")
     if not head_commit.strip():
@@ -394,13 +803,17 @@ def run_remote_review_workflow(
             scanned_python_files = scanned_python_files[:max_ast_files]
 
         ast_summary = collect_python_ast_summary(resolved_sandbox, scanned_python_files)
-        ast_dump = []
+        ast_dump: list[dict[str, Any]] = []
         if include_ast_dump:
             ast_dump = collect_python_ast_dump(
                 sandbox=resolved_sandbox,
                 file_paths=scanned_python_files,
                 max_dump_chars=ast_dump_max_chars,
             )
+
+        structural_entities: dict[str, Any] = {}
+        if include_structural_entities:
+            structural_entities = collect_structural_entities(resolved_sandbox)
 
         return RemoteReviewWorkflowResult(
             repo_url=repo_url,
@@ -412,6 +825,7 @@ def run_remote_review_workflow(
             scanned_python_files=scanned_python_files,
             ast_summary=ast_summary,
             ast_dump=ast_dump,
+            structural_entities=structural_entities,
         )
     finally:
         if own_sandbox:
@@ -479,6 +893,50 @@ def _parse_args() -> argparse.Namespace:
         default="Remote Review AST Summary",
         help="Optional title used when rendering --graph-output.",
     )
+    parser.add_argument(
+        "--structural-graph-json",
+        default="",
+        help="Optional path for StructuralGraphBuilder node-link JSON (directed graph).",
+    )
+    parser.add_argument(
+        "--structural-topology-json",
+        default="",
+        help="Optional path for community partition + cohesion JSON (runs topology pass).",
+    )
+    parser.add_argument(
+        "--topology-graph-output",
+        default="",
+        help="Optional PNG path for clustering-graph layout colored by community.",
+    )
+    parser.add_argument(
+        "--topology-graph-title",
+        default="Structural topology",
+        help="Title for --topology-graph-output.",
+    )
+    parser.add_argument(
+        "--community-max-fraction",
+        type=float,
+        default=None,
+        help="Override REVIEW_community_max_fraction for topology (default: from settings).",
+    )
+    parser.add_argument(
+        "--community-min-split-size",
+        type=int,
+        default=None,
+        help="Override REVIEW_community_min_split_size for topology.",
+    )
+    parser.add_argument(
+        "--community-max-files",
+        type=int,
+        default=None,
+        help="Override REVIEW_community_max_files for topology.",
+    )
+    parser.add_argument(
+        "--community-max-symbols",
+        type=int,
+        default=None,
+        help="Override REVIEW_community_max_symbols for topology.",
+    )
     return parser.parse_args()
 
 
@@ -490,6 +948,14 @@ def main() -> None:
             "or set SANDBOX_REMOTE_TEST_URL and SANDBOX_REMOTE_TEST_HEAD."
         )
 
+    need_structural = any(
+        [
+            bool(args.structural_graph_json),
+            bool(args.structural_topology_json),
+            bool(args.topology_graph_output),
+        ]
+    )
+
     result = run_remote_review_workflow(
         repo_url=args.repo_url,
         head_commit=args.head_commit,
@@ -498,6 +964,7 @@ def main() -> None:
         max_ast_files=args.max_ast_files,
         include_ast_dump=bool(args.ast_dump_output),
         ast_dump_max_chars=args.ast_dump_max_chars,
+        include_structural_entities=need_structural,
     )
     payload = result.as_dict()
     if args.graph_output:
@@ -510,6 +977,21 @@ def main() -> None:
         payload["ast_dump_path"] = write_ast_dump_file(result.ast_dump, args.ast_dump_output)
         payload["ast_dump_file_count"] = len(result.ast_dump)
         payload.pop("ast_dump", None)
+
+    if need_structural:
+        explore = run_structural_preflight_explore(
+            sandbox_entities=result.structural_entities,
+            structural_graph_json_path=args.structural_graph_json,
+            structural_topology_json_path=args.structural_topology_json,
+            topology_graph_output_path=args.topology_graph_output,
+            topology_graph_title=args.topology_graph_title,
+            community_max_fraction=args.community_max_fraction,
+            community_min_split_size=args.community_min_split_size,
+            community_max_files=args.community_max_files,
+            community_max_symbols=args.community_max_symbols,
+        )
+        payload.update(explore)
+
     print(json.dumps(payload, indent=2))
 
 

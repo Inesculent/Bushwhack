@@ -66,3 +66,7 @@ def test_structural_extractor_node_outputs_graph_payload() -> None:
     assert result["structural_extraction_gaps"] == []
     assert result["structural_graph_node_link"]["nodes"]
     assert result["structural_graph_node_link"]["edges"]
+    assert "structural_topology" in result
+    topo = result["structural_topology"]
+    assert topo.community_count >= 1
+    assert topo.algorithm

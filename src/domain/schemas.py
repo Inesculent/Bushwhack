@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, model_validator
-from typing import Dict, List, Literal, Optional, Self
+from typing import Any, Dict, List, Literal, Optional, Self
 
 
 TaskStatus = Literal["pending", "in_progress", "completed"]
@@ -246,6 +246,23 @@ class StructuralExtractionGap(BaseModel):
     filepath: str = Field(description="Repository-relative file path using '/' separators.")
     reason: str = Field(description="Stable reason for degraded structural extraction.")
     detail: Optional[str] = None
+
+
+class StructuralTopologyCommunity(BaseModel):
+    community_id: int
+    node_ids: List[str] = Field(default_factory=list)
+    cohesion: float = Field(default=0.0, ge=0.0, le=1.0)
+    file_count: int = Field(default=0, ge=0)
+    symbol_count: int = Field(default=0, ge=0)
+
+
+class StructuralTopologySummary(BaseModel):
+    algorithm: str
+    community_count: int = Field(default=0, ge=0)
+    communities: List[StructuralTopologyCommunity] = Field(default_factory=list)
+    node_to_community: Dict[str, int] = Field(default_factory=dict)
+    splits_applied: int = Field(default=0, ge=0)
+    config: Dict[str, Any] = Field(default_factory=dict)
 
 
 

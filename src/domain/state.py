@@ -7,6 +7,7 @@ from .schemas import (
     ReviewTask,
     ReviewFinding,
     StructuralExtractionGap,
+    StructuralTopologySummary,
     TaskStatus,
 )
 
@@ -30,6 +31,7 @@ class GraphState(TypedDict, total=False):
     preflight_errors: Annotated[List[PreflightParseIssue], operator.add]
     preflight_warnings: Annotated[List[str], operator.add]
     structural_graph_node_link: NotRequired[Dict[str, Any]]
+    structural_topology: NotRequired[StructuralTopologySummary]
     structural_extraction_gaps: Annotated[List[StructuralExtractionGap], operator.add]
 
     # Task state: canonical task payloads + lifecycle status by task id.

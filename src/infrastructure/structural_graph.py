@@ -2,12 +2,12 @@ from dataclasses import dataclass
 from hashlib import sha1
 from pathlib import Path
 import re
-from typing import Any, Dict, List, Set
+from typing import Any, Dict, List, Optional, Set
 
 import networkx as nx
 
 from src.domain.interfaces import IASTParser
-from src.domain.schemas import DiffFileManifestEntry, DiffManifest, StructuralExtractionGap
+from src.domain.schemas import CodeEntity, DiffFileManifestEntry, DiffManifest, StructuralExtractionGap
 
 
 @dataclass(frozen=True)
@@ -108,20 +108,23 @@ class StructuralGraphBuilder:
     def __init__(self, ast_parser: IASTParser | None) -> None:
         self.ast_parser = ast_parser
 
-    def build(self, manifest: DiffManifest, repository_path: str) -> StructuralBuildResult:
-        graph = nx.DiGraph()
-        gaps: List[StructuralExtractionGap] = []
-        entries = self._repository_entries(manifest=manifest, repository_path=repository_path)
-        entities_by_file: Dict[str, List[Any]] = {}
-        symbol_node_by_name: Dict[str, str] = {}
+    # ------------------------------------------------------------------
+    # Public entry-points
+    # ------------------------------------------------------------------
 
-        for entry in entries:
-            graph.add_node(
-                self._file_node_id(entry.filepath),
-                node_type="file",
-                file_path=entry.filepath,
-                language=entry.language,
-            )
+    def build(
+        self,
+        manifest: DiffManifest,
+        repository_path: str,
+    ) -> StructuralBuildResult:
+        """Extract entities via IASTParser from a local path, then build the graph.
+
+        Used by the LangGraph orchestrator path where the host already has the
+        repo (bind-mounted read-only via ``RepoSandbox.start``).
+        """
+        entries = self._repository_entries(manifest=manifest, repository_path=repository_path)
+        gaps: List[StructuralExtractionGap] = []
+        entities_by_file: Dict[str, List[CodeEntity]] = {}
 
         if self.ast_parser is None:
             for entry in entries:
@@ -132,11 +135,10 @@ class StructuralGraphBuilder:
                         detail="AST parser is disabled or unavailable; extraction degraded.",
                     )
                 )
-            return StructuralBuildResult(
-                graph=graph,
-                gaps=gaps,
-                files_attempted=len(entries),
-                files_parsed=0,
+            return self.build_from_entities(
+                entities_by_file={},
+                file_languages={e.filepath: e.language for e in entries},
+                extraction_gaps=gaps,
             )
 
         files_parsed = 0
@@ -155,14 +157,54 @@ class StructuralGraphBuilder:
 
             entities_by_file[entry.filepath] = entities
             files_parsed += 1
-            file_node_id = self._file_node_id(entry.filepath)
-            for entity in sorted(entities, key=lambda item: (item.name, item.signature, item.type)):
-                symbol_node_id = self._symbol_node_id(entry.filepath, entity.name, entity.signature)
+
+        file_languages = {e.filepath: e.language for e in entries}
+        return self.build_from_entities(
+            entities_by_file=entities_by_file,
+            file_languages=file_languages,
+            extraction_gaps=gaps,
+        )
+
+    @classmethod
+    def build_from_entities(
+        cls,
+        entities_by_file: Dict[str, List[CodeEntity]],
+        file_languages: Optional[Dict[str, Optional[str]]] = None,
+        extraction_gaps: Optional[List[StructuralExtractionGap]] = None,
+    ) -> StructuralBuildResult:
+        """Build the structural graph from pre-extracted entities (no filesystem access).
+
+        This is the host-side entrypoint for the remote sandbox workflow: entities
+        are extracted inside the sandbox container; the resulting dicts are
+        deserialized into ``CodeEntity`` objects and passed here.
+        """
+        resolved_languages = file_languages or {}
+        gaps: List[StructuralExtractionGap] = list(extraction_gaps or [])
+
+        graph = nx.DiGraph()
+        symbol_node_by_name: Dict[str, str] = {}
+
+        all_file_paths = sorted(
+            set(entities_by_file.keys())
+            | set(resolved_languages.keys())
+        )
+        for filepath in all_file_paths:
+            graph.add_node(
+                cls._file_node_id(filepath),
+                node_type="file",
+                file_path=filepath,
+                language=resolved_languages.get(filepath),
+            )
+
+        for filepath in sorted(entities_by_file):
+            file_node_id = cls._file_node_id(filepath)
+            for entity in sorted(entities_by_file[filepath], key=lambda item: (item.name, item.signature, item.type)):
+                symbol_node_id = cls._symbol_node_id(filepath, entity.name, entity.signature)
                 symbol_node_by_name[entity.name] = symbol_node_id
                 graph.add_node(
                     symbol_node_id,
                     node_type="symbol",
-                    file_path=entry.filepath,
+                    file_path=filepath,
                     symbol_name=entity.name,
                     symbol_type=entity.type,
                     signature=entity.signature,
@@ -170,13 +212,14 @@ class StructuralGraphBuilder:
                 graph.add_edge(
                     file_node_id,
                     symbol_node_id,
-                    edge_type="defines",
-                    provenance="EXTRACTED",
-                    source_ref=entry.filepath,
+                    **cls._edge_payload(
+                        edge_type="defines",
+                        source_file=filepath,
+                    ),
                 )
 
                 for dependency in sorted(set(entity.dependencies)):
-                    module_node_id = self._module_node_id(dependency)
+                    module_node_id = cls._module_node_id(dependency)
                     graph.add_node(
                         module_node_id,
                         node_type="module",
@@ -185,12 +228,12 @@ class StructuralGraphBuilder:
                     graph.add_edge(
                         symbol_node_id,
                         module_node_id,
-                        edge_type="imports",
-                        provenance="EXTRACTED",
-                        source_ref=entry.filepath,
+                        **cls._edge_payload(
+                            edge_type="imports",
+                            source_file=filepath,
+                        ),
                     )
 
-        # Second pass for broader structural relations.
         for file_path in sorted(entities_by_file):
             source_ref = file_path
             for entity in sorted(entities_by_file[file_path], key=lambda item: (item.name, item.signature, item.type)):
@@ -198,37 +241,37 @@ class StructuralGraphBuilder:
                 if symbol_node_id is None:
                     continue
 
-                for call_target in self._extract_call_targets(entity.body):
-                    target_node = self._resolve_symbol_target(call_target, symbol_node_by_name)
-                    self._add_structural_edge(
+                for call_target in cls._extract_call_targets(entity.body):
+                    target_node = cls._resolve_symbol_target(call_target, symbol_node_by_name)
+                    cls._add_structural_edge(
                         graph=graph,
                         source=symbol_node_id,
                         target=target_node,
                         edge_type="calls",
-                        source_ref=source_ref,
+                        source_file=source_ref,
                     )
 
-                for base_name in self._extract_base_types(entity.signature):
-                    target_node = self._resolve_symbol_target(base_name, symbol_node_by_name)
-                    self._add_structural_edge(
+                for base_name in cls._extract_base_types(entity.signature):
+                    target_node = cls._resolve_symbol_target(base_name, symbol_node_by_name)
+                    cls._add_structural_edge(
                         graph=graph,
                         source=symbol_node_id,
                         target=target_node,
                         edge_type="inherits",
-                        source_ref=source_ref,
+                        source_file=source_ref,
                     )
 
-                existing_call_targets = self._existing_targets_by_edge_type(
+                existing_call_targets = cls._existing_targets_by_edge_type(
                     graph=graph,
                     source_node=symbol_node_id,
                     edge_type="calls",
                 )
-                existing_inherit_targets = self._existing_targets_by_edge_type(
+                existing_inherit_targets = cls._existing_targets_by_edge_type(
                     graph=graph,
                     source_node=symbol_node_id,
                     edge_type="inherits",
                 )
-                for reference_name in self._extract_reference_targets(
+                for reference_name in cls._extract_reference_targets(
                     body=entity.body,
                     known_symbols=set(symbol_node_by_name.keys()),
                     source_symbol=entity.name,
@@ -238,19 +281,20 @@ class StructuralGraphBuilder:
                         continue
                     if target_node in existing_call_targets or target_node in existing_inherit_targets:
                         continue
-                    self._add_structural_edge(
+                    cls._add_structural_edge(
                         graph=graph,
                         source=symbol_node_id,
                         target=target_node,
                         edge_type="references",
-                        source_ref=source_ref,
+                        source_file=source_ref,
                     )
 
+        files_with_entities = len(entities_by_file)
         return StructuralBuildResult(
             graph=graph,
             gaps=gaps,
-            files_attempted=len(entries),
-            files_parsed=files_parsed,
+            files_attempted=len(all_file_paths),
+            files_parsed=files_with_entities,
         )
 
     @staticmethod
@@ -263,7 +307,7 @@ class StructuralGraphBuilder:
                 str(item.get("source", "")),
                 str(item.get("target", "")),
                 str(item.get("edge_type", "")),
-                str(item.get("source_ref", "")),
+                str(item.get("source_file", "")),
             ),
         )
         return payload
@@ -403,7 +447,8 @@ class StructuralGraphBuilder:
         source: str,
         target: str,
         edge_type: str,
-        source_ref: str,
+        source_file: str,
+        source_location: str = "L?",
     ) -> None:
         if not graph.has_node(target):
             if target.startswith("external_symbol:"):
@@ -421,7 +466,26 @@ class StructuralGraphBuilder:
         graph.add_edge(
             source,
             target,
-            edge_type=edge_type,
-            provenance="EXTRACTED",
-            source_ref=source_ref,
+            **StructuralGraphBuilder._edge_payload(
+                edge_type=edge_type,
+                source_file=source_file,
+                source_location=source_location,
+            ),
         )
+
+    @staticmethod
+    def _edge_payload(
+        edge_type: str,
+        source_file: str,
+        source_location: str = "L?",
+    ) -> Dict[str, Any]:
+        return {
+            "edge_type": edge_type,
+            "relation": edge_type,
+            "provenance": "EXTRACTED",
+            "confidence": "EXTRACTED",
+            "source_ref": source_file,
+            "source_file": source_file,
+            "source_location": source_location,
+            "weight": 1.0,
+        }

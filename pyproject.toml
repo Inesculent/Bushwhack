@@ -7,7 +7,7 @@ name = "bushwhack"
 version = "0.1.0"
 description = "Autonomous multi-agent code review orchestrator"
 readme = "readme.md"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.13"
 
 [project.scripts]
 remote-review-workflow = "src.infrastructure.remote_review_workflow:main"
