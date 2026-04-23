@@ -1,0 +1,13 @@
+{
+  "experiment": "solo_agent",
+  "run_id": "smoke-oneshot-01",
+  "dataset": "aacr_bench",
+  "dataset_path": "data\\processed\\aacr_bench_graph_ready.csv",
+  "prompt_version": "v1",
+  "model_key": "gpt-5.4",
+  "max_diff_chars": 60000,
+  "total_prs": 1,
+  "succeeded": 1,
+  "failed": 0,
+  "elapsed_ms": 29170
+}

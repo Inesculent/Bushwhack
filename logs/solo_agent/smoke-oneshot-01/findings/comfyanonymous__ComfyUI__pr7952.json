@@ -1,0 +1,119 @@
+[
+  {
+    "id": "solo-smoke-oneshot-01:comfyanonymous__ComfyUI__pr7952-0",
+    "file_path": "unknown",
+    "line_start": 1,
+    "line_end": 1,
+    "content": "+    def execute(self, string_a, string_b, **kwargs):\n+        return string_a + string_b,",
+    "severity": "medium",
+    "feedback_type": "other",
+    "recommendation": "The PR description and RFC mention a `separator` input for concatenate, but the implementation only accepts `string_a` and `string_b`. This is a functional mismatch between the documented node contract and the shipped behavior. Please either add the missing `separator` input or update the PR description/RFC alignment if the separator was intentionally omitted.",
+    "references": [
+      "side=right"
+    ]
+  },
+  {
+    "id": "solo-smoke-oneshot-01:comfyanonymous__ComfyUI__pr7952-1",
+    "file_path": "unknown",
+    "line_start": 1,
+    "line_end": 1,
+    "content": "+                \"mode\": (IO.COMBO, {\"options\": [\"Both\", \"Left\", \"Right\"]})",
+    "severity": "medium",
+    "feedback_type": "other",
+    "recommendation": "The mode values here don't match the values described in the PR (`[\"BOTH\", \"LEFT\", \"RIGHT\"]`). Similar naming mismatches exist in other nodes (`Starts With` vs `StartsWith`). These inconsistencies make workflows/API usage brittle and can break expectations if values are serialized or referenced elsewhere. It would be better to standardize option values across implementation and spec, ideally using stable internal values and separate display labels if supported.",
+    "references": [
+      "side=right"
+    ]
+  },
+  {
+    "id": "solo-smoke-oneshot-01:comfyanonymous__ComfyUI__pr7952-2",
+    "file_path": "unknown",
+    "line_start": 1,
+    "line_end": 1,
+    "content": "+        elif mode == \"Ends With\":\n+            return a.endswith(b),",
+    "severity": "medium",
+    "feedback_type": "other",
+    "recommendation": "`StringCompare.execute()` has no final fallback return. If `mode` is ever invalid or a saved workflow contains an older/different option string, this function will return `None` instead of the declared boolean output, which can cause downstream type issues. Please add an explicit default return, preferably `False`, or raise a clear validation error.",
+    "references": [
+      "side=right"
+    ]
+  },
+  {
+    "id": "solo-smoke-oneshot-01:comfyanonymous__ComfyUI__pr7952-3",
+    "file_path": "unknown",
+    "line_start": 1,
+    "line_end": 1,
+    "content": "+                if match and len(match.groups()) >= group_index:\n+                    result = match.group(group_index)",
+    "severity": "medium",
+    "feedback_type": "other",
+    "recommendation": "This group bounds check is off by one. `len(match.groups())` counts only capturing groups starting at index 1, but `group(0)` is also valid and your input allows `group_index` to be `0`. With the current check, requesting group 0 on a regex with no capturing groups incorrectly returns an empty string instead of the full match. A safer check would be against `match.re.groups` with special handling for index 0, or catching `IndexError` around `match.group(group_index)`.",
+    "references": [
+      "side=right"
+    ]
+  },
+  {
+    "id": "solo-smoke-oneshot-01:comfyanonymous__ComfyUI__pr7952-4",
+    "file_path": "unknown",
+    "line_start": 1,
+    "line_end": 1,
+    "content": "+                matches = re.findall(regex_pattern, string, flags)\n+                if matches:\n+                    if isinstance(matches[0], tuple):\n+                        result = join_delimiter.join([m[0] for m in matches])",
+    "severity": "medium",
+    "feedback_type": "other",
+    "recommendation": "The `\"All Matches\"` behavior is incorrect for patterns containing capturing groups. `re.findall()` returns captured groups instead of full matches, and this code further truncates tuple results to only the first captured group. That means `\"All Matches\"` can silently return partial data rather than actual matches. If the intent is truly all full matches, use `re.finditer()` and `match.group(0)` for each match.",
+    "references": [
+      "side=right"
+    ]
+  },
+  {
+    "id": "solo-smoke-oneshot-01:comfyanonymous__ComfyUI__pr7952-5",
+    "file_path": "unknown",
+    "line_start": 1,
+    "line_end": 1,
+    "content": "+        except re.error:\n+            result = False",
+    "severity": "medium",
+    "feedback_type": "other",
+    "recommendation": "Swallowing invalid regex errors and returning `False`/`\"\"` makes malformed patterns indistinguishable from legitimate “no match” results, which will make debugging workflows much harder. At minimum, consider logging the regex compilation error; ideally surface a user-visible validation error so the node fails loudly when the pattern is invalid.",
+    "references": [
+      "side=right"
+    ]
+  },
+  {
+    "id": "solo-smoke-oneshot-01:comfyanonymous__ComfyUI__pr7952-6",
+    "file_path": "unknown",
+    "line_start": 1,
+    "line_end": 1,
+    "content": "+                \"regex_pattern\": (IO.STRING, {\"multiline\": True}),",
+    "severity": "medium",
+    "feedback_type": "other",
+    "recommendation": "Allowing multiline input for regex patterns is risky from a usability and maintainability perspective. It makes it easy to accidentally include trailing newlines/whitespace in the pattern, producing confusing matching behavior. Unless multiline regex editing is a deliberate requirement, this input would be safer as a single-line string or with explicit trimming/normalization before use.",
+    "references": [
+      "side=right"
+    ]
+  },
+  {
+    "id": "solo-smoke-oneshot-01:comfyanonymous__ComfyUI__pr7952-7",
+    "file_path": "unknown",
+    "line_start": 1,
+    "line_end": 1,
+    "content": "+                \"start\": (IO.INT, {}),\n+                \"end\": (IO.INT, {}),",
+    "severity": "medium",
+    "feedback_type": "other",
+    "recommendation": "These integer inputs have no defaults or bounds, which makes the node behavior less predictable in the UI and permits arbitrary negative/oversized indexes without any guidance. Python slicing won't crash, but adding sensible defaults and constraints would improve usability and make the node contract clearer.",
+    "references": [
+      "side=right"
+    ]
+  },
+  {
+    "id": "solo-smoke-oneshot-01:comfyanonymous__ComfyUI__pr7952-8",
+    "file_path": "unknown",
+    "line_start": 1,
+    "line_end": 1,
+    "content": "+class CaseConverter():",
+    "severity": "medium",
+    "feedback_type": "other",
+    "recommendation": "Class naming is inconsistent with the rest of this file. Most nodes are prefixed with `String...`, but this one is `CaseConverter` and the regex nodes also omit the `String` prefix. A more consistent naming scheme would improve discoverability and maintainability, especially as more utility nodes are added.",
+    "references": [
+      "side=right"
+    ]
+  }
+]

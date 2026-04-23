@@ -119,6 +119,24 @@ class Settings(BaseSettings):
 		description="Random seed for NetworkX Louvain fallback (deterministic partitions).",
 	)
 
+	solo_agent_output_dir: Path = Field(
+		default=Path("logs/solo_agent"),
+		description="Root directory for solo-agent experiment artifacts (raw transcripts, parsed findings, manifests).",
+	)
+	solo_agent_max_diff_chars: int = Field(
+		default=60_000,
+		ge=1_000,
+		description="Maximum characters of the unified diff inlined into the solo-agent prompt.",
+	)
+	solo_agent_model_key: str = Field(
+		default="gpt-5.4",
+		description="Model key (from Models factory) used by the solo-agent worker for free-form tagged output.",
+	)
+	solo_agent_prompt_version: str = Field(
+		default="v1",
+		description="Prompt template version stamped on solo-agent run metadata for experiment tracking.",
+	)
+
 	def get_ast_mcp_cwd(self) -> str:
 		"""Return an absolute working directory for MCP server startup."""
 		if self.ast_mcp_cwd:

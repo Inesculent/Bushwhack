@@ -34,6 +34,16 @@ class RepoStructureMetrics:
     repo_max_directory_depth: int
 
 
+@dataclass(frozen=True, slots=True)
+class PullRequestContext:
+    pr_url: str
+    repo: str
+    number: int
+    title: str
+    body: str
+    unified_diff: str
+
+
 class GitHubPullRequestEnricher:
     def __init__(self, logger: logging.Logger, token: str | None = None, timeout_seconds: int = 30) -> None:
         self._logger = logger
@@ -42,6 +52,7 @@ class GitHubPullRequestEnricher:
         self._repo_size_cache: dict[str, int | None] = {}
         self._repo_structure_cache: dict[str, RepoStructureMetrics | None] = {}
         self._repo_metadata_cache: dict[str, dict[str, object] | None] = {}
+        self._pr_context_cache: dict[str, PullRequestContext | None] = {}
         self._session.headers.update({"Accept": "application/vnd.github+json"})
         if token:
             self._session.headers.update({"Authorization": f"Bearer {token}"})
@@ -93,6 +104,109 @@ class GitHubPullRequestEnricher:
 
         self._logger.info("GitHub enrichment finished with %s successful PR metric rows", len(metrics))
         return metrics
+
+    def fetch_pr_context(self, pr_url: str) -> PullRequestContext | None:
+        if pr_url in self._pr_context_cache:
+            return self._pr_context_cache[pr_url]
+
+        repo = parse_repo_from_pr_url(pr_url)
+        pr_number = parse_pr_number(pr_url)
+        if repo is None or pr_number is None:
+            self._logger.warning("Skipping malformed PR URL for context fetch: %s", pr_url)
+            self._pr_context_cache[pr_url] = None
+            return None
+
+        api_url = f"https://api.github.com/repos/{repo}/pulls/{pr_number}"
+        payload = self._request_json(api_url, context=f"PR metadata {pr_url}")
+        if payload is None:
+            self._pr_context_cache[pr_url] = None
+            return None
+
+        title = str(payload.get("title") or "").strip()
+        body = str(payload.get("body") or "").strip()
+
+        unified_diff = self._request_text(
+            api_url,
+            context=f"PR diff {pr_url}",
+            accept="application/vnd.github.v3.diff",
+        )
+        if unified_diff is None:
+            self._pr_context_cache[pr_url] = None
+            return None
+
+        context = PullRequestContext(
+            pr_url=pr_url,
+            repo=repo,
+            number=pr_number,
+            title=title,
+            body=body,
+            unified_diff=unified_diff,
+        )
+        self._pr_context_cache[pr_url] = context
+        return context
+
+    def fetch_pr_context_bulk(self, pr_urls: Iterable[str]) -> dict[str, PullRequestContext]:
+        unique_urls = sorted({url for url in pr_urls if isinstance(url, str) and url.strip()})
+        contexts: dict[str, PullRequestContext] = {}
+        self._logger.info("Starting PR context enrichment for %s unique PR URLs", len(unique_urls))
+
+        for idx, pr_url in enumerate(unique_urls, start=1):
+            if idx % 50 == 0:
+                self._logger.info("PR context enrichment progress: %s/%s", idx, len(unique_urls))
+
+            context = self.fetch_pr_context(pr_url)
+            if context is not None:
+                contexts[pr_url] = context
+
+        self._logger.info("PR context enrichment finished with %s successful rows", len(contexts))
+        return contexts
+
+    def _request_json(self, api_url: str, context: str) -> dict[str, object] | None:
+        while True:
+            response = self._session.get(api_url, timeout=self._timeout_seconds)
+
+            if response.status_code == 404:
+                self._logger.warning("Skipping missing resource (404): %s", context)
+                return None
+
+            if response.status_code == 403 and response.headers.get("X-RateLimit-Remaining") == "0":
+                self._sleep_for_rate_limit(response, context)
+                continue
+
+            if response.status_code >= 400:
+                self._logger.warning("Skipping %s due to status code %s", context, response.status_code)
+                return None
+
+            return response.json()
+
+    def _request_text(self, api_url: str, context: str, accept: str) -> str | None:
+        headers = {"Accept": accept}
+        while True:
+            response = self._session.get(api_url, headers=headers, timeout=self._timeout_seconds)
+
+            if response.status_code == 404:
+                self._logger.warning("Skipping missing resource (404): %s", context)
+                return None
+
+            if response.status_code == 403 and response.headers.get("X-RateLimit-Remaining") == "0":
+                self._sleep_for_rate_limit(response, context)
+                continue
+
+            if response.status_code >= 400:
+                self._logger.warning("Skipping %s due to status code %s", context, response.status_code)
+                return None
+
+            return response.text
+
+    def _sleep_for_rate_limit(self, response: requests.Response, context: str) -> None:
+        reset_epoch = int(response.headers.get("X-RateLimit-Reset", "0"))
+        sleep_seconds = max(reset_epoch - int(time.time()), 0) + 1
+        self._logger.warning(
+            "GitHub rate limit hit; sleeping for %s seconds before retrying %s",
+            sleep_seconds,
+            context,
+        )
+        time.sleep(sleep_seconds)
 
     def _fetch_one(self, pr_url: str) -> PullRequestMetrics | None:
         repo = parse_repo_from_pr_url(pr_url)
