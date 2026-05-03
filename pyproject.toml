@@ -11,6 +11,7 @@ requires-python = ">=3.12,<3.13"
 
 [project.scripts]
 remote-review-workflow = "src.infrastructure.remote_review_workflow:main"
+reviewer-agent = "src.reviewer_agent.main:main"
 
 [tool.setuptools.packages.find]
 where = ["."]

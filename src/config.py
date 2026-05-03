@@ -88,6 +88,29 @@ class Settings(BaseSettings):
 		),
 		description="GitHub personal access token for PR API enrichment.",
 	)
+	google_api_key: Optional[str] = Field(
+		default=None,
+		validation_alias=AliasChoices("REVIEW_GOOGLE_API_KEY", "GOOGLE_API_KEY"),
+		description="Google API key for Gemini model access.",
+	)
+	openai_api_key: Optional[str] = Field(
+		default=None,
+		validation_alias=AliasChoices("REVIEW_OPENAI_API_KEY", "OPENAI_API_KEY"),
+		description="OpenAI API key for hosted OpenAI model access.",
+	)
+	anthropic_api_key: Optional[str] = Field(
+		default=None,
+		validation_alias=AliasChoices("REVIEW_ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY"),
+		description="Anthropic API key for Claude model access.",
+	)
+	local_llm_base_url: str = Field(
+		default="http://localhost:11434/v1",
+		description="OpenAI-compatible base URL for local models such as Qwen through Ollama, LM Studio, or vLLM.",
+	)
+	local_llm_api_key: str = Field(
+		default="local",
+		description="API key placeholder for OpenAI-compatible local model servers.",
+	)
 
 	structural_topology_enabled: bool = Field(
 		default=True,
@@ -135,6 +158,19 @@ class Settings(BaseSettings):
 	solo_agent_prompt_version: str = Field(
 		default="v1",
 		description="Prompt template version stamped on solo-agent run metadata for experiment tracking.",
+	)
+
+	reviewer_agent_output_dir: Path = Field(
+		default=Path("logs/reviewer_agent"),
+		description="Root directory for reviewer-graph experiment artifacts.",
+	)
+	reviewer_planner_model_key: str = Field(
+		default="gemini-pro",
+		description="Model key (from Models factory) used by the reviewer planner.",
+	)
+	reviewer_worker_model_key: str = Field(
+		default="gemini-pro",
+		description="Model key (from Models factory) used by reviewer worker nodes.",
 	)
 
 	def get_ast_mcp_cwd(self) -> str:

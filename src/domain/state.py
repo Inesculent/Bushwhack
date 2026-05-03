@@ -6,6 +6,7 @@ from .schemas import (
     RepositoryMap,
     ReviewTask,
     ReviewFinding,
+    ReviewerWorkerReport,
     StructuralExtractionGap,
     StructuralTopologySummary,
     TaskStatus,
@@ -42,8 +43,11 @@ class GraphState(TypedDict, total=False):
 
     # Results
     findings: Annotated[List[ReviewFinding], operator.add]
+    reviewer_worker_reports: Annotated[List[ReviewerWorkerReport], operator.add]
+    final_findings: NotRequired[List[ReviewFinding]]
 
     # Data for debugging and analysis
+    current_task_id: NotRequired[str]
     metadata: NotRequired[Dict[str, Any]]
     token_usage: Annotated[int, operator.add]
     node_history: Annotated[List[str], operator.add]

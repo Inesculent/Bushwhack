@@ -90,6 +90,46 @@ class RepoSandbox:
 
         return self.container.id
 
+    def start_from_remote_ref(self, repo_url: str, ref: str) -> str:
+        """
+        Spins up a container, clones a remote repository, and checks out a ref.
+
+        Supports normal refs/SHAs as well as GitHub pull request refs such as
+        ``pull/123/head``.
+        """
+        if self.container:
+            raise RuntimeError("Sandbox is already started.")
+
+        self.container = self.client.containers.run(
+            self.image_name,
+            detach=True,
+            tty=True,
+            working_dir="/",
+        )
+
+        try:
+            self.execute(["git", "clone", repo_url, "/repo"], check_exit_code=True)
+            if ref.startswith("pull/"):
+                local_ref = f"review-{uuid4().hex[:8]}"
+                self.execute(
+                    ["git", "-C", "/repo", "fetch", "origin", f"{ref}:{local_ref}"],
+                    check_exit_code=True,
+                )
+                self.execute(
+                    ["git", "-C", "/repo", "checkout", "--detach", local_ref],
+                    check_exit_code=True,
+                )
+            else:
+                self.execute(
+                    ["git", "-C", "/repo", "checkout", "--detach", ref],
+                    check_exit_code=True,
+                )
+        except Exception:
+            self.stop()
+            raise
+
+        return self.container.id
+
     def execute(
         self,
         cmd: List[str],

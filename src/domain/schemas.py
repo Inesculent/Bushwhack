@@ -86,6 +86,15 @@ class ReviewFinding(BaseModel):
     recommendation: Optional[str] = None
     references: List[str] = Field(default_factory=list)
 
+
+class ReviewerWorkerReport(BaseModel):
+    task_id: str
+    specialty: Literal["security", "performance", "logic", "style", "general"]
+    explored_files: List[str] = Field(default_factory=list)
+    context_summary: str = ""
+    warnings: List[str] = Field(default_factory=list)
+
+
 class Insight(BaseModel):
     source_node: str
     content: str
