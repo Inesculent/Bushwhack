@@ -10,8 +10,10 @@ from src.config import get_settings
 from src.domain.schemas import CodeEntity, ReviewFinding, ReviewTask, ReviewerWorkerReport, SearchResult
 from src.domain.state import GraphState
 from src.infrastructure.llm.factory import Models
+from src.orchestration.prompts.renderer import render_reviewer_prompt
 
 logger = logging.getLogger(__name__)
+trace_logger = logging.getLogger("research_pipeline.reviewer_trace")
 
 SUPPORTED_SPECIALTIES = {"security", "logic", "performance", "general"}
 
@@ -73,25 +75,29 @@ def _task_from_state(state: GraphState, expected_specialty: str) -> ReviewTask |
     return task
 
 
+def _trace_enabled(state: GraphState) -> bool:
+    metadata = state.get("metadata", {}) or {}
+    return bool(metadata.get("review_trace_enabled"))
+
+
 def _render_worker_prompt(
     state: GraphState,
     task: ReviewTask,
     context: ReviewTaskContext,
     specialty: str,
 ) -> str:
-    return (
-        f"You are the {specialty} specialist in a parallel code-review graph. "
-        "Review only the assigned task. Produce evidence-backed findings only. "
-        "If the available context does not support a concrete issue, return no finding and explain the gap in warnings. "
-        "Findings must use repository-relative file paths and precise line ranges when possible.\n\n"
-        f"Task ID: {task.id}\n"
-        f"Task title: {task.title}\n"
-        f"Task description: {task.description}\n"
-        f"Target files: {task.target_files}\n\n"
-        "Direct context gathered by tools:\n"
-        f"{context.render()}\n\n"
-        "Git diff excerpt:\n"
-        f"{(state.get('git_diff', '') or '')[:16000]}"
+    return render_reviewer_prompt(
+        f"workers/{specialty}.md",
+        {
+            "Assigned Task": (
+                f"Task ID: {task.id}\n"
+                f"Task title: {task.title}\n"
+                f"Task description: {task.description}\n"
+                f"Target files: {task.target_files}"
+            ),
+            "Direct Context Gathered By Tools": context.render(),
+            "Git Diff Excerpt": (state.get("git_diff", "") or "")[:16000],
+        },
     )
 
 
@@ -122,6 +128,16 @@ def make_specialist_worker_node(
         if task is None:
             return {"node_history": [f"{node_name}:skipped"]}
 
+        if _trace_enabled(state):
+            trace_logger.info(
+                "TRACE worker_start run_id=%s node=%s task_id=%s specialty=%s files=%s",
+                run_id,
+                node_name,
+                task.id,
+                task.specialty,
+                task.target_files,
+            )
+
         context = context_provider.collect_for_task(state=state, task=task)
         findings: List[ReviewFinding] = []
         warnings = list(context.warnings)
@@ -146,6 +162,17 @@ def make_specialist_worker_node(
                     exc.__class__.__name__,
                     exc,
                 )
+
+        if _trace_enabled(state):
+            trace_logger.info(
+                "TRACE worker_done run_id=%s node=%s task_id=%s findings=%s explored_files=%s warnings=%s",
+                run_id,
+                node_name,
+                task.id,
+                len(findings),
+                context.explored_files,
+                warnings,
+            )
 
         report = ReviewerWorkerReport(
             task_id=task.id,

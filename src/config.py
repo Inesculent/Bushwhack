@@ -104,12 +104,24 @@ class Settings(BaseSettings):
 		description="Anthropic API key for Claude model access.",
 	)
 	local_llm_base_url: str = Field(
-		default="http://localhost:11434/v1",
+		default="http://localhost:8000/v1",
 		description="OpenAI-compatible base URL for local models such as Qwen through Ollama, LM Studio, or vLLM.",
 	)
 	local_llm_api_key: str = Field(
 		default="local",
 		description="API key placeholder for OpenAI-compatible local model servers.",
+	)
+	local_llm_timeout_seconds: int = Field(
+		default=180,
+		ge=1,
+		le=600,
+		description="Request timeout for OpenAI-compatible local model servers.",
+	)
+	local_llm_max_retries: int = Field(
+		default=0,
+		ge=0,
+		le=10,
+		description="Retry count for OpenAI-compatible local model requests.",
 	)
 
 	structural_topology_enabled: bool = Field(
@@ -165,12 +177,23 @@ class Settings(BaseSettings):
 		description="Root directory for reviewer-graph experiment artifacts.",
 	)
 	reviewer_planner_model_key: str = Field(
-		default="gemini-pro",
-		description="Model key (from Models factory) used by the reviewer planner.",
+		default="qwen2.5-coder-32b",
+		description=(
+			"Model key (from Models factory) used by the reviewer planner. "
+			"Must match a key in infrastructure.llm.factory.MODELS; for Ollama use e.g. qwen2.5-coder-32b-ollama."
+		),
 	)
 	reviewer_worker_model_key: str = Field(
-		default="gemini-pro",
-		description="Model key (from Models factory) used by reviewer worker nodes.",
+		default="qwen2.5-coder-32b",
+		description=(
+			"Model key (from Models factory) used by reviewer workers, critiquer, reflection, and revision nodes. "
+			"Aligns with Models.DEFAULT_ROLE_MODELS['worker']. For Ollama set to qwen2.5-coder-32b-ollama and "
+			"REVIEW_LOCAL_LLM_BASE_URL to your OpenAI-compatible endpoint."
+		),
+	)
+	reviewer_use_legacy_specialist_workers: bool = Field(
+		default=False,
+		description="When true, route review_planner tasks to legacy specialist workers instead of the adversarial critiquer loop.",
 	)
 
 	def get_ast_mcp_cwd(self) -> str:

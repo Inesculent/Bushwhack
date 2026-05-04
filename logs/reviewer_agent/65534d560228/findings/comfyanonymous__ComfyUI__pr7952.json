@@ -1,0 +1,76 @@
+[
+  {
+    "id": "review-general:inconsistent_return_types",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 165,
+    "line_end": 167,
+    "content": "class StringCompare():\n    ...\n    def execute(self, string_a, string_b, mode, case_sensitive, **kwargs):\n        ...",
+    "severity": "high",
+    "feedback_type": "code_improvement",
+    "recommendation": "Ensure consistent return types across all methods. For example, some methods return a boolean while others return a tuple containing a boolean. This inconsistency may lead to confusion and runtime errors.",
+    "references": [
+      "https://peps.python.org/pep-0008/#return-statements"
+    ]
+  },
+  {
+    "id": "review-general:missing_error_handling",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 130,
+    "line_end": 133,
+    "content": "class RegexMatch():\n    ...\n    def execute(self, string, regex_pattern, case_insensitive, multiline, dotall, **kwargs):\n        ...",
+    "severity": "medium",
+    "feedback_type": "code_improvement",
+    "recommendation": "Add error handling around the regular expression operations to manage cases where the pattern is invalid or causes unexpected behavior.",
+    "references": [
+      "https://docs.python.org/3/library/re.html#re.error"
+    ]
+  },
+  {
+    "id": "review-logic:hardcoded-join-delimiter",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 330,
+    "line_end": 330,
+    "content": "join_delimiter = \"\\n\"",
+    "severity": "medium",
+    "feedback_type": "code_improvement",
+    "recommendation": "Consider making the join delimiter configurable based on user preferences or other factors.",
+    "references": []
+  },
+  {
+    "id": "review-general:unhandled_import_error",
+    "file_path": "nodes.py",
+    "line_start": 2263,
+    "line_end": 2265,
+    "content": "def init_builtin_extra_nodes():\n    extra_nodes = [\n        'nodes_fresca.py',\n        'nodes_preview_any.py',\n        'nodes_ace.py',\n        'nodes_string.py',\n    ]\n\n    import_failed = []",
+    "severity": "medium",
+    "feedback_type": "code_improvement",
+    "recommendation": "Consider adding error handling around the import statements to manage cases where a module fails to load. This can help prevent the application from crashing and provide more informative error messages.",
+    "references": [
+      "https://docs.python.org/3/tutorial/errors.html#handling-exceptions"
+    ]
+  },
+  {
+    "id": "review-general:missing_documentation",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 1,
+    "line_end": 322,
+    "content": "import re\n\nfrom comfy.comfy_types.node_typing import IO\n\nclass StringConcatenate():\n    ...\n    class RegexExtract():\n        ...\nNODE_CLASS_MAPPINGS = {\n    ...\n}\nNODE_DISPLAY_NAME_MAPPINGS = {\n    ...\n}",
+    "severity": "low",
+    "feedback_type": "code_improvement",
+    "recommendation": "Add docstrings to each class and method to describe their purpose, parameters, and return values. This improves code readability and maintainability.",
+    "references": [
+      "https://www.sphinx-doc.org/en/master/ext/example_google.html"
+    ]
+  },
+  {
+    "id": "review-logic:missing-input-types-method",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 286,
+    "line_end": 286,
+    "content": "class RegexExtract():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True}),\n                \"regex_pattern\": (IO.STRING, {\"multiline\": True}),\n                \"mode\": (IO.COMBO, {\"options\": [\"First Match\", \"All Matches\", \"First Group\", \"All Groups\"]}),\n                \"case_insensitive\": (IO.BOOLEAN, {\"default\": True}),\n                \"multiline\": (IO.BOOLEAN, {\"default\": False}),\n                \"dotall\": (IO.BOOLEAN, {\"default\": False}),\n                \"group_index\": (IO.INT, {\"default\": 1, \"min\": 0, \"max\": 100})\n            }\n        }",
+    "severity": "low",
+    "feedback_type": "code_improvement",
+    "recommendation": "Add the missing implementation for the INPUT_TYPES method to ensure proper functionality.",
+    "references": []
+  }
+]

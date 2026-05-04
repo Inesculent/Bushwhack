@@ -95,6 +95,110 @@ class ReviewerWorkerReport(BaseModel):
     warnings: List[str] = Field(default_factory=list)
 
 
+ReviewCategory = Literal["security", "logic", "performance", "general", "other"]
+ReflectionVerdict = Literal["accept", "reject", "needs_context", "reclassify", "not_applicable"]
+
+
+class CandidateFinding(BaseModel):
+    """Draft finding before adversarial reflection and cleanup."""
+
+    candidate_id: str = Field(description="Stable id for this candidate within the graph run.")
+    patch_task_id: str = Field(description="Planner task id this candidate belongs to.")
+    file_path: str = Field(description="Repository-relative file path using '/' separators.")
+    line_start: int = Field(ge=1)
+    line_end: int = Field(ge=1)
+    content: str = Field(description="Issue description with evidence pointers.")
+    evidence_summary: str = Field(default="", description="Short note on what evidence supports this.")
+    confidence: float = Field(default=0.5, ge=0.0, le=1.0)
+    suspected_category: ReviewCategory = "other"
+    reflection_specialties: List[Literal["security", "performance", "logic", "general"]] = Field(
+        default_factory=list,
+        description="One or more reflector specialties that should evaluate this candidate.",
+    )
+    feedback_type: Literal["code_improvement", "defect_detection", "optimization", "other"] = "other"
+    severity: Literal["low", "medium", "high"] = "medium"
+
+    @model_validator(mode="after")
+    def validate_line_range(self) -> Self:
+        if self.line_end < self.line_start:
+            raise ValueError("line_end must be >= line_start")
+        return self
+
+
+class FocusedContextRequest(BaseModel):
+    """Bounded request for additional evidence after reflection."""
+
+    request_id: str
+    candidate_id: str
+    requested_by_specialty: Literal["security", "performance", "logic", "style", "general"]
+    file_paths: List[str] = Field(default_factory=list, description="Max few paths to read slices from.")
+    symbol_queries: List[str] = Field(default_factory=list, description="Symbols to resolve via search.")
+    text_queries: List[str] = Field(default_factory=list, description="Ripgrep patterns or plain search strings.")
+    reason: str = Field(default="", description="Why this context is needed.")
+
+
+class FocusedContextResult(BaseModel):
+    """Fulfilled snippets and search hits for one request."""
+
+    request_id: str
+    candidate_id: str
+    file_snippets: Dict[str, str] = Field(default_factory=dict)
+    search_hits: Dict[str, List[SearchResult]] = Field(default_factory=dict)
+    warnings: List[str] = Field(default_factory=list)
+
+
+class ReflectionReport(BaseModel):
+    """Specialist reflection on a single candidate."""
+
+    candidate_id: str
+    reflector_specialty: Literal["security", "performance", "logic", "style", "general"]
+    verdict: ReflectionVerdict
+    rationale: str = ""
+    reclassified_category: Optional[ReviewCategory] = None
+    focused_request: Optional[FocusedContextRequest] = None
+
+
+class ReflectionBatchOutput(BaseModel):
+    """Structured output for one specialty reflecting on all candidates."""
+
+    reports: List[ReflectionReport] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
+
+
+class CritiquerOutput(BaseModel):
+    """General critiquer structured output."""
+
+    summary: str = Field(default="", description="Brief overview of the critique pass.")
+    candidates: List[CandidateFinding] = Field(default_factory=list)
+    initial_focus_requests: List[FocusedContextRequest] = Field(
+        default_factory=list,
+        description="Optional bounded follow-up context before reflection.",
+    )
+    warnings: List[str] = Field(default_factory=list)
+
+
+class ReflectionOutput(BaseModel):
+    """Single reflector response for one candidate."""
+
+    verdict: ReflectionVerdict
+    rationale: str = ""
+    reclassified_category: Optional[ReviewCategory] = None
+    focused_request: Optional[FocusedContextRequest] = None
+
+
+class CritiqueRevisionItem(BaseModel):
+    candidate_id: str
+    verdict: ReflectionVerdict
+    updated_evidence_summary: str = ""
+
+
+class CritiqueRevisionOutput(BaseModel):
+    """Post-focused-context revision for candidates that needed more evidence."""
+
+    revisions: List[CritiqueRevisionItem] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
+
+
 class Insight(BaseModel):
     source_node: str
     content: str

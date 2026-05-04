@@ -6,6 +6,7 @@ import logging
 import time
 import uuid
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, List, Optional
 
@@ -21,6 +22,10 @@ from src.orchestration.reviewer_graph import run_reviewer
 
 DEFAULT_AACR_PROCESSED_PATH: Path = PROCESSED_DIR / "aacr_bench_graph_ready.csv"
 EXPERIMENT_TAG = "reviewer_graph_parallel"
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,6 +63,22 @@ def _write_raw(raw_dir: Path, slug: str, result: dict[str, Any]) -> Path:
         "metadata": metadata,
         "node_history": result.get("node_history", []),
         "worker_reports": [report.model_dump() for report in result.get("reviewer_worker_reports", []) or []],
+        "candidate_findings": [
+            item.model_dump() if hasattr(item, "model_dump") else item
+            for item in result.get("candidate_findings", []) or []
+        ],
+        "reflection_reports": [
+            item.model_dump() if hasattr(item, "model_dump") else item
+            for item in result.get("reflection_reports", []) or []
+        ],
+        "focused_context_requests": [
+            item.model_dump() if hasattr(item, "model_dump") else item
+            for item in result.get("focused_context_requests", []) or []
+        ],
+        "focused_context_results": {
+            key: (val.model_dump() if hasattr(val, "model_dump") else val)
+            for key, val in (result.get("focused_context_results", {}) or {}).items()
+        },
     }
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
     return path
@@ -103,20 +124,30 @@ def _invoke_for_pr(
     pr_url: str,
     context: PullRequestContext,
     repo_root: Optional[Path],
+    trace: bool,
+    started_at: str,
 ) -> dict[str, Any]:
+    graph_run_id = f"{run_id}:{_slug_for_pr_url(pr_url)}"
     repo_url = f"https://github.com/{context.repo}"
     initial_state: GraphState = {
-        "run_id": f"{run_id}:{_slug_for_pr_url(pr_url)}",
+        "run_id": graph_run_id,
         "repo_path": str(repo_root.resolve()) if repo_root is not None else repo_url,
         "git_diff": context.unified_diff,
         "user_goals": "",
         "global_insights": [],
         "findings": [],
         "reviewer_worker_reports": [],
+        "candidate_findings": [],
+        "reflection_reports": [],
+        "focused_context_requests": [],
+        "focused_context_results": {},
         "token_usage": 0,
         "node_history": [],
         "metadata": {
             "experiment": EXPERIMENT_TAG,
+            "run_id": run_id,
+            "graph_run_id": graph_run_id,
+            "pr_started_at": started_at,
             "pr_url": pr_url,
             "pr_title": context.title,
             "pr_description": context.body,
@@ -124,6 +155,7 @@ def _invoke_for_pr(
             "pr_number": context.number,
             "review_repo_url": repo_url,
             "review_pr_number": context.number,
+            "review_trace_enabled": trace,
         },
     }
     return run_reviewer(initial_state)
@@ -135,6 +167,7 @@ def run_aacr_reviewer(
     limit: Optional[int] = None,
     output_root: Optional[Path] = None,
     repo_root: Optional[Path] = None,
+    trace: bool = False,
 ) -> ReviewerRunArtifacts:
     settings = get_settings()
     ensure_directories([LOG_DIR])
@@ -143,12 +176,14 @@ def run_aacr_reviewer(
     resolved_run_id = run_id or uuid.uuid4().hex[:12]
     resolved_output_root = output_root or settings.reviewer_agent_output_dir
     run_dir, raw_dir, findings_dir = _prepare_output_dirs(Path(resolved_output_root), resolved_run_id)
+    run_started_at = _utc_now_iso()
 
     logger.info(
-        "Starting reviewer-graph AACR run run_id=%s dataset=%s output=%s",
+        "Starting reviewer-graph AACR run run_id=%s dataset=%s output=%s trace=%s",
         resolved_run_id,
         dataset_path,
         run_dir,
+        trace,
     )
 
     pr_urls = _load_pr_urls(dataset_path, limit=limit, logger=logger)
@@ -166,9 +201,12 @@ def run_aacr_reviewer(
 
     for idx, pr_url in enumerate(pr_urls, start=1):
         slug = _slug_for_pr_url(pr_url)
+        pr_started_at = _utc_now_iso()
         row: dict[str, Any] = {
             "pr_url": pr_url,
             "slug": slug,
+            "started_at": pr_started_at,
+            "finished_at": "",
             "status": "pending",
             "raw_path": "",
             "findings_path": "",
@@ -180,6 +218,7 @@ def run_aacr_reviewer(
         context = enricher.fetch_pr_context(pr_url)
         if context is None:
             row["status"] = "skipped_enrichment_failed"
+            row["finished_at"] = _utc_now_iso()
             row["error"] = "github_pr_context_unavailable"
             manifest_rows.append(row)
             failed += 1
@@ -193,10 +232,13 @@ def run_aacr_reviewer(
                 pr_url=pr_url,
                 context=context,
                 repo_root=repo_root,
+                trace=trace,
+                started_at=pr_started_at,
             )
         except Exception as exc:  # noqa: BLE001 - per-PR isolation; harness continues
             elapsed_ms = int((time.perf_counter() - started) * 1000)
             row["status"] = "error"
+            row["finished_at"] = _utc_now_iso()
             row["elapsed_ms"] = elapsed_ms
             row["error"] = f"{exc.__class__.__name__}: {exc}"
             manifest_rows.append(row)
@@ -205,11 +247,16 @@ def run_aacr_reviewer(
             continue
 
         elapsed_ms = int((time.perf_counter() - started) * 1000)
+        pr_finished_at = _utc_now_iso()
+        metadata = dict(result.get("metadata", {}))
+        metadata["pr_finished_at"] = pr_finished_at
+        result["metadata"] = metadata
         findings = result.get("final_findings") or result.get("findings", []) or []
         raw_path = _write_raw(raw_dir, slug, result)
         findings_path = _write_findings(findings_dir, slug, findings)
 
         row["status"] = "ok"
+        row["finished_at"] = pr_finished_at
         row["raw_path"] = str(raw_path.relative_to(run_dir))
         row["findings_path"] = str(findings_path.relative_to(run_dir))
         row["finding_count"] = len(findings)
@@ -231,14 +278,19 @@ def run_aacr_reviewer(
     manifest_df.to_csv(manifest_path, index=False)
 
     run_meta_path = run_dir / "run_meta.json"
+    run_finished_at = _utc_now_iso()
     run_meta = {
         "experiment": EXPERIMENT_TAG,
         "run_id": resolved_run_id,
+        "started_at": run_started_at,
+        "finished_at": run_finished_at,
         "dataset": AACR_BENCH_CONFIG.key,
         "dataset_path": str(dataset_path),
         "planner_model_key": settings.reviewer_planner_model_key,
         "worker_model_key": settings.reviewer_worker_model_key,
+        "reviewer_use_legacy_specialist_workers": settings.reviewer_use_legacy_specialist_workers,
         "repo_root": str(repo_root) if repo_root is not None else "",
+        "trace": trace,
         "total_prs": len(pr_urls),
         "succeeded": succeeded,
         "failed": failed,

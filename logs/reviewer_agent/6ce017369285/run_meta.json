@@ -1,0 +1,17 @@
+{
+  "experiment": "reviewer_graph_parallel",
+  "run_id": "6ce017369285",
+  "started_at": "2026-05-04T04:05:46.495622+00:00",
+  "finished_at": "2026-05-04T04:06:14.875666+00:00",
+  "dataset": "aacr_bench",
+  "dataset_path": "data\\processed\\aacr_bench_graph_ready.csv",
+  "planner_model_key": "qwen2.5-coder-32b",
+  "worker_model_key": "qwen2.5-coder-32b",
+  "reviewer_use_legacy_specialist_workers": false,
+  "repo_root": "",
+  "trace": true,
+  "total_prs": 1,
+  "succeeded": 1,
+  "failed": 0,
+  "elapsed_ms": 28374
+}

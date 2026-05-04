@@ -42,9 +42,12 @@ MODELS = {
         provider="openai",
         api_key_env="OPENAI_API_KEY",
     ),
-
     # Local Qwen models exposed through an OpenAI-compatible endpoint.
     "qwen2.5-coder-7b": LLMConfig(
+        model_name="Qwen/Qwen2.5-Coder-7B-Instruct",
+        provider="local",
+    ),
+    "qwen2.5-coder-7b-ollama": LLMConfig(
         model_name="qwen2.5-coder:7b",
         provider="local",
     ),
@@ -53,6 +56,10 @@ MODELS = {
         provider="local",
     ),
     "qwen2.5-coder-32b": LLMConfig(
+        model_name="Qwen/Qwen2.5-Coder-32B-Instruct",
+        provider="local",
+    ),
+    "qwen2.5-coder-32b-ollama": LLMConfig(
         model_name="qwen2.5-coder:32b",
         provider="local",
     ),
@@ -61,7 +68,7 @@ MODELS = {
         provider="local",
     ),
     "qwen-local": LLMConfig(
-        model_name="qwen2.5-coder:7b",
+        model_name="Qwen/Qwen2.5-Coder-7B-Instruct",
         provider="local",
     ),
 }
@@ -73,10 +80,10 @@ class Models:
     """
 
     DEFAULT_ROLE_MODELS = {
-        "explorer": "gemini-pro",
-        "planner": "gemini-pro",
-        "worker": "gemini-pro",
-        "synthesizer": "gemini-pro",
+        "explorer": "qwen2.5-coder-32b",
+        "planner": "qwen2.5-coder-32b",
+        "worker": "qwen2.5-coder-32b",
+        "synthesizer": "qwen2.5-coder-32b",
     }
 
     @staticmethod
@@ -152,6 +159,8 @@ def _build_llm_kwargs(config: LLMConfig, settings: Settings) -> dict[str, Any]:
     if config.provider == "local":
         kwargs["base_url"] = settings.local_llm_base_url
         kwargs["api_key"] = settings.local_llm_api_key
+        kwargs["timeout"] = settings.local_llm_timeout_seconds
+        kwargs["max_retries"] = settings.local_llm_max_retries
         return kwargs
 
     if not config.api_key_env:

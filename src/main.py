@@ -1,6 +1,11 @@
 import argparse
+import sys
 import uuid
 from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+	sys.path.insert(0, str(REPO_ROOT))
 
 from src.domain.state import GraphState
 from src.orchestration.graph import run_baseline

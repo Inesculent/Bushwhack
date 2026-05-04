@@ -1,0 +1,156 @@
+{
+  "metadata": {
+    "experiment": "reviewer_graph_parallel",
+    "pr_url": "https://github.com/comfyanonymous/ComfyUI/pull/7952",
+    "pr_title": "Add nodes for basic string operations",
+    "pr_description": "String nodes, requested in RFC https://github.com/Kosinkadink/rfcs/blob/main/rfcs/0000-corenodes.md#string-nodes\r\nDesigned nodes:\r\n1. Concatenate, and input is: \r\n- string_a, \r\n- string_b \r\n- separator\r\n![image](https://github.com/user-attachments/assets/894c0afc-664f-49a2-a0de-ed60c2aacfc5)\r\n2. Substring, and input is:\r\n- string\r\n- start\r\n- end\r\n![image](https://github.com/user-attachments/assets/1ab814a6-f360-43cb-86be-ac61486c9a78)\r\n\r\n3. Length, and input is\r\n- string\r\n![image](https://github.com/user-attachments/assets/eb4f7413-2f59-4faf-aaa7-cc3b0fbf4322)\r\n\r\n4. Case Converter, and input is\r\n- string\r\n- mode, with options are [\"UPPERCASE\", \"lowercase\", \"Capitalize\", \"Title Case\"]\r\n![image](https://github.com/user-attachments/assets/ba1041fd-40f5-4af0-a52b-c0df3ae3d3e4)\r\n\r\n5. Trim, and input is\r\n- string\r\n- mode, with options are [\"BOTH\", \"LEFT\", \"RIGHT\"]\r\n![image](https://github.com/user-attachments/assets/6489d7d8-ab78-4e9e-b172-b4f7e3cbacb2)\r\n\r\n6. Replace, and input is\r\n- string\r\n- find\r\n- replace\r\n![image](https://github.com/user-attachments/assets/997c09d6-75f2-4e71-90d5-6d0f77cfcb09)\r\n\r\n7. Contains, and input is\r\n- string\r\n- substring\r\n- case_sensitive\r\n![image](https://github.com/user-attachments/assets/e66adb5b-02de-4ba8-b848-f9f83215e694)\r\n\r\n8. Compare, and input is\r\n- string_a\r\n- string_b\r\n- mode, with options are [\"StartsWith\", \"EndsWith\", \"Equal\"]\r\n- case_sensitive\r\n![image](https://github.com/user-attachments/assets/4dd3b9ae-f3d8-41bc-90c2-8e459a923840)\r\n\r\n9. Regex Match, and input is\r\n- string\r\n- regex_pattern\r\n- case_insensitive\r\n- multiline\r\n- dotall\r\n![image](https://github.com/user-attachments/assets/a57ea778-009b-4b8e-94d0-e440c6ca235d)\r\n\r\n10. Regex Extract, and input is\r\n- string\r\n- regex_pattern\r\n- mode, with options are [\"First Match\", \"All Matches\", \"First Group\", \"All Groups\"]\r\n- case_insensitive\r\n- multiline\r\n- dotall\r\n- group_index\r\n![image](https://github.com/user-attachments/assets/b4d1fce8-f2a9-422d-8b62-9ac90d50060a)",
+    "pr_repo": "comfyanonymous/ComfyUI",
+    "pr_number": 7952,
+    "review_repo_url": "https://github.com/comfyanonymous/ComfyUI",
+    "review_pr_number": 7952,
+    "structural_extractor": {
+      "files_attempted": 2,
+      "files_parsed": 0,
+      "gap_count": 2,
+      "node_count": 2,
+      "edge_count": 0,
+      "topology_algorithm": "no_edges_singleton",
+      "community_count": 2,
+      "topology_splits_applied": 0
+    },
+    "review_planner": {
+      "summary": "Default parallel review plan.",
+      "task_count": 4,
+      "specialties": [
+        "general",
+        "logic",
+        "performance",
+        "security"
+      ],
+      "warnings": [
+        "planner_llm_fallback:APITimeoutError: Request timed out."
+      ]
+    },
+    "review_synthesizer": {
+      "worker_count": 4,
+      "raw_finding_count": 6,
+      "final_finding_count": 6,
+      "dropped_duplicate_ids": [],
+      "worker_reports": [
+        {
+          "task_id": "review-general",
+          "specialty": "general",
+          "explored_files": [
+            "comfy_extras/nodes_string.py",
+            "nodes.py"
+          ],
+          "context_summary": "This review focuses on the `comfy_extras/nodes_string.py` and `nodes.py` files, examining their maintainability, error handling, tests, and integration consistency.",
+          "warnings": [
+            "ast_unavailable_for_remote_sandbox",
+            "No significant issues found related to deprecated features, compatibility, migrations, or remote sandbox availability."
+          ]
+        },
+        {
+          "task_id": "review-logic",
+          "specialty": "logic",
+          "explored_files": [
+            "comfy_extras/nodes_string.py",
+            "nodes.py"
+          ],
+          "context_summary": "No significant issues found in the provided code snippets based on the given task requirements. The code appears to be well-structured and follows best practices for defining classes and functions. However, there is a potential issue with the `RegexExtract` class where the `join_delimiter` is hardcoded and might need to be configurable based on user preferences or other factors. Additionally, there is a missing implementation for the `INPUT_TYPES` method in the `RegexExtract` class, which should be added to ensure proper functionality.",
+          "warnings": [
+            "ast_unavailable_for_remote_sandbox"
+          ]
+        },
+        {
+          "task_id": "review-performance",
+          "specialty": "performance",
+          "explored_files": [
+            "comfy_extras/nodes_string.py",
+            "nodes.py"
+          ],
+          "context_summary": "No clear evidence of repeated expensive work, accidental quadratic behavior, N+1 access patterns, or concurrency bottlenecks were found in the provided code snippets. The `comfy_extras/nodes_string.py` file contains various utility functions for string manipulation, while the `nodes.py` file imports these utilities. The search query did not yield any matches related to the specified performance issues in either file.",
+          "warnings": [
+            "ast_unavailable_for_remote_sandbox",
+            "ast_unavailable_for_remote_sandbox"
+          ]
+        },
+        {
+          "task_id": "review-security",
+          "specialty": "security",
+          "explored_files": [
+            "comfy_extras/nodes_string.py",
+            "nodes.py"
+          ],
+          "context_summary": "No direct security issues found in the provided code snippets.",
+          "warnings": [
+            "ast_unavailable_for_remote_sandbox",
+            "The `nodes.py` file includes a new module `nodes_string.py`, but it is not reviewed in this context."
+          ]
+        }
+      ]
+    }
+  },
+  "node_history": [
+    "structural_extractor",
+    "review_planner",
+    "general_review_worker",
+    "logic_review_worker",
+    "performance_review_worker",
+    "security_review_worker",
+    "review_synthesizer"
+  ],
+  "worker_reports": [
+    {
+      "task_id": "review-general",
+      "specialty": "general",
+      "explored_files": [
+        "comfy_extras/nodes_string.py",
+        "nodes.py"
+      ],
+      "context_summary": "This review focuses on the `comfy_extras/nodes_string.py` and `nodes.py` files, examining their maintainability, error handling, tests, and integration consistency.",
+      "warnings": [
+        "ast_unavailable_for_remote_sandbox",
+        "No significant issues found related to deprecated features, compatibility, migrations, or remote sandbox availability."
+      ]
+    },
+    {
+      "task_id": "review-logic",
+      "specialty": "logic",
+      "explored_files": [
+        "comfy_extras/nodes_string.py",
+        "nodes.py"
+      ],
+      "context_summary": "No significant issues found in the provided code snippets based on the given task requirements. The code appears to be well-structured and follows best practices for defining classes and functions. However, there is a potential issue with the `RegexExtract` class where the `join_delimiter` is hardcoded and might need to be configurable based on user preferences or other factors. Additionally, there is a missing implementation for the `INPUT_TYPES` method in the `RegexExtract` class, which should be added to ensure proper functionality.",
+      "warnings": [
+        "ast_unavailable_for_remote_sandbox"
+      ]
+    },
+    {
+      "task_id": "review-performance",
+      "specialty": "performance",
+      "explored_files": [
+        "comfy_extras/nodes_string.py",
+        "nodes.py"
+      ],
+      "context_summary": "No clear evidence of repeated expensive work, accidental quadratic behavior, N+1 access patterns, or concurrency bottlenecks were found in the provided code snippets. The `comfy_extras/nodes_string.py` file contains various utility functions for string manipulation, while the `nodes.py` file imports these utilities. The search query did not yield any matches related to the specified performance issues in either file.",
+      "warnings": [
+        "ast_unavailable_for_remote_sandbox",
+        "ast_unavailable_for_remote_sandbox"
+      ]
+    },
+    {
+      "task_id": "review-security",
+      "specialty": "security",
+      "explored_files": [
+        "comfy_extras/nodes_string.py",
+        "nodes.py"
+      ],
+      "context_summary": "No direct security issues found in the provided code snippets.",
+      "warnings": [
+        "ast_unavailable_for_remote_sandbox",
+        "The `nodes.py` file includes a new module `nodes_string.py`, but it is not reviewed in this context."
+      ]
+    }
+  ]
+}

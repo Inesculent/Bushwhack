@@ -1,0 +1,112 @@
+[
+  {
+    "id": "review-performance:S1",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 34,
+    "line_end": 34,
+    "content": "class StringConcatenate():",
+    "severity": "low",
+    "feedback_type": "code_improvement",
+    "recommendation": "Consider implementing memoization or caching strategies for repetitive string concatenations if performance becomes an issue.",
+    "references": []
+  },
+  {
+    "id": "review-performance:S2",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 70,
+    "line_end": 70,
+    "content": "class StringSubstring():",
+    "severity": "low",
+    "feedback_type": "code_improvement",
+    "recommendation": "Implementing slicing directly could potentially improve performance over using the built-in string slicing method if there's a significant number of calls.",
+    "references": []
+  },
+  {
+    "id": "review-performance:S3",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 106,
+    "line_end": 106,
+    "content": "class StringLength():",
+    "severity": "low",
+    "feedback_type": "code_improvement",
+    "recommendation": "Using Python's built-in len() function is already efficient; consider optimizing other parts of the codebase instead.",
+    "references": []
+  },
+  {
+    "id": "review-performance:S4",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 142,
+    "line_end": 142,
+    "content": "class CaseConverter():",
+    "severity": "low",
+    "feedback_type": "code_improvement",
+    "recommendation": "For large strings, consider using a lookup table or similar data structure to optimize case conversion.",
+    "references": []
+  },
+  {
+    "id": "review-performance:S5",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 178,
+    "line_end": 178,
+    "content": "class StringTrim():",
+    "severity": "low",
+    "feedback_type": "code_improvement",
+    "recommendation": "Similar to case conversion, consider using optimized methods for trimming large strings.",
+    "references": []
+  },
+  {
+    "id": "review-performance:S6",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 214,
+    "line_end": 214,
+    "content": "class StringReplace():",
+    "severity": "low",
+    "feedback_type": "code_improvement",
+    "recommendation": "Regular expressions can be computationally expensive; ensure they are necessary and consider profiling to identify performance bottlenecks.",
+    "references": []
+  },
+  {
+    "id": "review-performance:S7",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 250,
+    "line_end": 250,
+    "content": "class StringContains():",
+    "severity": "low",
+    "feedback_type": "code_improvement",
+    "recommendation": "String containment checks are generally fast, but ensure they do not become a bottleneck in larger applications.",
+    "references": []
+  },
+  {
+    "id": "review-performance:S8",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 286,
+    "line_end": 286,
+    "content": "class StringCompare():",
+    "severity": "low",
+    "feedback_type": "code_improvement",
+    "recommendation": "Comparison operations are usually efficient, but review the surrounding logic to ensure overall efficiency.",
+    "references": []
+  },
+  {
+    "id": "review-performance:S9",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 322,
+    "line_end": 322,
+    "content": "class RegexMatch():",
+    "severity": "low",
+    "feedback_type": "code_improvement",
+    "recommendation": "Regular expression matching can be resource-intensive; ensure it is used judiciously and profile regularly for performance.",
+    "references": []
+  },
+  {
+    "id": "review-performance:S10",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 358,
+    "line_end": 358,
+    "content": "class RegexExtract():",
+    "severity": "low",
+    "feedback_type": "code_improvement",
+    "recommendation": "Regular expression extraction can be costly; consider optimizing or replacing with simpler alternatives if applicable.",
+    "references": []
+  }
+]

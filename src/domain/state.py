@@ -1,8 +1,12 @@
 from typing import TypedDict, List, Annotated, Dict, Any, Literal, Required, NotRequired
 import operator
 from .schemas import (
+    CandidateFinding,
+    FocusedContextRequest,
+    FocusedContextResult,
     PreflightParseIssue,
     PreflightSummary,
+    ReflectionReport,
     RepositoryMap,
     ReviewTask,
     ReviewFinding,
@@ -11,6 +15,20 @@ from .schemas import (
     StructuralTopologySummary,
     TaskStatus,
 )
+
+
+def merge_graph_metadata(
+    left: Dict[str, Any] | None,
+    right: Dict[str, Any] | None,
+) -> Dict[str, Any]:
+    """Deep-merge metadata dicts so parallel nodes (e.g. general_critiquer) can update disjoint keys safely."""
+    merged: Dict[str, Any] = dict(left or {})
+    for key, val in (right or {}).items():
+        if key in merged and isinstance(merged[key], dict) and isinstance(val, dict):
+            merged[key] = merge_graph_metadata(merged[key], val)
+        else:
+            merged[key] = val
+    return merged
 
 
 class GraphState(TypedDict, total=False):
@@ -46,9 +64,15 @@ class GraphState(TypedDict, total=False):
     reviewer_worker_reports: Annotated[List[ReviewerWorkerReport], operator.add]
     final_findings: NotRequired[List[ReviewFinding]]
 
+    # Adversarial review loop (critiquer → reflection → focused context → cleanup)
+    candidate_findings: Annotated[List[CandidateFinding], operator.add]
+    reflection_reports: Annotated[List[ReflectionReport], operator.add]
+    focused_context_requests: Annotated[List[FocusedContextRequest], operator.add]
+    focused_context_results: Annotated[Dict[str, FocusedContextResult], operator.or_]
+
     # Data for debugging and analysis
     current_task_id: NotRequired[str]
-    metadata: NotRequired[Dict[str, Any]]
+    metadata: Annotated[Dict[str, Any], merge_graph_metadata]
     token_usage: Annotated[int, operator.add]
     node_history: Annotated[List[str], operator.add]
 

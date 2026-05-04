@@ -1,0 +1,13 @@
+{
+  "experiment": "reviewer_graph_parallel",
+  "run_id": "7092fa9bb7ab",
+  "dataset": "aacr_bench",
+  "dataset_path": "data\\processed\\aacr_bench_graph_ready.csv",
+  "planner_model_key": "qwen2.5-coder-32b",
+  "worker_model_key": "qwen2.5-coder-32b",
+  "repo_root": "",
+  "total_prs": 1,
+  "succeeded": 1,
+  "failed": 0,
+  "elapsed_ms": 10052
+}

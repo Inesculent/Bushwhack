@@ -1,0 +1,24 @@
+[
+  {
+    "id": "review-security:potential_regex_performance_issue",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 159,
+    "line_end": 164,
+    "content": "try:\n match = re.search(regex_pattern, string, flags)\n result = match is not None\nexcept re.error:",
+    "severity": "medium",
+    "feedback_type": "code_improvement",
+    "recommendation": "Optimize regular expression usage to avoid performance bottlenecks, especially for large inputs.",
+    "references": []
+  },
+  {
+    "id": "review-security:potential_injection_risk",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 115,
+    "line_end": 120,
+    "content": "result = string.replace(find, replace)\nreturn result,",
+    "severity": "low",
+    "feedback_type": "code_improvement",
+    "recommendation": "Consider adding input validation and sanitization to prevent injection attacks.",
+    "references": []
+  }
+]

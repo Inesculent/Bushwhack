@@ -1,0 +1,2 @@
+pr_url,slug,status,raw_path,findings_path,finding_count,elapsed_ms,error
+https://github.com/comfyanonymous/ComfyUI/pull/7952,comfyanonymous__ComfyUI__pr7952,ok,raw\comfyanonymous__ComfyUI__pr7952.json,findings\comfyanonymous__ComfyUI__pr7952.json,6,48745,
