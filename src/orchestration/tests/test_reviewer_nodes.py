@@ -1,5 +1,5 @@
 from src.domain.schemas import ReviewFinding, ReviewTask, StructuralTopologyCommunity, StructuralTopologySummary
-from src.orchestration.nodes.application.planner import _render_planner_prompt, make_review_planner_node
+from src.orchestration.nodes.application.planner import _normalize_tasks, _render_planner_prompt, make_review_planner_node
 from src.orchestration.nodes.application.synthesizer import synthesizer_node
 from src.orchestration.nodes.application.worker import (
     ReviewTaskContext,
@@ -92,6 +92,57 @@ def test_review_planner_prompt_uses_structural_routing_hints():
     assert "changed" in prompt
     assert "node_to_community" not in prompt
     assert "node-999" not in prompt
+
+
+def test_review_planner_flattens_nested_llm_task_output():
+    nested = [
+        ReviewTask(
+            id="container",
+            title="Container",
+            description="LLM wrapper task that should not be executed.",
+            target_files=["src/app.py"],
+            specialty="general",
+            subtasks=[
+                ReviewTask(
+                    id="review-security",
+                    title="Security",
+                    description="Security leaf.",
+                    target_files=[],
+                    specialty="security",
+                ),
+                ReviewTask(
+                    id="logic-container",
+                    title="Logic container",
+                    description="Nested wrapper.",
+                    target_files=["src/app.py"],
+                    specialty="logic",
+                    subtasks=[
+                        ReviewTask(
+                            id="review-logic",
+                            title="Logic",
+                            description="Logic leaf.",
+                            target_files=[],
+                            specialty="logic",
+                        )
+                    ],
+                ),
+            ],
+        )
+    ]
+
+    normalized = _normalize_tasks(
+        nested,
+        {
+            "run_id": "test",
+            "repo_path": "/tmp/repo",
+            "git_diff": "diff --git a/src/app.py b/src/app.py\n+++ b/src/app.py\n",
+        },
+    )
+
+    assert [task.id for task in normalized] == ["review-security", "review-logic"]
+    assert [task.specialty for task in normalized] == ["security", "logic"]
+    assert all(task.subtasks == [] for task in normalized)
+    assert all(task.target_files == ["src/app.py"] for task in normalized)
 
 
 def test_specialist_worker_marks_task_complete_without_llm():

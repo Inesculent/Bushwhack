@@ -1,0 +1,24 @@
+[
+  {
+    "id": "security_1",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 296,
+    "line_end": 314,
+    "content": "class RegexMatch():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True}),\n                \"regex_pattern\": (IO.STRING, {\"multiline\": True}),\n                \"case_insensitive\": (IO.BOOLEAN, {\"default\": True}),\n                \"multiline\": (IO.BOOLEAN, {\"default\": False}),\n                \"dotall\": (IO.BOOLEAN, {\"default\": False})\n            }\n        }\n\n    RETURN_TYPES = (IO.BOOLEAN,)\n    RETURN_NAMES = (\"matches\",)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": null,
+    "references": []
+  },
+  {
+    "id": "security_2",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 321,
+    "line_end": 347,
+    "content": "class RegexExtract():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True}),\n                \"regex_pattern\": (IO.STRING, {\"multiline\": True}),\n                \"mode\": (IO.COMBO, {\"options\": [\"First Match\", \"All Matches\", \"First Group\", \"All Groups\"]}),\n                \"case_insensitive\": (IO.BOOLEAN, {\"default\": True}),\n                \"multiline\": (IO.BOOLEAN, {\"default\": False}),\n                \"dotall\": (IO.BOOLEAN, {\"default\": False}),\n                \"group_index\": (IO.INT, {\"default\": 1, \"min\": 0, \"max\": 100})\n            }\n        }\n\n    RETURN_TYPES = (IO.STRING,)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": null,
+    "references": []
+  }
+]

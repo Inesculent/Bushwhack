@@ -1,0 +1,260 @@
+{
+  "metadata": {
+    "experiment": "reviewer_graph_parallel",
+    "run_id": "abb1921dfc82",
+    "graph_run_id": "abb1921dfc82:comfyanonymous__ComfyUI__pr7952",
+    "pr_started_at": "2026-05-04T04:28:35.179550+00:00",
+    "pr_url": "https://github.com/comfyanonymous/ComfyUI/pull/7952",
+    "pr_title": "Add nodes for basic string operations",
+    "pr_description": "String nodes, requested in RFC https://github.com/Kosinkadink/rfcs/blob/main/rfcs/0000-corenodes.md#string-nodes\r\nDesigned nodes:\r\n1. Concatenate, and input is: \r\n- string_a, \r\n- string_b \r\n- separator\r\n![image](https://github.com/user-attachments/assets/894c0afc-664f-49a2-a0de-ed60c2aacfc5)\r\n2. Substring, and input is:\r\n- string\r\n- start\r\n- end\r\n![image](https://github.com/user-attachments/assets/1ab814a6-f360-43cb-86be-ac61486c9a78)\r\n\r\n3. Length, and input is\r\n- string\r\n![image](https://github.com/user-attachments/assets/eb4f7413-2f59-4faf-aaa7-cc3b0fbf4322)\r\n\r\n4. Case Converter, and input is\r\n- string\r\n- mode, with options are [\"UPPERCASE\", \"lowercase\", \"Capitalize\", \"Title Case\"]\r\n![image](https://github.com/user-attachments/assets/ba1041fd-40f5-4af0-a52b-c0df3ae3d3e4)\r\n\r\n5. Trim, and input is\r\n- string\r\n- mode, with options are [\"BOTH\", \"LEFT\", \"RIGHT\"]\r\n![image](https://github.com/user-attachments/assets/6489d7d8-ab78-4e9e-b172-b4f7e3cbacb2)\r\n\r\n6. Replace, and input is\r\n- string\r\n- find\r\n- replace\r\n![image](https://github.com/user-attachments/assets/997c09d6-75f2-4e71-90d5-6d0f77cfcb09)\r\n\r\n7. Contains, and input is\r\n- string\r\n- substring\r\n- case_sensitive\r\n![image](https://github.com/user-attachments/assets/e66adb5b-02de-4ba8-b848-f9f83215e694)\r\n\r\n8. Compare, and input is\r\n- string_a\r\n- string_b\r\n- mode, with options are [\"StartsWith\", \"EndsWith\", \"Equal\"]\r\n- case_sensitive\r\n![image](https://github.com/user-attachments/assets/4dd3b9ae-f3d8-41bc-90c2-8e459a923840)\r\n\r\n9. Regex Match, and input is\r\n- string\r\n- regex_pattern\r\n- case_insensitive\r\n- multiline\r\n- dotall\r\n![image](https://github.com/user-attachments/assets/a57ea778-009b-4b8e-94d0-e440c6ca235d)\r\n\r\n10. Regex Extract, and input is\r\n- string\r\n- regex_pattern\r\n- mode, with options are [\"First Match\", \"All Matches\", \"First Group\", \"All Groups\"]\r\n- case_insensitive\r\n- multiline\r\n- dotall\r\n- group_index\r\n![image](https://github.com/user-attachments/assets/b4d1fce8-f2a9-422d-8b62-9ac90d50060a)",
+    "pr_repo": "comfyanonymous/ComfyUI",
+    "pr_number": 7952,
+    "review_repo_url": "https://github.com/comfyanonymous/ComfyUI",
+    "review_pr_number": 7952,
+    "review_trace_enabled": true,
+    "structural_extractor": {
+      "mode": "sandbox_entities",
+      "files_attempted": 312,
+      "files_parsed": 312,
+      "gap_count": 0,
+      "node_count": 5342,
+      "edge_count": 24249,
+      "topology_algorithm": "graspologic_leiden",
+      "community_count": 49,
+      "topology_splits_applied": 0
+    },
+    "review_planner": {
+      "summary": "This review plan decomposes the changes into four specialized tasks focusing on security, logic, performance, and general aspects. The changes introduce new string manipulation nodes in `comfy_extras/nodes_string.py` and update `nodes.py` to include these new nodes.",
+      "task_count": 1,
+      "specialties": [
+        "general"
+      ],
+      "tasks": [
+        {
+          "id": "security",
+          "title": "Security Review",
+          "description": "Verify that there are no security vulnerabilities introduced by the new string manipulation nodes. Specifically, check for potential injection attacks, improper handling of user input, and secure usage of regular expressions.",
+          "target_files": [
+            "comfy_extras/nodes_string.py"
+          ],
+          "subtasks": [
+            {
+              "id": "regex_injection",
+              "title": "Regex Injection Vulnerability",
+              "description": "Check the usage of `re.search`, `re.findall`, and `re.finditer` to ensure that user-supplied regex patterns are sanitized or validated to prevent regex injection attacks.",
+              "target_files": [
+                "comfy_extras/nodes_string.py"
+              ],
+              "subtasks": [],
+              "specialty": "security",
+              "depth": 1,
+              "assigned_model": "security"
+            },
+            {
+              "id": "logic",
+              "title": "Logic Review",
+              "description": "Verify the correctness of the logic implemented in the new string manipulation nodes. Ensure that each node performs its intended function correctly and handles edge cases appropriately.",
+              "target_files": [
+                "comfy_extras/nodes_string.py"
+              ],
+              "subtasks": [
+                {
+                  "id": "correctness",
+                  "title": "Function Correctness",
+                  "description": "Ensure that each method in the classes `StringConcatenate`, `StringSubstring`, `StringLength`, `CaseConverter`, `StringTrim`, `StringReplace`, `StringContains`, `StringCompare`, `RegexMatch`, and `RegexExtract` correctly implements the described functionality.",
+                  "target_files": [
+                    "comfy_extras/nodes_string.py"
+                  ],
+                  "subtasks": [],
+                  "specialty": "logic",
+                  "depth": 1,
+                  "assigned_model": "logic"
+                },
+                {
+                  "id": "performance",
+                  "title": "Performance Review",
+                  "description": "Evaluate the performance implications of the new string manipulation nodes. Check for inefficient operations, especially in the regex-based nodes, and consider potential optimizations.",
+                  "target_files": [
+                    "comfy_extras/nodes_string.py"
+                  ],
+                  "subtasks": [
+                    {
+                      "id": "regex_performance",
+                      "title": "Regex Performance",
+                      "description": "Assess the performance of regex operations in `RegexMatch` and `RegexExtract`. Consider edge cases where regex patterns could lead to excessive backtracking and suggest optimizations if necessary.",
+                      "target_files": [
+                        "comfy_extras/nodes_string.py"
+                      ],
+                      "subtasks": [],
+                      "specialty": "performance",
+                      "depth": 1,
+                      "assigned_model": "performance"
+                    },
+                    {
+                      "id": "general",
+                      "title": "General Review",
+                      "description": "Perform a general review of the new string manipulation nodes. Check for consistency with existing code, adherence to coding standards, and completeness of documentation and error handling.",
+                      "target_files": [
+                        "comfy_extras/nodes_string.py",
+                        "nodes.py"
+                      ],
+                      "subtasks": [
+                        {
+                          "id": "coding_standards",
+                          "title": "Coding Standards Compliance",
+                          "description": "Ensure that the new code adheres to the project's coding standards, including naming conventions, formatting, and commenting.",
+                          "target_files": [
+                            "comfy_extras/nodes_string.py",
+                            "nodes.py"
+                          ],
+                          "subtasks": [],
+                          "specialty": "general",
+                          "depth": 1,
+                          "assigned_model": "general"
+                        }
+                      ],
+                      "specialty": "general",
+                      "depth": 0,
+                      "assigned_model": "general"
+                    }
+                  ],
+                  "specialty": "general",
+                  "depth": 0,
+                  "assigned_model": "general"
+                }
+              ],
+              "specialty": "general",
+              "depth": 0,
+              "assigned_model": "general"
+            }
+          ],
+          "specialty": "general",
+          "depth": 0,
+          "assigned_model": "general"
+        }
+      ],
+      "warnings": []
+    },
+    "general_critiquer": {
+      "by_task": {
+        "security": {
+          "summary": "No high-severity security issues were found in the new string manipulation nodes. However, there are some areas that require further review, particularly around regular expression usage.",
+          "candidate_count": 2,
+          "warnings": [
+            "The RegexMatch and RegexExtract classes accept user-provided regex patterns without validation, which could lead to ReDoS (Regular Expression Denial of Service) attacks."
+          ],
+          "initial_focus_requests": []
+        }
+      }
+    },
+    "adversarial_reflection": {
+      "report_count": 2,
+      "focused_request_count": 0,
+      "routed_candidate_counts": {
+        "security": 2,
+        "logic": 0,
+        "performance": 0,
+        "general": 0
+      },
+      "total_routed_candidate_reviews": 2,
+      "warnings": []
+    },
+    "adversarial_cleanup": {
+      "promoted_count": 2,
+      "dropped_candidate_ids": [],
+      "ignored_off_domain_rejections": {},
+      "ignored_off_domain_context_requests": {},
+      "misrouted_candidate_ids": {}
+    },
+    "review_synthesizer": {
+      "worker_count": 0,
+      "reflection_report_count": 2,
+      "raw_finding_count": 2,
+      "final_finding_count": 2,
+      "dropped_duplicate_ids": [],
+      "worker_reports": [],
+      "reflection_reports": [
+        {
+          "candidate_id": "security_1",
+          "reflector_specialty": "security",
+          "verdict": "accept",
+          "rationale": "The `RegexMatch` class allows users to provide a regex pattern without any sanitization or validation, which can lead to ReDoS (Regular Expression Denial of Service) attacks.",
+          "reclassified_category": null,
+          "focused_request": null
+        },
+        {
+          "candidate_id": "security_2",
+          "reflector_specialty": "security",
+          "verdict": "accept",
+          "rationale": "The `RegexExtract` class also allows users to provide a regex pattern without any sanitization or validation, which can lead to ReDoS (Regular Expression Denial of Service) attacks.",
+          "reclassified_category": null,
+          "focused_request": null
+        }
+      ]
+    },
+    "pr_finished_at": "2026-05-04T04:30:13.225650+00:00"
+  },
+  "node_history": [
+    "sandbox_structural_extractor",
+    "review_planner",
+    "general_critiquer",
+    "adversarial_reflection",
+    "adversarial_cleanup",
+    "review_synthesizer"
+  ],
+  "worker_reports": [],
+  "candidate_findings": [
+    {
+      "candidate_id": "security_1",
+      "patch_task_id": "security",
+      "file_path": "comfy_extras/nodes_string.py",
+      "line_start": 296,
+      "line_end": 314,
+      "content": "class RegexMatch():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True}),\n                \"regex_pattern\": (IO.STRING, {\"multiline\": True}),\n                \"case_insensitive\": (IO.BOOLEAN, {\"default\": True}),\n                \"multiline\": (IO.BOOLEAN, {\"default\": False}),\n                \"dotall\": (IO.BOOLEAN, {\"default\": False})\n            }\n        }\n\n    RETURN_TYPES = (IO.BOOLEAN,)\n    RETURN_NAMES = (\"matches\",)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"",
+      "evidence_summary": "The `RegexMatch` class allows users to provide a regex pattern which is then used to search within a given string. There is no sanitization or validation of the regex pattern provided by the user.",
+      "confidence": 0.7,
+      "suspected_category": "security",
+      "reflection_specialties": [
+        "security"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "medium"
+    },
+    {
+      "candidate_id": "security_2",
+      "patch_task_id": "security",
+      "file_path": "comfy_extras/nodes_string.py",
+      "line_start": 321,
+      "line_end": 347,
+      "content": "class RegexExtract():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True}),\n                \"regex_pattern\": (IO.STRING, {\"multiline\": True}),\n                \"mode\": (IO.COMBO, {\"options\": [\"First Match\", \"All Matches\", \"First Group\", \"All Groups\"]}),\n                \"case_insensitive\": (IO.BOOLEAN, {\"default\": True}),\n                \"multiline\": (IO.BOOLEAN, {\"default\": False}),\n                \"dotall\": (IO.BOOLEAN, {\"default\": False}),\n                \"group_index\": (IO.INT, {\"default\": 1, \"min\": 0, \"max\": 100})\n            }\n        }\n\n    RETURN_TYPES = (IO.STRING,)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"",
+      "evidence_summary": "The `RegexExtract` class also allows users to provide a regex pattern. Similar to `RegexMatch`, there is no sanitization or validation of the regex pattern provided by the user.",
+      "confidence": 0.7,
+      "suspected_category": "security",
+      "reflection_specialties": [
+        "security"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "medium"
+    }
+  ],
+  "reflection_reports": [
+    {
+      "candidate_id": "security_1",
+      "reflector_specialty": "security",
+      "verdict": "accept",
+      "rationale": "The `RegexMatch` class allows users to provide a regex pattern without any sanitization or validation, which can lead to ReDoS (Regular Expression Denial of Service) attacks.",
+      "reclassified_category": null,
+      "focused_request": null
+    },
+    {
+      "candidate_id": "security_2",
+      "reflector_specialty": "security",
+      "verdict": "accept",
+      "rationale": "The `RegexExtract` class also allows users to provide a regex pattern without any sanitization or validation, which can lead to ReDoS (Regular Expression Denial of Service) attacks.",
+      "reclassified_category": null,
+      "focused_request": null
+    }
+  ],
+  "focused_context_requests": [],
+  "focused_context_results": {}
+}

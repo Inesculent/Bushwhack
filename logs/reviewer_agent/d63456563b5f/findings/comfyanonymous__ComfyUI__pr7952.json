@@ -1,0 +1,178 @@
+[
+  {
+    "id": "logic-10",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 1,
+    "line_end": 525,
+    "content": "All methods lack comprehensive test cases covering edge cases like empty strings, special characters, and large inputs.",
+    "severity": "high",
+    "feedback_type": "defect_detection",
+    "recommendation": null,
+    "references": []
+  },
+  {
+    "id": "logic-1",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 67,
+    "line_end": 70,
+    "content": "def execute(self, string, start, end, **kwargs):\n        return string[start:end],\n",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": null,
+    "references": []
+  },
+  {
+    "id": "logic-2",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 109,
+    "line_end": 112,
+    "content": "def execute(self, string, **kwargs):\n        length = len(string)\n\n        return length,\n",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": null,
+    "references": []
+  },
+  {
+    "id": "logic-3",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 155,
+    "line_end": 172,
+    "content": "def execute(self, string, mode, **kwargs):\n        if mode == \"UPPERCASE\":\n            result = string.upper()\n        elif mode == \"lowercase\":\n            result = string.lower()\n        elif mode == \"Capitalize\":\n            result = string.capitalize()\n        elif mode == \"Title Case\":\n            result = string.title()\n        else:\n            result = string\n\n        return result,\n",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": null,
+    "references": []
+  },
+  {
+    "id": "logic-4",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 194,
+    "line_end": 211,
+    "content": "def execute(self, string, mode, **kwargs):\n        if mode == \"Both\":\n            result = string.strip()\n        elif mode == \"Left\":\n            result = string.lstrip()\n        elif mode == \"Right\":\n            result = string.rstrip()\n        else:\n            result = string\n\n        return result,\n",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": null,
+    "references": []
+  },
+  {
+    "id": "security_1",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 232,
+    "line_end": 289,
+    "content": "class RegexMatch():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True}),\n                \"regex_pattern\": (IO.STRING, {\"multiline\": True}),\n                \"case_insensitive\": (IO.BOOLEAN, {\"default\": True}),\n                \"multiline\": (IO.BOOLEAN, {\"default\": False}),\n                \"dotall\": (IO.BOOLEAN, {\"default\": False})\n            }\n        }\n\n    RETURN_TYPES = (IO.BOOLEAN,)\n    RETURN_NAMES = (\"matches\",)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string, regex_pattern, case_insensitive, multiline, dotall, **kwargs):\n        flags = 0\n\n        if case_insensitive:\n            flags |= re.IGNORECASE\n        if multiline:\n            flags |= re.MULTILINE\n        if dotall:\n            flags |= re.DOTALL\n\n        try:\n            match = re.search(regex_pattern, string, flags)\n            result = match is not None\n\n        except re.error:\n            result = False\n\n        return result,",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": null,
+    "references": []
+  },
+  {
+    "id": "logic-5",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 233,
+    "line_end": 237,
+    "content": "def execute(self, string, find, replace, **kwargs):\n        result = string.replace(find, replace)\n        return result,\n",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": null,
+    "references": []
+  },
+  {
+    "id": "performance_1",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 259,
+    "line_end": 322,
+    "content": "The new string manipulation classes, especially `RegexMatch` and `RegexExtract`, involve regex operations which can be computationally expensive with large inputs or complex patterns.",
+    "severity": "medium",
+    "feedback_type": "optimization",
+    "recommendation": null,
+    "references": []
+  },
+  {
+    "id": "logic-6",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 265,
+    "line_end": 274,
+    "content": "def execute(self, string, substring, case_sensitive, **kwargs):\n        if case_sensitive:\n            contains = substring in string\n        else:\n            contains = substring.lower() in string.lower()\n\n        return contains,\n",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": null,
+    "references": []
+  },
+  {
+    "id": "general-2",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 289,
+    "line_end": 316,
+    "content": "class RegexMatch():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True}),\n                \"regex_pattern\": (IO.STRING, {\"multiline\": True}),\n                \"case_insensitive\": (IO.BOOLEAN, {\"default\": True}),\n                \"multiline\": (IO.BOOLEAN, {\"default\": False}),\n                \"dotall\": (IO.BOOLEAN, {\"default\": False})\n            }\n        }\n\n    RETURN_TYPES = (IO.BOOLEAN,)\n    RETURN_NAMES = (\"matches\",)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string, regex_pattern, case_insensitive, multiline, dotall, **kwargs):\n        flags = 0\n\n        if case_insensitive:\n            flags |= re.IGNORECASE\n        if multiline:\n            flags |= re.MULTILINE\n        if dotall:\n            flags |= re.DOTALL\n\n        try:\n            match = re.search(regex_pattern, string, flags)\n            result = match is not None\n\n        except re.error:\n            result = False\n\n        return result,",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": null,
+    "references": []
+  },
+  {
+    "id": "logic-7",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 296,
+    "line_end": 320,
+    "content": "def execute(self, string_a, string_b, mode, case_sensitive, **kwargs):\n        if case_sensitive:\n            a = string_a\n            b = string_b\n        else:\n            a = string_a.lower()\n            b = string_b.lower()\n\n        if mode == \"Equal\":\n            return a == b,\n        elif mode == \"Starts With\":\n            return a.startswith(b),\n        elif mode == \"Ends With\":\n            return a.endswith(b),\n",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": null,
+    "references": []
+  },
+  {
+    "id": "security_2",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 303,
+    "line_end": 386,
+    "content": "class RegexExtract():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True}),\n                \"regex_pattern\": (IO.STRING, {\"multiline\": True}),\n                \"mode\": (IO.COMBO, {\"options\": [\"First Match\", \"All Matches\", \"First Group\", \"All Groups\"]}),\n                \"case_insensitive\": (IO.BOOLEAN, {\"default\": True}),\n                \"multiline\": (IO.BOOLEAN, {\"default\": False}),\n                \"dotall\": (IO.BOOLEAN, {\"default\": False}),\n                \"group_index\": (IO.INT, {\"default\": 1, \"min\": 0, \"max\": 100})\n            }\n        }\n\n    RETURN_TYPES = (IO.STRING,)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string, regex_pattern, mode, case_insensitive, multiline, dotall, group_index, **kwargs):\n        join_delimiter = \"\\n\"\n\n        flags = 0\n        if case_insensitive:\n            flags |= re.IGNORECASE\n        if multiline:\n            flags |= re.MULTILINE\n        if dotall:\n            flags |= re.DOTALL\n\n        try:\n            if mode == \"First Match\":\n                match = re.search(regex_pattern, string, flags)\n                if match:\n                    result = match.group(0)\n                else:\n                    result = \"\"\n\n            elif mode == \"All Matches\":\n                matches = re.findall(regex_pattern, string, flags)\n                if matches:\n                    if isinstance(matches[0], tuple):\n                        result = join_delimiter.join([m[0] for m in matches])\n                    else:\n                        result = join_delimiter.join(matches)\n                else:\n                    result = \"\"\n\n            elif mode == \"First Group\":\n                match = re.search(regex_pattern, string, flags)\n                if match and len(match.groups()) >= group_index:\n                    result = match.group(group_index)\n                else:\n                    result = \"\"\n\n            elif mode == \"All Groups\":\n                matches = re.finditer(regex_pattern, string, flags)\n                results = []\n                for match in matches:\n                    if match.groups() and len(match.groups()) >= group_index:\n                        results.append(match.group(group_index))\n                result = join_delimiter.join(results)\n            else:\n                result = \"\"\n\n        except re.error:\n            result = \"\"\n\n        return result,",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": null,
+    "references": []
+  },
+  {
+    "id": "general-1",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 319,
+    "line_end": 322,
+    "content": "NODE_CLASS_MAPPINGS = {\n    \"StringConcatenate\": StringConcatenate,\n    \"StringSubstring\": StringSubstring,\n    \"StringLength\": StringLength,\n    \"CaseConverter\": CaseConverter,\n    \"StringTrim\": StringTrim,\n    \"StringReplace\": StringReplace,\n    \"StringContains\": StringContains,\n    \"StringCompare\": StringCompare,\n    \"RegexMatch\": RegexMatch,\n    \"RegexExtract\": RegexExtract\n}",
+    "severity": "medium",
+    "feedback_type": "code_improvement",
+    "recommendation": null,
+    "references": []
+  },
+  {
+    "id": "logic-8",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 345,
+    "line_end": 384,
+    "content": "def execute(self, string, regex_pattern, case_insensitive, multiline, dotall, **kwargs):\n        flags = 0\n\n        if case_insensitive:\n            flags |= re.IGNORECASE\n        if multiline:\n            flags |= re.MULTILINE\n        if dotall:\n            flags |= re.DOTALL\n\n        try:\n            match = re.search(regex_pattern, string, flags)\n            result = match is not None\n\n        except re.error:\n            result = False\n\n        return result,\n",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": null,
+    "references": []
+  },
+  {
+    "id": "logic-9",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 386,
+    "line_end": 525,
+    "content": "def execute(self, string, regex_pattern, mode, case_insensitive, multiline, dotall, group_index, **kwargs):\n        join_delimiter = \"\\n\"\n\n        flags = 0\n        if case_insensitive:\n            flags |= re.IGNORECASE\n        if multiline:\n            flags |= re.MULTILINE\n        if dotall:\n            flags |= re.DOTALL\n\n        try:\n            if mode == \"First Match\":\n                match = re.search(regex_pattern, string, flags)\n                if match:\n                    result = match.group(0)\n                else:\n                    result = \"\"\n\n            elif mode == \"All Matches\":\n                matches = re.findall(regex_pattern, string, flags)\n                if matches:\n                    if isinstance(matches[0], tuple):\n                        result = join_delimiter.join([m[0] for m in matches])\n                    else:\n                        result = join_delimiter.join(matches)\n                else:\n                    result = \"\"\n\n            elif mode == \"First Group\":\n                match = re.search(regex_pattern, string, flags)\n                if match and len(match.groups()) >= group_index:\n                    result = match.group(group_index)\n                else:\n                    result = \"\"\n\n            elif mode == \"All Groups\":\n                matches = re.finditer(regex_pattern, string, flags)\n                results = []\n                for match in matches:\n                    if match.groups() and len(match.groups()) >= group_index:\n                        results.append(match.group(group_index))\n                result = join_delimiter.join(results)\n            else:\n                result = \"\"\n\n        except re.error:\n            result = \"\"\n\n        return result,\n",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": null,
+    "references": []
+  },
+  {
+    "id": "general-3",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 213,
+    "line_end": 242,
+    "content": "class StringContains():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True}),\n                \"substring\": (IO.STRING, {\"multiline\": True}),\n                \"case_sensitive\": (IO.BOOLEAN, {\"default\": True})\n            }\n        }\n\n    RETURN_TYPES = (IO.BOOLEAN,)\n    RETURN_NAMES = (\"contains\",)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string, substring, case_sensitive, **kwargs):\n        if case_sensitive:\n            contains = substring in string\n        else:\n            contains = substring.lower() in string.lower()\n\n        return contains,",
+    "severity": "low",
+    "feedback_type": "optimization",
+    "recommendation": null,
+    "references": []
+  }
+]

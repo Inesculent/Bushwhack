@@ -114,12 +114,23 @@ def _default_tasks(state: GraphState) -> List[ReviewTask]:
     ]
 
 
+def _flatten_planner_tasks(tasks: List[ReviewTask]) -> List[ReviewTask]:
+    """Turn hierarchical planner output into executable leaf tasks for LangGraph Send fan-out."""
+    flattened: List[ReviewTask] = []
+    for task in tasks:
+        if task.subtasks:
+            flattened.extend(_flatten_planner_tasks(task.subtasks))
+        else:
+            flattened.append(task)
+    return flattened
+
+
 def _normalize_tasks(tasks: List[ReviewTask], state: GraphState) -> List[ReviewTask]:
     fallback_files = _target_files(state)
     normalized: List[ReviewTask] = []
     used_ids: set[str] = set()
 
-    for index, task in enumerate(tasks, start=1):
+    for index, task in enumerate(_flatten_planner_tasks(tasks), start=1):
         specialty = task.specialty if task.specialty in WORKER_SPECIALTIES else "general"
         task_id = task.id.strip() or f"review-{specialty}-{index}"
         if task_id in used_ids:
@@ -131,6 +142,7 @@ def _normalize_tasks(tasks: List[ReviewTask], state: GraphState) -> List[ReviewT
                     "id": task_id,
                     "specialty": specialty,
                     "target_files": _dedupe_preserve_order(task.target_files or fallback_files),
+                    "subtasks": [],
                 }
             )
         )
