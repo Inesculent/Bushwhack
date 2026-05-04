@@ -27,7 +27,7 @@ flowchart TD
     needsContext -->|no| adversarialCleanup
 
     adversarialCleanup --> reviewSynthesizer[review_synthesizer]
-    reviewSynthesizer --> end([END])
+    reviewSynthesizer --> graphEnd([END])
 ```
 
 There is also a legacy worker path behind `Settings.reviewer_use_legacy_specialist_workers`. When enabled, `review_planner` fans out directly to `security_worker`, `logic_worker`, `performance_worker`, and `general_worker`, then joins at `review_synthesizer`. The default is the adversarial path.
