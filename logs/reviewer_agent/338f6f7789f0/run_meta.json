@@ -1,0 +1,18 @@
+{
+  "experiment": "reviewer_graph_parallel",
+  "run_id": "338f6f7789f0",
+  "started_at": "2026-05-04T19:43:15.794893+00:00",
+  "finished_at": "2026-05-04T19:43:21.070358+00:00",
+  "dataset": "aacr_bench",
+  "dataset_path": "data\\processed\\aacr_bench_graph_ready.csv",
+  "planner_model_key": "qwen2.5-coder-32b",
+  "worker_model_key": "qwen2.5-coder-32b",
+  "reviewer_use_legacy_specialist_workers": false,
+  "pr_url_filter": "https://github.com/infiniflow/ragflow/pull/6553",
+  "repo_root": "",
+  "trace": true,
+  "total_prs": 1,
+  "succeeded": 0,
+  "failed": 1,
+  "elapsed_ms": 5247
+}

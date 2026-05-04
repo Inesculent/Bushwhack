@@ -95,6 +95,7 @@ def _load_pr_urls(
     source: pd.DataFrame | Path,
     limit: Optional[int],
     logger: logging.Logger,
+    pr_url: Optional[str] = None,
 ) -> List[str]:
     if isinstance(source, pd.DataFrame):
         df = source
@@ -105,15 +106,14 @@ def _load_pr_urls(
     if "pr_url" not in df.columns:
         raise ValueError("AACR-Bench dataframe is missing required 'pr_url' column")
 
-    urls = (
-        df["pr_url"]
-        .dropna()
-        .astype(str)
-        .map(str.strip)
-        .loc[lambda s: s != ""]
-        .drop_duplicates()
-        .tolist()
-    )
+    url_series = df["pr_url"].dropna().astype(str).map(str.strip).loc[lambda s: s != ""]
+    if pr_url:
+        requested_url = pr_url.strip()
+        url_series = url_series.loc[lambda s: s == requested_url]
+        if url_series.empty:
+            raise ValueError(f"Requested PR URL not found in AACR-Bench dataset: {requested_url}")
+
+    urls = url_series.drop_duplicates().tolist()
     if limit is not None and limit > 0:
         urls = urls[:limit]
     return urls
@@ -165,6 +165,7 @@ def run_aacr_reviewer(
     dataset_path: Path = DEFAULT_AACR_PROCESSED_PATH,
     run_id: Optional[str] = None,
     limit: Optional[int] = None,
+    pr_url: Optional[str] = None,
     output_root: Optional[Path] = None,
     repo_root: Optional[Path] = None,
     trace: bool = False,
@@ -186,7 +187,7 @@ def run_aacr_reviewer(
         trace,
     )
 
-    pr_urls = _load_pr_urls(dataset_path, limit=limit, logger=logger)
+    pr_urls = _load_pr_urls(dataset_path, limit=limit, logger=logger, pr_url=pr_url)
     logger.info("Reviewer-graph AACR run will process %s unique PR URLs", len(pr_urls))
 
     enricher = GitHubPullRequestEnricher(
@@ -289,6 +290,7 @@ def run_aacr_reviewer(
         "planner_model_key": settings.reviewer_planner_model_key,
         "worker_model_key": settings.reviewer_worker_model_key,
         "reviewer_use_legacy_specialist_workers": settings.reviewer_use_legacy_specialist_workers,
+        "pr_url_filter": pr_url or "",
         "repo_root": str(repo_root) if repo_root is not None else "",
         "trace": trace,
         "total_prs": len(pr_urls),

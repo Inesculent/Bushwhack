@@ -1,0 +1,101 @@
+[
+  {
+    "id": "logic_review_5",
+    "file_path": "api/db/services/user_canvas_version.py",
+    "line_start": 34,
+    "line_end": 38,
+    "content": "+                delete_ids = []\n                 for i in range(20, user_canvas_version.count()):\n-                    cls.delete(user_canvas_version[i].id)\n+                    delete_ids.append(user_canvas_version[i].id)\n+                \n+                cls.delete_by_ids(delete_ids)",
+    "severity": "high",
+    "feedback_type": "defect_detection",
+    "recommendation": "Add a check to ensure that `user_canvas_version.count()` is greater than 20 before starting the loop. Alternatively, adjust the loop to handle cases where there are fewer than 20 elements gracefully.",
+    "references": []
+  },
+  {
+    "id": "logic_review_1",
+    "file_path": "api/apps/api_app.py",
+    "line_start": 628,
+    "line_end": 628,
+    "content": "-        doc_ids = [DocumentService.get_doc_id_by_doc_name(doc_name) for doc_name in req.get(\"doc_names\", [])]\n+        doc_ids = DocumentService.get_doc_ids_by_doc_names(req.get(\"doc_names\", []))",
+    "severity": "medium",
+    "feedback_type": "optimization",
+    "recommendation": "Verify the performance impact of the change in a realistic scenario. If the performance is acceptable, the change is beneficial. Otherwise, consider optimizing the query further.",
+    "references": []
+  },
+  {
+    "id": "general_review_1",
+    "file_path": "api/apps/api_app.py",
+    "line_start": 635,
+    "line_end": 641,
+    "content": "The code now fetches documents by IDs before attempting to remove them, which is a good practice. However, the error handling could be improved.",
+    "severity": "medium",
+    "feedback_type": "code_improvement",
+    "recommendation": "Add a check to ensure that all document IDs exist in the database before attempting to remove them. If a document ID is not found, return an appropriate error message.",
+    "references": []
+  },
+  {
+    "id": "logic_review_2",
+    "file_path": "api/apps/api_app.py",
+    "line_start": 646,
+    "line_end": 650,
+    "content": "+    docs = DocumentService.get_by_ids(doc_ids)\n+    doc_dic = {}\n+    for doc in docs:\n+        doc_dic[doc.id] = doc\n+\n     for doc_id in doc_ids:\n         try:\n-            e, doc = DocumentService.get_by_id(doc_id)\n-            if not e:\n+            if doc_id not in doc_dic:\n                 return get_data_error_result(message=\"Document not found!\")\n+            doc = doc_dic[doc_id]\n             tenant_id = DocumentService.get_tenant_id(doc_id)\n             if not tenant_id:\n                 return get_data_error_result(message=\"Tenant not found!\")",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Add error handling to check if all requested documents are returned by `DocumentService.get_by_ids`. Consider reverting to the previous method if the new approach introduces risk.",
+    "references": []
+  },
+  {
+    "id": "general_review_2",
+    "file_path": "api/db/services/common_service.py",
+    "line_start": 275,
+    "line_end": 284,
+    "content": "A new method `delete_by_ids` was added to delete multiple records by their IDs. This is useful, but the method should be tested to ensure it works as expected.",
+    "severity": "medium",
+    "feedback_type": "code_improvement",
+    "recommendation": "Add test cases to verify the functionality of the `delete_by_ids` method. Ensure that it correctly deletes multiple records and handles edge cases such as empty lists or non-existent IDs.",
+    "references": []
+  },
+  {
+    "id": "general_review_3",
+    "file_path": "api/db/services/document_service.py",
+    "line_start": 371,
+    "line_end": 380,
+    "content": "A new method `get_doc_ids_by_doc_names` was added to retrieve document IDs by their names. This is useful, but the method should be tested to ensure it works as expected.",
+    "severity": "medium",
+    "feedback_type": "code_improvement",
+    "recommendation": "Add test cases to verify the functionality of the `get_doc_ids_by_doc_names` method. Ensure that it correctly retrieves document IDs and handles edge cases such as empty lists or non-existent document names.",
+    "references": []
+  },
+  {
+    "id": "logic_review_4",
+    "file_path": "api/db/services/document_service.py",
+    "line_start": 373,
+    "line_end": 382,
+    "content": "+    @classmethod\n+    @DB.connection_context()\n+    def get_doc_ids_by_doc_names(cls, doc_names):\n+        if not doc_names:\n+            return []\n+\n+        query = cls.model.select(cls.model.id).where(cls.model.name.in_(doc_names))\n+        return list(query.scalars().iterator())",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Consider adding a check to ensure that `doc_names` does not contain duplicates before querying the database, or handle duplicates in the result if they are allowed.",
+    "references": []
+  },
+  {
+    "id": "general_review_4",
+    "file_path": "api/db/services/user_canvas_version.py",
+    "line_start": 41,
+    "line_end": 50,
+    "content": "The code now uses `delete_by_ids` to delete multiple user canvas versions. This is a good practice, but the method should be tested to ensure it works as expected.",
+    "severity": "medium",
+    "feedback_type": "code_improvement",
+    "recommendation": "Add test cases to verify the functionality of using `delete_by_ids` to delete multiple user canvas versions. Ensure that it correctly deletes the versions and handles edge cases such as empty lists or non-existent versions.",
+    "references": []
+  },
+  {
+    "id": "logic_review_3",
+    "file_path": "api/db/services/common_service.py",
+    "line_start": 275,
+    "line_end": 284,
+    "content": "+    @classmethod\n+    @DB.connection_context()\n+    def delete_by_ids(cls, pids):\n+        # Delete multiple records by their IDs\n+        # Args:\n+        #     pids: List of record IDs\n+        # Returns:\n+        #     Number of records deleted\n+        with DB.atomic():\n+            res = cls.model.delete().where(cls.model.id.in_(pids)).execute()\n+            return res",
+    "severity": "low",
+    "feedback_type": "optimization",
+    "recommendation": "Add a check at the beginning of `delete_by_ids` to return early if `pids` is empty, avoiding unnecessary database operations.",
+    "references": []
+  }
+]

@@ -337,11 +337,13 @@ def build_graph(checkpointer: Any = None):
             make_general_critiquer_node(context_provider=context_provider),
         )
         builder.add_node("adversarial_reflection", make_adversarial_reflection_node())
+        builder.add_node("initial_focused_context", make_focused_context_node(context_provider))
         builder.add_node("focused_context", make_focused_context_node(context_provider))
         builder.add_node("critique_revision", make_critique_revision_node())
         builder.add_node("adversarial_cleanup", make_adversarial_cleanup_node())
         builder.add_conditional_edges("review_planner", _route_critique_tasks)
-        builder.add_edge("general_critiquer", "adversarial_reflection")
+        builder.add_edge("general_critiquer", "initial_focused_context")
+        builder.add_edge("initial_focused_context", "adversarial_reflection")
         builder.add_conditional_edges(
             "adversarial_reflection",
             _route_focused_after_reflection,

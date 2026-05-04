@@ -19,6 +19,8 @@ trace_logger = logging.getLogger("research_pipeline.reviewer_trace")
 
 EXPECTED_REFLECTORS = {"security", "logic", "performance", "general"}
 DOMAIN_REFLECTORS = {"security", "logic", "performance", "general"}
+PROMOTABLE_CLAIM_TYPES = {"defect", "security_risk", "performance_regression", "missing_test"}
+CONTEXT_REQUIRED_CLAIM_TYPES = {"security_risk", "performance_regression"}
 
 
 def _trace_enabled(state: GraphState) -> bool:
@@ -100,6 +102,20 @@ def _category_to_feedback(category: ReviewCategory):
     return "other"
 
 
+def _candidate_has_actionability(candidate: CandidateFinding) -> bool:
+    return bool(
+        candidate.failure_mode.strip()
+        and candidate.evidence_summary.strip()
+        and (candidate.recommendation or "").strip()
+    )
+
+
+def _candidate_requires_context(candidate: CandidateFinding) -> bool:
+    if candidate.required_context:
+        return True
+    return candidate.claim_type in CONTEXT_REQUIRED_CLAIM_TYPES
+
+
 def make_adversarial_cleanup_node():
     node_name = "adversarial_cleanup"
 
@@ -128,6 +144,17 @@ def make_adversarial_cleanup_node():
         ignored_rejections: Dict[str, List[str]] = {}
         ignored_context_requests: Dict[str, List[str]] = {}
         misrouted_candidates: Dict[str, List[Dict[str, str]]] = {}
+        lifecycle: Dict[str, Dict[str, Any]] = {}
+
+        def drop(candidate: CandidateFinding, reason: str, details: Dict[str, Any] | None = None) -> None:
+            dropped.append(candidate.candidate_id)
+            lifecycle[candidate.candidate_id] = {
+                "decision": "dropped",
+                "reason": reason,
+                "claim_type": candidate.claim_type,
+                "suspected_category": candidate.suspected_category,
+                **(details or {}),
+            }
 
         for candidate in candidates:
             cand_reports = by_cand.get(candidate.candidate_id, [])
@@ -155,6 +182,14 @@ def make_adversarial_cleanup_node():
             if off_domain_rejections:
                 ignored_rejections[candidate.candidate_id] = off_domain_rejections
 
+            if not relevant_reports:
+                drop(
+                    candidate,
+                    "missing_relevant_reflection",
+                    {"expected_reflectors": sorted(relevant_reflectors)},
+                )
+                continue
+
             not_applicable_reports = [
                 report for report in relevant_reports if report.verdict == "not_applicable"
             ]
@@ -166,11 +201,49 @@ def make_adversarial_cleanup_node():
                     }
                     for report in not_applicable_reports
                 ]
-                dropped.append(candidate.candidate_id)
+                drop(
+                    candidate,
+                    "misrouted_not_applicable",
+                    {"reports": misrouted_candidates[candidate.candidate_id]},
+                )
                 continue
 
             if any(r.verdict == "reject" for r in relevant_reports):
-                dropped.append(candidate.candidate_id)
+                drop(
+                    candidate,
+                    "relevant_reflector_reject",
+                    {
+                        "rejecting_reflectors": [
+                            report.reflector_specialty
+                            for report in relevant_reports
+                            if report.verdict == "reject"
+                        ]
+                    },
+                )
+                continue
+
+            if not any(r.verdict in {"accept", "reclassify", "needs_context"} for r in relevant_reports):
+                drop(
+                    candidate,
+                    "no_relevant_acceptance",
+                    {"verdicts": [report.verdict for report in relevant_reports]},
+                )
+                continue
+
+            if candidate.claim_type not in PROMOTABLE_CLAIM_TYPES:
+                drop(candidate, "non_promotable_claim_type")
+                continue
+
+            if not _candidate_has_actionability(candidate):
+                drop(
+                    candidate,
+                    "missing_actionability_fields",
+                    {
+                        "has_failure_mode": bool(candidate.failure_mode.strip()),
+                        "has_evidence_summary": bool(candidate.evidence_summary.strip()),
+                        "has_recommendation": bool((candidate.recommendation or "").strip()),
+                    },
+                )
                 continue
 
             off_domain_context = [
@@ -180,14 +253,18 @@ def make_adversarial_cleanup_node():
                 ignored_context_requests[candidate.candidate_id] = off_domain_context
 
             needs_context = any(r.verdict == "needs_context" for r in relevant_reports)
+            if _candidate_requires_context(candidate) and not _focused_hits_for_candidate(state, candidate.candidate_id):
+                drop(candidate, "required_context_not_gathered")
+                continue
+
             if needs_context:
                 rev = revisions.get(candidate.candidate_id) or {}
                 verdict = str(rev.get("verdict", "")).lower()
                 if verdict == "reject":
-                    dropped.append(candidate.candidate_id)
+                    drop(candidate, "revision_reject")
                     continue
                 if verdict != "accept" and not _focused_hits_for_candidate(state, candidate.candidate_id):
-                    dropped.append(candidate.candidate_id)
+                    drop(candidate, "needs_context_without_supporting_revision")
                     continue
 
             feedback_type = _category_to_feedback(category)  # type: ignore[arg-type]
@@ -205,10 +282,18 @@ def make_adversarial_cleanup_node():
                     content=candidate.content + evidence_extra,
                     severity=candidate.severity,
                     feedback_type=feedback_type,  # type: ignore[arg-type]
-                    recommendation=None,
+                    recommendation=candidate.recommendation,
                     references=[],
                 )
             )
+            lifecycle[candidate.candidate_id] = {
+                "decision": "promoted",
+                "reason": "accepted_by_relevant_reflectors",
+                "claim_type": candidate.claim_type,
+                "final_category": category,
+                "relevant_reflectors": sorted(relevant_reflectors),
+                "had_focused_context": _focused_hits_for_candidate(state, candidate.candidate_id),
+            }
 
         if _trace_enabled(state):
             trace_logger.info(
@@ -224,6 +309,7 @@ def make_adversarial_cleanup_node():
             "ignored_off_domain_rejections": ignored_rejections,
             "ignored_off_domain_context_requests": ignored_context_requests,
             "misrouted_candidate_ids": misrouted_candidates,
+            "candidate_lifecycle": lifecycle,
         }
         metadata["adversarial_cleanup"] = cleanup_meta
 

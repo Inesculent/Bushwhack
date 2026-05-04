@@ -44,6 +44,11 @@ def parse_args() -> argparse.Namespace:
         help="Optional cap on the number of unique PRs to process.",
     )
     parser.add_argument(
+        "--pr-url",
+        default=None,
+        help="Optional exact PR URL to run from the processed dataset before applying --limit.",
+    )
+    parser.add_argument(
         "--output-root",
         type=Path,
         default=None,
@@ -96,6 +101,7 @@ def main() -> None:
         dataset_path=args.dataset_path,
         run_id=args.run_id,
         limit=args.limit,
+        pr_url=args.pr_url,
         output_root=args.output_root,
         repo_root=args.repo_root,
         trace=args.trace,

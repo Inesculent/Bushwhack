@@ -97,6 +97,14 @@ class ReviewerWorkerReport(BaseModel):
 
 ReviewCategory = Literal["security", "logic", "performance", "general", "other"]
 ReflectionVerdict = Literal["accept", "reject", "needs_context", "reclassify", "not_applicable"]
+ClaimType = Literal[
+    "defect",
+    "security_risk",
+    "performance_regression",
+    "missing_test",
+    "positive_observation",
+    "uncertain",
+]
 
 
 class CandidateFinding(BaseModel):
@@ -108,7 +116,16 @@ class CandidateFinding(BaseModel):
     line_start: int = Field(ge=1)
     line_end: int = Field(ge=1)
     content: str = Field(description="Issue description with evidence pointers.")
+    claim_type: ClaimType = Field(
+        default="uncertain",
+        description="Type of claim. Only actionable negative claims are eligible for promotion.",
+    )
+    failure_mode: str = Field(default="", description="What breaks, regresses, or can be exploited.")
     evidence_summary: str = Field(default="", description="Short note on what evidence supports this.")
+    required_context: List[str] = Field(
+        default_factory=list,
+        description="External facts or code paths that must be checked before promotion.",
+    )
     confidence: float = Field(default=0.5, ge=0.0, le=1.0)
     suspected_category: ReviewCategory = "other"
     reflection_specialties: List[Literal["security", "performance", "logic", "general"]] = Field(
@@ -117,6 +134,7 @@ class CandidateFinding(BaseModel):
     )
     feedback_type: Literal["code_improvement", "defect_detection", "optimization", "other"] = "other"
     severity: Literal["low", "medium", "high"] = "medium"
+    recommendation: Optional[str] = Field(default=None, description="Concrete suggested fix or verification step.")
 
     @model_validator(mode="after")
     def validate_line_range(self) -> Self:

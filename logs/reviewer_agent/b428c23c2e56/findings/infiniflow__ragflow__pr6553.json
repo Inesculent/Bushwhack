@@ -1,0 +1,156 @@
+[
+  {
+    "id": "2:task_2_candidate_1",
+    "file_path": "api/apps/api_app.py",
+    "line_start": 628,
+    "line_end": 628,
+    "content": "doc_ids = DocumentService.get_doc_ids_by_doc_names(req.get(\"doc_names\", []))",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": null,
+    "references": []
+  },
+  {
+    "id": "4:T4_C1",
+    "file_path": "api/apps/api_app.py",
+    "line_start": 630,
+    "line_end": 630,
+    "content": "doc_ids = DocumentService.get_doc_ids_by_doc_names(req.get(\"doc_names\", []))",
+    "severity": "medium",
+    "feedback_type": "optimization",
+    "recommendation": null,
+    "references": []
+  },
+  {
+    "id": "2:task_2_candidate_2",
+    "file_path": "api/apps/api_app.py",
+    "line_start": 641,
+    "line_end": 641,
+    "content": "if doc_id not in doc_dic:",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": null,
+    "references": []
+  },
+  {
+    "id": "3:T3_C1",
+    "file_path": "api/db/services/common_service.py",
+    "line_start": 273,
+    "line_end": 281,
+    "content": "@classmethod\n@DB.connection_context()\ndef delete_by_ids(cls, pids):\n    # Delete multiple records by their IDs\n    # Args:\n    #     pids: List of record IDs\n    # Returns:\n    #     Number of records deleted\n    with DB.atomic():\n        res = cls.model.delete().where(cls.model.id.in_(pids)).execute()\n        return res",
+    "severity": "medium",
+    "feedback_type": "optimization",
+    "recommendation": null,
+    "references": []
+  },
+  {
+    "id": "1:T1_C2",
+    "file_path": "api/db/services/common_service.py",
+    "line_start": 275,
+    "line_end": 281,
+    "content": "with DB.atomic():\n            res = cls.model.delete().where(cls.model.id.in_(pids)).execute()\n            return res",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": null,
+    "references": []
+  },
+  {
+    "id": "2:task_2_candidate_3",
+    "file_path": "api/db/services/document_service.py",
+    "line_start": 367,
+    "line_end": 370,
+    "content": "if not doc_names:\n    return []\n\nquery = cls.model.select(cls.model.id).where(cls.model.name.in_(doc_names))\nreturn list(query.scalars().iterator())",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": null,
+    "references": []
+  },
+  {
+    "id": "1:T1_C1",
+    "file_path": "api/db/services/document_service.py",
+    "line_start": 369,
+    "line_end": 371,
+    "content": "if not doc_names:\n            return []\n\n        query = cls.model.select(cls.model.id).where(cls.model.name.in_(doc_names))",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": null,
+    "references": []
+  },
+  {
+    "id": "2:task_2_candidate_4",
+    "file_path": "api/db/services/document_service.py",
+    "line_start": 369,
+    "line_end": 370,
+    "content": "query = cls.model.select(cls.model.id).where(cls.model.name.in_(doc_names))\nreturn list(query.scalars().iterator())",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": null,
+    "references": []
+  },
+  {
+    "id": "3:T3_C2",
+    "file_path": "api/db/services/document_service.py",
+    "line_start": 370,
+    "line_end": 377,
+    "content": "@classmethod\n@DB.connection_context()\ndef get_doc_ids_by_doc_names(cls, doc_names):\n    if not doc_names:\n        return []\n\n    query = cls.model.select(cls.model.id).where(cls.model.name.in_(doc_names))\n    return list(query.scalars().iterator())",
+    "severity": "medium",
+    "feedback_type": "optimization",
+    "recommendation": null,
+    "references": []
+  },
+  {
+    "id": "4:T4_C3",
+    "file_path": "api/db/services/document_service.py",
+    "line_start": 372,
+    "line_end": 380,
+    "content": "@classmethod\n    @DB.connection_context()\n    def get_doc_ids_by_doc_names(cls, doc_names):\n        if not doc_names:\n            return []\n\n        query = cls.model.select(cls.model.id).where(cls.model.name.in_(doc_names))\n        return list(query.scalars().iterator())",
+    "severity": "medium",
+    "feedback_type": "optimization",
+    "recommendation": null,
+    "references": []
+  },
+  {
+    "id": "2:task_2_candidate_5",
+    "file_path": "api/db/services/user_canvas_version.py",
+    "line_start": 34,
+    "line_end": 37,
+    "content": "delete_ids.append(user_canvas_version[i].id)\n\ncls.delete_by_ids(delete_ids)",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": null,
+    "references": []
+  },
+  {
+    "id": "4:T4_C4",
+    "file_path": "api/db/services/user_canvas_version.py",
+    "line_start": 34,
+    "line_end": 45,
+    "content": "try:\n            user_canvas_version = cls.model.select().where(cls.model.user_canvas_id == user_canvas_id).order_by(cls.model.create_time.desc())\n            if user_canvas_version.count() > 20:\n                delete_ids = []\n                for i in range(20, user_canvas_version.count()):\n                    delete_ids.append(user_canvas_version[i].id)\n                \n                cls.delete_by_ids(delete_ids)\n            return True\n        except DoesNotExist:\n            return None\n        except Exception:\n            return None",
+    "severity": "medium",
+    "feedback_type": "optimization",
+    "recommendation": null,
+    "references": []
+  },
+  {
+    "id": "3:T3_C3",
+    "file_path": "api/apps/api_app.py",
+    "line_start": 632,
+    "line_end": 637,
+    "content": "+    docs = DocumentService.get_by_ids(doc_ids)\n+    doc_dic = {}\n+    for doc in docs:\n+        doc_dic[doc.id] = doc\n+\n+    for doc_id in doc_ids:\n+        try:\n+            if doc_id not in doc_dic:\n+                return get_data_error_result(message=\"Document not found!\")\n+            doc = doc_dic[doc_id]",
+    "severity": "low",
+    "feedback_type": "optimization",
+    "recommendation": null,
+    "references": []
+  },
+  {
+    "id": "4:T4_C2",
+    "file_path": "api/db/services/common_service.py",
+    "line_start": 273,
+    "line_end": 286,
+    "content": "@classmethod\n    @DB.connection_context()\n    def delete_by_ids(cls, pids):\n        # Delete multiple records by their IDs\n        # Args:\n        #     pids: List of record IDs\n        # Returns:\n        #     Number of records deleted\n        with DB.atomic():\n            res = cls.model.delete().where(cls.model.id.in_(pids)).execute()\n            return res",
+    "severity": "low",
+    "feedback_type": "optimization",
+    "recommendation": null,
+    "references": []
+  }
+]

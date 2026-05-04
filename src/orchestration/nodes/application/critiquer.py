@@ -16,6 +16,23 @@ from src.orchestration.prompts.renderer import render_reviewer_prompt
 logger = logging.getLogger(__name__)
 trace_logger = logging.getLogger("research_pipeline.reviewer_trace")
 
+HIGH_RISK_CONTEXT_TERMS = (
+    "auth",
+    "authorization",
+    "permission",
+    "tenant",
+    "injection",
+    "sql",
+    "delete",
+    "unsafe",
+    "caller",
+    "contract",
+    "n+1",
+    "quadratic",
+    "unbounded",
+    "memory",
+)
+
 
 def _trace_enabled(state: GraphState) -> bool:
     metadata = state.get("metadata", {}) or {}
@@ -45,6 +62,102 @@ def _normalize_candidates(task: ReviewTask, candidates: List[CandidateFinding]) 
             )
         )
     return normalized
+
+
+def _normalize_focus_requests(
+    task: ReviewTask,
+    candidates: List[CandidateFinding],
+    requests: List[FocusedContextRequest],
+) -> List[FocusedContextRequest]:
+    candidate_ids = {candidate.candidate_id for candidate in candidates}
+    candidate_id_aliases = {
+        candidate.candidate_id.rsplit(":", 1)[-1]: candidate.candidate_id for candidate in candidates
+    }
+    fallback_candidate_id = candidates[0].candidate_id if candidates else task.id
+    normalized: List[FocusedContextRequest] = []
+    seen: set[str] = set()
+
+    for index, request in enumerate(requests, start=1):
+        request_id = request.request_id.strip() or f"{task.id}:focus:{index}"
+        if request_id in seen:
+            request_id = f"{request_id}:{index}"
+        seen.add(request_id)
+        candidate_id = request.candidate_id.strip()
+        if candidate_id not in candidate_ids:
+            candidate_id = candidate_id_aliases.get(candidate_id, fallback_candidate_id)
+        normalized.append(
+            request.model_copy(
+                update={
+                    "request_id": request_id,
+                    "candidate_id": candidate_id,
+                    "requested_by_specialty": request.requested_by_specialty or "general",
+                }
+            )
+        )
+    return normalized
+
+
+def _candidate_needs_auto_context(candidate: CandidateFinding) -> bool:
+    if candidate.claim_type in {"positive_observation", "uncertain"}:
+        return False
+    text = " ".join(
+        [
+            candidate.content,
+            candidate.failure_mode,
+            candidate.evidence_summary,
+            " ".join(candidate.required_context),
+            candidate.suspected_category,
+        ]
+    ).lower()
+    high_risk = candidate.claim_type in {
+        "security_risk",
+        "performance_regression",
+    } or any(term in text for term in HIGH_RISK_CONTEXT_TERMS)
+    return high_risk and (candidate.required_context or not candidate.evidence_summary.strip())
+
+
+def _auto_focus_requests(task: ReviewTask, candidates: List[CandidateFinding]) -> List[FocusedContextRequest]:
+    requests: List[FocusedContextRequest] = []
+    for index, candidate in enumerate(candidates, start=1):
+        if not _candidate_needs_auto_context(candidate):
+            continue
+        query_seed = " ".join(
+            part
+            for part in [
+                candidate.failure_mode,
+                candidate.content,
+                " ".join(candidate.required_context),
+            ]
+            if part
+        )
+        text_queries = [
+            query
+            for query in [
+                candidate.file_path,
+                candidate.failure_mode[:120],
+                query_seed[:160],
+            ]
+            if query
+        ]
+        requests.append(
+            FocusedContextRequest(
+                request_id=f"{candidate.candidate_id}:auto-context:{index}",
+                candidate_id=candidate.candidate_id,
+                requested_by_specialty=(
+                    candidate.reflection_specialties[0]
+                    if candidate.reflection_specialties
+                    else "general"
+                ),
+                file_paths=[candidate.file_path] + [path for path in task.target_files if path != candidate.file_path],
+                symbol_queries=[],
+                text_queries=text_queries[:3],
+                reason=(
+                    "Deterministic context requirement for a high-risk or externally dependent "
+                    f"{candidate.claim_type} candidate."
+                ),
+            )
+        )
+    return requests
 
 
 def _render_critiquer_prompt(state: GraphState, task: ReviewTask, context_rendered: str) -> str:
@@ -98,7 +211,11 @@ def make_general_critiquer_node(
                 candidates = _normalize_candidates(task=task, candidates=response.candidates)
                 warnings.extend(response.warnings)
                 summary = response.summary
-                initial_requests = list(response.initial_focus_requests)
+                initial_requests = _normalize_focus_requests(
+                    task=task,
+                    candidates=candidates,
+                    requests=list(response.initial_focus_requests) + _auto_focus_requests(task, candidates),
+                )
             except Exception as exc:  # noqa: BLE001
                 warning = f"critiquer_llm_failed:{exc.__class__.__name__}: {exc}"
                 warnings.append(warning)
@@ -133,7 +250,7 @@ def make_general_critiquer_node(
 
         return {
             "candidate_findings": candidates,
-            "focused_context_requests": [],
+            "focused_context_requests": initial_requests,
             "task_status_by_id": {task.id: "completed"},
             "metadata": metadata,
             "node_history": [node_name],
