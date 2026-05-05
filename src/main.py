@@ -8,7 +8,7 @@ if str(REPO_ROOT) not in sys.path:
 	sys.path.insert(0, str(REPO_ROOT))
 
 from src.domain.state import GraphState
-from src.orchestration.graph import run_baseline
+from src.orchestration.context_graph import run_baseline
 
 
 def _read_diff(diff_file: str | None) -> str:

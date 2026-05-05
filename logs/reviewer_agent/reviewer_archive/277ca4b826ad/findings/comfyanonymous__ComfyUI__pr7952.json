@@ -1,0 +1,167 @@
+[
+  {
+    "id": "general_review_2",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 1,
+    "line_end": 322,
+    "content": "No unit tests are provided for the new string manipulation classes.",
+    "severity": "high",
+    "feedback_type": "code_improvement",
+    "recommendation": "Create a separate test file in the `tests` directory to cover all classes and methods with unit tests.",
+    "references": []
+  },
+  {
+    "id": "logic_review_5",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 305,
+    "line_end": 374,
+    "content": "flags = 0\n\nif case_insensitive:\n    flags |= re.IGNORECASE\nif multiline:\n    flags |= re.MULTILINE\nif dotall:\n    flags |= re.DOTALL\n\ntry:\n    match = re.search(regex_pattern, string, flags)\n    result = match is not None\n\nexcept re.error:\n    result = False",
+    "severity": "high",
+    "feedback_type": "defect_detection",
+    "recommendation": "Validate and sanitize the `regex_pattern` parameter to prevent ReDoS attacks.",
+    "references": []
+  },
+  {
+    "id": "logic_review_6",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 390,
+    "line_end": 515,
+    "content": "flags = 0\nif case_insensitive:\n    flags |= re.IGNORECASE\nif multiline:\n    flags |= re.MULTILINE\nif dotall:\n    flags |= re.DOTALL\n\ntry:\n    if mode == \"First Match\":\n        match = re.search(regex_pattern, string, flags)\n        if match:\n            result = match.group(0)\n        else:\n            result = \"\"\n\n    elif mode == \"All Matches\":\n        matches = re.findall(regex_pattern, string, flags)\n        if matches:\n            if isinstance(matches[0], tuple):\n                result = join_delimiter.join([m[0] for m in matches])\n            else:\n                result = join_delimiter.join(matches)\n        else:\n            result = \"\"\n\n    elif mode == \"First Group\":\n        match = re.search(regex_pattern, string, flags)\n        if match and len(match.groups()) >= group_index:\n            result = match.group(group_index)\n        else:\n            result = \"\"\n\n    elif mode == \"All Groups\":\n        matches = re.finditer(regex_pattern, string, flags)\n        results = []\n        for match in matches:\n            if match.groups() and len(match.groups()) >= group_index:\n                results.append(match.group(group_index))\n        result = join_delimiter.join(results)\n    else:\n        result = \"\"\n\nexcept re.error:\n    result = \"\"",
+    "severity": "high",
+    "feedback_type": "defect_detection",
+    "recommendation": "Validate and sanitize the `regex_pattern` parameter to prevent ReDoS attacks.",
+    "references": []
+  },
+  {
+    "id": "general_review_1",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 1,
+    "line_end": 322,
+    "content": "New file `comfy_extras/nodes_string.py` introduces several string manipulation classes without docstrings or comments explaining their purpose or usage.",
+    "severity": "medium",
+    "feedback_type": "code_improvement",
+    "recommendation": "Add docstrings and comments to each class and method to explain their purpose, parameters, and expected behavior.",
+    "references": []
+  },
+  {
+    "id": "logic_review_7",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 1,
+    "line_end": 322,
+    "content": "Entire file content related to string manipulation nodes.",
+    "severity": "medium",
+    "feedback_type": "code_improvement",
+    "recommendation": "Add unit tests for each of the new string manipulation nodes to ensure correct behavior across various input scenarios.",
+    "references": []
+  },
+  {
+    "id": "performance_review_3",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 1,
+    "line_end": 322,
+    "content": "New string manipulation classes introduced in `nodes_string.py`.",
+    "severity": "medium",
+    "feedback_type": "code_improvement",
+    "recommendation": "Add unit tests for edge cases and performance-critical scenarios in the new string manipulation classes. Ensure coverage of large strings and complex regex patterns.",
+    "references": []
+  },
+  {
+    "id": "logic_review_1",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 132,
+    "line_end": 139,
+    "content": "if mode == \"UPPERCASE\":\n    result = string.upper()\nelif mode == \"lowercase\":\n    result = string.lower()\nelif mode == \"Capitalize\":\n    result = string.capitalize()\nelif mode == \"Title Case\":\n    result = string.title()\nelse:\n    result = string",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Consider raising a ValueError or logging a warning when an invalid mode is encountered.",
+    "references": []
+  },
+  {
+    "id": "logic_review_2",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 173,
+    "line_end": 180,
+    "content": "if mode == \"Both\":\n    result = string.strip()\nelif mode == \"Left\":\n    result = string.lstrip()\nelif mode == \"Right\":\n    result = string.rstrip()\nelse:\n    result = string",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Consider raising a ValueError or logging a warning when an invalid mode is encountered.",
+    "references": []
+  },
+  {
+    "id": "security_review_1",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 234,
+    "line_end": 255,
+    "content": "class RegexMatch():\n    def execute(self, string, regex_pattern, case_insensitive, multiline, dotall, **kwargs):\n        flags = 0\n\n        if case_insensitive:\n            flags |= re.IGNORECASE\n        if multiline:\n            flags |= re.MULTILINE\n        if dotall:\n            flags |= re.DOTALL\n\n        try:\n            match = re.search(regex_pattern, string, flags)\n            result = match is not None\n\n        except re.error:\n            result = False\n\n        return result,",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Implement input validation and sanitization for user-provided regex patterns. Consider using a timeout mechanism or limiting the complexity of regex patterns to prevent ReDoS attacks.",
+    "references": []
+  },
+  {
+    "id": "performance_review_1",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 244,
+    "line_end": 255,
+    "content": "def execute(self, string, regex_pattern, case_insensitive, multiline, dotall, **kwargs):",
+    "severity": "medium",
+    "feedback_type": "optimization",
+    "recommendation": "Consider using more efficient regex libraries or optimizing the regex patterns used in `RegexMatch`. Implement performance benchmarks to identify potential bottlenecks.",
+    "references": []
+  },
+  {
+    "id": "general_review_3",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 247,
+    "line_end": 289,
+    "content": "The `RegexExtract` class uses a fixed delimiter (`\\n`) to join results, which might not be suitable for all use cases.",
+    "severity": "medium",
+    "feedback_type": "code_improvement",
+    "recommendation": "Consider making the delimiter configurable or choose a more generic delimiter that is unlikely to appear in the input strings.",
+    "references": []
+  },
+  {
+    "id": "security_review_2",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 267,
+    "line_end": 321,
+    "content": "class RegexExtract():\n    def execute(self, string, regex_pattern, mode, case_insensitive, multiline, dotall, group_index, **kwargs):\n        join_delimiter = \"\\n\"\n\n        flags = 0\n        if case_insensitive:\n            flags |= re.IGNORECASE\n        if multiline:\n            flags |= re.MULTILINE\n        if dotall:\n            flags |= re.DOTALL\n\n        try:\n            if mode == \"First Match\":\n                match = re.search(regex_pattern, string, flags)\n                if match:\n                    result = match.group(0)\n                else:\n                    result = \"\"\n\n            elif mode == \"All Matches\":\n                matches = re.findall(regex_pattern, string, flags)\n                if matches:\n                    if isinstance(matches[0], tuple):\n                        result = join_delimiter.join([m[0] for m in matches])\n                    else:\n                        result = join_delimiter.join(matches)\n                else:\n                    result = \"\"\n\n            elif mode == \"First Group\":\n                match = re.search(regex_pattern, string, flags)\n                if match and len(match.groups()) >= group_index:\n                    result = match.group(group_index)\n                else:\n                    result = \"\"\n\n            elif mode == \"All Groups\":\n                matches = re.finditer(regex_pattern, string, flags)\n                results = []\n                for match in matches:\n                    if match.groups() and len(match.groups()) >= group_index:\n                        results.append(match.group(group_index))\n                result = join_delimiter.join(results)\n            else:\n                result = \"\"\n\n        except re.error:\n            result = \"\"\n\n        return result,",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Implement input validation and sanitization for user-provided regex patterns. Consider using a timeout mechanism or limiting the complexity of regex patterns to prevent ReDoS attacks.",
+    "references": []
+  },
+  {
+    "id": "performance_review_2",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 314,
+    "line_end": 366,
+    "content": "def execute(self, string, regex_pattern, mode, case_insensitive, multiline, dotall, group_index, **kwargs):",
+    "severity": "medium",
+    "feedback_type": "optimization",
+    "recommendation": "Optimize the regex patterns used in `RegexExtract` and consider using more efficient regex libraries. Implement performance benchmarks to identify potential bottlenecks.",
+    "references": []
+  },
+  {
+    "id": "logic_review_3",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 213,
+    "line_end": 221,
+    "content": "if case_sensitive:\n    contains = substring in string\nelse:\n    contains = substring.lower() in string.lower()",
+    "severity": "low",
+    "feedback_type": "defect_detection",
+    "recommendation": "Ensure that the `case_sensitive` parameter is applied consistently across all relevant string operations.",
+    "references": []
+  },
+  {
+    "id": "logic_review_4",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 254,
+    "line_end": 271,
+    "content": "if case_sensitive:\n    a = string_a\n    b = string_b\nelse:\n    a = string_a.lower()\n    b = string_b.lower()\n\nif mode == \"Equal\":\n    return a == b,\nelif mode == \"Starts With\":\n    return a.startswith(b),\nelif mode == \"Ends With\":\n    return a.endswith(b),",
+    "severity": "low",
+    "feedback_type": "defect_detection",
+    "recommendation": "Ensure that the `case_sensitive` parameter is applied consistently across all relevant string operations.",
+    "references": []
+  }
+]

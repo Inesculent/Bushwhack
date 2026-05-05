@@ -1,0 +1,18 @@
+{
+  "experiment": "reviewer_graph_parallel",
+  "run_id": "277ca4b826ad",
+  "started_at": "2026-05-04T20:54:03.275806+00:00",
+  "finished_at": "2026-05-04T20:58:27.789790+00:00",
+  "dataset": "aacr_bench",
+  "dataset_path": "data\\processed\\aacr_bench_graph_ready.csv",
+  "planner_model_key": "qwen2.5-coder-32b",
+  "worker_model_key": "qwen2.5-coder-32b",
+  "reviewer_use_legacy_specialist_workers": false,
+  "pr_url_filter": "https://github.com/comfyanonymous/ComfyUI/pull/7952",
+  "repo_root": "",
+  "trace": true,
+  "total_prs": 1,
+  "succeeded": 1,
+  "failed": 0,
+  "elapsed_ms": 264506
+}
