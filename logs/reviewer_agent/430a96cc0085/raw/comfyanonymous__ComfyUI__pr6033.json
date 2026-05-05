@@ -1,0 +1,221 @@
+{
+  "metadata": {
+    "experiment": "reviewer_graph_basic",
+    "run_id": "430a96cc0085",
+    "graph_run_id": "430a96cc0085:comfyanonymous__ComfyUI__pr6033",
+    "pr_started_at": "2026-05-05T07:00:03.895893+00:00",
+    "pr_url": "https://github.com/comfyanonymous/ComfyUI/pull/6033",
+    "pr_title": "Enforce all pyflake lint rules",
+    "pr_description": "Depend on https://github.com/comfyanonymous/ComfyUI/pull/6032",
+    "pr_repo": "comfyanonymous/ComfyUI",
+    "pr_number": 6033,
+    "review_repo_url": "https://github.com/comfyanonymous/ComfyUI",
+    "review_pr_number": 6033,
+    "review_trace_enabled": true,
+    "structural_extractor": {
+      "mode": "sandbox_entities",
+      "files_attempted": 262,
+      "files_parsed": 215,
+      "gap_count": 47,
+      "node_count": 3611,
+      "edge_count": 14267,
+      "topology_algorithm": "graspologic_leiden",
+      "community_count": 90,
+      "topology_splits_applied": 0
+    },
+    "review_planner": {
+      "summary": "The provided diff includes several minor changes across multiple files. These changes involve renaming functions, modifying imports, updating exception messages, and altering configurations.",
+      "task_count": 4,
+      "specialties": [
+        "general",
+        "logic",
+        "performance",
+        "security"
+      ],
+      "tasks": [
+        {
+          "id": "security-1",
+          "title": "Security Review",
+          "description": "Verify that there are no introduced security vulnerabilities. Focus on the modified routes and any changes in error handling.",
+          "target_files": [
+            "api_server/routes/internal/internal_routes.py",
+            "server.py"
+          ],
+          "subtasks": [],
+          "specialty": "security",
+          "depth": 1,
+          "assigned_model": "Qwen"
+        },
+        {
+          "id": "logic-1",
+          "title": "Logic Review",
+          "description": "Check for logical errors in the changes, especially in the renamed functions and the updated dictionary keys in `nodes_clip_sdxl.py`.",
+          "target_files": [
+            "api_server/routes/internal/internal_routes.py",
+            "comfy/controlnet.py",
+            "comfy_extras/nodes_clip_sdxl.py"
+          ],
+          "subtasks": [],
+          "specialty": "logic",
+          "depth": 1,
+          "assigned_model": "Qwen"
+        },
+        {
+          "id": "performance-1",
+          "title": "Performance Review",
+          "description": "Assess if the changes could introduce performance regressions, particularly in the modified loops and function calls.",
+          "target_files": [
+            "comfy/controlnet.py",
+            "comfy/ldm/modules/sub_quadratic_attention.py"
+          ],
+          "subtasks": [],
+          "specialty": "performance",
+          "depth": 1,
+          "assigned_model": "Qwen"
+        },
+        {
+          "id": "general-1",
+          "title": "General Code Quality Review",
+          "description": "Review the overall code quality, focusing on consistency, readability, and adherence to coding standards, especially in the updated exception messages and configuration changes.",
+          "target_files": [
+            "comfy/patcher_extension.py",
+            "execution.py",
+            "ruff.toml",
+            "server.py"
+          ],
+          "subtasks": [],
+          "specialty": "general",
+          "depth": 1,
+          "assigned_model": "Qwen"
+        }
+      ],
+      "warnings": []
+    },
+    "review_synthesizer": {
+      "worker_count": 4,
+      "reflection_report_count": 0,
+      "raw_finding_count": 4,
+      "final_finding_count": 4,
+      "dropped_duplicate_ids": [],
+      "worker_reports": [
+        {
+          "task_id": "general-1",
+          "specialty": "general",
+          "explored_files": [
+            "execution.py",
+            "ruff.toml",
+            "server.py"
+          ],
+          "context_summary": "No critical issues found, but there are some minor concerns related to maintainability and consistency.",
+          "warnings": [
+            "No significant issues were found, but the review focused on the specified files. Additional review of the broader codebase may uncover further improvements."
+          ]
+        },
+        {
+          "task_id": "logic-1",
+          "specialty": "logic",
+          "explored_files": [
+            "api_server/routes/internal/internal_routes.py",
+            "comfy/controlnet.py",
+            "comfy_extras/nodes_clip_sdxl.py"
+          ],
+          "context_summary": "No concrete issues found based on the provided context.",
+          "warnings": [
+            "The function renaming in `api_server/routes/internal/internal_routes.py` from `get_logs` to `get_raw_logs` could potentially break any existing clients that depend on the `/logs/raw` endpoint. Ensure that this change is intentional and that all clients are updated accordingly."
+          ]
+        },
+        {
+          "task_id": "performance-1",
+          "specialty": "performance",
+          "explored_files": [
+            "comfy/controlnet.py",
+            "comfy/ldm/modules/sub_quadratic_attention.py"
+          ],
+          "context_summary": "No performance regressions or scalability risks were identified in the provided changes.",
+          "warnings": [
+            "The changes primarily involve renaming functions, fixing typos, and adjusting imports. There is no evidence of performance-critical sections being modified, such as loops, function calls, or memory-intensive operations."
+          ]
+        },
+        {
+          "task_id": "security-1",
+          "specialty": "security",
+          "explored_files": [
+            "api_server/routes/internal/internal_routes.py",
+            "server.py"
+          ],
+          "context_summary": "No concrete security issues were identified in the provided changes.",
+          "warnings": [
+            "The `get_logs` endpoint in `internal_routes.py` was renamed to `get_raw_logs`. Ensure that the renaming does not break any dependent clients or lead to unexpected behavior."
+          ]
+        }
+      ],
+      "reflection_reports": []
+    },
+    "pr_finished_at": "2026-05-05T07:00:50.950334+00:00"
+  },
+  "node_history": [
+    "sandbox_structural_extractor",
+    "review_planner",
+    "general_review_worker",
+    "logic_review_worker",
+    "performance_review_worker",
+    "security_review_worker",
+    "review_synthesizer"
+  ],
+  "worker_reports": [
+    {
+      "task_id": "general-1",
+      "specialty": "general",
+      "explored_files": [
+        "execution.py",
+        "ruff.toml",
+        "server.py"
+      ],
+      "context_summary": "No critical issues found, but there are some minor concerns related to maintainability and consistency.",
+      "warnings": [
+        "No significant issues were found, but the review focused on the specified files. Additional review of the broader codebase may uncover further improvements."
+      ]
+    },
+    {
+      "task_id": "logic-1",
+      "specialty": "logic",
+      "explored_files": [
+        "api_server/routes/internal/internal_routes.py",
+        "comfy/controlnet.py",
+        "comfy_extras/nodes_clip_sdxl.py"
+      ],
+      "context_summary": "No concrete issues found based on the provided context.",
+      "warnings": [
+        "The function renaming in `api_server/routes/internal/internal_routes.py` from `get_logs` to `get_raw_logs` could potentially break any existing clients that depend on the `/logs/raw` endpoint. Ensure that this change is intentional and that all clients are updated accordingly."
+      ]
+    },
+    {
+      "task_id": "performance-1",
+      "specialty": "performance",
+      "explored_files": [
+        "comfy/controlnet.py",
+        "comfy/ldm/modules/sub_quadratic_attention.py"
+      ],
+      "context_summary": "No performance regressions or scalability risks were identified in the provided changes.",
+      "warnings": [
+        "The changes primarily involve renaming functions, fixing typos, and adjusting imports. There is no evidence of performance-critical sections being modified, such as loops, function calls, or memory-intensive operations."
+      ]
+    },
+    {
+      "task_id": "security-1",
+      "specialty": "security",
+      "explored_files": [
+        "api_server/routes/internal/internal_routes.py",
+        "server.py"
+      ],
+      "context_summary": "No concrete security issues were identified in the provided changes.",
+      "warnings": [
+        "The `get_logs` endpoint in `internal_routes.py` was renamed to `get_raw_logs`. Ensure that the renaming does not break any dependent clients or lead to unexpected behavior."
+      ]
+    }
+  ],
+  "candidate_findings": [],
+  "reflection_reports": [],
+  "focused_context_requests": [],
+  "focused_context_results": {}
+}

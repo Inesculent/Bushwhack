@@ -1,0 +1,252 @@
+{
+  "metadata": {
+    "experiment": "reviewer_graph_basic",
+    "run_id": "430a96cc0085",
+    "graph_run_id": "430a96cc0085:comfyanonymous__ComfyUI__pr7952",
+    "pr_started_at": "2026-05-05T06:57:10.354606+00:00",
+    "pr_url": "https://github.com/comfyanonymous/ComfyUI/pull/7952",
+    "pr_title": "Add nodes for basic string operations",
+    "pr_description": "String nodes, requested in RFC https://github.com/Kosinkadink/rfcs/blob/main/rfcs/0000-corenodes.md#string-nodes\r\nDesigned nodes:\r\n1. Concatenate, and input is: \r\n- string_a, \r\n- string_b \r\n- separator\r\n![image](https://github.com/user-attachments/assets/894c0afc-664f-49a2-a0de-ed60c2aacfc5)\r\n2. Substring, and input is:\r\n- string\r\n- start\r\n- end\r\n![image](https://github.com/user-attachments/assets/1ab814a6-f360-43cb-86be-ac61486c9a78)\r\n\r\n3. Length, and input is\r\n- string\r\n![image](https://github.com/user-attachments/assets/eb4f7413-2f59-4faf-aaa7-cc3b0fbf4322)\r\n\r\n4. Case Converter, and input is\r\n- string\r\n- mode, with options are [\"UPPERCASE\", \"lowercase\", \"Capitalize\", \"Title Case\"]\r\n![image](https://github.com/user-attachments/assets/ba1041fd-40f5-4af0-a52b-c0df3ae3d3e4)\r\n\r\n5. Trim, and input is\r\n- string\r\n- mode, with options are [\"BOTH\", \"LEFT\", \"RIGHT\"]\r\n![image](https://github.com/user-attachments/assets/6489d7d8-ab78-4e9e-b172-b4f7e3cbacb2)\r\n\r\n6. Replace, and input is\r\n- string\r\n- find\r\n- replace\r\n![image](https://github.com/user-attachments/assets/997c09d6-75f2-4e71-90d5-6d0f77cfcb09)\r\n\r\n7. Contains, and input is\r\n- string\r\n- substring\r\n- case_sensitive\r\n![image](https://github.com/user-attachments/assets/e66adb5b-02de-4ba8-b848-f9f83215e694)\r\n\r\n8. Compare, and input is\r\n- string_a\r\n- string_b\r\n- mode, with options are [\"StartsWith\", \"EndsWith\", \"Equal\"]\r\n- case_sensitive\r\n![image](https://github.com/user-attachments/assets/4dd3b9ae-f3d8-41bc-90c2-8e459a923840)\r\n\r\n9. Regex Match, and input is\r\n- string\r\n- regex_pattern\r\n- case_insensitive\r\n- multiline\r\n- dotall\r\n![image](https://github.com/user-attachments/assets/a57ea778-009b-4b8e-94d0-e440c6ca235d)\r\n\r\n10. Regex Extract, and input is\r\n- string\r\n- regex_pattern\r\n- mode, with options are [\"First Match\", \"All Matches\", \"First Group\", \"All Groups\"]\r\n- case_insensitive\r\n- multiline\r\n- dotall\r\n- group_index\r\n![image](https://github.com/user-attachments/assets/b4d1fce8-f2a9-422d-8b62-9ac90d50060a)",
+    "pr_repo": "comfyanonymous/ComfyUI",
+    "pr_number": 7952,
+    "review_repo_url": "https://github.com/comfyanonymous/ComfyUI",
+    "review_pr_number": 7952,
+    "review_trace_enabled": true,
+    "structural_extractor": {
+      "mode": "sandbox_entities",
+      "files_attempted": 312,
+      "files_parsed": 312,
+      "gap_count": 0,
+      "node_count": 5342,
+      "edge_count": 24249,
+      "topology_algorithm": "graspologic_leiden",
+      "community_count": 48,
+      "topology_splits_applied": 0
+    },
+    "review_planner": {
+      "summary": "The changes introduce a new file `comfy_extras/nodes_string.py` containing various string manipulation classes and modifies `nodes.py` to include this new file in the list of extra nodes.",
+      "task_count": 6,
+      "specialties": [
+        "general",
+        "logic",
+        "performance",
+        "security"
+      ],
+      "tasks": [
+        {
+          "id": "security_regex",
+          "title": "Regex Handling Security",
+          "description": "Review the regex patterns used in `RegexMatch` and `RegexExtract` for potential injection attacks or unexpected behavior.",
+          "target_files": [
+            "comfy_extras/nodes_string.py"
+          ],
+          "subtasks": [],
+          "specialty": "security",
+          "depth": 2,
+          "assigned_model": "qwen"
+        },
+        {
+          "id": "logic_edge_cases",
+          "title": "Edge Cases Handling",
+          "description": "Check the `execute` methods for handling edge cases like empty strings, negative indices, and invalid regex patterns.",
+          "target_files": [
+            "comfy_extras/nodes_string.py"
+          ],
+          "subtasks": [],
+          "specialty": "logic",
+          "depth": 2,
+          "assigned_model": "qwen"
+        },
+        {
+          "id": "performance_regex",
+          "title": "Regex Performance",
+          "description": "Assess the performance of regex operations in `RegexMatch` and `RegexExtract`, considering large input sizes and complex patterns.",
+          "target_files": [
+            "comfy_extras/nodes_string.py"
+          ],
+          "subtasks": [],
+          "specialty": "performance",
+          "depth": 2,
+          "assigned_model": "qwen"
+        },
+        {
+          "id": "general_documentation",
+          "title": "Documentation",
+          "description": "Review the docstrings and comments in `comfy_extras/nodes_string.py` to ensure they are clear and comprehensive.",
+          "target_files": [
+            "comfy_extras/nodes_string.py"
+          ],
+          "subtasks": [],
+          "specialty": "general",
+          "depth": 2,
+          "assigned_model": "qwen"
+        },
+        {
+          "id": "general_error_handling",
+          "title": "Error Handling",
+          "description": "Check the error handling in `comfy_extras/nodes_string.py` to ensure it gracefully handles exceptions and invalid inputs.",
+          "target_files": [
+            "comfy_extras/nodes_string.py"
+          ],
+          "subtasks": [],
+          "specialty": "general",
+          "depth": 2,
+          "assigned_model": "qwen"
+        },
+        {
+          "id": "general_consistency",
+          "title": "Code Consistency",
+          "description": "Ensure the coding style and structure in `comfy_extras/nodes_string.py` are consistent with the rest of the codebase.",
+          "target_files": [
+            "comfy_extras/nodes_string.py"
+          ],
+          "subtasks": [],
+          "specialty": "general",
+          "depth": 2,
+          "assigned_model": "qwen"
+        }
+      ],
+      "warnings": []
+    },
+    "review_synthesizer": {
+      "worker_count": 6,
+      "reflection_report_count": 0,
+      "raw_finding_count": 39,
+      "final_finding_count": 39,
+      "dropped_duplicate_ids": [],
+      "worker_reports": [
+        {
+          "task_id": "general_consistency",
+          "specialty": "general",
+          "explored_files": [],
+          "context_summary": "The new file `comfy_extras/nodes_string.py` introduces several string manipulation classes and mappings for integration. This review focuses on ensuring consistency with the rest of the codebase.",
+          "warnings": [
+            "No evidence of direct integration issues or user-facing behavior changes was found in the provided diff and context. However, the absence of tests and documentation might introduce maintainability concerns."
+          ]
+        },
+        {
+          "task_id": "general_documentation",
+          "specialty": "general",
+          "explored_files": [],
+          "context_summary": "The review of `comfy_extras/nodes_string.py` reveals several areas where documentation can be improved to enhance clarity and comprehensiveness.",
+          "warnings": []
+        },
+        {
+          "task_id": "general_error_handling",
+          "specialty": "general",
+          "explored_files": [],
+          "context_summary": "No critical issues found regarding error handling in `comfy_extras/nodes_string.py`. However, there are some areas where error handling can be improved to enhance robustness.",
+          "warnings": [
+            "The current implementation lacks comprehensive error handling and input validation, which can lead to runtime errors and unexpected behavior."
+          ]
+        },
+        {
+          "task_id": "logic_edge_cases",
+          "specialty": "logic",
+          "explored_files": [],
+          "context_summary": "No critical issues found in the `execute` methods for handling edge cases like empty strings, negative indices, and invalid regex patterns. However, there are some minor improvements and potential edge cases worth considering.",
+          "warnings": [
+            "The `execute` methods do not currently handle all possible edge cases comprehensively. It is recommended to add checks and handle exceptions gracefully to improve robustness."
+          ]
+        },
+        {
+          "task_id": "performance_regex",
+          "specialty": "performance",
+          "explored_files": [
+            "comfy_extras/nodes_string.py"
+          ],
+          "context_summary": "The review focuses on identifying potential performance regressions related to regex operations in `RegexMatch` and `RegexExtract` within the `comfy_extras/nodes_string.py` file.",
+          "warnings": [
+            "No direct evidence of hot paths or frequent calls to `RegexMatch` or `RegexExtract`. Ensure these functions are profiled in real-world scenarios to confirm performance impact."
+          ]
+        },
+        {
+          "task_id": "security_regex",
+          "specialty": "security",
+          "explored_files": [
+            "comfy_extras/nodes_string.py"
+          ],
+          "context_summary": "No concrete security issues were found in the regex patterns used in `RegexMatch` and `RegexExtract` based on the provided context.",
+          "warnings": [
+            "The `regex_pattern` parameter in both `RegexMatch` and `RegexExtract` is user-controlled and could potentially lead to regular expression denial-of-service (ReDoS) if an attacker provides a malicious pattern. However, there is no evidence of unbounded or user-controlled patterns in the provided context."
+          ]
+        }
+      ],
+      "reflection_reports": []
+    },
+    "pr_finished_at": "2026-05-05T06:59:13.709047+00:00"
+  },
+  "node_history": [
+    "sandbox_structural_extractor",
+    "review_planner",
+    "general_review_worker",
+    "general_review_worker",
+    "general_review_worker",
+    "logic_review_worker",
+    "performance_review_worker",
+    "security_review_worker",
+    "review_synthesizer"
+  ],
+  "worker_reports": [
+    {
+      "task_id": "general_consistency",
+      "specialty": "general",
+      "explored_files": [],
+      "context_summary": "The new file `comfy_extras/nodes_string.py` introduces several string manipulation classes and mappings for integration. This review focuses on ensuring consistency with the rest of the codebase.",
+      "warnings": [
+        "No evidence of direct integration issues or user-facing behavior changes was found in the provided diff and context. However, the absence of tests and documentation might introduce maintainability concerns."
+      ]
+    },
+    {
+      "task_id": "general_documentation",
+      "specialty": "general",
+      "explored_files": [],
+      "context_summary": "The review of `comfy_extras/nodes_string.py` reveals several areas where documentation can be improved to enhance clarity and comprehensiveness.",
+      "warnings": []
+    },
+    {
+      "task_id": "general_error_handling",
+      "specialty": "general",
+      "explored_files": [],
+      "context_summary": "No critical issues found regarding error handling in `comfy_extras/nodes_string.py`. However, there are some areas where error handling can be improved to enhance robustness.",
+      "warnings": [
+        "The current implementation lacks comprehensive error handling and input validation, which can lead to runtime errors and unexpected behavior."
+      ]
+    },
+    {
+      "task_id": "logic_edge_cases",
+      "specialty": "logic",
+      "explored_files": [],
+      "context_summary": "No critical issues found in the `execute` methods for handling edge cases like empty strings, negative indices, and invalid regex patterns. However, there are some minor improvements and potential edge cases worth considering.",
+      "warnings": [
+        "The `execute` methods do not currently handle all possible edge cases comprehensively. It is recommended to add checks and handle exceptions gracefully to improve robustness."
+      ]
+    },
+    {
+      "task_id": "performance_regex",
+      "specialty": "performance",
+      "explored_files": [
+        "comfy_extras/nodes_string.py"
+      ],
+      "context_summary": "The review focuses on identifying potential performance regressions related to regex operations in `RegexMatch` and `RegexExtract` within the `comfy_extras/nodes_string.py` file.",
+      "warnings": [
+        "No direct evidence of hot paths or frequent calls to `RegexMatch` or `RegexExtract`. Ensure these functions are profiled in real-world scenarios to confirm performance impact."
+      ]
+    },
+    {
+      "task_id": "security_regex",
+      "specialty": "security",
+      "explored_files": [
+        "comfy_extras/nodes_string.py"
+      ],
+      "context_summary": "No concrete security issues were found in the regex patterns used in `RegexMatch` and `RegexExtract` based on the provided context.",
+      "warnings": [
+        "The `regex_pattern` parameter in both `RegexMatch` and `RegexExtract` is user-controlled and could potentially lead to regular expression denial-of-service (ReDoS) if an attacker provides a malicious pattern. However, there is no evidence of unbounded or user-controlled patterns in the provided context."
+      ]
+    }
+  ],
+  "candidate_findings": [],
+  "reflection_reports": [],
+  "focused_context_requests": [],
+  "focused_context_results": {}
+}

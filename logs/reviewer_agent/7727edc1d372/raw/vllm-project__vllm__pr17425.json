@@ -1,0 +1,1411 @@
+{
+  "metadata": {
+    "experiment": "reviewer_graph_parallel",
+    "run_id": "7727edc1d372",
+    "graph_run_id": "7727edc1d372:vllm-project__vllm__pr17425",
+    "pr_started_at": "2026-05-05T08:08:51.865978+00:00",
+    "pr_url": "https://github.com/vllm-project/vllm/pull/17425",
+    "pr_title": "[Fix] Support passing args to logger",
+    "pr_description": "This PR address #17416 where it should be passed *args accordingly to logger\n\nto format with `%s` instead of f-string\n\nSigned-off-by: Aaron Pham <contact@aarnphm.xyz>",
+    "pr_repo": "vllm-project/vllm",
+    "pr_number": 17425,
+    "review_repo_url": "https://github.com/vllm-project/vllm",
+    "review_pr_number": 17425,
+    "review_trace_enabled": true,
+    "structural_extractor": {
+      "mode": "sandbox_entities",
+      "files_attempted": 1479,
+      "files_parsed": 1415,
+      "gap_count": 64,
+      "node_count": 14407,
+      "edge_count": 78355,
+      "topology_algorithm": "graspologic_leiden",
+      "community_count": 363,
+      "topology_splits_applied": 0
+    },
+    "review_planner": {
+      "summary": "The changes primarily involve formatting string literals in logger messages to use parameterized strings (`%s`) instead of f-strings. This change affects multiple files across different modules.",
+      "task_count": 4,
+      "specialties": [
+        "general",
+        "logic",
+        "performance",
+        "security"
+      ],
+      "tasks": [
+        {
+          "id": "security",
+          "title": "Security Review",
+          "description": "Verify that there are no security vulnerabilities introduced by the changes. Focus on logger messages and ensure that no sensitive information is inadvertently logged.",
+          "target_files": [
+            "vllm/config.py",
+            "vllm/logger.py",
+            "vllm/lora/punica_wrapper/punica_selector.py",
+            "vllm/model_executor/custom_op.py",
+            "vllm/model_executor/guided_decoding/xgrammar_decoding.py",
+            "vllm/model_executor/layers/quantization/awq_marlin.py",
+            "vllm/model_executor/model_loader/weight_utils.py",
+            "vllm/model_executor/models/chameleon.py",
+            "vllm/model_executor/models/olmoe.py",
+            "vllm/model_executor/models/qwen2_moe.py",
+            "vllm/model_executor/models/qwen3_moe.py",
+            "vllm/multimodal/profiling.py",
+            "vllm/multimodal/registry.py"
+          ],
+          "subtasks": [],
+          "specialty": "security",
+          "depth": 1,
+          "assigned_model": null
+        },
+        {
+          "id": "logic",
+          "title": "Logic Review",
+          "description": "Ensure that the changes in logger messages do not alter the logic of the application. Verify that all logger messages are correctly formatted and that the parameters passed match the placeholders in the message strings.",
+          "target_files": [
+            "vllm/config.py",
+            "vllm/logger.py",
+            "vllm/lora/punica_wrapper/punica_selector.py",
+            "vllm/model_executor/custom_op.py",
+            "vllm/model_executor/guided_decoding/xgrammar_decoding.py",
+            "vllm/model_executor/layers/quantization/awq_marlin.py",
+            "vllm/model_executor/model_loader/weight_utils.py",
+            "vllm/model_executor/models/chameleon.py",
+            "vllm/model_executor/models/olmoe.py",
+            "vllm/model_executor/models/qwen2_moe.py",
+            "vllm/model_executor/models/qwen3_moe.py",
+            "vllm/multimodal/profiling.py",
+            "vllm/multimodal/registry.py"
+          ],
+          "subtasks": [],
+          "specialty": "logic",
+          "depth": 1,
+          "assigned_model": null
+        },
+        {
+          "id": "performance",
+          "title": "Performance Review",
+          "description": "Assess whether the changes in logger messages could have any impact on performance. Consider the overhead of string formatting and the frequency of logger calls.",
+          "target_files": [
+            "vllm/config.py",
+            "vllm/logger.py",
+            "vllm/lora/punica_wrapper/punica_selector.py",
+            "vllm/model_executor/custom_op.py",
+            "vllm/model_executor/guided_decoding/xgrammar_decoding.py",
+            "vllm/model_executor/layers/quantization/awq_marlin.py",
+            "vllm/model_executor/model_loader/weight_utils.py",
+            "vllm/model_executor/models/chameleon.py",
+            "vllm/model_executor/models/olmoe.py",
+            "vllm/model_executor/models/qwen2_moe.py",
+            "vllm/model_executor/models/qwen3_moe.py",
+            "vllm/multimodal/profiling.py",
+            "vllm/multimodal/registry.py"
+          ],
+          "subtasks": [],
+          "specialty": "performance",
+          "depth": 1,
+          "assigned_model": null
+        },
+        {
+          "id": "general",
+          "title": "General Code Quality Review",
+          "description": "Review the general quality of the changes, including consistency of coding style, adherence to best practices, and overall readability. Ensure that the changes are well-documented and that there are no unnecessary modifications.",
+          "target_files": [
+            "vllm/config.py",
+            "vllm/logger.py",
+            "vllm/lora/punica_wrapper/punica_selector.py",
+            "vllm/model_executor/custom_op.py",
+            "vllm/model_executor/guided_decoding/xgrammar_decoding.py",
+            "vllm/model_executor/layers/quantization/awq_marlin.py",
+            "vllm/model_executor/model_loader/weight_utils.py",
+            "vllm/model_executor/models/chameleon.py",
+            "vllm/model_executor/models/olmoe.py",
+            "vllm/model_executor/models/qwen2_moe.py",
+            "vllm/model_executor/models/qwen3_moe.py",
+            "vllm/multimodal/profiling.py",
+            "vllm/multimodal/registry.py"
+          ],
+          "subtasks": [],
+          "specialty": "general",
+          "depth": 1,
+          "assigned_model": null
+        }
+      ],
+      "warnings": []
+    },
+    "general_critiquer": {
+      "by_task": {
+        "general": {
+          "summary": "Review of the provided diffs did not reveal any critical defects, security risks, performance regressions, or meaningful missing tests. All changes were related to formatting string messages in logging statements to use parameterized strings instead of f-strings, which is a stylistic change rather than a functional one. No evidence of incorrect behavior, security vulnerabilities, or performance issues was found.",
+          "candidate_count": 0,
+          "warnings": [
+            "No concrete issues were identified in the provided changes. All modifications were stylistic improvements to logging messages."
+          ],
+          "initial_focus_requests": []
+        },
+        "logic": {
+          "summary": "No critical issues were found in the changes related to logger messages. All logger messages have been correctly formatted with placeholders matching the parameters passed.",
+          "candidate_count": 0,
+          "warnings": [
+            "The changes primarily involve updating logger messages to use string formatting placeholders instead of concatenation, which is a good practice. No evidence of altered logic or behavior was found."
+          ],
+          "initial_focus_requests": []
+        },
+        "performance": {
+          "summary": "The changes primarily involve updating logger messages to use parameterized strings instead of string concatenation. This change is aimed at improving performance and readability.",
+          "candidate_count": 14,
+          "warnings": [],
+          "initial_focus_requests": []
+        },
+        "security": {
+          "summary": "No high-severity security vulnerabilities were identified in the provided diff. However, several potential improvements related to logging format and style were noted.",
+          "candidate_count": 2,
+          "warnings": [
+            "search_failed:sql|query|deserialize|jwt|cookie|session|csrf|cors:UnicodeDecodeError: 'utf-8' codec can't decode byte 0x80 in position 18385: invalid start byte",
+            "No high-severity security issues were found. However, further review is recommended to ensure that no sensitive information is inadvertently logged."
+          ],
+          "initial_focus_requests": [
+            {
+              "request_id": "security-focus-1",
+              "candidate_id": "security-1",
+              "requested_by_specialty": "security",
+              "file_paths": [
+                "vllm/logger.py"
+              ],
+              "symbol_queries": [
+                "_print_info_once"
+              ],
+              "text_queries": [
+                "_print_info_once"
+              ],
+              "reason": "Verify that no sensitive information is passed to `_print_info_once`."
+            },
+            {
+              "request_id": "security-focus-2",
+              "candidate_id": "security-2",
+              "requested_by_specialty": "security",
+              "file_paths": [
+                "vllm/logger.py"
+              ],
+              "symbol_queries": [
+                "info_once"
+              ],
+              "text_queries": [
+                "info_once"
+              ],
+              "reason": "Verify that no sensitive information is passed to `info_once`."
+            }
+          ]
+        }
+      }
+    },
+    "focused_context": {
+      "fulfilled_ids": [
+        "security-1-context",
+        "security-2-context",
+        "security-focus-1",
+        "security-focus-2"
+      ],
+      "warnings": []
+    },
+    "adversarial_reflection": {
+      "report_count": 16,
+      "focused_request_count": 2,
+      "routed_candidate_counts": {
+        "security": 2,
+        "logic": 0,
+        "performance": 0,
+        "general": 14
+      },
+      "total_routed_candidate_reviews": 16,
+      "warnings": []
+    },
+    "critique_revision": {
+      "revisions": [
+        {
+          "candidate_id": "security-1",
+          "verdict": "reject",
+          "updated_evidence_summary": "The focused context did not reveal any usage of `_print_info_once` that includes sensitive information. The function is called with non-sensitive data like model types, backend names, and other descriptive messages."
+        },
+        {
+          "candidate_id": "security-2",
+          "verdict": "reject",
+          "updated_evidence_summary": "The focused context did not reveal any usage of `info_once` that includes sensitive information. The function is called with non-sensitive data like model types, backend names, and other descriptive messages."
+        }
+      ],
+      "warnings": []
+    },
+    "adversarial_cleanup": {
+      "promoted_count": 0,
+      "dropped_candidate_ids": [
+        "performance_1",
+        "performance_2",
+        "performance_3",
+        "performance_4",
+        "performance_5",
+        "performance_6",
+        "performance_7",
+        "performance_8",
+        "performance_9",
+        "performance_10",
+        "performance_11",
+        "performance_12",
+        "performance_13",
+        "performance_14",
+        "security-1",
+        "security-2"
+      ],
+      "ignored_off_domain_rejections": {},
+      "ignored_off_domain_context_requests": {},
+      "misrouted_candidate_ids": {},
+      "candidate_lifecycle": {
+        "performance_1": {
+          "decision": "dropped",
+          "reason": "required_context_not_gathered",
+          "claim_type": "performance_regression",
+          "suspected_category": "performance"
+        },
+        "performance_2": {
+          "decision": "dropped",
+          "reason": "required_context_not_gathered",
+          "claim_type": "performance_regression",
+          "suspected_category": "performance"
+        },
+        "performance_3": {
+          "decision": "dropped",
+          "reason": "required_context_not_gathered",
+          "claim_type": "performance_regression",
+          "suspected_category": "performance"
+        },
+        "performance_4": {
+          "decision": "dropped",
+          "reason": "required_context_not_gathered",
+          "claim_type": "performance_regression",
+          "suspected_category": "performance"
+        },
+        "performance_5": {
+          "decision": "dropped",
+          "reason": "required_context_not_gathered",
+          "claim_type": "performance_regression",
+          "suspected_category": "performance"
+        },
+        "performance_6": {
+          "decision": "dropped",
+          "reason": "required_context_not_gathered",
+          "claim_type": "performance_regression",
+          "suspected_category": "performance"
+        },
+        "performance_7": {
+          "decision": "dropped",
+          "reason": "relevant_reflector_reject",
+          "claim_type": "defect",
+          "suspected_category": "general",
+          "rejecting_reflectors": [
+            "general"
+          ]
+        },
+        "performance_8": {
+          "decision": "dropped",
+          "reason": "required_context_not_gathered",
+          "claim_type": "performance_regression",
+          "suspected_category": "performance"
+        },
+        "performance_9": {
+          "decision": "dropped",
+          "reason": "required_context_not_gathered",
+          "claim_type": "performance_regression",
+          "suspected_category": "performance"
+        },
+        "performance_10": {
+          "decision": "dropped",
+          "reason": "required_context_not_gathered",
+          "claim_type": "performance_regression",
+          "suspected_category": "performance"
+        },
+        "performance_11": {
+          "decision": "dropped",
+          "reason": "required_context_not_gathered",
+          "claim_type": "performance_regression",
+          "suspected_category": "performance"
+        },
+        "performance_12": {
+          "decision": "dropped",
+          "reason": "required_context_not_gathered",
+          "claim_type": "performance_regression",
+          "suspected_category": "performance"
+        },
+        "performance_13": {
+          "decision": "dropped",
+          "reason": "required_context_not_gathered",
+          "claim_type": "performance_regression",
+          "suspected_category": "performance"
+        },
+        "performance_14": {
+          "decision": "dropped",
+          "reason": "required_context_not_gathered",
+          "claim_type": "performance_regression",
+          "suspected_category": "performance"
+        },
+        "security-1": {
+          "decision": "dropped",
+          "reason": "non_promotable_claim_type",
+          "claim_type": "uncertain",
+          "suspected_category": "security"
+        },
+        "security-2": {
+          "decision": "dropped",
+          "reason": "non_promotable_claim_type",
+          "claim_type": "uncertain",
+          "suspected_category": "security"
+        }
+      }
+    },
+    "review_synthesizer": {
+      "worker_count": 0,
+      "reflection_report_count": 16,
+      "raw_finding_count": 0,
+      "final_finding_count": 0,
+      "dropped_duplicate_ids": [],
+      "worker_reports": [],
+      "reflection_reports": [
+        {
+          "candidate_id": "security-1",
+          "reflector_specialty": "security",
+          "verdict": "needs_context",
+          "rationale": "The `_print_info_once` function now accepts variable arguments, which could potentially include sensitive data if not handled carefully. However, without checking the actual usage of this function throughout the codebase, we cannot determine if sensitive information is being passed to it.",
+          "reclassified_category": null,
+          "focused_request": {
+            "request_id": "security-1-context",
+            "candidate_id": "security-1",
+            "requested_by_specialty": "security",
+            "file_paths": [
+              "vllm/**/*.py"
+            ],
+            "symbol_queries": [
+              "_print_info_once"
+            ],
+            "text_queries": [
+              "_print_info_once"
+            ],
+            "reason": "To verify if sensitive information is passed to `_print_info_once`."
+          }
+        },
+        {
+          "candidate_id": "security-2",
+          "reflector_specialty": "security",
+          "verdict": "needs_context",
+          "rationale": "The `info_once` method now accepts variable arguments, which could potentially include sensitive data if not handled carefully. However, without checking the actual usage of this method throughout the codebase, we cannot determine if sensitive information is being passed to it.",
+          "reclassified_category": null,
+          "focused_request": {
+            "request_id": "security-2-context",
+            "candidate_id": "security-2",
+            "requested_by_specialty": "security",
+            "file_paths": [
+              "vllm/**/*.py"
+            ],
+            "symbol_queries": [
+              "info_once"
+            ],
+            "text_queries": [
+              "info_once"
+            ],
+            "reason": "To verify if sensitive information is passed to `info_once`."
+          }
+        },
+        {
+          "candidate_id": "performance_1",
+          "reflector_specialty": "general",
+          "verdict": "accept",
+          "rationale": "The change from string concatenation to parameterized strings improves performance and readability. The evidence is concrete and aligns with best practices.",
+          "reclassified_category": null,
+          "focused_request": null
+        },
+        {
+          "candidate_id": "performance_2",
+          "reflector_specialty": "general",
+          "verdict": "accept",
+          "rationale": "The change from string concatenation to parameterized strings improves performance and readability. The evidence is concrete and aligns with best practices.",
+          "reclassified_category": null,
+          "focused_request": null
+        },
+        {
+          "candidate_id": "performance_3",
+          "reflector_specialty": "general",
+          "verdict": "accept",
+          "rationale": "The change from string concatenation to parameterized strings improves performance and readability. The evidence is concrete and aligns with best practices.",
+          "reclassified_category": null,
+          "focused_request": null
+        },
+        {
+          "candidate_id": "performance_4",
+          "reflector_specialty": "general",
+          "verdict": "accept",
+          "rationale": "The change from string concatenation to parameterized strings improves performance and readability. The evidence is concrete and aligns with best practices.",
+          "reclassified_category": null,
+          "focused_request": null
+        },
+        {
+          "candidate_id": "performance_5",
+          "reflector_specialty": "general",
+          "verdict": "accept",
+          "rationale": "The change from string concatenation to parameterized strings improves performance and readability. The evidence is concrete and aligns with best practices.",
+          "reclassified_category": null,
+          "focused_request": null
+        },
+        {
+          "candidate_id": "performance_6",
+          "reflector_specialty": "general",
+          "verdict": "accept",
+          "rationale": "The change from string concatenation to parameterized strings improves performance and readability. The evidence is concrete and aligns with best practices.",
+          "reclassified_category": null,
+          "focused_request": null
+        },
+        {
+          "candidate_id": "performance_7",
+          "reflector_specialty": "general",
+          "verdict": "reject",
+          "rationale": "The candidate reports a typo in the docstring, which is not a maintainability, integration, API clarity, or test coverage issue. It is a minor documentation error with no functional impact.",
+          "reclassified_category": null,
+          "focused_request": null
+        },
+        {
+          "candidate_id": "performance_8",
+          "reflector_specialty": "general",
+          "verdict": "accept",
+          "rationale": "The change from string concatenation to parameterized strings improves performance and readability. The evidence is concrete and aligns with best practices.",
+          "reclassified_category": null,
+          "focused_request": null
+        },
+        {
+          "candidate_id": "performance_9",
+          "reflector_specialty": "general",
+          "verdict": "accept",
+          "rationale": "The change from string concatenation to parameterized strings improves performance and readability. The evidence is concrete and aligns with best practices.",
+          "reclassified_category": null,
+          "focused_request": null
+        },
+        {
+          "candidate_id": "performance_10",
+          "reflector_specialty": "general",
+          "verdict": "accept",
+          "rationale": "The change from string concatenation to parameterized strings improves performance and readability. The evidence is concrete and aligns with best practices.",
+          "reclassified_category": null,
+          "focused_request": null
+        },
+        {
+          "candidate_id": "performance_11",
+          "reflector_specialty": "general",
+          "verdict": "accept",
+          "rationale": "The change from string concatenation to parameterized strings improves performance and readability. The evidence is concrete and aligns with best practices.",
+          "reclassified_category": null,
+          "focused_request": null
+        },
+        {
+          "candidate_id": "performance_12",
+          "reflector_specialty": "general",
+          "verdict": "accept",
+          "rationale": "The change from string concatenation to parameterized strings improves performance and readability. The evidence is concrete and aligns with best practices.",
+          "reclassified_category": null,
+          "focused_request": null
+        },
+        {
+          "candidate_id": "performance_13",
+          "reflector_specialty": "general",
+          "verdict": "accept",
+          "rationale": "The change from string concatenation to parameterized strings improves performance and readability. The evidence is concrete and aligns with best practices.",
+          "reclassified_category": null,
+          "focused_request": null
+        },
+        {
+          "candidate_id": "performance_14",
+          "reflector_specialty": "general",
+          "verdict": "accept",
+          "rationale": "The change from string concatenation to parameterized strings improves performance and readability. The evidence is concrete and aligns with best practices.",
+          "reclassified_category": null,
+          "focused_request": null
+        }
+      ]
+    },
+    "pr_finished_at": "2026-05-05T08:11:53.836233+00:00"
+  },
+  "node_history": [
+    "sandbox_structural_extractor",
+    "review_planner",
+    "general_critiquer",
+    "general_critiquer",
+    "general_critiquer",
+    "general_critiquer",
+    "focused_context",
+    "adversarial_reflection",
+    "focused_context",
+    "critique_revision",
+    "adversarial_cleanup",
+    "review_synthesizer"
+  ],
+  "worker_reports": [],
+  "candidate_findings": [
+    {
+      "candidate_id": "performance_1",
+      "patch_task_id": "performance",
+      "file_path": "vllm/config.py",
+      "line_start": 518,
+      "line_end": 522,
+      "content": "Changed logger warning message to use parameterized string.",
+      "claim_type": "performance_regression",
+      "failure_mode": "Potential performance degradation due to string concatenation.",
+      "evidence_summary": "The original code uses string concatenation which can be less efficient compared to parameterized strings.",
+      "required_context": [],
+      "confidence": 0.7,
+      "suspected_category": "performance",
+      "reflection_specialties": [
+        "general"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "low",
+      "recommendation": "Keep the parameterized string approach to ensure better performance and readability."
+    },
+    {
+      "candidate_id": "performance_2",
+      "patch_task_id": "performance",
+      "file_path": "vllm/logger.py",
+      "line_start": 52,
+      "line_end": 53,
+      "content": "Updated _print_info_once and _print_warning_once to accept variable arguments.",
+      "claim_type": "performance_regression",
+      "failure_mode": "Potential performance degradation due to string concatenation.",
+      "evidence_summary": "The original code uses string concatenation which can be less efficient compared to parameterized strings.",
+      "required_context": [],
+      "confidence": 0.7,
+      "suspected_category": "performance",
+      "reflection_specialties": [
+        "general"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "low",
+      "recommendation": "Keep the parameterized string approach to ensure better performance and readability."
+    },
+    {
+      "candidate_id": "performance_3",
+      "patch_task_id": "performance",
+      "file_path": "vllm/lora/punica_wrapper/punica_selector.py",
+      "line_start": 15,
+      "line_end": 16,
+      "content": "Changed logger.info_once to use parameterized string.",
+      "claim_type": "performance_regression",
+      "failure_mode": "Potential performance degradation due to string concatenation.",
+      "evidence_summary": "The original code uses string concatenation which can be less efficient compared to parameterized strings.",
+      "required_context": [],
+      "confidence": 0.7,
+      "suspected_category": "performance",
+      "reflection_specialties": [
+        "general"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "low",
+      "recommendation": "Keep the parameterized string approach to ensure better performance and readability."
+    },
+    {
+      "candidate_id": "performance_4",
+      "patch_task_id": "performance",
+      "file_path": "vllm/model_executor/custom_op.py",
+      "line_start": 107,
+      "line_end": 110,
+      "content": "Changed logger.warning_once to use parameterized string.",
+      "claim_type": "performance_regression",
+      "failure_mode": "Potential performance degradation due to string concatenation.",
+      "evidence_summary": "The original code uses string concatenation which can be less efficient compared to parameterized strings.",
+      "required_context": [],
+      "confidence": 0.7,
+      "suspected_category": "performance",
+      "reflection_specialties": [
+        "general"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "low",
+      "recommendation": "Keep the parameterized string approach to ensure better performance and readability."
+    },
+    {
+      "candidate_id": "performance_5",
+      "patch_task_id": "performance",
+      "file_path": "vllm/model_executor/guided_decoding/xgrammar_decoding.py",
+      "line_start": 191,
+      "line_end": 194,
+      "content": "Changed logger.info_once to use parameterized string.",
+      "claim_type": "performance_regression",
+      "failure_mode": "Potential performance degradation due to string concatenation.",
+      "evidence_summary": "The original code uses string concatenation which can be less efficient compared to parameterized strings.",
+      "required_context": [],
+      "confidence": 0.7,
+      "suspected_category": "performance",
+      "reflection_specialties": [
+        "general"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "low",
+      "recommendation": "Keep the parameterized string approach to ensure better performance and readability."
+    },
+    {
+      "candidate_id": "performance_6",
+      "patch_task_id": "performance",
+      "file_path": "vllm/model_executor/layers/quantization/awq_marlin.py",
+      "line_start": 130,
+      "line_end": 132,
+      "content": "Changed logger.warning_once to use parameterized string.",
+      "claim_type": "performance_regression",
+      "failure_mode": "Potential performance degradation due to string concatenation.",
+      "evidence_summary": "The original code uses string concatenation which can be less efficient compared to parameterized strings.",
+      "required_context": [],
+      "confidence": 0.7,
+      "suspected_category": "performance",
+      "reflection_specialties": [
+        "general"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "low",
+      "recommendation": "Keep the parameterized string approach to ensure better performance and readability."
+    },
+    {
+      "candidate_id": "performance_7",
+      "patch_task_id": "performance",
+      "file_path": "vllm/model_executor/model_loader/weight_utils.py",
+      "line_start": 464,
+      "line_end": 465,
+      "content": "Fixed typo in docstring.",
+      "claim_type": "defect",
+      "failure_mode": "Documentation error, no functional impact.",
+      "evidence_summary": "Typo in the docstring.",
+      "required_context": [],
+      "confidence": 1.0,
+      "suspected_category": "general",
+      "reflection_specialties": [
+        "general"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "low",
+      "recommendation": "Fix the typo in the docstring."
+    },
+    {
+      "candidate_id": "performance_8",
+      "patch_task_id": "performance",
+      "file_path": "vllm/model_executor/model_loader/weight_utils.py",
+      "line_start": 716,
+      "line_end": 719,
+      "content": "Changed logger.warning_once to use parameterized string.",
+      "claim_type": "performance_regression",
+      "failure_mode": "Potential performance degradation due to string concatenation.",
+      "evidence_summary": "The original code uses string concatenation which can be less efficient compared to parameterized strings.",
+      "required_context": [],
+      "confidence": 0.7,
+      "suspected_category": "performance",
+      "reflection_specialties": [
+        "general"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "low",
+      "recommendation": "Keep the parameterized string approach to ensure better performance and readability."
+    },
+    {
+      "candidate_id": "performance_9",
+      "patch_task_id": "performance",
+      "file_path": "vllm/model_executor/model_loader/weight_utils.py",
+      "line_start": 738,
+      "line_end": 742,
+      "content": "Changed logger.warning_once to use parameterized string.",
+      "claim_type": "performance_regression",
+      "failure_mode": "Potential performance degradation due to string concatenation.",
+      "evidence_summary": "The original code uses string concatenation which can be less efficient compared to parameterized strings.",
+      "required_context": [],
+      "confidence": 0.7,
+      "suspected_category": "performance",
+      "reflection_specialties": [
+        "general"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "low",
+      "recommendation": "Keep the parameterized string approach to ensure better performance and readability."
+    },
+    {
+      "candidate_id": "performance_10",
+      "patch_task_id": "performance",
+      "file_path": "vllm/model_executor/models/chameleon.py",
+      "line_start": 1111,
+      "line_end": 1114,
+      "content": "Changed logger.warning_once to use parameterized string.",
+      "claim_type": "performance_regression",
+      "failure_mode": "Potential performance degradation due to string concatenation.",
+      "evidence_summary": "The original code uses string concatenation which can be less efficient compared to parameterized strings.",
+      "required_context": [],
+      "confidence": 0.7,
+      "suspected_category": "performance",
+      "reflection_specialties": [
+        "general"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "low",
+      "recommendation": "Keep the parameterized string approach to ensure better performance and readability."
+    },
+    {
+      "candidate_id": "performance_11",
+      "patch_task_id": "performance",
+      "file_path": "vllm/model_executor/models/olmoe.py",
+      "line_start": 385,
+      "line_end": 389,
+      "content": "Changed logger.warning_once to use parameterized string.",
+      "claim_type": "performance_regression",
+      "failure_mode": "Potential performance degradation due to string concatenation.",
+      "evidence_summary": "The original code uses string concatenation which can be less efficient compared to parameterized strings.",
+      "required_context": [],
+      "confidence": 0.7,
+      "suspected_category": "performance",
+      "reflection_specialties": [
+        "general"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "low",
+      "recommendation": "Keep the parameterized string approach to ensure better performance and readability."
+    },
+    {
+      "candidate_id": "performance_12",
+      "patch_task_id": "performance",
+      "file_path": "vllm/model_executor/models/qwen2_moe.py",
+      "line_start": 462,
+      "line_end": 466,
+      "content": "Changed logger.warning_once to use parameterized string.",
+      "claim_type": "performance_regression",
+      "failure_mode": "Potential performance degradation due to string concatenation.",
+      "evidence_summary": "The original code uses string concatenation which can be less efficient compared to parameterized strings.",
+      "required_context": [],
+      "confidence": 0.7,
+      "suspected_category": "performance",
+      "reflection_specialties": [
+        "general"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "low",
+      "recommendation": "Keep the parameterized string approach to ensure better performance and readability."
+    },
+    {
+      "candidate_id": "performance_13",
+      "patch_task_id": "performance",
+      "file_path": "vllm/model_executor/models/qwen3_moe.py",
+      "line_start": 459,
+      "line_end": 463,
+      "content": "Changed logger.warning_once to use parameterized string.",
+      "claim_type": "performance_regression",
+      "failure_mode": "Potential performance degradation due to string concatenation.",
+      "evidence_summary": "The original code uses string concatenation which can be less efficient compared to parameterized strings.",
+      "required_context": [],
+      "confidence": 0.7,
+      "suspected_category": "performance",
+      "reflection_specialties": [
+        "general"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "low",
+      "recommendation": "Keep the parameterized string approach to ensure better performance and readability."
+    },
+    {
+      "candidate_id": "performance_14",
+      "patch_task_id": "performance",
+      "file_path": "vllm/multimodal/profiling.py",
+      "line_start": 215,
+      "line_end": 223,
+      "content": "Changed logger.warning_once to use parameterized string.",
+      "claim_type": "performance_regression",
+      "failure_mode": "Potential performance degradation due to string concatenation.",
+      "evidence_summary": "The original code uses string concatenation which can be less efficient compared to parameterized strings.",
+      "required_context": [],
+      "confidence": 0.7,
+      "suspected_category": "performance",
+      "reflection_specialties": [
+        "general"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "low",
+      "recommendation": "Keep the parameterized string approach to ensure better performance and readability."
+    },
+    {
+      "candidate_id": "security-1",
+      "patch_task_id": "security",
+      "file_path": "vllm/logger.py",
+      "line_start": 53,
+      "line_end": 53,
+      "content": "@lru_cache\ndef _print_info_once(logger: Logger, msg: str, *args: Hashable) -> None:",
+      "claim_type": "uncertain",
+      "failure_mode": "Unclear if the updated logging format could inadvertently expose sensitive information.",
+      "evidence_summary": "The `_print_info_once` function now accepts variable arguments, which could potentially include sensitive data if not handled carefully.",
+      "required_context": [
+        "Check if any sensitive information is passed to `_print_info_once` in the codebase."
+      ],
+      "confidence": 0.5,
+      "suspected_category": "security",
+      "reflection_specialties": [
+        "security"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "medium",
+      "recommendation": "Ensure that no sensitive information is passed to the `_print_info_once` function. Consider adding validation or sanitization if necessary."
+    },
+    {
+      "candidate_id": "security-2",
+      "patch_task_id": "security",
+      "file_path": "vllm/logger.py",
+      "line_start": 73,
+      "line_end": 73,
+      "content": "def info_once(self, msg: str, *args: Hashable) -> None:",
+      "claim_type": "uncertain",
+      "failure_mode": "Unclear if the updated logging format could inadvertently expose sensitive information.",
+      "evidence_summary": "The `info_once` method now accepts variable arguments, which could potentially include sensitive data if not handled carefully.",
+      "required_context": [
+        "Check if any sensitive information is passed to `info_once` in the codebase."
+      ],
+      "confidence": 0.5,
+      "suspected_category": "security",
+      "reflection_specialties": [
+        "security"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "medium",
+      "recommendation": "Ensure that no sensitive information is passed to the `info_once` method. Consider adding validation or sanitization if necessary."
+    }
+  ],
+  "reflection_reports": [
+    {
+      "candidate_id": "security-1",
+      "reflector_specialty": "security",
+      "verdict": "needs_context",
+      "rationale": "The `_print_info_once` function now accepts variable arguments, which could potentially include sensitive data if not handled carefully. However, without checking the actual usage of this function throughout the codebase, we cannot determine if sensitive information is being passed to it.",
+      "reclassified_category": null,
+      "focused_request": {
+        "request_id": "security-1-context",
+        "candidate_id": "security-1",
+        "requested_by_specialty": "security",
+        "file_paths": [
+          "vllm/**/*.py"
+        ],
+        "symbol_queries": [
+          "_print_info_once"
+        ],
+        "text_queries": [
+          "_print_info_once"
+        ],
+        "reason": "To verify if sensitive information is passed to `_print_info_once`."
+      }
+    },
+    {
+      "candidate_id": "security-2",
+      "reflector_specialty": "security",
+      "verdict": "needs_context",
+      "rationale": "The `info_once` method now accepts variable arguments, which could potentially include sensitive data if not handled carefully. However, without checking the actual usage of this method throughout the codebase, we cannot determine if sensitive information is being passed to it.",
+      "reclassified_category": null,
+      "focused_request": {
+        "request_id": "security-2-context",
+        "candidate_id": "security-2",
+        "requested_by_specialty": "security",
+        "file_paths": [
+          "vllm/**/*.py"
+        ],
+        "symbol_queries": [
+          "info_once"
+        ],
+        "text_queries": [
+          "info_once"
+        ],
+        "reason": "To verify if sensitive information is passed to `info_once`."
+      }
+    },
+    {
+      "candidate_id": "performance_1",
+      "reflector_specialty": "general",
+      "verdict": "accept",
+      "rationale": "The change from string concatenation to parameterized strings improves performance and readability. The evidence is concrete and aligns with best practices.",
+      "reclassified_category": null,
+      "focused_request": null
+    },
+    {
+      "candidate_id": "performance_2",
+      "reflector_specialty": "general",
+      "verdict": "accept",
+      "rationale": "The change from string concatenation to parameterized strings improves performance and readability. The evidence is concrete and aligns with best practices.",
+      "reclassified_category": null,
+      "focused_request": null
+    },
+    {
+      "candidate_id": "performance_3",
+      "reflector_specialty": "general",
+      "verdict": "accept",
+      "rationale": "The change from string concatenation to parameterized strings improves performance and readability. The evidence is concrete and aligns with best practices.",
+      "reclassified_category": null,
+      "focused_request": null
+    },
+    {
+      "candidate_id": "performance_4",
+      "reflector_specialty": "general",
+      "verdict": "accept",
+      "rationale": "The change from string concatenation to parameterized strings improves performance and readability. The evidence is concrete and aligns with best practices.",
+      "reclassified_category": null,
+      "focused_request": null
+    },
+    {
+      "candidate_id": "performance_5",
+      "reflector_specialty": "general",
+      "verdict": "accept",
+      "rationale": "The change from string concatenation to parameterized strings improves performance and readability. The evidence is concrete and aligns with best practices.",
+      "reclassified_category": null,
+      "focused_request": null
+    },
+    {
+      "candidate_id": "performance_6",
+      "reflector_specialty": "general",
+      "verdict": "accept",
+      "rationale": "The change from string concatenation to parameterized strings improves performance and readability. The evidence is concrete and aligns with best practices.",
+      "reclassified_category": null,
+      "focused_request": null
+    },
+    {
+      "candidate_id": "performance_7",
+      "reflector_specialty": "general",
+      "verdict": "reject",
+      "rationale": "The candidate reports a typo in the docstring, which is not a maintainability, integration, API clarity, or test coverage issue. It is a minor documentation error with no functional impact.",
+      "reclassified_category": null,
+      "focused_request": null
+    },
+    {
+      "candidate_id": "performance_8",
+      "reflector_specialty": "general",
+      "verdict": "accept",
+      "rationale": "The change from string concatenation to parameterized strings improves performance and readability. The evidence is concrete and aligns with best practices.",
+      "reclassified_category": null,
+      "focused_request": null
+    },
+    {
+      "candidate_id": "performance_9",
+      "reflector_specialty": "general",
+      "verdict": "accept",
+      "rationale": "The change from string concatenation to parameterized strings improves performance and readability. The evidence is concrete and aligns with best practices.",
+      "reclassified_category": null,
+      "focused_request": null
+    },
+    {
+      "candidate_id": "performance_10",
+      "reflector_specialty": "general",
+      "verdict": "accept",
+      "rationale": "The change from string concatenation to parameterized strings improves performance and readability. The evidence is concrete and aligns with best practices.",
+      "reclassified_category": null,
+      "focused_request": null
+    },
+    {
+      "candidate_id": "performance_11",
+      "reflector_specialty": "general",
+      "verdict": "accept",
+      "rationale": "The change from string concatenation to parameterized strings improves performance and readability. The evidence is concrete and aligns with best practices.",
+      "reclassified_category": null,
+      "focused_request": null
+    },
+    {
+      "candidate_id": "performance_12",
+      "reflector_specialty": "general",
+      "verdict": "accept",
+      "rationale": "The change from string concatenation to parameterized strings improves performance and readability. The evidence is concrete and aligns with best practices.",
+      "reclassified_category": null,
+      "focused_request": null
+    },
+    {
+      "candidate_id": "performance_13",
+      "reflector_specialty": "general",
+      "verdict": "accept",
+      "rationale": "The change from string concatenation to parameterized strings improves performance and readability. The evidence is concrete and aligns with best practices.",
+      "reclassified_category": null,
+      "focused_request": null
+    },
+    {
+      "candidate_id": "performance_14",
+      "reflector_specialty": "general",
+      "verdict": "accept",
+      "rationale": "The change from string concatenation to parameterized strings improves performance and readability. The evidence is concrete and aligns with best practices.",
+      "reclassified_category": null,
+      "focused_request": null
+    }
+  ],
+  "focused_context_requests": [
+    {
+      "request_id": "security-focus-1",
+      "candidate_id": "security-1",
+      "requested_by_specialty": "security",
+      "file_paths": [
+        "vllm/logger.py"
+      ],
+      "symbol_queries": [
+        "_print_info_once"
+      ],
+      "text_queries": [
+        "_print_info_once"
+      ],
+      "reason": "Verify that no sensitive information is passed to `_print_info_once`."
+    },
+    {
+      "request_id": "security-focus-2",
+      "candidate_id": "security-2",
+      "requested_by_specialty": "security",
+      "file_paths": [
+        "vllm/logger.py"
+      ],
+      "symbol_queries": [
+        "info_once"
+      ],
+      "text_queries": [
+        "info_once"
+      ],
+      "reason": "Verify that no sensitive information is passed to `info_once`."
+    },
+    {
+      "request_id": "security-1-context",
+      "candidate_id": "security-1",
+      "requested_by_specialty": "security",
+      "file_paths": [
+        "vllm/**/*.py"
+      ],
+      "symbol_queries": [
+        "_print_info_once"
+      ],
+      "text_queries": [
+        "_print_info_once"
+      ],
+      "reason": "To verify if sensitive information is passed to `_print_info_once`."
+    },
+    {
+      "request_id": "security-2-context",
+      "candidate_id": "security-2",
+      "requested_by_specialty": "security",
+      "file_paths": [
+        "vllm/**/*.py"
+      ],
+      "symbol_queries": [
+        "info_once"
+      ],
+      "text_queries": [
+        "info_once"
+      ],
+      "reason": "To verify if sensitive information is passed to `info_once`."
+    }
+  ],
+  "focused_context_results": {
+    "security-focus-1": {
+      "request_id": "security-focus-1",
+      "candidate_id": "security-1",
+      "file_snippets": {},
+      "search_hits": {
+        "_print_info_once": [
+          {
+            "file_path": "vllm/logger.py",
+            "line_number": 56,
+            "content": "def _print_info_once(logger: Logger, msg: str, *args: Hashable) -> None:",
+            "context_lines": [
+              "def _print_info_once(logger: Logger, msg: str, *args: Hashable) -> None:"
+            ]
+          },
+          {
+            "file_path": "vllm/logger.py",
+            "line_number": 81,
+            "content": "_print_info_once(self, msg, *args)",
+            "context_lines": [
+              "_print_info_once(self, msg, *args)"
+            ]
+          },
+          {
+            "file_path": "vllm/logger.py",
+            "line_number": 134,
+            "content": "\"info_once\": _print_info_once,",
+            "context_lines": [
+              "\"info_once\": _print_info_once,"
+            ]
+          }
+        ]
+      },
+      "warnings": []
+    },
+    "security-focus-2": {
+      "request_id": "security-focus-2",
+      "candidate_id": "security-2",
+      "file_snippets": {
+        "vllm/logger.py": "# SPDX-License-Identifier: Apache-2.0\n\"\"\"Logging configuration for vLLM.\"\"\"\nimport datetime\nimport json\nimport logging\nimport os\nimport sys\nfrom collections.abc import Hashable\nfrom functools import lru_cache, partial\nfrom logging import Logger\nfrom logging.config import dictConfig\nfrom os import path\nfrom types import MethodType\nfrom typing import Any, Optional, cast\n\nimport vllm.envs as envs\n\nVLLM_CONFIGURE_LOGGING = envs.VLLM_CONFIGURE_LOGGING\nVLLM_LOGGING_CONFIG_PATH = envs.VLLM_LOGGING_CONFIG_PATH\nVLLM_LOGGING_LEVEL = envs.VLLM_LOGGING_LEVEL\nVLLM_LOGGING_PREFIX = envs.VLLM_LOGGING_PREFIX\n\n_FORMAT = (f\"{VLLM_LOGGING_PREFIX}%(levelname)s %(asctime)s \"\n           \"[%(filename)s:%(lineno)d] %(message)s\")\n_DATE_FORMAT = \"%m-%d %H:%M:%S\"\n\nDEFAULT_LOGGING_CONFIG = {\n    \"formatters\": {\n        \"vllm\": {\n            \"class\": \"vllm.logging_utils.NewLineFormatter\",\n            \"datefmt\": _DATE_FORMAT,\n            \"format\": _FORMAT,\n        },\n    },\n    \"handlers\": {\n        \"vllm\": {\n            \"class\": \"logging.StreamHandler\",\n            \"formatter\": \"vllm\",\n            \"level\": VLLM_LOGGING_LEVEL,\n            \"stream\": \"ext://sys.stdout\",\n        },\n    },\n    \"loggers\": {\n        \"vllm\": {\n            \"handlers\": [\"vllm\"],\n            \"level\": \"DEBUG\",\n            \"propagate\": False,\n        },\n    },\n    \"version\": 1,\n    \"disable_existing_loggers\": False\n}\n\n\n@lru_cache\ndef _print_info_once(logger: Logger, msg: str, *args: Hashable) -> None:\n    # Set the stacklevel to 2 to print the original caller's line info\n    logger.info(msg, *args, stacklevel=2)\n\n\n@lru_cache\ndef _print_warning_once(logger: Logger, msg: str, *args: Hashable) -> None:\n    # Set the stacklevel to 2 to print the original caller's line info\n    logger.warning(msg, *args, stacklevel=2)\n\n\nclass _VllmLogger(Logger):\n    \"\"\"\n    Note:\n        This class is just to provide type information.\n        We actually patch the methods directly on the :class:`logging.Logger`\n        instance to avoid conflicting with other libraries such as\n        `intel_extension_for_pytorch.utils._logger`.\n    \"\"\"\n\n    def info_once(self, msg: str, *args: Hashable) -> None:\n        \"\"\"\n        As :meth:`info`, but subsequent calls with the same message\n        are silently dropped.\n        \"\"\"\n        _print_info_once(self, msg, *args)\n\n    def warning_once(self, msg: str, *args: Hashable) -> None:\n        \"\"\"\n        As :meth:`warning`, but subsequent calls with the same message\n        are silently dropped.\n        \"\"\"\n        _print_warning_once(self, msg, *args)\n\n\ndef _configure_vllm_root_logger() -> None:\n    logging_config = dict[str, Any]()\n\n    if not VLLM_CONFIGURE_LOGGING and VLLM_LOGGING_CONFIG_PATH:\n        raise RuntimeError(\n            \"VLLM_CONFIGURE_LOGGING evaluated to false, but \"\n            \"VLLM_LOGGING_CONFIG_PATH was given. VLLM_LOGGING_CONFIG_PATH \"\n            \"implies VLLM_CONFIGURE_LOGGING. Please enable \"\n            \"VLLM_CONFIGURE_LOGGING or unset VLLM_LOGGING_CONFIG_PATH.\")\n\n    if VLLM_CONFIGURE_LOGGING:\n        logging_config = DEFAULT_LOGGING_CONFIG\n\n    if VLLM_LOGGING_CONFIG_PATH:\n        if not path.exists(VLLM_LOGGING_CONFIG_PATH):\n            raise RuntimeError(\n                \"Could not load logging config. File does not exist: %s\",\n                VLLM_LOGGING_CONFIG_PATH)\n        with open(VLLM_LOGGING_CONFIG_PATH, encoding=\"utf-8\") as file:\n            custom_config = json.loads(file.read())\n\n        if not isinstance(custom_config, dict):\n            raise ValueError(\"Invalid logging config. Expected dict, got %s.\",\n                             type(custom_config).__name__)\n        logging_config = custom_config\n\n    for formatter in logging_config.get(\"formatters\", {}).values():\n        # This provides backwards compatibility after #10134.\n        if formatter.get(\"class\") == \"vllm.logging.NewLineFormatter\":\n            formatter[\"class\"] = \"vllm.logging_utils.NewLineFormatter\"\n\n    if logging_config:\n        dictConfig(logging_config)\n\n\ndef init_logger(name: str) -> _VllmLogger:\n    \"\"\"The main purpose of this function is to ensure that loggers are\n    retrieved in such a way that we can be sure the root vllm logger has\n    already been configured.\"\"\"\n\n    logger = logging.getLogger(name)\n\n    methods_to_patch = {\n        \"info_once\": _print_info_once,\n        \"warning_once\": _print_warning_once,\n    }\n\n    for method_name, method in methods_to_patch.items():\n        setattr(logger, method_name, MethodType(method, logger))\n\n    return cast(_VllmLogger, logger)\n\n\n# The root logger is initialized when the module is imported.\n# This is thread-safe as the module is only imported once,\n# guaranteed by the Python GIL.\n_configure_vllm_root_logger()\n\nlogger = init_logger(__name__)\n\n\ndef _trace_calls(log_path, root_dir, frame, event, arg=None):\n    if event in ['call', 'return']:\n        # Extract the filename, line number, function name, and the code object\n        filename = frame.f_code.co_filename\n        lineno = frame.f_lineno\n        func_name = frame.f_code.co_name\n        if not filename.startswith(root_dir):\n            # only log the functions in the vllm root_dir\n            return\n        # Log every function call or return\n        try:\n            last_frame = frame.f_back\n            if last_frame is not None:\n                last_filename = last_frame.f_code.co_filename\n                last_lineno = last_frame.f_lineno\n                last_func_name = last_frame.f_code.co_name\n            else:\n                # initial frame\n                last_filename = \"\"\n                last_lineno = 0\n                last_func_name = \"\"\n            with open(log_path, 'a') as f:\n                ts = datetime.datetime.now().strftime(\"%Y-%m-%d %H:%M:%S.%f\")\n                if event == 'call':\n                    f.write(f\"{ts} Call to\"\n                            f\" {func_name} in {filename}:{lineno}\"\n                            f\" from {last_func_name} in {last_filename}:\"\n                            f\"{last_lineno}\\n\")\n                else:\n                    f.write(f\"{ts} Return from\"\n                            f\" {func_name} in {filename}:{lineno}\"\n                            f\" to {last_func_name} in {last_filename}:\"\n                            f\"{last_lineno}\\n\")\n        except NameError:\n            # modules are deleted during shutdown\n            pass\n    return partial(_trace_calls, log_path, root_dir)\n\n\ndef enable_trace_function_call(log_file_path: str,\n                               root_dir: Optional[str] = None):\n    \"\"\"\n    Enable tracing of every function call in code under `root_dir`.\n    This is useful for debugging hangs or crashes.\n    `log_file_path` is the path to the log file.\n    `root_dir` is the root directory of the code to trace. If None, it is the\n    vllm root directory.\n\n    Note that this call is thread-level, any threads calling this function\n    will have the trace enabled. Other threads will not be affected.\n    \"\"\"\n    logger.warning(\n        \"VLLM_TRACE_FUNCTION is enabled. It will record every\"\n        \" function executed by Python. This will slow down the code. It \"\n        \"is suggested to be used for debugging hang or crashes only.\")\n    logger.info(\"Trace frame log is saved to %s\", log_file_path)\n    if root_dir is None:\n        # by default, this is the vllm root directory\n        root_dir = os.path.dirname(os.path.dirname(__file__))\n    sys.settrace(partial(_trace_calls, log_file_path, root_dir))\n\n--- structural neighbors ---\nsymbol:92713d4a2035d501:_configure_vllm_root_logger (symbol, vllm/logger.py); symbol:2a33d1652467b911:_trace_calls (symbol, vllm/logger.py); symbol:5d5dfb87d349515f:init_logger (symbol, vllm/logger.py); symbol:1cc5f71f87bea87e:_VllmLogger (symbol, vllm/logger.py); symbol:788e0055db4658fb:_print_warning_once (symbol, vllm/logger.py); symbol:3119b6ce95f15521:enable_trace_function_call (symbol, vllm/logger.py); symbol:4eb79f9f21eda2f3:_print_info_once (symbol, vllm/logger.py)"
+      },
+      "search_hits": {
+        "info_once": [
+          {
+            "file_path": "vllm/lora/peft_helper.py",
+            "line_number": 56,
+            "content": "logger.info_once(\"Loading LoRA weights trained with rsLoRA.\")",
+            "context_lines": [
+              "logger.info_once(\"Loading LoRA weights trained with rsLoRA.\")"
+            ]
+          },
+          {
+            "file_path": "vllm/lora/punica_wrapper/punica_selector.py",
+            "line_number": 18,
+            "content": "logger.info_once(\"Using %s.\", punica_wrapper_qualname.rsplit(\".\", 1)[1])",
+            "context_lines": [
+              "logger.info_once(\"Using %s.\", punica_wrapper_qualname.rsplit(\".\", 1)[1])"
+            ]
+          },
+          {
+            "file_path": "vllm/lora/models.py",
+            "line_number": 671,
+            "content": "logger.info_once(",
+            "context_lines": [
+              "logger.info_once("
+            ]
+          },
+          {
+            "file_path": "vllm/platforms/cuda.py",
+            "line_number": 184,
+            "content": "logger.info_once(\"Using Triton MLA backend on V1 engine.\")",
+            "context_lines": [
+              "logger.info_once(\"Using Triton MLA backend on V1 engine.\")"
+            ]
+          },
+          {
+            "file_path": "vllm/platforms/cuda.py",
+            "line_number": 204,
+            "content": "logger.info_once(",
+            "context_lines": [
+              "logger.info_once("
+            ]
+          },
+          {
+            "file_path": "vllm/platforms/cuda.py",
+            "line_number": 214,
+            "content": "logger.info_once(\"Using FlashInfer backend on V1 engine.\")",
+            "context_lines": [
+              "logger.info_once(\"Using FlashInfer backend on V1 engine.\")"
+            ]
+          },
+          {
+            "file_path": "vllm/platforms/cuda.py",
+            "line_number": 217,
+            "content": "logger.info_once(\"Using Triton backend on V1 engine.\")",
+            "context_lines": [
+              "logger.info_once(\"Using Triton backend on V1 engine.\")"
+            ]
+          },
+          {
+            "file_path": "vllm/platforms/cuda.py",
+            "line_number": 221,
+            "content": "logger.info_once(\"Using Flash Attention backend on V1 engine.\")",
+            "context_lines": [
+              "logger.info_once(\"Using Flash Attention backend on V1 engine.\")"
+            ]
+          },
+          {
+            "file_path": "vllm/logger.py",
+            "line_number": 56,
+            "content": "def _print_info_once(logger: Logger, msg: str, *args: Hashable) -> None:",
+            "context_lines": [
+              "def _print_info_once(logger: Logger, msg: str, *args: Hashable) -> None:"
+            ]
+          },
+          {
+            "file_path": "vllm/logger.py",
+            "line_number": 76,
+            "content": "def info_once(self, msg: str, *args: Hashable) -> None:",
+            "context_lines": [
+              "def info_once(self, msg: str, *args: Hashable) -> None:"
+            ]
+          },
+          {
+            "file_path": "vllm/logger.py",
+            "line_number": 81,
+            "content": "_print_info_once(self, msg, *args)",
+            "context_lines": [
+              "_print_info_once(self, msg, *args)"
+            ]
+          },
+          {
+            "file_path": "vllm/logger.py",
+            "line_number": 134,
+            "content": "\"info_once\": _print_info_once,",
+            "context_lines": [
+              "\"info_once\": _print_info_once,"
+            ]
+          },
+          {
+            "file_path": "vllm/model_executor/guided_decoding/xgrammar_decoding.py",
+            "line_number": 193,
+            "content": "logger.info_once(",
+            "context_lines": [
+              "logger.info_once("
+            ]
+          },
+          {
+            "file_path": "vllm/model_executor/layers/quantization/fp8.py",
+            "line_number": 454,
+            "content": "logger.info_once(\"Using DeepGemm kernels for Fp8MoEMethod.\")",
+            "context_lines": [
+              "logger.info_once(\"Using DeepGemm kernels for Fp8MoEMethod.\")"
+            ]
+          }
+        ]
+      },
+      "warnings": []
+    },
+    "security-1-context": {
+      "request_id": "security-1-context",
+      "candidate_id": "security-1",
+      "file_snippets": {
+        "vllm/**/*.py": "sed: can't read vllm/**/*.py: No such file or directory\n"
+      },
+      "search_hits": {
+        "_print_info_once": [
+          {
+            "file_path": "vllm/logger.py",
+            "line_number": 56,
+            "content": "def _print_info_once(logger: Logger, msg: str, *args: Hashable) -> None:",
+            "context_lines": [
+              "def _print_info_once(logger: Logger, msg: str, *args: Hashable) -> None:"
+            ]
+          },
+          {
+            "file_path": "vllm/logger.py",
+            "line_number": 81,
+            "content": "_print_info_once(self, msg, *args)",
+            "context_lines": [
+              "_print_info_once(self, msg, *args)"
+            ]
+          },
+          {
+            "file_path": "vllm/logger.py",
+            "line_number": 134,
+            "content": "\"info_once\": _print_info_once,",
+            "context_lines": [
+              "\"info_once\": _print_info_once,"
+            ]
+          }
+        ]
+      },
+      "warnings": []
+    },
+    "security-2-context": {
+      "request_id": "security-2-context",
+      "candidate_id": "security-2",
+      "file_snippets": {
+        "vllm/**/*.py": "sed: can't read vllm/**/*.py: No such file or directory\n"
+      },
+      "search_hits": {
+        "info_once": [
+          {
+            "file_path": "vllm/lora/peft_helper.py",
+            "line_number": 56,
+            "content": "logger.info_once(\"Loading LoRA weights trained with rsLoRA.\")",
+            "context_lines": [
+              "logger.info_once(\"Loading LoRA weights trained with rsLoRA.\")"
+            ]
+          },
+          {
+            "file_path": "vllm/lora/punica_wrapper/punica_selector.py",
+            "line_number": 18,
+            "content": "logger.info_once(\"Using %s.\", punica_wrapper_qualname.rsplit(\".\", 1)[1])",
+            "context_lines": [
+              "logger.info_once(\"Using %s.\", punica_wrapper_qualname.rsplit(\".\", 1)[1])"
+            ]
+          },
+          {
+            "file_path": "vllm/lora/models.py",
+            "line_number": 671,
+            "content": "logger.info_once(",
+            "context_lines": [
+              "logger.info_once("
+            ]
+          },
+          {
+            "file_path": "vllm/logger.py",
+            "line_number": 56,
+            "content": "def _print_info_once(logger: Logger, msg: str, *args: Hashable) -> None:",
+            "context_lines": [
+              "def _print_info_once(logger: Logger, msg: str, *args: Hashable) -> None:"
+            ]
+          },
+          {
+            "file_path": "vllm/logger.py",
+            "line_number": 76,
+            "content": "def info_once(self, msg: str, *args: Hashable) -> None:",
+            "context_lines": [
+              "def info_once(self, msg: str, *args: Hashable) -> None:"
+            ]
+          },
+          {
+            "file_path": "vllm/logger.py",
+            "line_number": 81,
+            "content": "_print_info_once(self, msg, *args)",
+            "context_lines": [
+              "_print_info_once(self, msg, *args)"
+            ]
+          },
+          {
+            "file_path": "vllm/logger.py",
+            "line_number": 134,
+            "content": "\"info_once\": _print_info_once,",
+            "context_lines": [
+              "\"info_once\": _print_info_once,"
+            ]
+          },
+          {
+            "file_path": "vllm/platforms/cuda.py",
+            "line_number": 184,
+            "content": "logger.info_once(\"Using Triton MLA backend on V1 engine.\")",
+            "context_lines": [
+              "logger.info_once(\"Using Triton MLA backend on V1 engine.\")"
+            ]
+          },
+          {
+            "file_path": "vllm/platforms/cuda.py",
+            "line_number": 204,
+            "content": "logger.info_once(",
+            "context_lines": [
+              "logger.info_once("
+            ]
+          },
+          {
+            "file_path": "vllm/platforms/cuda.py",
+            "line_number": 214,
+            "content": "logger.info_once(\"Using FlashInfer backend on V1 engine.\")",
+            "context_lines": [
+              "logger.info_once(\"Using FlashInfer backend on V1 engine.\")"
+            ]
+          },
+          {
+            "file_path": "vllm/platforms/cuda.py",
+            "line_number": 217,
+            "content": "logger.info_once(\"Using Triton backend on V1 engine.\")",
+            "context_lines": [
+              "logger.info_once(\"Using Triton backend on V1 engine.\")"
+            ]
+          },
+          {
+            "file_path": "vllm/platforms/cuda.py",
+            "line_number": 221,
+            "content": "logger.info_once(\"Using Flash Attention backend on V1 engine.\")",
+            "context_lines": [
+              "logger.info_once(\"Using Flash Attention backend on V1 engine.\")"
+            ]
+          },
+          {
+            "file_path": "vllm/model_executor/guided_decoding/xgrammar_decoding.py",
+            "line_number": 193,
+            "content": "logger.info_once(",
+            "context_lines": [
+              "logger.info_once("
+            ]
+          },
+          {
+            "file_path": "vllm/model_executor/layers/quantization/fp8.py",
+            "line_number": 454,
+            "content": "logger.info_once(\"Using DeepGemm kernels for Fp8MoEMethod.\")",
+            "context_lines": [
+              "logger.info_once(\"Using DeepGemm kernels for Fp8MoEMethod.\")"
+            ]
+          }
+        ]
+      },
+      "warnings": []
+    }
+  }
+}

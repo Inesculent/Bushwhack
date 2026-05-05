@@ -1,0 +1,196 @@
+{
+  "metadata": {
+    "experiment": "reviewer_graph_basic",
+    "run_id": "430a96cc0085",
+    "graph_run_id": "430a96cc0085:comfyanonymous__ComfyUI__pr9560",
+    "pr_started_at": "2026-05-05T07:00:50.952340+00:00",
+    "pr_url": "https://github.com/comfyanonymous/ComfyUI/pull/9560",
+    "pr_title": "fix: add cache headers for images",
+    "pr_description": "# Overview\r\n\r\nFixes https://github.com/Comfy-Org/ComfyUI_frontend/issues/4438\r\n\r\nMajority of discussion was in:\r\n1. https://github.com/Comfy-Org/ComfyUI_frontend/issues/4438\r\n2. https://github.com/Comfy-Org/ComfyUI_frontend/pull/5174 and \r\n\r\nTL;DR: Add cache controls to store images for 1 day and only try to resolve missing images every 1 hour.\r\n\r\n## Problem\r\n1. [model_manager.py](https://github.com/comfyanonymous/ComfyUI/blob/5352abc6d389570455776c457738db54367cd6cb/app/model_manager.py#L52-L77) has an experimental preview endpoint to serve preview images from the filesystem.\r\n2. [frontend code](https://github.com/Comfy-Org/ComfyUI_frontend/blob/8646ca416210acd12618d31bffe4cb042b1c6607/src/components/sidebar/tabs/modelLibrary/ModelTreeLeaf.vue#L46-L56) tries to fetch images these images, but there is no cache control on them so we repeatedly fetch and download them.\r\n3. This causes unnecessary traffic to the server and a lot of network traffic noise in development.\r\n4. We fix this by adding caching logic for images in our middleware.\r\n\r\n## Review Points\r\n1. Are we okay with the default `max-age` values? One day for images and permanent redirects. One hour for image 404's.",
+    "pr_repo": "comfyanonymous/ComfyUI",
+    "pr_number": 9560,
+    "review_repo_url": "https://github.com/comfyanonymous/ComfyUI",
+    "review_pr_number": 9560,
+    "review_trace_enabled": true,
+    "structural_extractor": {
+      "mode": "sandbox_entities",
+      "files_attempted": 389,
+      "files_parsed": 389,
+      "gap_count": 0,
+      "node_count": 6887,
+      "edge_count": 32913,
+      "topology_algorithm": "graspologic_leiden",
+      "community_count": 61,
+      "topology_splits_applied": 0
+    },
+    "review_planner": {
+      "summary": "The changes introduce a new cache control middleware in the `middleware/cache_middleware.py` file, move the existing middleware from `server.py`, and add corresponding unit tests in `tests-unit/server_test/test_cache_control.py`. The new middleware sets cache headers based on file types and response statuses.",
+      "task_count": 4,
+      "specialties": [
+        "general",
+        "logic",
+        "performance",
+        "security"
+      ],
+      "tasks": [
+        {
+          "id": "security",
+          "title": "Security Review",
+          "description": "Verify that the new cache control middleware does not introduce any security vulnerabilities. Specifically, check for improper handling of cache headers that could lead to sensitive data being cached unintentionally.",
+          "target_files": [
+            "middleware/cache_middleware.py"
+          ],
+          "subtasks": [],
+          "specialty": "security",
+          "depth": 1,
+          "assigned_model": "Qwen"
+        },
+        {
+          "id": "logic",
+          "title": "Logic Review",
+          "description": "Verify that the cache control logic is correct and behaves as expected for all specified file types and response statuses. Ensure that existing cache headers are preserved where necessary.",
+          "target_files": [
+            "middleware/cache_middleware.py",
+            "tests-unit/server_test/test_cache_control.py"
+          ],
+          "subtasks": [],
+          "specialty": "logic",
+          "depth": 1,
+          "assigned_model": "Qwen"
+        },
+        {
+          "id": "performance",
+          "title": "Performance Review",
+          "description": "Evaluate the performance impact of the new cache control middleware. Check if the middleware introduces any unnecessary overhead or inefficiencies that could affect server performance.",
+          "target_files": [
+            "middleware/cache_middleware.py"
+          ],
+          "subtasks": [],
+          "specialty": "performance",
+          "depth": 1,
+          "assigned_model": "Qwen"
+        },
+        {
+          "id": "general",
+          "title": "General Code Quality Review",
+          "description": "Review the overall quality of the new cache control middleware and unit tests. Ensure that the code is well-structured, follows best practices, and includes comprehensive test coverage for all scenarios.",
+          "target_files": [
+            "middleware/cache_middleware.py",
+            "tests-unit/server_test/test_cache_control.py"
+          ],
+          "subtasks": [],
+          "specialty": "general",
+          "depth": 1,
+          "assigned_model": "Qwen"
+        }
+      ],
+      "warnings": []
+    },
+    "review_synthesizer": {
+      "worker_count": 4,
+      "reflection_report_count": 0,
+      "raw_finding_count": 6,
+      "final_finding_count": 6,
+      "dropped_duplicate_ids": [],
+      "worker_reports": [
+        {
+          "task_id": "general",
+          "specialty": "general",
+          "explored_files": [],
+          "context_summary": "The review focuses on the new cache control middleware and its associated unit tests. The review checks for missing tests, inconsistent integration, unclear error messages, maintainability issues, and documentation gaps.",
+          "warnings": [
+            "No significant issues found in the provided code snippets. However, the review focused on the given context and might miss broader issues not directly related to the provided diff."
+          ]
+        },
+        {
+          "task_id": "logic",
+          "specialty": "logic",
+          "explored_files": [
+            "tests-unit/server_test/test_cache_control.py"
+          ],
+          "context_summary": "No concrete issues found in the provided code excerpts. The cache control logic appears to be consistent with the test cases and handles various scenarios appropriately.",
+          "warnings": [
+            "The diff shows that the `cache_control` middleware was moved from `server.py` to `middleware/cache_middleware.py`. Ensure that this change does not affect any other parts of the application that might rely on the middleware being in its original location."
+          ]
+        },
+        {
+          "task_id": "performance",
+          "specialty": "performance",
+          "explored_files": [],
+          "context_summary": "No significant performance regressions or scalability risks were identified in the new cache control middleware.",
+          "warnings": [
+            "The middleware checks the request path multiple times, which could be slightly optimized by using a single check or storing the result. However, given the typical length of paths and the infrequent nature of this operation, this is unlikely to be a bottleneck."
+          ]
+        },
+        {
+          "task_id": "security",
+          "specialty": "security",
+          "explored_files": [
+            "middleware/cache_middleware.py"
+          ],
+          "context_summary": "No concrete security issues were found in the `middleware/cache_middleware.py` file based on the provided context. The middleware properly handles cache headers for different file types and response statuses without introducing any security vulnerabilities related to caching sensitive data.",
+          "warnings": [
+            "The middleware does not explicitly prevent caching of potentially sensitive data. While the current implementation focuses on images and specific file types, it might be beneficial to ensure that sensitive endpoints or data are not inadvertently cached. Consider adding checks for sensitive paths or content types if applicable."
+          ]
+        }
+      ],
+      "reflection_reports": []
+    },
+    "pr_finished_at": "2026-05-05T07:01:42.052278+00:00"
+  },
+  "node_history": [
+    "sandbox_structural_extractor",
+    "review_planner",
+    "general_review_worker",
+    "logic_review_worker",
+    "performance_review_worker",
+    "security_review_worker",
+    "review_synthesizer"
+  ],
+  "worker_reports": [
+    {
+      "task_id": "general",
+      "specialty": "general",
+      "explored_files": [],
+      "context_summary": "The review focuses on the new cache control middleware and its associated unit tests. The review checks for missing tests, inconsistent integration, unclear error messages, maintainability issues, and documentation gaps.",
+      "warnings": [
+        "No significant issues found in the provided code snippets. However, the review focused on the given context and might miss broader issues not directly related to the provided diff."
+      ]
+    },
+    {
+      "task_id": "logic",
+      "specialty": "logic",
+      "explored_files": [
+        "tests-unit/server_test/test_cache_control.py"
+      ],
+      "context_summary": "No concrete issues found in the provided code excerpts. The cache control logic appears to be consistent with the test cases and handles various scenarios appropriately.",
+      "warnings": [
+        "The diff shows that the `cache_control` middleware was moved from `server.py` to `middleware/cache_middleware.py`. Ensure that this change does not affect any other parts of the application that might rely on the middleware being in its original location."
+      ]
+    },
+    {
+      "task_id": "performance",
+      "specialty": "performance",
+      "explored_files": [],
+      "context_summary": "No significant performance regressions or scalability risks were identified in the new cache control middleware.",
+      "warnings": [
+        "The middleware checks the request path multiple times, which could be slightly optimized by using a single check or storing the result. However, given the typical length of paths and the infrequent nature of this operation, this is unlikely to be a bottleneck."
+      ]
+    },
+    {
+      "task_id": "security",
+      "specialty": "security",
+      "explored_files": [
+        "middleware/cache_middleware.py"
+      ],
+      "context_summary": "No concrete security issues were found in the `middleware/cache_middleware.py` file based on the provided context. The middleware properly handles cache headers for different file types and response statuses without introducing any security vulnerabilities related to caching sensitive data.",
+      "warnings": [
+        "The middleware does not explicitly prevent caching of potentially sensitive data. While the current implementation focuses on images and specific file types, it might be beneficial to ensure that sensitive endpoints or data are not inadvertently cached. Consider adding checks for sensitive paths or content types if applicable."
+      ]
+    }
+  ],
+  "candidate_findings": [],
+  "reflection_reports": [],
+  "focused_context_requests": [],
+  "focused_context_results": {}
+}

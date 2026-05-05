@@ -1,0 +1,2610 @@
+{
+  "metadata": {
+    "experiment": "reviewer_graph_parallel",
+    "run_id": "7727edc1d372",
+    "graph_run_id": "7727edc1d372:vllm-project__vllm__pr15998",
+    "pr_started_at": "2026-05-05T08:02:19.890613+00:00",
+    "pr_url": "https://github.com/vllm-project/vllm/pull/15998",
+    "pr_title": "[Benchmark][Doc] Update throughput benchmark and README",
+    "pr_description": "This PR updates benchmark README for the latest change from https://github.com/vllm-project/vllm/pull/15955 . Also, it adds AIMODataset to `benchmark_throughput.py` \n\n@JenZhao @ywang96 Thank you for the comments!",
+    "pr_repo": "vllm-project/vllm",
+    "pr_number": 15998,
+    "review_repo_url": "https://github.com/vllm-project/vllm",
+    "review_pr_number": 15998,
+    "review_trace_enabled": true,
+    "structural_extractor": {
+      "mode": "sandbox_entities",
+      "files_attempted": 1373,
+      "files_parsed": 1311,
+      "gap_count": 62,
+      "node_count": 13354,
+      "edge_count": 70120,
+      "topology_algorithm": "graspologic_leiden",
+      "community_count": 346,
+      "topology_splits_applied": 0
+    },
+    "review_planner": {
+      "summary": "The changes involve updating the README.md and benchmark_throughput.py files to include support for a new dataset, AI-MO/aimo-validation-aime, and its corresponding dataset class, AIMODataset.",
+      "task_count": 4,
+      "specialties": [
+        "general",
+        "logic",
+        "performance",
+        "security"
+      ],
+      "tasks": [
+        {
+          "id": "security-1",
+          "title": "Security Review for New Dataset Handling",
+          "description": "Verify that the new dataset handling does not introduce any security vulnerabilities, such as improper input validation or handling of untrusted data.",
+          "target_files": [
+            "benchmarks/benchmark_throughput.py"
+          ],
+          "subtasks": [],
+          "specialty": "security",
+          "depth": 1,
+          "assigned_model": null
+        },
+        {
+          "id": "logic-1",
+          "title": "Logic Review for New Dataset Integration",
+          "description": "Ensure that the new dataset, AI-MO/aimo-validation-aime, is correctly integrated into the benchmarking process and that the logic for handling this dataset is correct.",
+          "target_files": [
+            "benchmarks/benchmark_throughput.py"
+          ],
+          "subtasks": [],
+          "specialty": "logic",
+          "depth": 1,
+          "assigned_model": null
+        },
+        {
+          "id": "performance-1",
+          "title": "Performance Review for New Dataset",
+          "description": "Evaluate the performance impact of adding the new dataset, AI-MO/aimo-validation-aime, and ensure that it does not introduce any significant performance regressions.",
+          "target_files": [
+            "benchmarks/benchmark_throughput.py"
+          ],
+          "subtasks": [],
+          "specialty": "performance",
+          "depth": 1,
+          "assigned_model": null
+        },
+        {
+          "id": "general-1",
+          "title": "General Review for Documentation and Consistency",
+          "description": "Review the README.md and benchmark_throughput.py files to ensure that the documentation is updated consistently and that there are no discrepancies between the added content and existing functionality.",
+          "target_files": [
+            "benchmarks/README.md",
+            "benchmarks/benchmark_throughput.py"
+          ],
+          "subtasks": [],
+          "specialty": "general",
+          "depth": 1,
+          "assigned_model": null
+        }
+      ],
+      "warnings": []
+    },
+    "general_critiquer": {
+      "by_task": {
+        "general-1": {
+          "summary": "The review identified potential inconsistencies and missing tests related to the addition of HuggingFace-AIMO datasets and the new AIMODataset class.",
+          "candidate_count": 2,
+          "warnings": [],
+          "initial_focus_requests": [
+            {
+              "request_id": "general-1-request-1",
+              "candidate_id": "general-1-candidate-1",
+              "requested_by_specialty": "general",
+              "file_paths": [
+                "benchmarks/tests/test_benchmark_throughput.py"
+              ],
+              "symbol_queries": [
+                "test_aimo_validation_aime"
+              ],
+              "text_queries": [
+                "AI-MO/aimo-validation-aime"
+              ],
+              "reason": "To verify if there are any existing test cases for the AI-MO/aimo-validation-aime dataset in the benchmarks/tests directory."
+            },
+            {
+              "request_id": "general-1-request-2",
+              "candidate_id": "general-1-candidate-2",
+              "requested_by_specialty": "general",
+              "file_paths": [
+                "benchmarks/benchmark_throughput.py"
+              ],
+              "symbol_queries": [
+                "get_requests"
+              ],
+              "text_queries": [
+                "AIMODataset.SUPPORTED_DATASET_PATHS"
+              ],
+              "reason": "To verify if the dataset_path is being handled appropriately in the get_requests function."
+            }
+          ]
+        },
+        "logic-1": {
+          "summary": "Review of the changes related to integrating the new dataset AI-MO/aimo-validation-aime into the benchmarking process.",
+          "candidate_count": 3,
+          "warnings": [
+            "search_failed:TODO|FIXME|raise|except|return None|default|fallback:UnicodeDecodeError: 'utf-8' codec can't decode byte 0xe2 in position 10665: invalid continuation byte",
+            "search_failed: TODO|FIXME|raise|except|return None|default|fallback: UnicodeDecodeError: 'utf-8' codec can't decode byte 0xe2 in position 10665: invalid continuation byte"
+          ],
+          "initial_focus_requests": [
+            {
+              "request_id": "logic-1-request-1",
+              "candidate_id": "logic-1-candidate-1",
+              "requested_by_specialty": "general",
+              "file_paths": [
+                "benchmarks/benchmark_throughput.py"
+              ],
+              "symbol_queries": [
+                "get_requests",
+                "validate_args"
+              ],
+              "text_queries": [
+                "dataset_split",
+                "AIMODataset"
+              ],
+              "reason": "To confirm if the 'train' split is the correct default for the new dataset and if other splits should be supported."
+            },
+            {
+              "request_id": "logic-1-request-2",
+              "candidate_id": "logic-1-candidate-2",
+              "requested_by_specialty": "general",
+              "file_paths": [
+                "benchmarks/benchmark_throughput.py"
+              ],
+              "symbol_queries": [
+                "validate_args"
+              ],
+              "text_queries": [
+                "VisionArenaDataset.SUPPORTED_DATASET_PATHS",
+                "ConversationDataset.SUPPORTED_DATASET_PATHS"
+              ],
+              "reason": "To verify the intended behavior of checking the dataset paths and ensure that the backend configuration is accurate for each dataset."
+            },
+            {
+              "request_id": "logic-1-request-3",
+              "candidate_id": "logic-1-candidate-3",
+              "requested_by_specialty": "general",
+              "file_paths": [
+                "tests/test_benchmark_throughput.py"
+              ],
+              "symbol_queries": [
+                "test_get_requests",
+                "test_validate_args"
+              ],
+              "text_queries": [
+                "AIMODataset",
+                "vLLM"
+              ],
+              "reason": "To check if there are existing tests that cover the new dataset integration and to create new tests if necessary."
+            }
+          ]
+        },
+        "performance-1": {
+          "summary": "The changes in the provided diff introduce the `AI-MO/aimo-validation-aime` dataset and update the dataset handling logic in `benchmark_throughput.py`. The primary focus is on ensuring that these changes do not introduce performance regressions.",
+          "candidate_count": 2,
+          "warnings": [
+            "search_failed:for .* in .*for|sleep|cache|memo|batch|bulk|timeout|retry:UnicodeDecodeError: 'utf-8' codec can't decode byte 0x80 in position 32176: invalid start byte",
+            "search_failed:for .* in .*for|sleep|cache|memo|batch|bulk|timeout|retry:UnicodeDecodeError: 'utf-8' codec can't decode byte 0x80 in position 32176: invalid start byte"
+          ],
+          "initial_focus_requests": [
+            {
+              "request_id": "performance-1-req-1",
+              "candidate_id": "performance-1-1",
+              "requested_by_specialty": "performance",
+              "file_paths": [
+                "benchmarks/benchmark_throughput.py"
+              ],
+              "symbol_queries": [
+                "AIMODataset.SUPPORTED_DATASET_PATHS"
+              ],
+              "text_queries": [
+                "AI-MO/aimo-validation-aime"
+              ],
+              "reason": "To determine the size and complexity of the new dataset and assess its potential impact on performance."
+            },
+            {
+              "request_id": "performance-1-req-2",
+              "candidate_id": "performance-1-2",
+              "requested_by_specialty": "general",
+              "file_paths": [
+                "benchmarks/benchmark_throughput.py"
+              ],
+              "symbol_queries": [
+                "AIMODataset.SUPPORTED_DATASET_PATHS"
+              ],
+              "text_queries": [
+                "AI-MO/aimo-validation-aime",
+                "backend"
+              ],
+              "reason": "To verify the correct backend for the new dataset and ensure compatibility with existing requirements."
+            },
+            {
+              "request_id": "performance-1-1:auto-context:1",
+              "candidate_id": "performance-1-1",
+              "requested_by_specialty": "performance",
+              "file_paths": [
+                "benchmarks/benchmark_throughput.py"
+              ],
+              "symbol_queries": [],
+              "text_queries": [
+                "benchmarks/benchmark_throughput.py",
+                "If the new dataset introduces a large number of prompts or outputs, it could lead to increased memory usage or processin",
+                "If the new dataset introduces a large number of prompts or outputs, it could lead to increased memory usage or processing time, causing a performance regression"
+              ],
+              "reason": "Deterministic context requirement for a high-risk or externally dependent performance_regression candidate."
+            }
+          ]
+        },
+        "security-1": {
+          "summary": "No clear security vulnerabilities were found in the provided diff and context. However, there are some areas where additional review might be necessary to ensure proper handling of dataset paths and potential integration points.",
+          "candidate_count": 2,
+          "warnings": [
+            "search_failed:sql|query|deserialize|jwt|cookie|session|csrf|cors:UnicodeDecodeError: 'utf-8' codec can't decode byte 0xd3 in position 13447: invalid continuation byte",
+            "search_failed:sql|query|deserialize|jwt|cookie|session|csrf|cors:UnicodeDecodeError: 'utf-8' codec can't decode byte 0xd3 in position 13447: invalid continuation byte"
+          ],
+          "initial_focus_requests": [
+            {
+              "request_id": "security-1-req-001",
+              "candidate_id": "security-1-001",
+              "requested_by_specialty": "security",
+              "file_paths": [
+                "benchmarks/benchmark_dataset.py"
+              ],
+              "symbol_queries": [
+                "AIMODataset"
+              ],
+              "text_queries": [
+                "untrusted data",
+                "validation"
+              ],
+              "reason": "To understand how `AIMODataset` handles untrusted data and its validation mechanisms."
+            },
+            {
+              "request_id": "security-1-req-002",
+              "candidate_id": "security-1-002",
+              "requested_by_specialty": "general",
+              "file_paths": [
+                "benchmarks/benchmark_dataset.py"
+              ],
+              "symbol_queries": [
+                "VisionArenaDataset",
+                "ConversationDataset"
+              ],
+              "text_queries": [
+                "SUPPORTED_DATASET_PATHS"
+              ],
+              "reason": "To verify the intended usage of `SUPPORTED_DATASET_PATHS` in `VisionArenaDataset` and `ConversationDataset`."
+            }
+          ]
+        }
+      }
+    },
+    "focused_context": {
+      "fulfilled_ids": [
+        "general-1-request-1",
+        "general-1-request-2",
+        "logic-1-request-1",
+        "logic-1-request-2",
+        "logic-1-request-3",
+        "performance-1-1:auto-context:1",
+        "performance-1-req-1",
+        "performance-1-req-2",
+        "security-1-001-context",
+        "security-1-req-001",
+        "security-1-req-002"
+      ],
+      "warnings": []
+    },
+    "adversarial_reflection": {
+      "report_count": 9,
+      "focused_request_count": 1,
+      "routed_candidate_counts": {
+        "security": 1,
+        "logic": 0,
+        "performance": 1,
+        "general": 7
+      },
+      "total_routed_candidate_reviews": 9,
+      "warnings": []
+    },
+    "critique_revision": {
+      "revisions": [
+        {
+          "candidate_id": "performance-1-1",
+          "verdict": "reject",
+          "updated_evidence_summary": "The focused context did not provide specific information about the size and complexity of the `AI-MO/aimo-validation-aime` dataset. While the code snippet and README entries indicate that the dataset is supported and used in benchmarks, there is no direct evidence of performance metrics or comparisons with existing datasets."
+        },
+        {
+          "candidate_id": "security-1-001",
+          "verdict": "reject",
+          "updated_evidence_summary": "The focused context did not provide specific details on how `AIMODataset` handles untrusted data or its validation mechanisms. The code snippet and README entries do not contain explicit validation logic or security measures for `AIMODataset`."
+        }
+      ],
+      "warnings": []
+    },
+    "adversarial_cleanup": {
+      "promoted_count": 4,
+      "dropped_candidate_ids": [
+        "logic-1-candidate-2",
+        "performance-1-1",
+        "performance-1-2",
+        "security-1-001",
+        "security-1-002"
+      ],
+      "ignored_off_domain_rejections": {},
+      "ignored_off_domain_context_requests": {},
+      "misrouted_candidate_ids": {},
+      "candidate_lifecycle": {
+        "general-1-candidate-1": {
+          "decision": "promoted",
+          "reason": "accepted_by_relevant_reflectors",
+          "claim_type": "missing_test",
+          "final_category": "general",
+          "relevant_reflectors": [
+            "general"
+          ],
+          "had_focused_context": true
+        },
+        "general-1-candidate-2": {
+          "decision": "promoted",
+          "reason": "accepted_by_relevant_reflectors",
+          "claim_type": "defect",
+          "final_category": "logic",
+          "relevant_reflectors": [
+            "general"
+          ],
+          "had_focused_context": true
+        },
+        "logic-1-candidate-1": {
+          "decision": "promoted",
+          "reason": "accepted_by_relevant_reflectors",
+          "claim_type": "defect",
+          "final_category": "logic",
+          "relevant_reflectors": [
+            "general"
+          ],
+          "had_focused_context": true
+        },
+        "logic-1-candidate-2": {
+          "decision": "dropped",
+          "reason": "non_promotable_claim_type",
+          "claim_type": "uncertain",
+          "suspected_category": "logic"
+        },
+        "logic-1-candidate-3": {
+          "decision": "promoted",
+          "reason": "accepted_by_relevant_reflectors",
+          "claim_type": "missing_test",
+          "final_category": "general",
+          "relevant_reflectors": [
+            "general"
+          ],
+          "had_focused_context": true
+        },
+        "performance-1-1": {
+          "decision": "dropped",
+          "reason": "revision_reject",
+          "claim_type": "performance_regression",
+          "suspected_category": "performance"
+        },
+        "performance-1-2": {
+          "decision": "dropped",
+          "reason": "relevant_reflector_reject",
+          "claim_type": "uncertain",
+          "suspected_category": "general",
+          "rejecting_reflectors": [
+            "general"
+          ]
+        },
+        "security-1-001": {
+          "decision": "dropped",
+          "reason": "non_promotable_claim_type",
+          "claim_type": "uncertain",
+          "suspected_category": "security"
+        },
+        "security-1-002": {
+          "decision": "dropped",
+          "reason": "non_promotable_claim_type",
+          "claim_type": "uncertain",
+          "suspected_category": "logic"
+        }
+      }
+    },
+    "review_synthesizer": {
+      "worker_count": 0,
+      "reflection_report_count": 9,
+      "raw_finding_count": 4,
+      "final_finding_count": 4,
+      "dropped_duplicate_ids": [],
+      "worker_reports": [],
+      "reflection_reports": [
+        {
+          "candidate_id": "security-1-001",
+          "reflector_specialty": "security",
+          "verdict": "needs_context",
+          "rationale": "The candidate highlights a potential security concern related to the handling of untrusted data by the `AIMODataset` class. However, the provided evidence is insufficient to determine whether `AIMODataset` includes proper validation and handling mechanisms for untrusted data. Additional context about the implementation details of `AIMODataset` is required to assess this risk.",
+          "reclassified_category": null,
+          "focused_request": {
+            "request_id": "security-1-001-context",
+            "candidate_id": "security-1-001",
+            "requested_by_specialty": "security",
+            "file_paths": [
+              "benchmarks/benchmark_throughput.py",
+              "path/to/aimodataset.py"
+            ],
+            "symbol_queries": [
+              "AIMODataset"
+            ],
+            "text_queries": [
+              "validation",
+              "untrusted data handling"
+            ],
+            "reason": "To determine if `AIMODataset` properly validates and handles untrusted data, we need to inspect its implementation details."
+          }
+        },
+        {
+          "candidate_id": "performance-1-1",
+          "reflector_specialty": "performance",
+          "verdict": "needs_context",
+          "rationale": "The candidate suggests a potential performance regression due to the introduction of a new dataset. However, the evidence provided is speculative and lacks specific details about the dataset's size, complexity, or how it might impact performance. Additional context on the new dataset's characteristics and performance metrics with and without it is required to make a definitive judgment.",
+          "reclassified_category": null,
+          "focused_request": null
+        },
+        {
+          "candidate_id": "general-1-candidate-1",
+          "reflector_specialty": "general",
+          "verdict": "accept",
+          "rationale": "The README.md file includes instructions for using the AI-MO/aimo-validation-aime dataset, but there are no test cases provided to verify its integration and functionality. This is a concrete evidence of missing test coverage.",
+          "reclassified_category": null,
+          "focused_request": null
+        },
+        {
+          "candidate_id": "general-1-candidate-2",
+          "reflector_specialty": "general",
+          "verdict": "reclassify",
+          "rationale": "The code does not handle cases where the dataset_path is not found in any of the SUPPORTED_DATASET_PATHS, which could lead to a ValueError. This is a logic defect rather than a general maintainability issue.",
+          "reclassified_category": "logic",
+          "focused_request": null
+        },
+        {
+          "candidate_id": "logic-1-candidate-1",
+          "reflector_specialty": "general",
+          "verdict": "reclassify",
+          "rationale": "The dataset split is hardcoded to 'train', which might not be appropriate for all datasets or use cases. This is a logic defect rather than a general maintainability issue.",
+          "reclassified_category": "logic",
+          "focused_request": null
+        },
+        {
+          "candidate_id": "logic-1-candidate-2",
+          "reflector_specialty": "general",
+          "verdict": "accept",
+          "rationale": "The code now checks if the dataset path is in the keys of `VisionArenaDataset.SUPPORTED_DATASET_PATHS` which might not be the intended behavior. This is a concrete evidence of potential misconfiguration.",
+          "reclassified_category": null,
+          "focused_request": null
+        },
+        {
+          "candidate_id": "logic-1-candidate-3",
+          "reflector_specialty": "general",
+          "verdict": "accept",
+          "rationale": "There are no tests specifically addressing the new dataset integration with the vLLM backend. This is a concrete evidence of missing test coverage.",
+          "reclassified_category": null,
+          "focused_request": null
+        },
+        {
+          "candidate_id": "performance-1-2",
+          "reflector_specialty": "general",
+          "verdict": "reject",
+          "rationale": "The new dataset is added to the list of datasets that require the `vllm` backend, but it's unclear if this is the correct backend for the dataset. This is a performance concern but lacks concrete evidence of a performance regression.",
+          "reclassified_category": null,
+          "focused_request": null
+        },
+        {
+          "candidate_id": "security-1-002",
+          "reflector_specialty": "general",
+          "verdict": "accept",
+          "rationale": "The check for `VisionArenaDataset` and `ConversationDataset` now includes `.keys()`, which might not be intended and could lead to incorrect behavior if the keys are not valid dataset paths. This is a concrete evidence of potential misconfiguration.",
+          "reclassified_category": null,
+          "focused_request": null
+        }
+      ]
+    },
+    "pr_finished_at": "2026-05-05T08:04:35.897504+00:00"
+  },
+  "node_history": [
+    "sandbox_structural_extractor",
+    "review_planner",
+    "general_critiquer",
+    "general_critiquer",
+    "general_critiquer",
+    "general_critiquer",
+    "focused_context",
+    "adversarial_reflection",
+    "focused_context",
+    "critique_revision",
+    "adversarial_cleanup",
+    "review_synthesizer"
+  ],
+  "worker_reports": [],
+  "candidate_findings": [
+    {
+      "candidate_id": "general-1-candidate-1",
+      "patch_task_id": "general-1",
+      "file_path": "benchmarks/README.md",
+      "line_start": 187,
+      "line_end": 193,
+      "content": "**`AI-MO/aimo-validation-aime`**\n\n``` bash\npython3 vllm/benchmarks/benchmark_serving.py \\\n    --model Qwen/QwQ-32B \\\n    --dataset-name hf \\\n    --dataset-path AI-MO/aimo-validation-aime \\\n    --num-prompts 10 \\\n    --seed 42\n```",
+      "claim_type": "missing_test",
+      "failure_mode": "The newly added HuggingFace-AIMO dataset does not have corresponding test cases to ensure it functions correctly with the benchmarking scripts.",
+      "evidence_summary": "The README.md file includes instructions for using the AI-MO/aimo-validation-aime dataset, but there are no test cases provided to verify its integration and functionality.",
+      "required_context": [
+        "Check if there are any existing test cases for the AI-MO/aimo-validation-aime dataset in the benchmarks/tests directory.",
+        "Verify if the dataset is being used in any of the existing benchmarking scripts."
+      ],
+      "confidence": 0.8,
+      "suspected_category": "general",
+      "reflection_specialties": [
+        "general"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "medium",
+      "recommendation": "Add test cases to verify the integration and functionality of the AI-MO/aimo-validation-aime dataset with the benchmarking scripts."
+    },
+    {
+      "candidate_id": "general-1-candidate-2",
+      "patch_task_id": "general-1",
+      "file_path": "benchmarks/benchmark_throughput.py",
+      "line_start": 332,
+      "line_end": 336,
+      "content": "elif args.dataset_path in AIMODataset.SUPPORTED_DATASET_PATHS:\n    dataset_cls = AIMODataset\n    common_kwargs['dataset_subset'] = None\n    common_kwargs['dataset_split'] = \"train\"",
+      "claim_type": "defect",
+      "failure_mode": "The code does not handle cases where the dataset_path is not found in any of the SUPPORTED_DATASET_PATHS, which could lead to a ValueError.",
+      "evidence_summary": "The code adds a new condition to check if the dataset_path is in AIMODataset.SUPPORTED_DATASET_PATHS, but it does not update the error message in the ValueError to provide more context.",
+      "required_context": [
+        "Check if there are any existing test cases for the new AIMODataset in the benchmarks/tests directory.",
+        "Verify if the dataset is being used in any of the existing benchmarking scripts."
+      ],
+      "confidence": 0.8,
+      "suspected_category": "logic",
+      "reflection_specialties": [
+        "general"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "medium",
+      "recommendation": "Update the ValueError message to provide more context about the unsupported dataset_path and ensure that all possible dataset paths are handled appropriately."
+    },
+    {
+      "candidate_id": "logic-1-candidate-1",
+      "patch_task_id": "logic-1",
+      "file_path": "benchmarks/benchmark_throughput.py",
+      "line_start": 467,
+      "line_end": 470,
+      "content": "elif args.dataset_path in AIMODataset.SUPPORTED_DATASET_PATHS:\n    dataset_cls = AIMODataset\n    common_kwargs['dataset_subset'] = None\n    common_kwargs['dataset_split'] = \"train\"",
+      "claim_type": "defect",
+      "failure_mode": "The dataset split is hardcoded to 'train', which might not be appropriate for all datasets or use cases.",
+      "evidence_summary": "The code sets the `dataset_split` to 'train' for the new dataset without considering other possible splits like 'test' or 'validation'.",
+      "required_context": [
+        "Check if the 'train' split is the correct default for the new dataset and if other splits should be supported.",
+        "Verify if the benchmarking process should handle different splits dynamically based on user input."
+      ],
+      "confidence": 0.7,
+      "suspected_category": "logic",
+      "reflection_specialties": [
+        "general"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "medium",
+      "recommendation": "Consider making the dataset split configurable via command-line arguments or other means to allow flexibility for different splits."
+    },
+    {
+      "candidate_id": "logic-1-candidate-2",
+      "patch_task_id": "logic-1",
+      "file_path": "benchmarks/benchmark_throughput.py",
+      "line_start": 473,
+      "line_end": 476,
+      "content": "elif args.dataset_path in (\n    VisionArenaDataset.SUPPORTED_DATASET_PATHS.keys()\n    | ConversationDataset.SUPPORTED_DATASET_PATHS):",
+      "claim_type": "uncertain",
+      "failure_mode": "Potential misconfiguration of the backend for the VisionArenaDataset and ConversationDataset.",
+      "evidence_summary": "The code now checks if the dataset path is in the keys of `VisionArenaDataset.SUPPORTED_DATASET_PATHS` which might not be the intended behavior.",
+      "required_context": [
+        "Verify the intended behavior of checking the dataset paths. Confirm if the keys of `VisionArenaDataset.SUPPORTED_DATASET_PATHS` should be used or if the values should be checked instead."
+      ],
+      "confidence": 0.6,
+      "suspected_category": "logic",
+      "reflection_specialties": [
+        "general"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "medium",
+      "recommendation": "Ensure that the correct dataset paths are being checked and that the backend configuration is accurate for each dataset."
+    },
+    {
+      "candidate_id": "logic-1-candidate-3",
+      "patch_task_id": "logic-1",
+      "file_path": "benchmarks/benchmark_throughput.py",
+      "line_start": 478,
+      "line_end": 481,
+      "content": "elif args.dataset_path in (InstructCoderDataset.SUPPORTED_DATASET_PATHS\n                           | AIMODataset.SUPPORTED_DATASET_PATHS):",
+      "claim_type": "missing_test",
+      "failure_mode": "Lack of tests for the new dataset integration.",
+      "evidence_summary": "There are no tests specifically addressing the new dataset integration with the vLLM backend.",
+      "required_context": [
+        "Check if there are existing tests that cover the new dataset integration. If not, create new tests to verify the functionality."
+      ],
+      "confidence": 0.8,
+      "suspected_category": "general",
+      "reflection_specialties": [
+        "general"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "medium",
+      "recommendation": "Add tests to verify the integration of the new dataset AI-MO/aimo-validation-aime with the vLLM backend."
+    },
+    {
+      "candidate_id": "performance-1-1",
+      "patch_task_id": "performance-1",
+      "file_path": "benchmarks/benchmark_throughput.py",
+      "line_start": 332,
+      "line_end": 337,
+      "content": "elif args.dataset_path in AIMODataset.SUPPORTED_DATASET_PATHS:\n    dataset_cls = AIMODataset\n    common_kwargs['dataset_subset'] = None\n    common_kwargs['dataset_split'] = \"train\"",
+      "claim_type": "performance_regression",
+      "failure_mode": "If the new dataset introduces a large number of prompts or outputs, it could lead to increased memory usage or processing time, causing a performance regression.",
+      "evidence_summary": "The new dataset is being handled similarly to other datasets, but its size and characteristics are not specified. Without knowing the dataset's size and complexity, it's unclear if it will cause performance issues.",
+      "required_context": [
+        "The size and complexity of the `AI-MO/aimo-validation-aime` dataset.",
+        "Current performance metrics with the existing datasets.",
+        "Performance metrics with the new dataset included."
+      ],
+      "confidence": 0.6,
+      "suspected_category": "performance",
+      "reflection_specialties": [
+        "performance"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "medium",
+      "recommendation": "Conduct performance testing with the new dataset to ensure that it does not introduce any significant performance regressions. Compare the results with the existing datasets to identify any potential issues."
+    },
+    {
+      "candidate_id": "performance-1-2",
+      "patch_task_id": "performance-1",
+      "file_path": "benchmarks/benchmark_throughput.py",
+      "line_start": 467,
+      "line_end": 474,
+      "content": "elif args.dataset_path in (\n    VisionArenaDataset.SUPPORTED_DATASET_PATHS.keys()\n    | ConversationDataset.SUPPORTED_DATASET_PATHS):\n    assert args.backend == \"vllm-chat\", f\"{args.dataset_path} needs to use vllm-chat as the backend.\"  #noqa: E501\nelif args.dataset_path in (InstructCoderDataset.SUPPORTED_DATASET_PATHS\n                           | AIMODataset.SUPPORTED_DATASET_PATHS):\n    assert args.backend == \"vllm\", f\"{args.dataset_path} needs to use vllm as the backend.\"  #noqa: E501",
+      "claim_type": "uncertain",
+      "failure_mode": "If the new dataset requires a different backend than specified, it could lead to errors or performance issues.",
+      "evidence_summary": "The new dataset is added to the list of datasets that require the `vllm` backend, but it's unclear if this is the correct backend for the dataset.",
+      "required_context": [
+        "The correct backend for the `AI-MO/aimo-validation-aime` dataset.",
+        "Existing backend requirements for similar datasets.",
+        "Documentation or guidelines for dataset-backend compatibility."
+      ],
+      "confidence": 0.5,
+      "suspected_category": "general",
+      "reflection_specialties": [
+        "general"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "low",
+      "recommendation": "Verify that the `vllm` backend is the correct choice for the `AI-MO/aimo-validation-aime` dataset. Update the code if necessary to use the correct backend."
+    },
+    {
+      "candidate_id": "security-1-001",
+      "patch_task_id": "security-1",
+      "file_path": "benchmarks/benchmark_throughput.py",
+      "line_start": 332,
+      "line_end": 335,
+      "content": "elif args.dataset_path in AIMODataset.SUPPORTED_DATASET_PATHS:\n    dataset_cls = AIMODataset\n    common_kwargs['dataset_subset'] = None\n    common_kwargs['dataset_split'] = \"train\"",
+      "claim_type": "uncertain",
+      "failure_mode": "Potential misconfiguration if the dataset path is not properly validated or if the dataset class does not handle untrusted data correctly.",
+      "evidence_summary": "The new dataset class `AIMODataset` is added, but there is no evidence of how it handles untrusted data or if it has proper validation mechanisms.",
+      "required_context": [
+        "How `AIMODataset` handles untrusted data",
+        "Validation mechanisms within `AIMODataset`"
+      ],
+      "confidence": 0.7,
+      "suspected_category": "security",
+      "reflection_specialties": [
+        "security"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "medium",
+      "recommendation": "Review the implementation of `AIMODataset` to ensure it properly validates and handles untrusted data."
+    },
+    {
+      "candidate_id": "security-1-002",
+      "patch_task_id": "security-1",
+      "file_path": "benchmarks/benchmark_throughput.py",
+      "line_start": 467,
+      "line_end": 470,
+      "content": "if args.dataset_path in (\n        VisionArenaDataset.SUPPORTED_DATASET_PATHS.keys()\n        | ConversationDataset.SUPPORTED_DATASET_PATHS):",
+      "claim_type": "uncertain",
+      "failure_mode": "Potential misconfiguration if the dataset path is not properly validated or if the dataset class does not handle untrusted data correctly.",
+      "evidence_summary": "The check for `VisionArenaDataset` and `ConversationDataset` now includes `.keys()`, which might not be intended and could lead to incorrect behavior if the keys are not valid dataset paths.",
+      "required_context": [
+        "Intended usage of `SUPPORTED_DATASET_PATHS` in `VisionArenaDataset` and `ConversationDataset`"
+      ],
+      "confidence": 0.7,
+      "suspected_category": "logic",
+      "reflection_specialties": [
+        "general"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "low",
+      "recommendation": "Verify that using `.keys()` on `SUPPORTED_DATASET_PATHS` is correct and does not lead to unexpected behavior. Consider adding a comment explaining the intention."
+    }
+  ],
+  "reflection_reports": [
+    {
+      "candidate_id": "security-1-001",
+      "reflector_specialty": "security",
+      "verdict": "needs_context",
+      "rationale": "The candidate highlights a potential security concern related to the handling of untrusted data by the `AIMODataset` class. However, the provided evidence is insufficient to determine whether `AIMODataset` includes proper validation and handling mechanisms for untrusted data. Additional context about the implementation details of `AIMODataset` is required to assess this risk.",
+      "reclassified_category": null,
+      "focused_request": {
+        "request_id": "security-1-001-context",
+        "candidate_id": "security-1-001",
+        "requested_by_specialty": "security",
+        "file_paths": [
+          "benchmarks/benchmark_throughput.py",
+          "path/to/aimodataset.py"
+        ],
+        "symbol_queries": [
+          "AIMODataset"
+        ],
+        "text_queries": [
+          "validation",
+          "untrusted data handling"
+        ],
+        "reason": "To determine if `AIMODataset` properly validates and handles untrusted data, we need to inspect its implementation details."
+      }
+    },
+    {
+      "candidate_id": "performance-1-1",
+      "reflector_specialty": "performance",
+      "verdict": "needs_context",
+      "rationale": "The candidate suggests a potential performance regression due to the introduction of a new dataset. However, the evidence provided is speculative and lacks specific details about the dataset's size, complexity, or how it might impact performance. Additional context on the new dataset's characteristics and performance metrics with and without it is required to make a definitive judgment.",
+      "reclassified_category": null,
+      "focused_request": null
+    },
+    {
+      "candidate_id": "general-1-candidate-1",
+      "reflector_specialty": "general",
+      "verdict": "accept",
+      "rationale": "The README.md file includes instructions for using the AI-MO/aimo-validation-aime dataset, but there are no test cases provided to verify its integration and functionality. This is a concrete evidence of missing test coverage.",
+      "reclassified_category": null,
+      "focused_request": null
+    },
+    {
+      "candidate_id": "general-1-candidate-2",
+      "reflector_specialty": "general",
+      "verdict": "reclassify",
+      "rationale": "The code does not handle cases where the dataset_path is not found in any of the SUPPORTED_DATASET_PATHS, which could lead to a ValueError. This is a logic defect rather than a general maintainability issue.",
+      "reclassified_category": "logic",
+      "focused_request": null
+    },
+    {
+      "candidate_id": "logic-1-candidate-1",
+      "reflector_specialty": "general",
+      "verdict": "reclassify",
+      "rationale": "The dataset split is hardcoded to 'train', which might not be appropriate for all datasets or use cases. This is a logic defect rather than a general maintainability issue.",
+      "reclassified_category": "logic",
+      "focused_request": null
+    },
+    {
+      "candidate_id": "logic-1-candidate-2",
+      "reflector_specialty": "general",
+      "verdict": "accept",
+      "rationale": "The code now checks if the dataset path is in the keys of `VisionArenaDataset.SUPPORTED_DATASET_PATHS` which might not be the intended behavior. This is a concrete evidence of potential misconfiguration.",
+      "reclassified_category": null,
+      "focused_request": null
+    },
+    {
+      "candidate_id": "logic-1-candidate-3",
+      "reflector_specialty": "general",
+      "verdict": "accept",
+      "rationale": "There are no tests specifically addressing the new dataset integration with the vLLM backend. This is a concrete evidence of missing test coverage.",
+      "reclassified_category": null,
+      "focused_request": null
+    },
+    {
+      "candidate_id": "performance-1-2",
+      "reflector_specialty": "general",
+      "verdict": "reject",
+      "rationale": "The new dataset is added to the list of datasets that require the `vllm` backend, but it's unclear if this is the correct backend for the dataset. This is a performance concern but lacks concrete evidence of a performance regression.",
+      "reclassified_category": null,
+      "focused_request": null
+    },
+    {
+      "candidate_id": "security-1-002",
+      "reflector_specialty": "general",
+      "verdict": "accept",
+      "rationale": "The check for `VisionArenaDataset` and `ConversationDataset` now includes `.keys()`, which might not be intended and could lead to incorrect behavior if the keys are not valid dataset paths. This is a concrete evidence of potential misconfiguration.",
+      "reclassified_category": null,
+      "focused_request": null
+    }
+  ],
+  "focused_context_requests": [
+    {
+      "request_id": "general-1-request-1",
+      "candidate_id": "general-1-candidate-1",
+      "requested_by_specialty": "general",
+      "file_paths": [
+        "benchmarks/tests/test_benchmark_throughput.py"
+      ],
+      "symbol_queries": [
+        "test_aimo_validation_aime"
+      ],
+      "text_queries": [
+        "AI-MO/aimo-validation-aime"
+      ],
+      "reason": "To verify if there are any existing test cases for the AI-MO/aimo-validation-aime dataset in the benchmarks/tests directory."
+    },
+    {
+      "request_id": "general-1-request-2",
+      "candidate_id": "general-1-candidate-2",
+      "requested_by_specialty": "general",
+      "file_paths": [
+        "benchmarks/benchmark_throughput.py"
+      ],
+      "symbol_queries": [
+        "get_requests"
+      ],
+      "text_queries": [
+        "AIMODataset.SUPPORTED_DATASET_PATHS"
+      ],
+      "reason": "To verify if the dataset_path is being handled appropriately in the get_requests function."
+    },
+    {
+      "request_id": "logic-1-request-1",
+      "candidate_id": "logic-1-candidate-1",
+      "requested_by_specialty": "general",
+      "file_paths": [
+        "benchmarks/benchmark_throughput.py"
+      ],
+      "symbol_queries": [
+        "get_requests",
+        "validate_args"
+      ],
+      "text_queries": [
+        "dataset_split",
+        "AIMODataset"
+      ],
+      "reason": "To confirm if the 'train' split is the correct default for the new dataset and if other splits should be supported."
+    },
+    {
+      "request_id": "logic-1-request-2",
+      "candidate_id": "logic-1-candidate-2",
+      "requested_by_specialty": "general",
+      "file_paths": [
+        "benchmarks/benchmark_throughput.py"
+      ],
+      "symbol_queries": [
+        "validate_args"
+      ],
+      "text_queries": [
+        "VisionArenaDataset.SUPPORTED_DATASET_PATHS",
+        "ConversationDataset.SUPPORTED_DATASET_PATHS"
+      ],
+      "reason": "To verify the intended behavior of checking the dataset paths and ensure that the backend configuration is accurate for each dataset."
+    },
+    {
+      "request_id": "logic-1-request-3",
+      "candidate_id": "logic-1-candidate-3",
+      "requested_by_specialty": "general",
+      "file_paths": [
+        "tests/test_benchmark_throughput.py"
+      ],
+      "symbol_queries": [
+        "test_get_requests",
+        "test_validate_args"
+      ],
+      "text_queries": [
+        "AIMODataset",
+        "vLLM"
+      ],
+      "reason": "To check if there are existing tests that cover the new dataset integration and to create new tests if necessary."
+    },
+    {
+      "request_id": "performance-1-req-1",
+      "candidate_id": "performance-1-1",
+      "requested_by_specialty": "performance",
+      "file_paths": [
+        "benchmarks/benchmark_throughput.py"
+      ],
+      "symbol_queries": [
+        "AIMODataset.SUPPORTED_DATASET_PATHS"
+      ],
+      "text_queries": [
+        "AI-MO/aimo-validation-aime"
+      ],
+      "reason": "To determine the size and complexity of the new dataset and assess its potential impact on performance."
+    },
+    {
+      "request_id": "performance-1-req-2",
+      "candidate_id": "performance-1-2",
+      "requested_by_specialty": "general",
+      "file_paths": [
+        "benchmarks/benchmark_throughput.py"
+      ],
+      "symbol_queries": [
+        "AIMODataset.SUPPORTED_DATASET_PATHS"
+      ],
+      "text_queries": [
+        "AI-MO/aimo-validation-aime",
+        "backend"
+      ],
+      "reason": "To verify the correct backend for the new dataset and ensure compatibility with existing requirements."
+    },
+    {
+      "request_id": "performance-1-1:auto-context:1",
+      "candidate_id": "performance-1-1",
+      "requested_by_specialty": "performance",
+      "file_paths": [
+        "benchmarks/benchmark_throughput.py"
+      ],
+      "symbol_queries": [],
+      "text_queries": [
+        "benchmarks/benchmark_throughput.py",
+        "If the new dataset introduces a large number of prompts or outputs, it could lead to increased memory usage or processin",
+        "If the new dataset introduces a large number of prompts or outputs, it could lead to increased memory usage or processing time, causing a performance regression"
+      ],
+      "reason": "Deterministic context requirement for a high-risk or externally dependent performance_regression candidate."
+    },
+    {
+      "request_id": "security-1-req-001",
+      "candidate_id": "security-1-001",
+      "requested_by_specialty": "security",
+      "file_paths": [
+        "benchmarks/benchmark_dataset.py"
+      ],
+      "symbol_queries": [
+        "AIMODataset"
+      ],
+      "text_queries": [
+        "untrusted data",
+        "validation"
+      ],
+      "reason": "To understand how `AIMODataset` handles untrusted data and its validation mechanisms."
+    },
+    {
+      "request_id": "security-1-req-002",
+      "candidate_id": "security-1-002",
+      "requested_by_specialty": "general",
+      "file_paths": [
+        "benchmarks/benchmark_dataset.py"
+      ],
+      "symbol_queries": [
+        "VisionArenaDataset",
+        "ConversationDataset"
+      ],
+      "text_queries": [
+        "SUPPORTED_DATASET_PATHS"
+      ],
+      "reason": "To verify the intended usage of `SUPPORTED_DATASET_PATHS` in `VisionArenaDataset` and `ConversationDataset`."
+    },
+    {
+      "request_id": "security-1-001-context",
+      "candidate_id": "security-1-001",
+      "requested_by_specialty": "security",
+      "file_paths": [
+        "benchmarks/benchmark_throughput.py",
+        "path/to/aimodataset.py"
+      ],
+      "symbol_queries": [
+        "AIMODataset"
+      ],
+      "text_queries": [
+        "validation",
+        "untrusted data handling"
+      ],
+      "reason": "To determine if `AIMODataset` properly validates and handles untrusted data, we need to inspect its implementation details."
+    }
+  ],
+  "focused_context_results": {
+    "general-1-request-1": {
+      "request_id": "general-1-request-1",
+      "candidate_id": "general-1-candidate-1",
+      "file_snippets": {
+        "benchmarks/tests/test_benchmark_throughput.py": "sed: can't read benchmarks/tests/test_benchmark_throughput.py: No such file or directory\n"
+      },
+      "search_hits": {
+        "test_aimo_validation_aime": [],
+        "AI-MO/aimo-validation-aime": [
+          {
+            "file_path": "benchmarks/benchmark_dataset.py",
+            "line_number": 767,
+            "content": "\"AI-MO/aimo-validation-aime\", \"AI-MO/NuminaMath-1.5\",",
+            "context_lines": [
+              "\"AI-MO/aimo-validation-aime\", \"AI-MO/NuminaMath-1.5\","
+            ]
+          },
+          {
+            "file_path": "benchmarks/README.md",
+            "line_number": 59,
+            "content": "<td><code>AI-MO/aimo-validation-aime</code> , <code>AI-MO/NuminaMath-1.5</code>, <code>AI-MO/NuminaMath-CoT</code></td>",
+            "context_lines": [
+              "<td><code>AI-MO/aimo-validation-aime</code> , <code>AI-MO/NuminaMath-1.5</code>, <code>AI-MO/NuminaMath-CoT</code></td>"
+            ]
+          },
+          {
+            "file_path": "benchmarks/README.md",
+            "line_number": 196,
+            "content": "**`AI-MO/aimo-validation-aime`**",
+            "context_lines": [
+              "**`AI-MO/aimo-validation-aime`**"
+            ]
+          },
+          {
+            "file_path": "benchmarks/README.md",
+            "line_number": 202,
+            "content": "--dataset-path AI-MO/aimo-validation-aime \\",
+            "context_lines": [
+              "--dataset-path AI-MO/aimo-validation-aime \\"
+            ]
+          },
+          {
+            "file_path": "benchmarks/README.md",
+            "line_number": 298,
+            "content": "**`AI-MO/aimo-validation-aime`**",
+            "context_lines": [
+              "**`AI-MO/aimo-validation-aime`**"
+            ]
+          },
+          {
+            "file_path": "benchmarks/README.md",
+            "line_number": 305,
+            "content": "--dataset-path AI-MO/aimo-validation-aime \\",
+            "context_lines": [
+              "--dataset-path AI-MO/aimo-validation-aime \\"
+            ]
+          }
+        ]
+      },
+      "warnings": []
+    },
+    "general-1-request-2": {
+      "request_id": "general-1-request-2",
+      "candidate_id": "general-1-candidate-2",
+      "file_snippets": {
+        "benchmarks/benchmark_throughput.py": "# SPDX-License-Identifier: Apache-2.0\n\"\"\"Benchmark offline inference throughput.\"\"\"\nimport argparse\nimport dataclasses\nimport json\nimport os\nimport random\nimport time\nimport warnings\nfrom typing import Any, Optional, Union\n\nimport torch\nimport uvloop\nfrom benchmark_dataset import (AIMODataset, BurstGPTDataset,\n                               ConversationDataset, InstructCoderDataset,\n                               RandomDataset, SampleRequest, ShareGPTDataset,\n                               SonnetDataset, VisionArenaDataset)\nfrom benchmark_utils import convert_to_pytorch_benchmark_format, write_to_json\nfrom tqdm import tqdm\nfrom transformers import (AutoModelForCausalLM, AutoTokenizer,\n                          PreTrainedTokenizerBase)\n\nfrom vllm.engine.arg_utils import AsyncEngineArgs, EngineArgs\nfrom vllm.entrypoints.openai.api_server import (\n    build_async_engine_client_from_engine_args)\nfrom vllm.inputs import TextPrompt, TokensPrompt\nfrom vllm.lora.request import LoRARequest\nfrom vllm.outputs import RequestOutput\nfrom vllm.sampling_params import BeamSearchParams\nfrom vllm.utils import FlexibleArgumentParser, merge_async_iterators\n\n\ndef run_vllm(\n    requests: list[SampleRequest],\n    n: int,\n    engine_args: EngineArgs,\n    disable_detokenize: bool = False,\n) -> tuple[float, Optional[list[RequestOutput]]]:\n    from vllm import LLM, SamplingParams\n    llm = LLM(**dataclasses.asdict(engine_args))\n    assert all(\n        llm.llm_engine.model_config.max_model_len >= (\n            request.prompt_len + request.expected_output_len)\n        for request in requests), (\n            \"Please ensure that max_model_len is greater than the sum of\"\n            \" prompt_len and expected_output_len for all requests.\")\n    # Add the requests to the engine.\n    prompts: list[Union[TextPrompt, TokensPrompt]] = []\n    sampling_params: list[SamplingParams] = []\n    for request in requests:\n        prompts.append(\n            TokensPrompt(prompt_token_ids=request.prompt[\"prompt_token_ids\"],\n                       multi_modal_data=request.multi_modal_data)\n            if \"prompt_token_ids\" in request.prompt else \\\n            TextPrompt(prompt=request.prompt,\n                       multi_modal_data=request.multi_modal_data))\n        sampling_params.append(\n            SamplingParams(\n                n=n,\n                temperature=1.0,\n                top_p=1.0,\n                ignore_eos=True,\n                max_tokens=request.expected_output_len,\n                detokenize=not disable_detokenize,\n            ))\n    lora_requests: Optional[list[LoRARequest]] = None\n    if engine_args.enable_lora:\n        lora_requests = [request.lora_request for request in requests]\n\n    use_beam_search = False\n\n    outputs = None\n    if not use_beam_search:\n        start = time.perf_counter()\n        outputs = llm.generate(prompts,\n                               sampling_params,\n                               lora_request=lora_requests,\n                               use_tqdm=True)\n        end = time.perf_counter()\n    else:\n        assert lora_requests is None, \"BeamSearch API does not support LoRA\"\n        prompts = [request.prompt for request in requests]\n        # output_len should be the same for all requests.\n        output_len = requests[0][2]\n        for request in requests:\n            assert request.expected_output_len == output_len\n        start = time.perf_counter()\n        llm.beam_search(\n            prompts,\n            BeamSearchParams(\n                beam_width=n,\n                max_tokens=output_len,\n                ignore_eos=True,\n            ))\n        end = time.perf_counter()\n    return end - start, outputs\n\n\ndef run_vllm_chat(\n        requests: list[SampleRequest],\n        n: int,\n        engine_args: EngineArgs,\n        disable_detokenize: bool = False) -> tuple[float, list[RequestOutput]]:\n    \"\"\"\n    Run vLLM chat benchmark. This function is recommended ONLY for benchmarking\n    multimodal models as it properly handles multimodal inputs and chat\n    formatting. For non-multimodal models, use run_vllm() instead.\n    \"\"\"\n    from vllm import LLM, SamplingParams\n    llm = LLM(**dataclasses.asdict(engine_args))\n\n    assert all(\n        llm.llm_engine.model_config.max_model_len >= (\n            request.prompt_len + request.expected_output_len)\n        for request in requests), (\n            \"Please ensure that max_model_len is greater than the sum of \"\n            \"prompt_len and expected_output_len for all requests.\")\n\n    prompts = []\n    sampling_params: list[SamplingParams] = []\n    for request in requests:\n        prompts.append(request.prompt)\n        sampling_params.append(\n            SamplingParams(\n                n=n,\n                temperature=1.0,\n                top_p=1.0,\n                ignore_eos=True,\n                max_tokens=request.expected_output_len,\n                detokenize=not disable_detokenize,\n            ))\n    start = time.perf_counter()\n    outputs = llm.chat(prompts, sampling_params, use_tqdm=True)\n    end = time.perf_counter()\n    return end - start, outputs\n\n\nasync def run_vllm_async(\n    requests: list[SampleRequest],\n    n: int,\n    engine_args: AsyncEngineArgs,\n    disable_frontend_multiprocessing: bool = False,\n    disable_detokenize: bool = False,\n) -> float:\n    from vllm import SamplingParams\n\n    async with build_async_engine_client_from_engine_args(\n            engine_args, disable_frontend_multiprocessing) as llm:\n        assert all(\n            llm.model_config.max_model_len >= (request.prompt_len +\n                                               request.expected_output_len)\n            for request in requests), (\n                \"Please ensure that max_model_len is greater than the sum of\"\n                \" prompt_len and expected_output_len for all requests.\")\n\n        # Add the requests to the engine.\n        prompts: list[Union[TextPrompt, TokensPrompt]] = []\n        sampling_params: list[SamplingParams] = []\n        lora_requests: list[Optional[LoRARequest]] = []\n        for request in requests:\n            prompts.append(\n                TokensPrompt(prompt_token_ids=request.prompt[\"prompt_token_ids\"],\n                        multi_modal_data=request.multi_modal_data)\n                if \"prompt_token_ids\" in request.prompt else \\\n                TextPrompt(prompt=request.prompt,\n                           multi_modal_data=request.multi_modal_data))\n            sampling_params.append(\n                SamplingParams(\n                    n=n,\n                    temperature=1.0,\n                    top_p=1.0,\n                    ignore_eos=True,\n                    max_tokens=request.expected_output_len,\n                    detokenize=not disable_detokenize,\n                ))\n            lora_requests.append(request.lora_request)\n\n        generators = []\n        start = time.perf_counter()\n        for i, (prompt, sp,\n                lr) in enumerate(zip(prompts, sampling_params, lora_requests)):\n            generator = llm.generate(prompt,\n                                     sp,\n                                     lora_request=lr,\n                                     request_id=f\"test{i}\")\n            generators.append(generator)\n        all_gens = merge_async_iterators(*generators)\n        async for i, res in all_gens:\n            pass\n        end = time.perf_counter()\n        return end - start\n\n\ndef run_hf(\n    requests: list[SampleRequest],\n    model: str,\n    tokenizer: PreTrainedTokenizerBase,\n    n: int,\n    max_batch_size: int,\n    trust_remote_code: bool,\n    disable_detokenize: bool = False,\n) -> float:\n    llm = AutoModelForCausalLM.from_pretrained(\n        model, torch_dtype=torch.float16, trust_remote_code=trust_remote_code)\n    if llm.config.model_type == \"llama\":\n        # To enable padding in the HF backend.\n        tokenizer.pad_token = tokenizer.eos_token\n    llm = llm.cuda()\n\n    pbar = tqdm(total=len(requests))\n    start = time.perf_counter()\n    batch: list[str] = []\n    max_prompt_\n--- structural neighbors ---\nsymbol:dded3d3d3b15b2f8:run_vllm_chat (symbol, benchmarks/benchmark_throughput.py); symbol:5708eff701be1a2b:main (symbol, benchmarks/benchmark_throughput.py); symbol:57f0be5c2e0ea478:run_mii (symbol, benchmarks/benchmark_throughput.py); symbol:e5cbd6427b3bce3b:validate_args (symbol, benchmarks/benchmark_throughput.py); symbol:ae0820053b5d23e1:run_hf (symbol, benchmarks/benchmark_throughput.py); symbol:88bb46b95ad7c119:run_vllm_async (symbol, benchmarks/benchmark_throughput.py); symbol:50f4ed1b11082871:get_requests (symbol, benchmarks/benchmark_throughput.py); symbol:8172bf2b3b983abe:run_vllm (symbol, benchmarks/benchmark_throughput.py); symbol:3314d760badbbb36:save_to_pytorch_benchmark_format (symbol, benchmarks/benchmark_throughput.py)"
+      },
+      "search_hits": {
+        "get_requests": [
+          {
+            "file_path": "benchmarks/benchmark_throughput.py",
+            "line_number": 290,
+            "content": "def get_requests(args, tokenizer):",
+            "context_lines": [
+              "def get_requests(args, tokenizer):"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_throughput.py",
+            "line_number": 354,
+            "content": "requests = get_requests(args, tokenizer)",
+            "context_lines": [
+              "requests = get_requests(args, tokenizer)"
+            ]
+          }
+        ],
+        "AIMODataset.SUPPORTED_DATASET_PATHS": [
+          {
+            "file_path": "benchmarks/benchmark_throughput.py",
+            "line_number": 335,
+            "content": "elif args.dataset_path in AIMODataset.SUPPORTED_DATASET_PATHS:",
+            "context_lines": [
+              "elif args.dataset_path in AIMODataset.SUPPORTED_DATASET_PATHS:"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_throughput.py",
+            "line_number": 478,
+            "content": "| AIMODataset.SUPPORTED_DATASET_PATHS):",
+            "context_lines": [
+              "| AIMODataset.SUPPORTED_DATASET_PATHS):"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_serving.py",
+            "line_number": 599,
+            "content": "elif args.dataset_path in AIMODataset.SUPPORTED_DATASET_PATHS:",
+            "context_lines": [
+              "elif args.dataset_path in AIMODataset.SUPPORTED_DATASET_PATHS:"
+            ]
+          }
+        ]
+      },
+      "warnings": []
+    },
+    "logic-1-request-1": {
+      "request_id": "logic-1-request-1",
+      "candidate_id": "logic-1-candidate-1",
+      "file_snippets": {
+        "benchmarks/benchmark_throughput.py": "# SPDX-License-Identifier: Apache-2.0\n\"\"\"Benchmark offline inference throughput.\"\"\"\nimport argparse\nimport dataclasses\nimport json\nimport os\nimport random\nimport time\nimport warnings\nfrom typing import Any, Optional, Union\n\nimport torch\nimport uvloop\nfrom benchmark_dataset import (AIMODataset, BurstGPTDataset,\n                               ConversationDataset, InstructCoderDataset,\n                               RandomDataset, SampleRequest, ShareGPTDataset,\n                               SonnetDataset, VisionArenaDataset)\nfrom benchmark_utils import convert_to_pytorch_benchmark_format, write_to_json\nfrom tqdm import tqdm\nfrom transformers import (AutoModelForCausalLM, AutoTokenizer,\n                          PreTrainedTokenizerBase)\n\nfrom vllm.engine.arg_utils import AsyncEngineArgs, EngineArgs\nfrom vllm.entrypoints.openai.api_server import (\n    build_async_engine_client_from_engine_args)\nfrom vllm.inputs import TextPrompt, TokensPrompt\nfrom vllm.lora.request import LoRARequest\nfrom vllm.outputs import RequestOutput\nfrom vllm.sampling_params import BeamSearchParams\nfrom vllm.utils import FlexibleArgumentParser, merge_async_iterators\n\n\ndef run_vllm(\n    requests: list[SampleRequest],\n    n: int,\n    engine_args: EngineArgs,\n    disable_detokenize: bool = False,\n) -> tuple[float, Optional[list[RequestOutput]]]:\n    from vllm import LLM, SamplingParams\n    llm = LLM(**dataclasses.asdict(engine_args))\n    assert all(\n        llm.llm_engine.model_config.max_model_len >= (\n            request.prompt_len + request.expected_output_len)\n        for request in requests), (\n            \"Please ensure that max_model_len is greater than the sum of\"\n            \" prompt_len and expected_output_len for all requests.\")\n    # Add the requests to the engine.\n    prompts: list[Union[TextPrompt, TokensPrompt]] = []\n    sampling_params: list[SamplingParams] = []\n    for request in requests:\n        prompts.append(\n            TokensPrompt(prompt_token_ids=request.prompt[\"prompt_token_ids\"],\n                       multi_modal_data=request.multi_modal_data)\n            if \"prompt_token_ids\" in request.prompt else \\\n            TextPrompt(prompt=request.prompt,\n                       multi_modal_data=request.multi_modal_data))\n        sampling_params.append(\n            SamplingParams(\n                n=n,\n                temperature=1.0,\n                top_p=1.0,\n                ignore_eos=True,\n                max_tokens=request.expected_output_len,\n                detokenize=not disable_detokenize,\n            ))\n    lora_requests: Optional[list[LoRARequest]] = None\n    if engine_args.enable_lora:\n        lora_requests = [request.lora_request for request in requests]\n\n    use_beam_search = False\n\n    outputs = None\n    if not use_beam_search:\n        start = time.perf_counter()\n        outputs = llm.generate(prompts,\n                               sampling_params,\n                               lora_request=lora_requests,\n                               use_tqdm=True)\n        end = time.perf_counter()\n    else:\n        assert lora_requests is None, \"BeamSearch API does not support LoRA\"\n        prompts = [request.prompt for request in requests]\n        # output_len should be the same for all requests.\n        output_len = requests[0][2]\n        for request in requests:\n            assert request.expected_output_len == output_len\n        start = time.perf_counter()\n        llm.beam_search(\n            prompts,\n            BeamSearchParams(\n                beam_width=n,\n                max_tokens=output_len,\n                ignore_eos=True,\n            ))\n        end = time.perf_counter()\n    return end - start, outputs\n\n\ndef run_vllm_chat(\n        requests: list[SampleRequest],\n        n: int,\n        engine_args: EngineArgs,\n        disable_detokenize: bool = False) -> tuple[float, list[RequestOutput]]:\n    \"\"\"\n    Run vLLM chat benchmark. This function is recommended ONLY for benchmarking\n    multimodal models as it properly handles multimodal inputs and chat\n    formatting. For non-multimodal models, use run_vllm() instead.\n    \"\"\"\n    from vllm import LLM, SamplingParams\n    llm = LLM(**dataclasses.asdict(engine_args))\n\n    assert all(\n        llm.llm_engine.model_config.max_model_len >= (\n            request.prompt_len + request.expected_output_len)\n        for request in requests), (\n            \"Please ensure that max_model_len is greater than the sum of \"\n            \"prompt_len and expected_output_len for all requests.\")\n\n    prompts = []\n    sampling_params: list[SamplingParams] = []\n    for request in requests:\n        prompts.append(request.prompt)\n        sampling_params.append(\n            SamplingParams(\n                n=n,\n                temperature=1.0,\n                top_p=1.0,\n                ignore_eos=True,\n                max_tokens=request.expected_output_len,\n                detokenize=not disable_detokenize,\n            ))\n    start = time.perf_counter()\n    outputs = llm.chat(prompts, sampling_params, use_tqdm=True)\n    end = time.perf_counter()\n    return end - start, outputs\n\n\nasync def run_vllm_async(\n    requests: list[SampleRequest],\n    n: int,\n    engine_args: AsyncEngineArgs,\n    disable_frontend_multiprocessing: bool = False,\n    disable_detokenize: bool = False,\n) -> float:\n    from vllm import SamplingParams\n\n    async with build_async_engine_client_from_engine_args(\n            engine_args, disable_frontend_multiprocessing) as llm:\n        assert all(\n            llm.model_config.max_model_len >= (request.prompt_len +\n                                               request.expected_output_len)\n            for request in requests), (\n                \"Please ensure that max_model_len is greater than the sum of\"\n                \" prompt_len and expected_output_len for all requests.\")\n\n        # Add the requests to the engine.\n        prompts: list[Union[TextPrompt, TokensPrompt]] = []\n        sampling_params: list[SamplingParams] = []\n        lora_requests: list[Optional[LoRARequest]] = []\n        for request in requests:\n            prompts.append(\n                TokensPrompt(prompt_token_ids=request.prompt[\"prompt_token_ids\"],\n                        multi_modal_data=request.multi_modal_data)\n                if \"prompt_token_ids\" in request.prompt else \\\n                TextPrompt(prompt=request.prompt,\n                           multi_modal_data=request.multi_modal_data))\n            sampling_params.append(\n                SamplingParams(\n                    n=n,\n                    temperature=1.0,\n                    top_p=1.0,\n                    ignore_eos=True,\n                    max_tokens=request.expected_output_len,\n                    detokenize=not disable_detokenize,\n                ))\n            lora_requests.append(request.lora_request)\n\n        generators = []\n        start = time.perf_counter()\n        for i, (prompt, sp,\n                lr) in enumerate(zip(prompts, sampling_params, lora_requests)):\n            generator = llm.generate(prompt,\n                                     sp,\n                                     lora_request=lr,\n                                     request_id=f\"test{i}\")\n            generators.append(generator)\n        all_gens = merge_async_iterators(*generators)\n        async for i, res in all_gens:\n            pass\n        end = time.perf_counter()\n        return end - start\n\n\ndef run_hf(\n    requests: list[SampleRequest],\n    model: str,\n    tokenizer: PreTrainedTokenizerBase,\n    n: int,\n    max_batch_size: int,\n    trust_remote_code: bool,\n    disable_detokenize: bool = False,\n) -> float:\n    llm = AutoModelForCausalLM.from_pretrained(\n        model, torch_dtype=torch.float16, trust_remote_code=trust_remote_code)\n    if llm.config.model_type == \"llama\":\n        # To enable padding in the HF backend.\n        tokenizer.pad_token = tokenizer.eos_token\n    llm = llm.cuda()\n\n    pbar = tqdm(total=len(requests))\n    start = time.perf_counter()\n    batch: list[str] = []\n    max_prompt_\n--- structural neighbors ---\nsymbol:dded3d3d3b15b2f8:run_vllm_chat (symbol, benchmarks/benchmark_throughput.py); symbol:5708eff701be1a2b:main (symbol, benchmarks/benchmark_throughput.py); symbol:57f0be5c2e0ea478:run_mii (symbol, benchmarks/benchmark_throughput.py); symbol:e5cbd6427b3bce3b:validate_args (symbol, benchmarks/benchmark_throughput.py); symbol:ae0820053b5d23e1:run_hf (symbol, benchmarks/benchmark_throughput.py); symbol:88bb46b95ad7c119:run_vllm_async (symbol, benchmarks/benchmark_throughput.py); symbol:50f4ed1b11082871:get_requests (symbol, benchmarks/benchmark_throughput.py); symbol:8172bf2b3b983abe:run_vllm (symbol, benchmarks/benchmark_throughput.py); symbol:3314d760badbbb36:save_to_pytorch_benchmark_format (symbol, benchmarks/benchmark_throughput.py)"
+      },
+      "search_hits": {
+        "get_requests": [
+          {
+            "file_path": "benchmarks/benchmark_throughput.py",
+            "line_number": 290,
+            "content": "def get_requests(args, tokenizer):",
+            "context_lines": [
+              "def get_requests(args, tokenizer):"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_throughput.py",
+            "line_number": 354,
+            "content": "requests = get_requests(args, tokenizer)",
+            "context_lines": [
+              "requests = get_requests(args, tokenizer)"
+            ]
+          }
+        ],
+        "validate_args": [
+          {
+            "file_path": "benchmarks/benchmark_throughput.py",
+            "line_number": 434,
+            "content": "def validate_args(args):",
+            "context_lines": [
+              "def validate_args(args):"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_throughput.py",
+            "line_number": 622,
+            "content": "validate_args(args)",
+            "context_lines": [
+              "validate_args(args)"
+            ]
+          }
+        ],
+        "dataset_split": [
+          {
+            "file_path": "benchmarks/benchmark_throughput.py",
+            "line_number": 325,
+            "content": "common_kwargs['dataset_split'] = \"train\"",
+            "context_lines": [
+              "common_kwargs['dataset_split'] = \"train\""
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_throughput.py",
+            "line_number": 329,
+            "content": "common_kwargs['dataset_split'] = \"train\"",
+            "context_lines": [
+              "common_kwargs['dataset_split'] = \"train\""
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_throughput.py",
+            "line_number": 333,
+            "content": "common_kwargs['dataset_split'] = args.hf_split",
+            "context_lines": [
+              "common_kwargs['dataset_split'] = args.hf_split"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_throughput.py",
+            "line_number": 338,
+            "content": "common_kwargs['dataset_split'] = \"train\"",
+            "context_lines": [
+              "common_kwargs['dataset_split'] = \"train\""
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_dataset.py",
+            "line_number": 579,
+            "content": "dataset_split: str,",
+            "context_lines": [
+              "dataset_split: str,"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_dataset.py",
+            "line_number": 585,
+            "content": "self.dataset_split = dataset_split",
+            "context_lines": [
+              "self.dataset_split = dataset_split"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_dataset.py",
+            "line_number": 594,
+            "content": "split=self.dataset_split,",
+            "context_lines": [
+              "split=self.dataset_split,"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_serving.py",
+            "line_number": 616,
+            "content": "dataset_split=args.hf_split,",
+            "context_lines": [
+              "dataset_split=args.hf_split,"
+            ]
+          }
+        ],
+        "AIMODataset": [
+          {
+            "file_path": "benchmarks/benchmark_throughput.py",
+            "line_number": 14,
+            "content": "from benchmark_dataset import (AIMODataset, BurstGPTDataset,",
+            "context_lines": [
+              "from benchmark_dataset import (AIMODataset, BurstGPTDataset,"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_throughput.py",
+            "line_number": 335,
+            "content": "elif args.dataset_path in AIMODataset.SUPPORTED_DATASET_PATHS:",
+            "context_lines": [
+              "elif args.dataset_path in AIMODataset.SUPPORTED_DATASET_PATHS:"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_throughput.py",
+            "line_number": 336,
+            "content": "dataset_cls = AIMODataset",
+            "context_lines": [
+              "dataset_cls = AIMODataset"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_throughput.py",
+            "line_number": 478,
+            "content": "| AIMODataset.SUPPORTED_DATASET_PATHS):",
+            "context_lines": [
+              "| AIMODataset.SUPPORTED_DATASET_PATHS):"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_dataset.py",
+            "line_number": 762,
+            "content": "class AIMODataset(HuggingFaceDataset):",
+            "context_lines": [
+              "class AIMODataset(HuggingFaceDataset):"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_serving.py",
+            "line_number": 52,
+            "content": "from benchmark_dataset import (AIMODataset, BurstGPTDataset,",
+            "context_lines": [
+              "from benchmark_dataset import (AIMODataset, BurstGPTDataset,"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_serving.py",
+            "line_number": 599,
+            "content": "elif args.dataset_path in AIMODataset.SUPPORTED_DATASET_PATHS:",
+            "context_lines": [
+              "elif args.dataset_path in AIMODataset.SUPPORTED_DATASET_PATHS:"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_serving.py",
+            "line_number": 600,
+            "content": "dataset_class = AIMODataset",
+            "context_lines": [
+              "dataset_class = AIMODataset"
+            ]
+          }
+        ]
+      },
+      "warnings": []
+    },
+    "logic-1-request-2": {
+      "request_id": "logic-1-request-2",
+      "candidate_id": "logic-1-candidate-2",
+      "file_snippets": {
+        "benchmarks/benchmark_throughput.py": "# SPDX-License-Identifier: Apache-2.0\n\"\"\"Benchmark offline inference throughput.\"\"\"\nimport argparse\nimport dataclasses\nimport json\nimport os\nimport random\nimport time\nimport warnings\nfrom typing import Any, Optional, Union\n\nimport torch\nimport uvloop\nfrom benchmark_dataset import (AIMODataset, BurstGPTDataset,\n                               ConversationDataset, InstructCoderDataset,\n                               RandomDataset, SampleRequest, ShareGPTDataset,\n                               SonnetDataset, VisionArenaDataset)\nfrom benchmark_utils import convert_to_pytorch_benchmark_format, write_to_json\nfrom tqdm import tqdm\nfrom transformers import (AutoModelForCausalLM, AutoTokenizer,\n                          PreTrainedTokenizerBase)\n\nfrom vllm.engine.arg_utils import AsyncEngineArgs, EngineArgs\nfrom vllm.entrypoints.openai.api_server import (\n    build_async_engine_client_from_engine_args)\nfrom vllm.inputs import TextPrompt, TokensPrompt\nfrom vllm.lora.request import LoRARequest\nfrom vllm.outputs import RequestOutput\nfrom vllm.sampling_params import BeamSearchParams\nfrom vllm.utils import FlexibleArgumentParser, merge_async_iterators\n\n\ndef run_vllm(\n    requests: list[SampleRequest],\n    n: int,\n    engine_args: EngineArgs,\n    disable_detokenize: bool = False,\n) -> tuple[float, Optional[list[RequestOutput]]]:\n    from vllm import LLM, SamplingParams\n    llm = LLM(**dataclasses.asdict(engine_args))\n    assert all(\n        llm.llm_engine.model_config.max_model_len >= (\n            request.prompt_len + request.expected_output_len)\n        for request in requests), (\n            \"Please ensure that max_model_len is greater than the sum of\"\n            \" prompt_len and expected_output_len for all requests.\")\n    # Add the requests to the engine.\n    prompts: list[Union[TextPrompt, TokensPrompt]] = []\n    sampling_params: list[SamplingParams] = []\n    for request in requests:\n        prompts.append(\n            TokensPrompt(prompt_token_ids=request.prompt[\"prompt_token_ids\"],\n                       multi_modal_data=request.multi_modal_data)\n            if \"prompt_token_ids\" in request.prompt else \\\n            TextPrompt(prompt=request.prompt,\n                       multi_modal_data=request.multi_modal_data))\n        sampling_params.append(\n            SamplingParams(\n                n=n,\n                temperature=1.0,\n                top_p=1.0,\n                ignore_eos=True,\n                max_tokens=request.expected_output_len,\n                detokenize=not disable_detokenize,\n            ))\n    lora_requests: Optional[list[LoRARequest]] = None\n    if engine_args.enable_lora:\n        lora_requests = [request.lora_request for request in requests]\n\n    use_beam_search = False\n\n    outputs = None\n    if not use_beam_search:\n        start = time.perf_counter()\n        outputs = llm.generate(prompts,\n                               sampling_params,\n                               lora_request=lora_requests,\n                               use_tqdm=True)\n        end = time.perf_counter()\n    else:\n        assert lora_requests is None, \"BeamSearch API does not support LoRA\"\n        prompts = [request.prompt for request in requests]\n        # output_len should be the same for all requests.\n        output_len = requests[0][2]\n        for request in requests:\n            assert request.expected_output_len == output_len\n        start = time.perf_counter()\n        llm.beam_search(\n            prompts,\n            BeamSearchParams(\n                beam_width=n,\n                max_tokens=output_len,\n                ignore_eos=True,\n            ))\n        end = time.perf_counter()\n    return end - start, outputs\n\n\ndef run_vllm_chat(\n        requests: list[SampleRequest],\n        n: int,\n        engine_args: EngineArgs,\n        disable_detokenize: bool = False) -> tuple[float, list[RequestOutput]]:\n    \"\"\"\n    Run vLLM chat benchmark. This function is recommended ONLY for benchmarking\n    multimodal models as it properly handles multimodal inputs and chat\n    formatting. For non-multimodal models, use run_vllm() instead.\n    \"\"\"\n    from vllm import LLM, SamplingParams\n    llm = LLM(**dataclasses.asdict(engine_args))\n\n    assert all(\n        llm.llm_engine.model_config.max_model_len >= (\n            request.prompt_len + request.expected_output_len)\n        for request in requests), (\n            \"Please ensure that max_model_len is greater than the sum of \"\n            \"prompt_len and expected_output_len for all requests.\")\n\n    prompts = []\n    sampling_params: list[SamplingParams] = []\n    for request in requests:\n        prompts.append(request.prompt)\n        sampling_params.append(\n            SamplingParams(\n                n=n,\n                temperature=1.0,\n                top_p=1.0,\n                ignore_eos=True,\n                max_tokens=request.expected_output_len,\n                detokenize=not disable_detokenize,\n            ))\n    start = time.perf_counter()\n    outputs = llm.chat(prompts, sampling_params, use_tqdm=True)\n    end = time.perf_counter()\n    return end - start, outputs\n\n\nasync def run_vllm_async(\n    requests: list[SampleRequest],\n    n: int,\n    engine_args: AsyncEngineArgs,\n    disable_frontend_multiprocessing: bool = False,\n    disable_detokenize: bool = False,\n) -> float:\n    from vllm import SamplingParams\n\n    async with build_async_engine_client_from_engine_args(\n            engine_args, disable_frontend_multiprocessing) as llm:\n        assert all(\n            llm.model_config.max_model_len >= (request.prompt_len +\n                                               request.expected_output_len)\n            for request in requests), (\n                \"Please ensure that max_model_len is greater than the sum of\"\n                \" prompt_len and expected_output_len for all requests.\")\n\n        # Add the requests to the engine.\n        prompts: list[Union[TextPrompt, TokensPrompt]] = []\n        sampling_params: list[SamplingParams] = []\n        lora_requests: list[Optional[LoRARequest]] = []\n        for request in requests:\n            prompts.append(\n                TokensPrompt(prompt_token_ids=request.prompt[\"prompt_token_ids\"],\n                        multi_modal_data=request.multi_modal_data)\n                if \"prompt_token_ids\" in request.prompt else \\\n                TextPrompt(prompt=request.prompt,\n                           multi_modal_data=request.multi_modal_data))\n            sampling_params.append(\n                SamplingParams(\n                    n=n,\n                    temperature=1.0,\n                    top_p=1.0,\n                    ignore_eos=True,\n                    max_tokens=request.expected_output_len,\n                    detokenize=not disable_detokenize,\n                ))\n            lora_requests.append(request.lora_request)\n\n        generators = []\n        start = time.perf_counter()\n        for i, (prompt, sp,\n                lr) in enumerate(zip(prompts, sampling_params, lora_requests)):\n            generator = llm.generate(prompt,\n                                     sp,\n                                     lora_request=lr,\n                                     request_id=f\"test{i}\")\n            generators.append(generator)\n        all_gens = merge_async_iterators(*generators)\n        async for i, res in all_gens:\n            pass\n        end = time.perf_counter()\n        return end - start\n\n\ndef run_hf(\n    requests: list[SampleRequest],\n    model: str,\n    tokenizer: PreTrainedTokenizerBase,\n    n: int,\n    max_batch_size: int,\n    trust_remote_code: bool,\n    disable_detokenize: bool = False,\n) -> float:\n    llm = AutoModelForCausalLM.from_pretrained(\n        model, torch_dtype=torch.float16, trust_remote_code=trust_remote_code)\n    if llm.config.model_type == \"llama\":\n        # To enable padding in the HF backend.\n        tokenizer.pad_token = tokenizer.eos_token\n    llm = llm.cuda()\n\n    pbar = tqdm(total=len(requests))\n    start = time.perf_counter()\n    batch: list[str] = []\n    max_prompt_\n--- structural neighbors ---\nsymbol:dded3d3d3b15b2f8:run_vllm_chat (symbol, benchmarks/benchmark_throughput.py); symbol:5708eff701be1a2b:main (symbol, benchmarks/benchmark_throughput.py); symbol:57f0be5c2e0ea478:run_mii (symbol, benchmarks/benchmark_throughput.py); symbol:e5cbd6427b3bce3b:validate_args (symbol, benchmarks/benchmark_throughput.py); symbol:ae0820053b5d23e1:run_hf (symbol, benchmarks/benchmark_throughput.py); symbol:88bb46b95ad7c119:run_vllm_async (symbol, benchmarks/benchmark_throughput.py); symbol:50f4ed1b11082871:get_requests (symbol, benchmarks/benchmark_throughput.py); symbol:8172bf2b3b983abe:run_vllm (symbol, benchmarks/benchmark_throughput.py); symbol:3314d760badbbb36:save_to_pytorch_benchmark_format (symbol, benchmarks/benchmark_throughput.py)"
+      },
+      "search_hits": {
+        "validate_args": [
+          {
+            "file_path": "benchmarks/benchmark_throughput.py",
+            "line_number": 434,
+            "content": "def validate_args(args):",
+            "context_lines": [
+              "def validate_args(args):"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_throughput.py",
+            "line_number": 622,
+            "content": "validate_args(args)",
+            "context_lines": [
+              "validate_args(args)"
+            ]
+          }
+        ],
+        "VisionArenaDataset.SUPPORTED_DATASET_PATHS": [
+          {
+            "file_path": "benchmarks/benchmark_throughput.py",
+            "line_number": 322,
+            "content": "if args.dataset_path in VisionArenaDataset.SUPPORTED_DATASET_PATHS:",
+            "context_lines": [
+              "if args.dataset_path in VisionArenaDataset.SUPPORTED_DATASET_PATHS:"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_throughput.py",
+            "line_number": 474,
+            "content": "VisionArenaDataset.SUPPORTED_DATASET_PATHS.keys()",
+            "context_lines": [
+              "VisionArenaDataset.SUPPORTED_DATASET_PATHS.keys()"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_serving.py",
+            "line_number": 590,
+            "content": "if args.dataset_path in VisionArenaDataset.SUPPORTED_DATASET_PATHS:",
+            "context_lines": [
+              "if args.dataset_path in VisionArenaDataset.SUPPORTED_DATASET_PATHS:"
+            ]
+          }
+        ],
+        "ConversationDataset.SUPPORTED_DATASET_PATHS": [
+          {
+            "file_path": "benchmarks/benchmark_throughput.py",
+            "line_number": 330,
+            "content": "elif args.dataset_path in ConversationDataset.SUPPORTED_DATASET_PATHS:",
+            "context_lines": [
+              "elif args.dataset_path in ConversationDataset.SUPPORTED_DATASET_PATHS:"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_throughput.py",
+            "line_number": 475,
+            "content": "| ConversationDataset.SUPPORTED_DATASET_PATHS):",
+            "context_lines": [
+              "| ConversationDataset.SUPPORTED_DATASET_PATHS):"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_serving.py",
+            "line_number": 597,
+            "content": "elif args.dataset_path in ConversationDataset.SUPPORTED_DATASET_PATHS:",
+            "context_lines": [
+              "elif args.dataset_path in ConversationDataset.SUPPORTED_DATASET_PATHS:"
+            ]
+          }
+        ]
+      },
+      "warnings": []
+    },
+    "logic-1-request-3": {
+      "request_id": "logic-1-request-3",
+      "candidate_id": "logic-1-candidate-3",
+      "file_snippets": {
+        "tests/test_benchmark_throughput.py": "sed: can't read tests/test_benchmark_throughput.py: No such file or directory\n"
+      },
+      "search_hits": {
+        "test_get_requests": [],
+        "test_validate_args": [],
+        "AIMODataset": [
+          {
+            "file_path": "benchmarks/benchmark_serving.py",
+            "line_number": 52,
+            "content": "from benchmark_dataset import (AIMODataset, BurstGPTDataset,",
+            "context_lines": [
+              "from benchmark_dataset import (AIMODataset, BurstGPTDataset,"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_serving.py",
+            "line_number": 599,
+            "content": "elif args.dataset_path in AIMODataset.SUPPORTED_DATASET_PATHS:",
+            "context_lines": [
+              "elif args.dataset_path in AIMODataset.SUPPORTED_DATASET_PATHS:"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_serving.py",
+            "line_number": 600,
+            "content": "dataset_class = AIMODataset",
+            "context_lines": [
+              "dataset_class = AIMODataset"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_throughput.py",
+            "line_number": 14,
+            "content": "from benchmark_dataset import (AIMODataset, BurstGPTDataset,",
+            "context_lines": [
+              "from benchmark_dataset import (AIMODataset, BurstGPTDataset,"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_throughput.py",
+            "line_number": 335,
+            "content": "elif args.dataset_path in AIMODataset.SUPPORTED_DATASET_PATHS:",
+            "context_lines": [
+              "elif args.dataset_path in AIMODataset.SUPPORTED_DATASET_PATHS:"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_throughput.py",
+            "line_number": 336,
+            "content": "dataset_cls = AIMODataset",
+            "context_lines": [
+              "dataset_cls = AIMODataset"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_throughput.py",
+            "line_number": 478,
+            "content": "| AIMODataset.SUPPORTED_DATASET_PATHS):",
+            "context_lines": [
+              "| AIMODataset.SUPPORTED_DATASET_PATHS):"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_dataset.py",
+            "line_number": 762,
+            "content": "class AIMODataset(HuggingFaceDataset):",
+            "context_lines": [
+              "class AIMODataset(HuggingFaceDataset):"
+            ]
+          }
+        ],
+        "vLLM": [
+          {
+            "file_path": "cmake/cpu_extension.cmake",
+            "line_number": 109,
+            "content": "message(WARNING \"vLLM CPU backend using AVX2 ISA\")",
+            "context_lines": [
+              "message(WARNING \"vLLM CPU backend using AVX2 ISA\")"
+            ]
+          },
+          {
+            "file_path": "cmake/cpu_extension.cmake",
+            "line_number": 142,
+            "content": "message(FATAL_ERROR \"vLLM CPU backend requires AVX512, AVX2, Power9+ ISA, S390X ISA or ARMv8 support.\")",
+            "context_lines": [
+              "message(FATAL_ERROR \"vLLM CPU backend requires AVX512, AVX2, Power9+ ISA, S390X ISA or ARMv8 support.\")"
+            ]
+          },
+          {
+            "file_path": "CODE_OF_CONDUCT.md",
+            "line_number": 2,
+            "content": "# vLLM Code of Conduct",
+            "context_lines": [
+              "# vLLM Code of Conduct"
+            ]
+          },
+          {
+            "file_path": "CODE_OF_CONDUCT.md",
+            "line_number": 64,
+            "content": "channel in the [vLLM Slack](https://slack.vllm.ai).",
+            "context_lines": [
+              "channel in the [vLLM Slack](https://slack.vllm.ai)."
+            ]
+          },
+          {
+            "file_path": "pyproject.toml",
+            "line_number": 17,
+            "content": "authors = [{name = \"vLLM Team\"}]",
+            "context_lines": [
+              "authors = [{name = \"vLLM Team\"}]"
+            ]
+          },
+          {
+            "file_path": "cmake/external_projects/vllm_flash_attn.cmake",
+            "line_number": 1,
+            "content": "# vLLM flash attention requires VLLM_GPU_ARCHES to contain the set of target",
+            "context_lines": [
+              "# vLLM flash attention requires VLLM_GPU_ARCHES to contain the set of target"
+            ]
+          },
+          {
+            "file_path": "cmake/external_projects/vllm_flash_attn.cmake",
+            "line_number": 13,
+            "content": "# Build vLLM flash attention from source",
+            "context_lines": [
+              "# Build vLLM flash attention from source"
+            ]
+          },
+          {
+            "file_path": "cmake/external_projects/vllm_flash_attn.cmake",
+            "line_number": 15,
+            "content": "# IMPORTANT: This has to be the last thing we do, because vllm-flash-attn uses the same macros/functions as vLLM.",
+            "context_lines": [
+              "# IMPORTANT: This has to be the last thing we do, because vllm-flash-attn uses the same macros/functions as vLLM."
+            ]
+          },
+          {
+            "file_path": "cmake/external_projects/vllm_flash_attn.cmake",
+            "line_number": 16,
+            "content": "# Because functions all belong to the global scope, vllm-flash-attn's functions overwrite vLLMs.",
+            "context_lines": [
+              "# Because functions all belong to the global scope, vllm-flash-attn's functions overwrite vLLMs."
+            ]
+          },
+          {
+            "file_path": "cmake/external_projects/vllm_flash_attn.cmake",
+            "line_number": 24,
+            "content": "# This is to enable local development of vllm-flash-attn within vLLM.",
+            "context_lines": [
+              "# This is to enable local development of vllm-flash-attn within vLLM."
+            ]
+          },
+          {
+            "file_path": "examples/other/tensorize_vllm_model.py",
+            "line_number": 20,
+            "content": "deserialize vLLM models. These models can be loaded using tensorizer",
+            "context_lines": [
+              "deserialize vLLM models. These models can be loaded using tensorizer"
+            ]
+          },
+          {
+            "file_path": "examples/other/tensorize_vllm_model.py",
+            "line_number": 27,
+            "content": "To serialize a model, install vLLM from source, then run something",
+            "context_lines": [
+              "To serialize a model, install vLLM from source, then run something"
+            ]
+          },
+          {
+            "file_path": "examples/other/tensorize_vllm_model.py",
+            "line_number": 36,
+            "content": "Which downloads the model from HuggingFace, loads it into vLLM, serializes it,",
+            "context_lines": [
+              "Which downloads the model from HuggingFace, loads it into vLLM, serializes it,"
+            ]
+          },
+          {
+            "file_path": "examples/other/tensorize_vllm_model.py",
+            "line_number": 85,
+            "content": "A serialized model can be used during model loading for the vLLM OpenAI",
+            "context_lines": [
+              "A serialized model can be used during model loading for the vLLM OpenAI"
+            ]
+          },
+          {
+            "file_path": "examples/other/tensorize_vllm_model.py",
+            "line_number": 104,
+            "content": "\"deserialize vLLM models. These models \"",
+            "context_lines": [
+              "\"deserialize vLLM models. These models \""
+            ]
+          }
+        ]
+      },
+      "warnings": []
+    },
+    "performance-1-req-1": {
+      "request_id": "performance-1-req-1",
+      "candidate_id": "performance-1-1",
+      "file_snippets": {
+        "benchmarks/benchmark_throughput.py": "# SPDX-License-Identifier: Apache-2.0\n\"\"\"Benchmark offline inference throughput.\"\"\"\nimport argparse\nimport dataclasses\nimport json\nimport os\nimport random\nimport time\nimport warnings\nfrom typing import Any, Optional, Union\n\nimport torch\nimport uvloop\nfrom benchmark_dataset import (AIMODataset, BurstGPTDataset,\n                               ConversationDataset, InstructCoderDataset,\n                               RandomDataset, SampleRequest, ShareGPTDataset,\n                               SonnetDataset, VisionArenaDataset)\nfrom benchmark_utils import convert_to_pytorch_benchmark_format, write_to_json\nfrom tqdm import tqdm\nfrom transformers import (AutoModelForCausalLM, AutoTokenizer,\n                          PreTrainedTokenizerBase)\n\nfrom vllm.engine.arg_utils import AsyncEngineArgs, EngineArgs\nfrom vllm.entrypoints.openai.api_server import (\n    build_async_engine_client_from_engine_args)\nfrom vllm.inputs import TextPrompt, TokensPrompt\nfrom vllm.lora.request import LoRARequest\nfrom vllm.outputs import RequestOutput\nfrom vllm.sampling_params import BeamSearchParams\nfrom vllm.utils import FlexibleArgumentParser, merge_async_iterators\n\n\ndef run_vllm(\n    requests: list[SampleRequest],\n    n: int,\n    engine_args: EngineArgs,\n    disable_detokenize: bool = False,\n) -> tuple[float, Optional[list[RequestOutput]]]:\n    from vllm import LLM, SamplingParams\n    llm = LLM(**dataclasses.asdict(engine_args))\n    assert all(\n        llm.llm_engine.model_config.max_model_len >= (\n            request.prompt_len + request.expected_output_len)\n        for request in requests), (\n            \"Please ensure that max_model_len is greater than the sum of\"\n            \" prompt_len and expected_output_len for all requests.\")\n    # Add the requests to the engine.\n    prompts: list[Union[TextPrompt, TokensPrompt]] = []\n    sampling_params: list[SamplingParams] = []\n    for request in requests:\n        prompts.append(\n            TokensPrompt(prompt_token_ids=request.prompt[\"prompt_token_ids\"],\n                       multi_modal_data=request.multi_modal_data)\n            if \"prompt_token_ids\" in request.prompt else \\\n            TextPrompt(prompt=request.prompt,\n                       multi_modal_data=request.multi_modal_data))\n        sampling_params.append(\n            SamplingParams(\n                n=n,\n                temperature=1.0,\n                top_p=1.0,\n                ignore_eos=True,\n                max_tokens=request.expected_output_len,\n                detokenize=not disable_detokenize,\n            ))\n    lora_requests: Optional[list[LoRARequest]] = None\n    if engine_args.enable_lora:\n        lora_requests = [request.lora_request for request in requests]\n\n    use_beam_search = False\n\n    outputs = None\n    if not use_beam_search:\n        start = time.perf_counter()\n        outputs = llm.generate(prompts,\n                               sampling_params,\n                               lora_request=lora_requests,\n                               use_tqdm=True)\n        end = time.perf_counter()\n    else:\n        assert lora_requests is None, \"BeamSearch API does not support LoRA\"\n        prompts = [request.prompt for request in requests]\n        # output_len should be the same for all requests.\n        output_len = requests[0][2]\n        for request in requests:\n            assert request.expected_output_len == output_len\n        start = time.perf_counter()\n        llm.beam_search(\n            prompts,\n            BeamSearchParams(\n                beam_width=n,\n                max_tokens=output_len,\n                ignore_eos=True,\n            ))\n        end = time.perf_counter()\n    return end - start, outputs\n\n\ndef run_vllm_chat(\n        requests: list[SampleRequest],\n        n: int,\n        engine_args: EngineArgs,\n        disable_detokenize: bool = False) -> tuple[float, list[RequestOutput]]:\n    \"\"\"\n    Run vLLM chat benchmark. This function is recommended ONLY for benchmarking\n    multimodal models as it properly handles multimodal inputs and chat\n    formatting. For non-multimodal models, use run_vllm() instead.\n    \"\"\"\n    from vllm import LLM, SamplingParams\n    llm = LLM(**dataclasses.asdict(engine_args))\n\n    assert all(\n        llm.llm_engine.model_config.max_model_len >= (\n            request.prompt_len + request.expected_output_len)\n        for request in requests), (\n            \"Please ensure that max_model_len is greater than the sum of \"\n            \"prompt_len and expected_output_len for all requests.\")\n\n    prompts = []\n    sampling_params: list[SamplingParams] = []\n    for request in requests:\n        prompts.append(request.prompt)\n        sampling_params.append(\n            SamplingParams(\n                n=n,\n                temperature=1.0,\n                top_p=1.0,\n                ignore_eos=True,\n                max_tokens=request.expected_output_len,\n                detokenize=not disable_detokenize,\n            ))\n    start = time.perf_counter()\n    outputs = llm.chat(prompts, sampling_params, use_tqdm=True)\n    end = time.perf_counter()\n    return end - start, outputs\n\n\nasync def run_vllm_async(\n    requests: list[SampleRequest],\n    n: int,\n    engine_args: AsyncEngineArgs,\n    disable_frontend_multiprocessing: bool = False,\n    disable_detokenize: bool = False,\n) -> float:\n    from vllm import SamplingParams\n\n    async with build_async_engine_client_from_engine_args(\n            engine_args, disable_frontend_multiprocessing) as llm:\n        assert all(\n            llm.model_config.max_model_len >= (request.prompt_len +\n                                               request.expected_output_len)\n            for request in requests), (\n                \"Please ensure that max_model_len is greater than the sum of\"\n                \" prompt_len and expected_output_len for all requests.\")\n\n        # Add the requests to the engine.\n        prompts: list[Union[TextPrompt, TokensPrompt]] = []\n        sampling_params: list[SamplingParams] = []\n        lora_requests: list[Optional[LoRARequest]] = []\n        for request in requests:\n            prompts.append(\n                TokensPrompt(prompt_token_ids=request.prompt[\"prompt_token_ids\"],\n                        multi_modal_data=request.multi_modal_data)\n                if \"prompt_token_ids\" in request.prompt else \\\n                TextPrompt(prompt=request.prompt,\n                           multi_modal_data=request.multi_modal_data))\n            sampling_params.append(\n                SamplingParams(\n                    n=n,\n                    temperature=1.0,\n                    top_p=1.0,\n                    ignore_eos=True,\n                    max_tokens=request.expected_output_len,\n                    detokenize=not disable_detokenize,\n                ))\n            lora_requests.append(request.lora_request)\n\n        generators = []\n        start = time.perf_counter()\n        for i, (prompt, sp,\n                lr) in enumerate(zip(prompts, sampling_params, lora_requests)):\n            generator = llm.generate(prompt,\n                                     sp,\n                                     lora_request=lr,\n                                     request_id=f\"test{i}\")\n            generators.append(generator)\n        all_gens = merge_async_iterators(*generators)\n        async for i, res in all_gens:\n            pass\n        end = time.perf_counter()\n        return end - start\n\n\ndef run_hf(\n    requests: list[SampleRequest],\n    model: str,\n    tokenizer: PreTrainedTokenizerBase,\n    n: int,\n    max_batch_size: int,\n    trust_remote_code: bool,\n    disable_detokenize: bool = False,\n) -> float:\n    llm = AutoModelForCausalLM.from_pretrained(\n        model, torch_dtype=torch.float16, trust_remote_code=trust_remote_code)\n    if llm.config.model_type == \"llama\":\n        # To enable padding in the HF backend.\n        tokenizer.pad_token = tokenizer.eos_token\n    llm = llm.cuda()\n\n    pbar = tqdm(total=len(requests))\n    start = time.perf_counter()\n    batch: list[str] = []\n    max_prompt_\n--- structural neighbors ---\nsymbol:dded3d3d3b15b2f8:run_vllm_chat (symbol, benchmarks/benchmark_throughput.py); symbol:5708eff701be1a2b:main (symbol, benchmarks/benchmark_throughput.py); symbol:57f0be5c2e0ea478:run_mii (symbol, benchmarks/benchmark_throughput.py); symbol:e5cbd6427b3bce3b:validate_args (symbol, benchmarks/benchmark_throughput.py); symbol:ae0820053b5d23e1:run_hf (symbol, benchmarks/benchmark_throughput.py); symbol:88bb46b95ad7c119:run_vllm_async (symbol, benchmarks/benchmark_throughput.py); symbol:50f4ed1b11082871:get_requests (symbol, benchmarks/benchmark_throughput.py); symbol:8172bf2b3b983abe:run_vllm (symbol, benchmarks/benchmark_throughput.py); symbol:3314d760badbbb36:save_to_pytorch_benchmark_format (symbol, benchmarks/benchmark_throughput.py)"
+      },
+      "search_hits": {
+        "AIMODataset.SUPPORTED_DATASET_PATHS": [
+          {
+            "file_path": "benchmarks/benchmark_throughput.py",
+            "line_number": 335,
+            "content": "elif args.dataset_path in AIMODataset.SUPPORTED_DATASET_PATHS:",
+            "context_lines": [
+              "elif args.dataset_path in AIMODataset.SUPPORTED_DATASET_PATHS:"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_throughput.py",
+            "line_number": 478,
+            "content": "| AIMODataset.SUPPORTED_DATASET_PATHS):",
+            "context_lines": [
+              "| AIMODataset.SUPPORTED_DATASET_PATHS):"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_serving.py",
+            "line_number": 599,
+            "content": "elif args.dataset_path in AIMODataset.SUPPORTED_DATASET_PATHS:",
+            "context_lines": [
+              "elif args.dataset_path in AIMODataset.SUPPORTED_DATASET_PATHS:"
+            ]
+          }
+        ],
+        "AI-MO/aimo-validation-aime": [
+          {
+            "file_path": "benchmarks/README.md",
+            "line_number": 59,
+            "content": "<td><code>AI-MO/aimo-validation-aime</code> , <code>AI-MO/NuminaMath-1.5</code>, <code>AI-MO/NuminaMath-CoT</code></td>",
+            "context_lines": [
+              "<td><code>AI-MO/aimo-validation-aime</code> , <code>AI-MO/NuminaMath-1.5</code>, <code>AI-MO/NuminaMath-CoT</code></td>"
+            ]
+          },
+          {
+            "file_path": "benchmarks/README.md",
+            "line_number": 196,
+            "content": "**`AI-MO/aimo-validation-aime`**",
+            "context_lines": [
+              "**`AI-MO/aimo-validation-aime`**"
+            ]
+          },
+          {
+            "file_path": "benchmarks/README.md",
+            "line_number": 202,
+            "content": "--dataset-path AI-MO/aimo-validation-aime \\",
+            "context_lines": [
+              "--dataset-path AI-MO/aimo-validation-aime \\"
+            ]
+          },
+          {
+            "file_path": "benchmarks/README.md",
+            "line_number": 298,
+            "content": "**`AI-MO/aimo-validation-aime`**",
+            "context_lines": [
+              "**`AI-MO/aimo-validation-aime`**"
+            ]
+          },
+          {
+            "file_path": "benchmarks/README.md",
+            "line_number": 305,
+            "content": "--dataset-path AI-MO/aimo-validation-aime \\",
+            "context_lines": [
+              "--dataset-path AI-MO/aimo-validation-aime \\"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_dataset.py",
+            "line_number": 767,
+            "content": "\"AI-MO/aimo-validation-aime\", \"AI-MO/NuminaMath-1.5\",",
+            "context_lines": [
+              "\"AI-MO/aimo-validation-aime\", \"AI-MO/NuminaMath-1.5\","
+            ]
+          }
+        ]
+      },
+      "warnings": []
+    },
+    "performance-1-req-2": {
+      "request_id": "performance-1-req-2",
+      "candidate_id": "performance-1-2",
+      "file_snippets": {
+        "benchmarks/benchmark_throughput.py": "# SPDX-License-Identifier: Apache-2.0\n\"\"\"Benchmark offline inference throughput.\"\"\"\nimport argparse\nimport dataclasses\nimport json\nimport os\nimport random\nimport time\nimport warnings\nfrom typing import Any, Optional, Union\n\nimport torch\nimport uvloop\nfrom benchmark_dataset import (AIMODataset, BurstGPTDataset,\n                               ConversationDataset, InstructCoderDataset,\n                               RandomDataset, SampleRequest, ShareGPTDataset,\n                               SonnetDataset, VisionArenaDataset)\nfrom benchmark_utils import convert_to_pytorch_benchmark_format, write_to_json\nfrom tqdm import tqdm\nfrom transformers import (AutoModelForCausalLM, AutoTokenizer,\n                          PreTrainedTokenizerBase)\n\nfrom vllm.engine.arg_utils import AsyncEngineArgs, EngineArgs\nfrom vllm.entrypoints.openai.api_server import (\n    build_async_engine_client_from_engine_args)\nfrom vllm.inputs import TextPrompt, TokensPrompt\nfrom vllm.lora.request import LoRARequest\nfrom vllm.outputs import RequestOutput\nfrom vllm.sampling_params import BeamSearchParams\nfrom vllm.utils import FlexibleArgumentParser, merge_async_iterators\n\n\ndef run_vllm(\n    requests: list[SampleRequest],\n    n: int,\n    engine_args: EngineArgs,\n    disable_detokenize: bool = False,\n) -> tuple[float, Optional[list[RequestOutput]]]:\n    from vllm import LLM, SamplingParams\n    llm = LLM(**dataclasses.asdict(engine_args))\n    assert all(\n        llm.llm_engine.model_config.max_model_len >= (\n            request.prompt_len + request.expected_output_len)\n        for request in requests), (\n            \"Please ensure that max_model_len is greater than the sum of\"\n            \" prompt_len and expected_output_len for all requests.\")\n    # Add the requests to the engine.\n    prompts: list[Union[TextPrompt, TokensPrompt]] = []\n    sampling_params: list[SamplingParams] = []\n    for request in requests:\n        prompts.append(\n            TokensPrompt(prompt_token_ids=request.prompt[\"prompt_token_ids\"],\n                       multi_modal_data=request.multi_modal_data)\n            if \"prompt_token_ids\" in request.prompt else \\\n            TextPrompt(prompt=request.prompt,\n                       multi_modal_data=request.multi_modal_data))\n        sampling_params.append(\n            SamplingParams(\n                n=n,\n                temperature=1.0,\n                top_p=1.0,\n                ignore_eos=True,\n                max_tokens=request.expected_output_len,\n                detokenize=not disable_detokenize,\n            ))\n    lora_requests: Optional[list[LoRARequest]] = None\n    if engine_args.enable_lora:\n        lora_requests = [request.lora_request for request in requests]\n\n    use_beam_search = False\n\n    outputs = None\n    if not use_beam_search:\n        start = time.perf_counter()\n        outputs = llm.generate(prompts,\n                               sampling_params,\n                               lora_request=lora_requests,\n                               use_tqdm=True)\n        end = time.perf_counter()\n    else:\n        assert lora_requests is None, \"BeamSearch API does not support LoRA\"\n        prompts = [request.prompt for request in requests]\n        # output_len should be the same for all requests.\n        output_len = requests[0][2]\n        for request in requests:\n            assert request.expected_output_len == output_len\n        start = time.perf_counter()\n        llm.beam_search(\n            prompts,\n            BeamSearchParams(\n                beam_width=n,\n                max_tokens=output_len,\n                ignore_eos=True,\n            ))\n        end = time.perf_counter()\n    return end - start, outputs\n\n\ndef run_vllm_chat(\n        requests: list[SampleRequest],\n        n: int,\n        engine_args: EngineArgs,\n        disable_detokenize: bool = False) -> tuple[float, list[RequestOutput]]:\n    \"\"\"\n    Run vLLM chat benchmark. This function is recommended ONLY for benchmarking\n    multimodal models as it properly handles multimodal inputs and chat\n    formatting. For non-multimodal models, use run_vllm() instead.\n    \"\"\"\n    from vllm import LLM, SamplingParams\n    llm = LLM(**dataclasses.asdict(engine_args))\n\n    assert all(\n        llm.llm_engine.model_config.max_model_len >= (\n            request.prompt_len + request.expected_output_len)\n        for request in requests), (\n            \"Please ensure that max_model_len is greater than the sum of \"\n            \"prompt_len and expected_output_len for all requests.\")\n\n    prompts = []\n    sampling_params: list[SamplingParams] = []\n    for request in requests:\n        prompts.append(request.prompt)\n        sampling_params.append(\n            SamplingParams(\n                n=n,\n                temperature=1.0,\n                top_p=1.0,\n                ignore_eos=True,\n                max_tokens=request.expected_output_len,\n                detokenize=not disable_detokenize,\n            ))\n    start = time.perf_counter()\n    outputs = llm.chat(prompts, sampling_params, use_tqdm=True)\n    end = time.perf_counter()\n    return end - start, outputs\n\n\nasync def run_vllm_async(\n    requests: list[SampleRequest],\n    n: int,\n    engine_args: AsyncEngineArgs,\n    disable_frontend_multiprocessing: bool = False,\n    disable_detokenize: bool = False,\n) -> float:\n    from vllm import SamplingParams\n\n    async with build_async_engine_client_from_engine_args(\n            engine_args, disable_frontend_multiprocessing) as llm:\n        assert all(\n            llm.model_config.max_model_len >= (request.prompt_len +\n                                               request.expected_output_len)\n            for request in requests), (\n                \"Please ensure that max_model_len is greater than the sum of\"\n                \" prompt_len and expected_output_len for all requests.\")\n\n        # Add the requests to the engine.\n        prompts: list[Union[TextPrompt, TokensPrompt]] = []\n        sampling_params: list[SamplingParams] = []\n        lora_requests: list[Optional[LoRARequest]] = []\n        for request in requests:\n            prompts.append(\n                TokensPrompt(prompt_token_ids=request.prompt[\"prompt_token_ids\"],\n                        multi_modal_data=request.multi_modal_data)\n                if \"prompt_token_ids\" in request.prompt else \\\n                TextPrompt(prompt=request.prompt,\n                           multi_modal_data=request.multi_modal_data))\n            sampling_params.append(\n                SamplingParams(\n                    n=n,\n                    temperature=1.0,\n                    top_p=1.0,\n                    ignore_eos=True,\n                    max_tokens=request.expected_output_len,\n                    detokenize=not disable_detokenize,\n                ))\n            lora_requests.append(request.lora_request)\n\n        generators = []\n        start = time.perf_counter()\n        for i, (prompt, sp,\n                lr) in enumerate(zip(prompts, sampling_params, lora_requests)):\n            generator = llm.generate(prompt,\n                                     sp,\n                                     lora_request=lr,\n                                     request_id=f\"test{i}\")\n            generators.append(generator)\n        all_gens = merge_async_iterators(*generators)\n        async for i, res in all_gens:\n            pass\n        end = time.perf_counter()\n        return end - start\n\n\ndef run_hf(\n    requests: list[SampleRequest],\n    model: str,\n    tokenizer: PreTrainedTokenizerBase,\n    n: int,\n    max_batch_size: int,\n    trust_remote_code: bool,\n    disable_detokenize: bool = False,\n) -> float:\n    llm = AutoModelForCausalLM.from_pretrained(\n        model, torch_dtype=torch.float16, trust_remote_code=trust_remote_code)\n    if llm.config.model_type == \"llama\":\n        # To enable padding in the HF backend.\n        tokenizer.pad_token = tokenizer.eos_token\n    llm = llm.cuda()\n\n    pbar = tqdm(total=len(requests))\n    start = time.perf_counter()\n    batch: list[str] = []\n    max_prompt_\n--- structural neighbors ---\nsymbol:dded3d3d3b15b2f8:run_vllm_chat (symbol, benchmarks/benchmark_throughput.py); symbol:5708eff701be1a2b:main (symbol, benchmarks/benchmark_throughput.py); symbol:57f0be5c2e0ea478:run_mii (symbol, benchmarks/benchmark_throughput.py); symbol:e5cbd6427b3bce3b:validate_args (symbol, benchmarks/benchmark_throughput.py); symbol:ae0820053b5d23e1:run_hf (symbol, benchmarks/benchmark_throughput.py); symbol:88bb46b95ad7c119:run_vllm_async (symbol, benchmarks/benchmark_throughput.py); symbol:50f4ed1b11082871:get_requests (symbol, benchmarks/benchmark_throughput.py); symbol:8172bf2b3b983abe:run_vllm (symbol, benchmarks/benchmark_throughput.py); symbol:3314d760badbbb36:save_to_pytorch_benchmark_format (symbol, benchmarks/benchmark_throughput.py)"
+      },
+      "search_hits": {
+        "AIMODataset.SUPPORTED_DATASET_PATHS": [
+          {
+            "file_path": "benchmarks/benchmark_throughput.py",
+            "line_number": 335,
+            "content": "elif args.dataset_path in AIMODataset.SUPPORTED_DATASET_PATHS:",
+            "context_lines": [
+              "elif args.dataset_path in AIMODataset.SUPPORTED_DATASET_PATHS:"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_throughput.py",
+            "line_number": 478,
+            "content": "| AIMODataset.SUPPORTED_DATASET_PATHS):",
+            "context_lines": [
+              "| AIMODataset.SUPPORTED_DATASET_PATHS):"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_serving.py",
+            "line_number": 599,
+            "content": "elif args.dataset_path in AIMODataset.SUPPORTED_DATASET_PATHS:",
+            "context_lines": [
+              "elif args.dataset_path in AIMODataset.SUPPORTED_DATASET_PATHS:"
+            ]
+          }
+        ],
+        "AI-MO/aimo-validation-aime": [
+          {
+            "file_path": "benchmarks/README.md",
+            "line_number": 59,
+            "content": "<td><code>AI-MO/aimo-validation-aime</code> , <code>AI-MO/NuminaMath-1.5</code>, <code>AI-MO/NuminaMath-CoT</code></td>",
+            "context_lines": [
+              "<td><code>AI-MO/aimo-validation-aime</code> , <code>AI-MO/NuminaMath-1.5</code>, <code>AI-MO/NuminaMath-CoT</code></td>"
+            ]
+          },
+          {
+            "file_path": "benchmarks/README.md",
+            "line_number": 196,
+            "content": "**`AI-MO/aimo-validation-aime`**",
+            "context_lines": [
+              "**`AI-MO/aimo-validation-aime`**"
+            ]
+          },
+          {
+            "file_path": "benchmarks/README.md",
+            "line_number": 202,
+            "content": "--dataset-path AI-MO/aimo-validation-aime \\",
+            "context_lines": [
+              "--dataset-path AI-MO/aimo-validation-aime \\"
+            ]
+          },
+          {
+            "file_path": "benchmarks/README.md",
+            "line_number": 298,
+            "content": "**`AI-MO/aimo-validation-aime`**",
+            "context_lines": [
+              "**`AI-MO/aimo-validation-aime`**"
+            ]
+          },
+          {
+            "file_path": "benchmarks/README.md",
+            "line_number": 305,
+            "content": "--dataset-path AI-MO/aimo-validation-aime \\",
+            "context_lines": [
+              "--dataset-path AI-MO/aimo-validation-aime \\"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_dataset.py",
+            "line_number": 767,
+            "content": "\"AI-MO/aimo-validation-aime\", \"AI-MO/NuminaMath-1.5\",",
+            "context_lines": [
+              "\"AI-MO/aimo-validation-aime\", \"AI-MO/NuminaMath-1.5\","
+            ]
+          }
+        ],
+        "backend": [
+          {
+            "file_path": "pyproject.toml",
+            "line_number": 13,
+            "content": "build-backend = \"setuptools.build_meta\"",
+            "context_lines": [
+              "build-backend = \"setuptools.build_meta\""
+            ]
+          },
+          {
+            "file_path": "docs/source/getting_started/troubleshooting.md",
+            "line_number": 48,
+            "content": "The vLLM instance cannot get the correct IP address if you have a complicated network config. You can find a log such as `DEBUG 06-10 21:32:17 parallel_state.py:88] world_size=8 rank=0 local_rank=0 distributed_init_method=tcp://xxx.xxx.xxx.xxx:54641 backend=nccl` and the IP address should be the correct one.",
+            "context_lines": [
+              "The vLLM instance cannot get the correct IP address if you have a complicated network config. You can find a log such as `DEBUG 06-10 21:32:17 parallel_state.py:88] world_size=8 rank=0 local_rank=0 distributed_init_method=tcp://xxx.xxx.xxx.xxx:54641 backend=nccl` and the IP address should be the correct one."
+            ]
+          },
+          {
+            "file_path": "docs/source/getting_started/troubleshooting.md",
+            "line_number": 68,
+            "content": "dist.init_process_group(backend=\"nccl\")",
+            "context_lines": [
+              "dist.init_process_group(backend=\"nccl\")"
+            ]
+          },
+          {
+            "file_path": "docs/source/getting_started/troubleshooting.md",
+            "line_number": 81,
+            "content": "gloo_group = dist.new_group(ranks=list(range(world_size)), backend=\"gloo\")",
+            "context_lines": [
+              "gloo_group = dist.new_group(ranks=list(range(world_size)), backend=\"gloo\")"
+            ]
+          },
+          {
+            "file_path": "docs/source/getting_started/troubleshooting.md",
+            "line_number": 136,
+            "content": "NCCL_DEBUG=TRACE torchrun --nnodes 2 --nproc-per-node=2 --rdzv_backend=c10d --rdzv_endpoint=$MASTER_ADDR test.py",
+            "context_lines": [
+              "NCCL_DEBUG=TRACE torchrun --nnodes 2 --nproc-per-node=2 --rdzv_backend=c10d --rdzv_endpoint=$MASTER_ADDR test.py"
+            ]
+          },
+          {
+            "file_path": "docs/source/getting_started/quickstart.md",
+            "line_number": 206,
+            "content": "Currently, vLLM supports multiple backends for efficient Attention computation across different platforms and accelerator architectures. It automatically selects the most performant backend compatible with your system and model specifications.",
+            "context_lines": [
+              "Currently, vLLM supports multiple backends for efficient Attention computation across different platforms and accelerator architectures. It automatically selects the most performant backend compatible with your system and model specifications."
+            ]
+          },
+          {
+            "file_path": "docs/source/getting_started/quickstart.md",
+            "line_number": 208,
+            "content": "If desired, you can also manually set the backend of your choice by configuring the environment variable `VLLM_ATTENTION_BACKEND` to one of the following options: `FLASH_ATTN`, `FLASHINFER` or `XFORMERS`.",
+            "context_lines": [
+              "If desired, you can also manually set the backend of your choice by configuring the environment variable `VLLM_ATTENTION_BACKEND` to one of the following options: `FLASH_ATTN`, `FLASHINFER` or `XFORMERS`."
+            ]
+          },
+          {
+            "file_path": "docs/source/getting_started/installation/cpu.md",
+            "line_number": 205,
+            "content": "vLLM CPU backend supports the following vLLM features:",
+            "context_lines": [
+              "vLLM CPU backend supports the following vLLM features:"
+            ]
+          },
+          {
+            "file_path": "docs/source/getting_started/installation/cpu.md",
+            "line_number": 238,
+            "content": "- If using vLLM CPU backend on a machine with hyper-threading, it is recommended to bind only one OpenMP thread on each physical CPU core using `VLLM_CPU_OMP_THREADS_BIND`. On a hyper-threading enabled platform with 16 logical CPU cores / 8 physical CPU cores:",
+            "context_lines": [
+              "- If using vLLM CPU backend on a machine with hyper-threading, it is recommended to bind only one OpenMP thread on each physical CPU core using `VLLM_CPU_OMP_THREADS_BIND`. On a hyper-threading enabled platform with 16 logical CPU cores / 8 physical CPU cores:"
+            ]
+          },
+          {
+            "file_path": "docs/source/getting_started/installation/cpu.md",
+            "line_number": 267,
+            "content": "- If using vLLM CPU backend on a multi-socket machine with NUMA, be aware to set CPU cores using `VLLM_CPU_OMP_THREADS_BIND` to avoid cross NUMA node memory access.",
+            "context_lines": [
+              "- If using vLLM CPU backend on a multi-socket machine with NUMA, be aware to set CPU cores using `VLLM_CPU_OMP_THREADS_BIND` to avoid cross NUMA node memory access."
+            ]
+          },
+          {
+            "file_path": "docs/source/getting_started/installation/cpu.md",
+            "line_number": 271,
+            "content": "- The CPU backend significantly differs from the GPU backend since the vLLM architecture was originally optimized for GPU use. A number of optimizations are needed to enhance its performance.",
+            "context_lines": [
+              "- The CPU backend significantly differs from the GPU backend since the vLLM architecture was originally optimized for GPU use. A number of optimizations are needed to enhance its performance."
+            ]
+          },
+          {
+            "file_path": "docs/source/getting_started/installation/cpu.md",
+            "line_number": 273,
+            "content": "- Decouple the HTTP serving components from the inference components. In a GPU backend configuration, the HTTP serving and tokenization tasks operate on the CPU, while inference runs on the GPU, which typically does not pose a problem. However, in a CPU-based setup, the HTTP serving and tokenization can cause significant context switching and reduced cache efficiency. Therefore, it is strongly recommended to segregate these two components for improved performance.",
+            "context_lines": [
+              "- Decouple the HTTP serving components from the inference components. In a GPU backend configuration, the HTTP serving and tokenization tasks operate on the CPU, while inference runs on the GPU, which typically does not pose a problem. However, in a CPU-based setup, the HTTP serving and tokenization can cause significant context switching and reduced cache efficiency. Therefore, it is strongly recommended to segregate these two components for improved performance."
+            ]
+          },
+          {
+            "file_path": "docs/source/getting_started/installation/cpu.md",
+            "line_number": 280,
+            "content": "VLLM_CPU_KVCACHE_SPACE=40 VLLM_CPU_OMP_THREADS_BIND=\"0-31|32-63\" vllm serve meta-llama/Llama-2-7b-chat-hf -tp=2 --distributed-executor-backend mp",
+            "context_lines": [
+              "VLLM_CPU_KVCACHE_SPACE=40 VLLM_CPU_OMP_THREADS_BIND=\"0-31|32-63\" vllm serve meta-llama/Llama-2-7b-chat-hf -tp=2 --distributed-executor-backend mp"
+            ]
+          },
+          {
+            "file_path": "examples/online_serving/openai_chat_completion_structured_outputs.py",
+            "line_number": 98,
+            "content": "# Extra backend options",
+            "context_lines": [
+              "# Extra backend options"
+            ]
+          },
+          {
+            "file_path": "examples/online_serving/openai_chat_completion_structured_outputs.py",
+            "line_number": 115,
+            "content": "\"guided_decoding_backend\": \"xgrammar:no-fallback\"",
+            "context_lines": [
+              "\"guided_decoding_backend\": \"xgrammar:no-fallback\""
+            ]
+          }
+        ]
+      },
+      "warnings": []
+    },
+    "performance-1-1:auto-context:1": {
+      "request_id": "performance-1-1:auto-context:1",
+      "candidate_id": "performance-1-1",
+      "file_snippets": {
+        "benchmarks/benchmark_throughput.py": "# SPDX-License-Identifier: Apache-2.0\n\"\"\"Benchmark offline inference throughput.\"\"\"\nimport argparse\nimport dataclasses\nimport json\nimport os\nimport random\nimport time\nimport warnings\nfrom typing import Any, Optional, Union\n\nimport torch\nimport uvloop\nfrom benchmark_dataset import (AIMODataset, BurstGPTDataset,\n                               ConversationDataset, InstructCoderDataset,\n                               RandomDataset, SampleRequest, ShareGPTDataset,\n                               SonnetDataset, VisionArenaDataset)\nfrom benchmark_utils import convert_to_pytorch_benchmark_format, write_to_json\nfrom tqdm import tqdm\nfrom transformers import (AutoModelForCausalLM, AutoTokenizer,\n                          PreTrainedTokenizerBase)\n\nfrom vllm.engine.arg_utils import AsyncEngineArgs, EngineArgs\nfrom vllm.entrypoints.openai.api_server import (\n    build_async_engine_client_from_engine_args)\nfrom vllm.inputs import TextPrompt, TokensPrompt\nfrom vllm.lora.request import LoRARequest\nfrom vllm.outputs import RequestOutput\nfrom vllm.sampling_params import BeamSearchParams\nfrom vllm.utils import FlexibleArgumentParser, merge_async_iterators\n\n\ndef run_vllm(\n    requests: list[SampleRequest],\n    n: int,\n    engine_args: EngineArgs,\n    disable_detokenize: bool = False,\n) -> tuple[float, Optional[list[RequestOutput]]]:\n    from vllm import LLM, SamplingParams\n    llm = LLM(**dataclasses.asdict(engine_args))\n    assert all(\n        llm.llm_engine.model_config.max_model_len >= (\n            request.prompt_len + request.expected_output_len)\n        for request in requests), (\n            \"Please ensure that max_model_len is greater than the sum of\"\n            \" prompt_len and expected_output_len for all requests.\")\n    # Add the requests to the engine.\n    prompts: list[Union[TextPrompt, TokensPrompt]] = []\n    sampling_params: list[SamplingParams] = []\n    for request in requests:\n        prompts.append(\n            TokensPrompt(prompt_token_ids=request.prompt[\"prompt_token_ids\"],\n                       multi_modal_data=request.multi_modal_data)\n            if \"prompt_token_ids\" in request.prompt else \\\n            TextPrompt(prompt=request.prompt,\n                       multi_modal_data=request.multi_modal_data))\n        sampling_params.append(\n            SamplingParams(\n                n=n,\n                temperature=1.0,\n                top_p=1.0,\n                ignore_eos=True,\n                max_tokens=request.expected_output_len,\n                detokenize=not disable_detokenize,\n            ))\n    lora_requests: Optional[list[LoRARequest]] = None\n    if engine_args.enable_lora:\n        lora_requests = [request.lora_request for request in requests]\n\n    use_beam_search = False\n\n    outputs = None\n    if not use_beam_search:\n        start = time.perf_counter()\n        outputs = llm.generate(prompts,\n                               sampling_params,\n                               lora_request=lora_requests,\n                               use_tqdm=True)\n        end = time.perf_counter()\n    else:\n        assert lora_requests is None, \"BeamSearch API does not support LoRA\"\n        prompts = [request.prompt for request in requests]\n        # output_len should be the same for all requests.\n        output_len = requests[0][2]\n        for request in requests:\n            assert request.expected_output_len == output_len\n        start = time.perf_counter()\n        llm.beam_search(\n            prompts,\n            BeamSearchParams(\n                beam_width=n,\n                max_tokens=output_len,\n                ignore_eos=True,\n            ))\n        end = time.perf_counter()\n    return end - start, outputs\n\n\ndef run_vllm_chat(\n        requests: list[SampleRequest],\n        n: int,\n        engine_args: EngineArgs,\n        disable_detokenize: bool = False) -> tuple[float, list[RequestOutput]]:\n    \"\"\"\n    Run vLLM chat benchmark. This function is recommended ONLY for benchmarking\n    multimodal models as it properly handles multimodal inputs and chat\n    formatting. For non-multimodal models, use run_vllm() instead.\n    \"\"\"\n    from vllm import LLM, SamplingParams\n    llm = LLM(**dataclasses.asdict(engine_args))\n\n    assert all(\n        llm.llm_engine.model_config.max_model_len >= (\n            request.prompt_len + request.expected_output_len)\n        for request in requests), (\n            \"Please ensure that max_model_len is greater than the sum of \"\n            \"prompt_len and expected_output_len for all requests.\")\n\n    prompts = []\n    sampling_params: list[SamplingParams] = []\n    for request in requests:\n        prompts.append(request.prompt)\n        sampling_params.append(\n            SamplingParams(\n                n=n,\n                temperature=1.0,\n                top_p=1.0,\n                ignore_eos=True,\n                max_tokens=request.expected_output_len,\n                detokenize=not disable_detokenize,\n            ))\n    start = time.perf_counter()\n    outputs = llm.chat(prompts, sampling_params, use_tqdm=True)\n    end = time.perf_counter()\n    return end - start, outputs\n\n\nasync def run_vllm_async(\n    requests: list[SampleRequest],\n    n: int,\n    engine_args: AsyncEngineArgs,\n    disable_frontend_multiprocessing: bool = False,\n    disable_detokenize: bool = False,\n) -> float:\n    from vllm import SamplingParams\n\n    async with build_async_engine_client_from_engine_args(\n            engine_args, disable_frontend_multiprocessing) as llm:\n        assert all(\n            llm.model_config.max_model_len >= (request.prompt_len +\n                                               request.expected_output_len)\n            for request in requests), (\n                \"Please ensure that max_model_len is greater than the sum of\"\n                \" prompt_len and expected_output_len for all requests.\")\n\n        # Add the requests to the engine.\n        prompts: list[Union[TextPrompt, TokensPrompt]] = []\n        sampling_params: list[SamplingParams] = []\n        lora_requests: list[Optional[LoRARequest]] = []\n        for request in requests:\n            prompts.append(\n                TokensPrompt(prompt_token_ids=request.prompt[\"prompt_token_ids\"],\n                        multi_modal_data=request.multi_modal_data)\n                if \"prompt_token_ids\" in request.prompt else \\\n                TextPrompt(prompt=request.prompt,\n                           multi_modal_data=request.multi_modal_data))\n            sampling_params.append(\n                SamplingParams(\n                    n=n,\n                    temperature=1.0,\n                    top_p=1.0,\n                    ignore_eos=True,\n                    max_tokens=request.expected_output_len,\n                    detokenize=not disable_detokenize,\n                ))\n            lora_requests.append(request.lora_request)\n\n        generators = []\n        start = time.perf_counter()\n        for i, (prompt, sp,\n                lr) in enumerate(zip(prompts, sampling_params, lora_requests)):\n            generator = llm.generate(prompt,\n                                     sp,\n                                     lora_request=lr,\n                                     request_id=f\"test{i}\")\n            generators.append(generator)\n        all_gens = merge_async_iterators(*generators)\n        async for i, res in all_gens:\n            pass\n        end = time.perf_counter()\n        return end - start\n\n\ndef run_hf(\n    requests: list[SampleRequest],\n    model: str,\n    tokenizer: PreTrainedTokenizerBase,\n    n: int,\n    max_batch_size: int,\n    trust_remote_code: bool,\n    disable_detokenize: bool = False,\n) -> float:\n    llm = AutoModelForCausalLM.from_pretrained(\n        model, torch_dtype=torch.float16, trust_remote_code=trust_remote_code)\n    if llm.config.model_type == \"llama\":\n        # To enable padding in the HF backend.\n        tokenizer.pad_token = tokenizer.eos_token\n    llm = llm.cuda()\n\n    pbar = tqdm(total=len(requests))\n    start = time.perf_counter()\n    batch: list[str] = []\n    max_prompt_\n--- structural neighbors ---\nsymbol:dded3d3d3b15b2f8:run_vllm_chat (symbol, benchmarks/benchmark_throughput.py); symbol:5708eff701be1a2b:main (symbol, benchmarks/benchmark_throughput.py); symbol:57f0be5c2e0ea478:run_mii (symbol, benchmarks/benchmark_throughput.py); symbol:e5cbd6427b3bce3b:validate_args (symbol, benchmarks/benchmark_throughput.py); symbol:ae0820053b5d23e1:run_hf (symbol, benchmarks/benchmark_throughput.py); symbol:88bb46b95ad7c119:run_vllm_async (symbol, benchmarks/benchmark_throughput.py); symbol:50f4ed1b11082871:get_requests (symbol, benchmarks/benchmark_throughput.py); symbol:8172bf2b3b983abe:run_vllm (symbol, benchmarks/benchmark_throughput.py); symbol:3314d760badbbb36:save_to_pytorch_benchmark_format (symbol, benchmarks/benchmark_throughput.py)"
+      },
+      "search_hits": {
+        "benchmarks/benchmark_throughput.py": [
+          {
+            "file_path": "benchmarks/README.md",
+            "line_number": 211,
+            "content": "python3 vllm/benchmarks/benchmark_throughput.py \\",
+            "context_lines": [
+              "python3 vllm/benchmarks/benchmark_throughput.py \\"
+            ]
+          },
+          {
+            "file_path": "benchmarks/README.md",
+            "line_number": 229,
+            "content": "python3 vllm/benchmarks/benchmark_throughput.py \\",
+            "context_lines": [
+              "python3 vllm/benchmarks/benchmark_throughput.py \\"
+            ]
+          },
+          {
+            "file_path": "benchmarks/README.md",
+            "line_number": 251,
+            "content": "python3 vllm/benchmarks/benchmark_throughput.py \\",
+            "context_lines": [
+              "python3 vllm/benchmarks/benchmark_throughput.py \\"
+            ]
+          },
+          {
+            "file_path": "benchmarks/README.md",
+            "line_number": 276,
+            "content": "python3 vllm/benchmarks/benchmark_throughput.py \\",
+            "context_lines": [
+              "python3 vllm/benchmarks/benchmark_throughput.py \\"
+            ]
+          },
+          {
+            "file_path": "benchmarks/README.md",
+            "line_number": 289,
+            "content": "python3 vllm/benchmarks/benchmark_throughput.py \\",
+            "context_lines": [
+              "python3 vllm/benchmarks/benchmark_throughput.py \\"
+            ]
+          },
+          {
+            "file_path": "benchmarks/README.md",
+            "line_number": 301,
+            "content": "python3 benchmarks/benchmark_throughput.py \\",
+            "context_lines": [
+              "python3 benchmarks/benchmark_throughput.py \\"
+            ]
+          },
+          {
+            "file_path": "benchmarks/README.md",
+            "line_number": 315,
+            "content": "python3 vllm/benchmarks/benchmark_throughput.py \\",
+            "context_lines": [
+              "python3 vllm/benchmarks/benchmark_throughput.py \\"
+            ]
+          }
+        ],
+        "If the new dataset introduces a large number of prompts or outputs, it could lead to increased memory usage or processin": [],
+        "If the new dataset introduces a large number of prompts or outputs, it could lead to increased memory usage or processing time, causing a performance regression": []
+      },
+      "warnings": []
+    },
+    "security-1-req-001": {
+      "request_id": "security-1-req-001",
+      "candidate_id": "security-1-001",
+      "file_snippets": {
+        "benchmarks/benchmark_dataset.py": "# SPDX-License-Identifier: Apache-2.0\n\"\"\"\nThis module defines a framework for sampling benchmark requests from various\ndatasets. Each dataset subclass of BenchmarkDataset must implement sample\ngeneration. Supported dataset types include:\n  - ShareGPT\n  - Random (synthetic)\n  - Sonnet\n  - BurstGPT\n  - HuggingFace\n  - VisionArena\n\nTODO: Implement CustomDataset to parse a JSON file and convert its contents into\nSampleRequest instances, similar to the approach used in ShareGPT.\n\"\"\"\n\nimport base64\nimport io\nimport json\nimport logging\nimport random\nfrom abc import ABC, abstractmethod\nfrom collections.abc import Mapping\nfrom dataclasses import dataclass\nfrom functools import cache\nfrom io import BytesIO\nfrom typing import Any, Callable, Optional, Union\n\nimport numpy as np\nimport pandas as pd\nfrom datasets import load_dataset\nfrom PIL import Image\nfrom transformers import PreTrainedTokenizerBase\n\nfrom vllm.lora.request import LoRARequest\nfrom vllm.lora.utils import get_adapter_absolute_path\nfrom vllm.multimodal import MultiModalDataDict\nfrom vllm.transformers_utils.tokenizer import AnyTokenizer, get_lora_tokenizer\n\nlogger = logging.getLogger(__name__)\n\n# -----------------------------------------------------------------------------\n# Data Classes\n# -----------------------------------------------------------------------------\n\n\n@dataclass\nclass SampleRequest:\n    \"\"\"\n    Represents a single inference request for benchmarking.\n    \"\"\"\n\n    prompt: Union[str, Any]\n    prompt_len: int\n    expected_output_len: int\n    multi_modal_data: Optional[Union[MultiModalDataDict, dict]] = None\n    lora_request: Optional[LoRARequest] = None\n\n\n# -----------------------------------------------------------------------------\n# Benchmark Dataset Base Class\n# -----------------------------------------------------------------------------\n\n\nclass BenchmarkDataset(ABC):\n    DEFAULT_SEED = 0\n\n    def __init__(\n        self,\n        dataset_path: Optional[str] = None,\n        random_seed: int = DEFAULT_SEED,\n    ) -> None:\n        \"\"\"\n        Initialize the BenchmarkDataset with an optional dataset path and random\n        seed.  Args:\n            dataset_path (Optional[str]): Path to the dataset. If None, it\n            indicates that a default or random dataset might be used.\n            random_seed (int): Seed value for reproducible shuffling or\n            sampling. Defaults to DEFAULT_SEED.\n        \"\"\"\n        self.dataset_path = dataset_path\n        # Set the random seed, ensuring that a None value is replaced with the\n        # default seed.\n        self.random_seed = (random_seed\n                            if random_seed is not None else self.DEFAULT_SEED)\n        self.data = None\n\n    def apply_multimodal_chat_transformation(\n            self,\n            prompt: str,\n            mm_content: Optional[MultiModalDataDict] = None) -> list[dict]:\n        \"\"\"\n        Transform a prompt and optional multimodal content into a chat format.\n        This method is used for chat models that expect a specific conversation\n        format.\n        \"\"\"\n        content = [{\"text\": prompt, \"type\": \"text\"}]\n        if mm_content is not None:\n            content.append(mm_content)\n        return [{\"role\": \"user\", \"content\": content}]\n\n    def load_data(self) -> None:\n        \"\"\"\n        Load data from the dataset path into self.data.\n\n        This method must be overridden by subclasses since the method to load\n        data will vary depending on the dataset format and source.\n\n        Raises:\n            NotImplementedError: If a subclass does not implement this method.\n        \"\"\"\n        # TODO (jenniferzhao): add support for downloading data\n        raise NotImplementedError(\n            \"load_data must be implemented in subclasses.\")\n\n    def get_random_lora_request(\n        self,\n        tokenizer: PreTrainedTokenizerBase,\n        max_loras: Optional[int] = None,\n        lora_path: Optional[str] = None,\n    ) -> tuple[Optional[LoRARequest], AnyTokenizer]:\n        \"\"\"\n        Optionally select a random LoRA request and return its associated\n        tokenizer.\n\n        This method is used when LoRA parameters are provided.  It randomly\n        selects a LoRA based on max_loras and retrieves a cached tokenizer for\n        that LoRA if available. Otherwise, it returns the base tokenizer.\n\n        Args:\n            tokenizer (PreTrainedTokenizerBase): The base tokenizer to use if no\n            LoRA is selected.  max_loras (Optional[int]): The maximum number of\n            LoRAs available. If None, LoRA is not used.  lora_path\n            (Optional[str]): Path to the LoRA parameters on disk. If None, LoRA\n            is not used.\n\n        Returns:\n            tuple[Optional[LoRARequest], AnyTokenizer]: A tuple where the first\n            element is a LoRARequest (or None if not applicable) and the second\n            element is the tokenizer associated with the LoRA request (or the\n            base tokenizer).\n        \"\"\"\n        if max_loras is None or lora_path is None:\n            return None, tokenizer\n\n        # Generate a random LoRA ID in the range [1, max_loras].\n        lora_id = random.randint(1, max_loras)\n        lora_request = LoRARequest(\n            lora_name=str(lora_id),\n            lora_int_id=lora_id,\n            lora_path=lora_path_on_disk(lora_path),\n        )\n        if lora_id not in lora_tokenizer_cache:\n            lora_tokenizer_cache[lora_id] = get_lora_tokenizer(lora_request)\n        # Return lora_request and the cached tokenizer if available; otherwise,\n        # return the base tokenizer\n        return lora_request, lora_tokenizer_cache[lora_id] or tokenizer\n\n    @abstractmethod\n    def sample(self, tokenizer: PreTrainedTokenizerBase,\n               num_requests: int) -> list[SampleRequest]:\n        \"\"\"\n        Abstract method to generate sample requests from the dataset.\n\n        Subclasses must override this method to implement dataset-specific logic\n        for generating a list of SampleRequest objects.\n\n        Args:\n            tokenizer (PreTrainedTokenizerBase): The tokenizer to be used\n             for processing the dataset's text.\n            num_requests (int): The number of sample requests to generate.\n\n        Returns:\n            list[SampleRequest]: A list of sample requests generated from the\n            dataset.\n        \"\"\"\n        raise NotImplementedError(\"sample must be implemented in subclasses.\")\n\n    def maybe_oversample_requests(self, requests: list[SampleRequest],\n                                  num_requests: int) -> None:\n        \"\"\"\n        Oversamples the list of requests if its size is less than the desired\n        number.\n\n        Args:\n            requests (List[SampleRequest]): The current list of sampled\n            requests.  num_requests (int): The target number of requests.\n        \"\"\"\n        if len(requests) < num_requests:\n            random.seed(self.random_seed)\n            additional = random.choices(requests,\n                                        k=num_requests - len(requests))\n            requests.extend(additional)\n            logger.info(\"Oversampled requests to reach %d total samples.\",\n                        num_requests)\n\n\n# -----------------------------------------------------------------------------\n# Utility Functions and Global Caches\n# -----------------------------------------------------------------------------\n\n\ndef is_valid_sequence(\n    prompt_len: int,\n    output_len: int,\n    min_len: int = 4,\n    max_prompt_len: int = 1024,\n    max_total_len: int = 2048,\n    skip_min_output_len_check: bool = False,\n) -> bool:\n    \"\"\"\n    Validate a sequence based on prompt and output lengths.\n\n    Default pruning criteria are copied from the original `sample_hf_requests`\n    and `sample_sharegpt_requests` functions in benchmark_serving.py, as well as\n    from `sample_requests` in benchmark_throughput.py.\n    \"\"\"\n    # Check for invalid conditions\n    prompt_too_short = prompt_len < min_len\n    output_too_short = (no\n--- structural neighbors ---\nsymbol:582989c9b81c9bfc:HuggingFaceDataset (symbol, benchmarks/benchmark_dataset.py); symbol:5f768b6d829efab7:ShareGPTDataset (symbol, benchmarks/benchmark_dataset.py); symbol:4acbea7cc9fe54f7:AIMODataset (symbol, benchmarks/benchmark_dataset.py); symbol:0fd4f23bce5b3eff:is_valid_sequence (symbol, benchmarks/benchmark_dataset.py); symbol:d597196c0278d0c8:ConversationDataset (symbol, benchmarks/benchmark_dataset.py); symbol:922eb9df84aae10d:BurstGPTDataset (symbol, benchmarks/benchmark_dataset.py); symbol:c8271d640bb26a7b:process_image (symbol, benchmarks/benchmark_dataset.py); symbol:aa3cda95c391647a:SampleRequest (symbol, benchmarks/benchmark_dataset.py); symbol:af5cef65f9ceb3da:lora_path_on_disk (symbol, benchmarks/benchmark_dataset.py); symbol:ca199f0c4933aace:InstructCoderDataset (symbol, benchmarks/benchmark_dataset.py); symbol:11765c646f4402bd:SonnetDataset (symbol, benchmarks/benchmark_dataset.py); symbol:6fa181ede3d312dc:VisionArenaDataset (symbol, benchmarks/benchmark_dataset.py)"
+      },
+      "search_hits": {
+        "AIMODataset": [
+          {
+            "file_path": "benchmarks/benchmark_throughput.py",
+            "line_number": 14,
+            "content": "from benchmark_dataset import (AIMODataset, BurstGPTDataset,",
+            "context_lines": [
+              "from benchmark_dataset import (AIMODataset, BurstGPTDataset,"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_throughput.py",
+            "line_number": 335,
+            "content": "elif args.dataset_path in AIMODataset.SUPPORTED_DATASET_PATHS:",
+            "context_lines": [
+              "elif args.dataset_path in AIMODataset.SUPPORTED_DATASET_PATHS:"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_throughput.py",
+            "line_number": 336,
+            "content": "dataset_cls = AIMODataset",
+            "context_lines": [
+              "dataset_cls = AIMODataset"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_throughput.py",
+            "line_number": 478,
+            "content": "| AIMODataset.SUPPORTED_DATASET_PATHS):",
+            "context_lines": [
+              "| AIMODataset.SUPPORTED_DATASET_PATHS):"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_serving.py",
+            "line_number": 52,
+            "content": "from benchmark_dataset import (AIMODataset, BurstGPTDataset,",
+            "context_lines": [
+              "from benchmark_dataset import (AIMODataset, BurstGPTDataset,"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_serving.py",
+            "line_number": 599,
+            "content": "elif args.dataset_path in AIMODataset.SUPPORTED_DATASET_PATHS:",
+            "context_lines": [
+              "elif args.dataset_path in AIMODataset.SUPPORTED_DATASET_PATHS:"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_serving.py",
+            "line_number": 600,
+            "content": "dataset_class = AIMODataset",
+            "context_lines": [
+              "dataset_class = AIMODataset"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_dataset.py",
+            "line_number": 762,
+            "content": "class AIMODataset(HuggingFaceDataset):",
+            "context_lines": [
+              "class AIMODataset(HuggingFaceDataset):"
+            ]
+          }
+        ],
+        "untrusted data": [],
+        "validation": [
+          {
+            "file_path": "examples/online_serving/disagg_examples/disagg_proxy_demo.py",
+            "line_number": 170,
+            "content": "detail=\"Instance validation failed.\")",
+            "context_lines": [
+              "detail=\"Instance validation failed.\")"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_dataset.py",
+            "line_number": 767,
+            "content": "\"AI-MO/aimo-validation-aime\", \"AI-MO/NuminaMath-1.5\",",
+            "context_lines": [
+              "\"AI-MO/aimo-validation-aime\", \"AI-MO/NuminaMath-1.5\","
+            ]
+          },
+          {
+            "file_path": "benchmarks/README.md",
+            "line_number": 59,
+            "content": "<td><code>AI-MO/aimo-validation-aime</code> , <code>AI-MO/NuminaMath-1.5</code>, <code>AI-MO/NuminaMath-CoT</code></td>",
+            "context_lines": [
+              "<td><code>AI-MO/aimo-validation-aime</code> , <code>AI-MO/NuminaMath-1.5</code>, <code>AI-MO/NuminaMath-CoT</code></td>"
+            ]
+          },
+          {
+            "file_path": "benchmarks/README.md",
+            "line_number": 196,
+            "content": "**`AI-MO/aimo-validation-aime`**",
+            "context_lines": [
+              "**`AI-MO/aimo-validation-aime`**"
+            ]
+          },
+          {
+            "file_path": "benchmarks/README.md",
+            "line_number": 202,
+            "content": "--dataset-path AI-MO/aimo-validation-aime \\",
+            "context_lines": [
+              "--dataset-path AI-MO/aimo-validation-aime \\"
+            ]
+          },
+          {
+            "file_path": "benchmarks/README.md",
+            "line_number": 298,
+            "content": "**`AI-MO/aimo-validation-aime`**",
+            "context_lines": [
+              "**`AI-MO/aimo-validation-aime`**"
+            ]
+          },
+          {
+            "file_path": "benchmarks/README.md",
+            "line_number": 305,
+            "content": "--dataset-path AI-MO/aimo-validation-aime \\",
+            "context_lines": [
+              "--dataset-path AI-MO/aimo-validation-aime \\"
+            ]
+          },
+          {
+            "file_path": "docs/source/getting_started/installation/gpu/rocm.inc.md",
+            "line_number": 116,
+            "content": "Please check [LLM inference performance validation on AMD Instinct MI300X](https://rocm.docs.amd.com/en/latest/how-to/performance-validation/mi300x/vllm-benchmark.html)",
+            "context_lines": [
+              "Please check [LLM inference performance validation on AMD Instinct MI300X](https://rocm.docs.amd.com/en/latest/how-to/performance-validation/mi300x/vllm-benchmark.html)"
+            ]
+          },
+          {
+            "file_path": "docs/source/features/spec_decode.md",
+            "line_number": 246,
+            "content": "\\- vLLM’s implementation of speculative decoding is algorithmically validated to be lossless. Key validation tests include:",
+            "context_lines": [
+              "\\- vLLM’s implementation of speculative decoding is algorithmically validated to be lossless. Key validation tests include:"
+            ]
+          },
+          {
+            "file_path": "docs/source/features/quantization/quark.md",
+            "line_number": 67,
+            "content": "dataset = load_dataset(\"mit-han-lab/pile-val-backup\", split=\"validation\")",
+            "context_lines": [
+              "dataset = load_dataset(\"mit-han-lab/pile-val-backup\", split=\"validation\")"
+            ]
+          },
+          {
+            "file_path": "vllm/v1/engine/processor.py",
+            "line_number": 143,
+            "content": "# Request content validation",
+            "context_lines": [
+              "# Request content validation"
+            ]
+          },
+          {
+            "file_path": "vllm/engine/llm_engine.py",
+            "line_number": 163,
+            "content": "def enable_output_validation(cls):",
+            "context_lines": [
+              "def enable_output_validation(cls):"
+            ]
+          },
+          {
+            "file_path": "vllm/engine/async_llm_engine.py",
+            "line_number": 772,
+            "content": "# TODO: use a vLLM specific error for failed validation",
+            "context_lines": [
+              "# TODO: use a vLLM specific error for failed validation"
+            ]
+          },
+          {
+            "file_path": "vllm/lora/worker_manager.py",
+            "line_number": 106,
+            "content": "# loading weights, throwing an exception if validation fails.",
+            "context_lines": [
+              "# loading weights, throwing an exception if validation fails."
+            ]
+          },
+          {
+            "file_path": "vllm/lora/peft_helper.py",
+            "line_number": 21,
+            "content": "This class handles configuration validation, compatibility checks for",
+            "context_lines": [
+              "This class handles configuration validation, compatibility checks for"
+            ]
+          }
+        ]
+      },
+      "warnings": []
+    },
+    "security-1-req-002": {
+      "request_id": "security-1-req-002",
+      "candidate_id": "security-1-002",
+      "file_snippets": {
+        "benchmarks/benchmark_dataset.py": "# SPDX-License-Identifier: Apache-2.0\n\"\"\"\nThis module defines a framework for sampling benchmark requests from various\ndatasets. Each dataset subclass of BenchmarkDataset must implement sample\ngeneration. Supported dataset types include:\n  - ShareGPT\n  - Random (synthetic)\n  - Sonnet\n  - BurstGPT\n  - HuggingFace\n  - VisionArena\n\nTODO: Implement CustomDataset to parse a JSON file and convert its contents into\nSampleRequest instances, similar to the approach used in ShareGPT.\n\"\"\"\n\nimport base64\nimport io\nimport json\nimport logging\nimport random\nfrom abc import ABC, abstractmethod\nfrom collections.abc import Mapping\nfrom dataclasses import dataclass\nfrom functools import cache\nfrom io import BytesIO\nfrom typing import Any, Callable, Optional, Union\n\nimport numpy as np\nimport pandas as pd\nfrom datasets import load_dataset\nfrom PIL import Image\nfrom transformers import PreTrainedTokenizerBase\n\nfrom vllm.lora.request import LoRARequest\nfrom vllm.lora.utils import get_adapter_absolute_path\nfrom vllm.multimodal import MultiModalDataDict\nfrom vllm.transformers_utils.tokenizer import AnyTokenizer, get_lora_tokenizer\n\nlogger = logging.getLogger(__name__)\n\n# -----------------------------------------------------------------------------\n# Data Classes\n# -----------------------------------------------------------------------------\n\n\n@dataclass\nclass SampleRequest:\n    \"\"\"\n    Represents a single inference request for benchmarking.\n    \"\"\"\n\n    prompt: Union[str, Any]\n    prompt_len: int\n    expected_output_len: int\n    multi_modal_data: Optional[Union[MultiModalDataDict, dict]] = None\n    lora_request: Optional[LoRARequest] = None\n\n\n# -----------------------------------------------------------------------------\n# Benchmark Dataset Base Class\n# -----------------------------------------------------------------------------\n\n\nclass BenchmarkDataset(ABC):\n    DEFAULT_SEED = 0\n\n    def __init__(\n        self,\n        dataset_path: Optional[str] = None,\n        random_seed: int = DEFAULT_SEED,\n    ) -> None:\n        \"\"\"\n        Initialize the BenchmarkDataset with an optional dataset path and random\n        seed.  Args:\n            dataset_path (Optional[str]): Path to the dataset. If None, it\n            indicates that a default or random dataset might be used.\n            random_seed (int): Seed value for reproducible shuffling or\n            sampling. Defaults to DEFAULT_SEED.\n        \"\"\"\n        self.dataset_path = dataset_path\n        # Set the random seed, ensuring that a None value is replaced with the\n        # default seed.\n        self.random_seed = (random_seed\n                            if random_seed is not None else self.DEFAULT_SEED)\n        self.data = None\n\n    def apply_multimodal_chat_transformation(\n            self,\n            prompt: str,\n            mm_content: Optional[MultiModalDataDict] = None) -> list[dict]:\n        \"\"\"\n        Transform a prompt and optional multimodal content into a chat format.\n        This method is used for chat models that expect a specific conversation\n        format.\n        \"\"\"\n        content = [{\"text\": prompt, \"type\": \"text\"}]\n        if mm_content is not None:\n            content.append(mm_content)\n        return [{\"role\": \"user\", \"content\": content}]\n\n    def load_data(self) -> None:\n        \"\"\"\n        Load data from the dataset path into self.data.\n\n        This method must be overridden by subclasses since the method to load\n        data will vary depending on the dataset format and source.\n\n        Raises:\n            NotImplementedError: If a subclass does not implement this method.\n        \"\"\"\n        # TODO (jenniferzhao): add support for downloading data\n        raise NotImplementedError(\n            \"load_data must be implemented in subclasses.\")\n\n    def get_random_lora_request(\n        self,\n        tokenizer: PreTrainedTokenizerBase,\n        max_loras: Optional[int] = None,\n        lora_path: Optional[str] = None,\n    ) -> tuple[Optional[LoRARequest], AnyTokenizer]:\n        \"\"\"\n        Optionally select a random LoRA request and return its associated\n        tokenizer.\n\n        This method is used when LoRA parameters are provided.  It randomly\n        selects a LoRA based on max_loras and retrieves a cached tokenizer for\n        that LoRA if available. Otherwise, it returns the base tokenizer.\n\n        Args:\n            tokenizer (PreTrainedTokenizerBase): The base tokenizer to use if no\n            LoRA is selected.  max_loras (Optional[int]): The maximum number of\n            LoRAs available. If None, LoRA is not used.  lora_path\n            (Optional[str]): Path to the LoRA parameters on disk. If None, LoRA\n            is not used.\n\n        Returns:\n            tuple[Optional[LoRARequest], AnyTokenizer]: A tuple where the first\n            element is a LoRARequest (or None if not applicable) and the second\n            element is the tokenizer associated with the LoRA request (or the\n            base tokenizer).\n        \"\"\"\n        if max_loras is None or lora_path is None:\n            return None, tokenizer\n\n        # Generate a random LoRA ID in the range [1, max_loras].\n        lora_id = random.randint(1, max_loras)\n        lora_request = LoRARequest(\n            lora_name=str(lora_id),\n            lora_int_id=lora_id,\n            lora_path=lora_path_on_disk(lora_path),\n        )\n        if lora_id not in lora_tokenizer_cache:\n            lora_tokenizer_cache[lora_id] = get_lora_tokenizer(lora_request)\n        # Return lora_request and the cached tokenizer if available; otherwise,\n        # return the base tokenizer\n        return lora_request, lora_tokenizer_cache[lora_id] or tokenizer\n\n    @abstractmethod\n    def sample(self, tokenizer: PreTrainedTokenizerBase,\n               num_requests: int) -> list[SampleRequest]:\n        \"\"\"\n        Abstract method to generate sample requests from the dataset.\n\n        Subclasses must override this method to implement dataset-specific logic\n        for generating a list of SampleRequest objects.\n\n        Args:\n            tokenizer (PreTrainedTokenizerBase): The tokenizer to be used\n             for processing the dataset's text.\n            num_requests (int): The number of sample requests to generate.\n\n        Returns:\n            list[SampleRequest]: A list of sample requests generated from the\n            dataset.\n        \"\"\"\n        raise NotImplementedError(\"sample must be implemented in subclasses.\")\n\n    def maybe_oversample_requests(self, requests: list[SampleRequest],\n                                  num_requests: int) -> None:\n        \"\"\"\n        Oversamples the list of requests if its size is less than the desired\n        number.\n\n        Args:\n            requests (List[SampleRequest]): The current list of sampled\n            requests.  num_requests (int): The target number of requests.\n        \"\"\"\n        if len(requests) < num_requests:\n            random.seed(self.random_seed)\n            additional = random.choices(requests,\n                                        k=num_requests - len(requests))\n            requests.extend(additional)\n            logger.info(\"Oversampled requests to reach %d total samples.\",\n                        num_requests)\n\n\n# -----------------------------------------------------------------------------\n# Utility Functions and Global Caches\n# -----------------------------------------------------------------------------\n\n\ndef is_valid_sequence(\n    prompt_len: int,\n    output_len: int,\n    min_len: int = 4,\n    max_prompt_len: int = 1024,\n    max_total_len: int = 2048,\n    skip_min_output_len_check: bool = False,\n) -> bool:\n    \"\"\"\n    Validate a sequence based on prompt and output lengths.\n\n    Default pruning criteria are copied from the original `sample_hf_requests`\n    and `sample_sharegpt_requests` functions in benchmark_serving.py, as well as\n    from `sample_requests` in benchmark_throughput.py.\n    \"\"\"\n    # Check for invalid conditions\n    prompt_too_short = prompt_len < min_len\n    output_too_short = (no\n--- structural neighbors ---\nsymbol:582989c9b81c9bfc:HuggingFaceDataset (symbol, benchmarks/benchmark_dataset.py); symbol:5f768b6d829efab7:ShareGPTDataset (symbol, benchmarks/benchmark_dataset.py); symbol:4acbea7cc9fe54f7:AIMODataset (symbol, benchmarks/benchmark_dataset.py); symbol:0fd4f23bce5b3eff:is_valid_sequence (symbol, benchmarks/benchmark_dataset.py); symbol:d597196c0278d0c8:ConversationDataset (symbol, benchmarks/benchmark_dataset.py); symbol:922eb9df84aae10d:BurstGPTDataset (symbol, benchmarks/benchmark_dataset.py); symbol:c8271d640bb26a7b:process_image (symbol, benchmarks/benchmark_dataset.py); symbol:aa3cda95c391647a:SampleRequest (symbol, benchmarks/benchmark_dataset.py); symbol:af5cef65f9ceb3da:lora_path_on_disk (symbol, benchmarks/benchmark_dataset.py); symbol:ca199f0c4933aace:InstructCoderDataset (symbol, benchmarks/benchmark_dataset.py); symbol:11765c646f4402bd:SonnetDataset (symbol, benchmarks/benchmark_dataset.py); symbol:6fa181ede3d312dc:VisionArenaDataset (symbol, benchmarks/benchmark_dataset.py)"
+      },
+      "search_hits": {
+        "VisionArenaDataset": [
+          {
+            "file_path": "benchmarks/benchmark_throughput.py",
+            "line_number": 17,
+            "content": "SonnetDataset, VisionArenaDataset)",
+            "context_lines": [
+              "SonnetDataset, VisionArenaDataset)"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_throughput.py",
+            "line_number": 322,
+            "content": "if args.dataset_path in VisionArenaDataset.SUPPORTED_DATASET_PATHS:",
+            "context_lines": [
+              "if args.dataset_path in VisionArenaDataset.SUPPORTED_DATASET_PATHS:"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_throughput.py",
+            "line_number": 323,
+            "content": "dataset_cls = VisionArenaDataset",
+            "context_lines": [
+              "dataset_cls = VisionArenaDataset"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_throughput.py",
+            "line_number": 474,
+            "content": "VisionArenaDataset.SUPPORTED_DATASET_PATHS.keys()",
+            "context_lines": [
+              "VisionArenaDataset.SUPPORTED_DATASET_PATHS.keys()"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_serving.py",
+            "line_number": 56,
+            "content": "VisionArenaDataset)",
+            "context_lines": [
+              "VisionArenaDataset)"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_serving.py",
+            "line_number": 590,
+            "content": "if args.dataset_path in VisionArenaDataset.SUPPORTED_DATASET_PATHS:",
+            "context_lines": [
+              "if args.dataset_path in VisionArenaDataset.SUPPORTED_DATASET_PATHS:"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_serving.py",
+            "line_number": 591,
+            "content": "dataset_class = VisionArenaDataset",
+            "context_lines": [
+              "dataset_class = VisionArenaDataset"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_dataset.py",
+            "line_number": 662,
+            "content": "class VisionArenaDataset(HuggingFaceDataset):",
+            "context_lines": [
+              "class VisionArenaDataset(HuggingFaceDataset):"
+            ]
+          }
+        ],
+        "ConversationDataset": [
+          {
+            "file_path": "benchmarks/benchmark_throughput.py",
+            "line_number": 15,
+            "content": "ConversationDataset, InstructCoderDataset,",
+            "context_lines": [
+              "ConversationDataset, InstructCoderDataset,"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_throughput.py",
+            "line_number": 330,
+            "content": "elif args.dataset_path in ConversationDataset.SUPPORTED_DATASET_PATHS:",
+            "context_lines": [
+              "elif args.dataset_path in ConversationDataset.SUPPORTED_DATASET_PATHS:"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_throughput.py",
+            "line_number": 331,
+            "content": "dataset_cls = ConversationDataset",
+            "context_lines": [
+              "dataset_cls = ConversationDataset"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_throughput.py",
+            "line_number": 475,
+            "content": "| ConversationDataset.SUPPORTED_DATASET_PATHS):",
+            "context_lines": [
+              "| ConversationDataset.SUPPORTED_DATASET_PATHS):"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_dataset.py",
+            "line_number": 605,
+            "content": "class ConversationDataset(HuggingFaceDataset):",
+            "context_lines": [
+              "class ConversationDataset(HuggingFaceDataset):"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_serving.py",
+            "line_number": 53,
+            "content": "ConversationDataset, HuggingFaceDataset,",
+            "context_lines": [
+              "ConversationDataset, HuggingFaceDataset,"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_serving.py",
+            "line_number": 597,
+            "content": "elif args.dataset_path in ConversationDataset.SUPPORTED_DATASET_PATHS:",
+            "context_lines": [
+              "elif args.dataset_path in ConversationDataset.SUPPORTED_DATASET_PATHS:"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_serving.py",
+            "line_number": 598,
+            "content": "dataset_class = ConversationDataset",
+            "context_lines": [
+              "dataset_class = ConversationDataset"
+            ]
+          }
+        ],
+        "SUPPORTED_DATASET_PATHS": [
+          {
+            "file_path": "benchmarks/benchmark_throughput.py",
+            "line_number": 322,
+            "content": "if args.dataset_path in VisionArenaDataset.SUPPORTED_DATASET_PATHS:",
+            "context_lines": [
+              "if args.dataset_path in VisionArenaDataset.SUPPORTED_DATASET_PATHS:"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_throughput.py",
+            "line_number": 327,
+            "content": "elif args.dataset_path in InstructCoderDataset.SUPPORTED_DATASET_PATHS:",
+            "context_lines": [
+              "elif args.dataset_path in InstructCoderDataset.SUPPORTED_DATASET_PATHS:"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_throughput.py",
+            "line_number": 330,
+            "content": "elif args.dataset_path in ConversationDataset.SUPPORTED_DATASET_PATHS:",
+            "context_lines": [
+              "elif args.dataset_path in ConversationDataset.SUPPORTED_DATASET_PATHS:"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_throughput.py",
+            "line_number": 335,
+            "content": "elif args.dataset_path in AIMODataset.SUPPORTED_DATASET_PATHS:",
+            "context_lines": [
+              "elif args.dataset_path in AIMODataset.SUPPORTED_DATASET_PATHS:"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_throughput.py",
+            "line_number": 474,
+            "content": "VisionArenaDataset.SUPPORTED_DATASET_PATHS.keys()",
+            "context_lines": [
+              "VisionArenaDataset.SUPPORTED_DATASET_PATHS.keys()"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_throughput.py",
+            "line_number": 475,
+            "content": "| ConversationDataset.SUPPORTED_DATASET_PATHS):",
+            "context_lines": [
+              "| ConversationDataset.SUPPORTED_DATASET_PATHS):"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_throughput.py",
+            "line_number": 477,
+            "content": "elif args.dataset_path in (InstructCoderDataset.SUPPORTED_DATASET_PATHS",
+            "context_lines": [
+              "elif args.dataset_path in (InstructCoderDataset.SUPPORTED_DATASET_PATHS"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_throughput.py",
+            "line_number": 478,
+            "content": "| AIMODataset.SUPPORTED_DATASET_PATHS):",
+            "context_lines": [
+              "| AIMODataset.SUPPORTED_DATASET_PATHS):"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_dataset.py",
+            "line_number": 574,
+            "content": "SUPPORTED_DATASET_PATHS: Union[set[str], dict[str, Callable]] = set()",
+            "context_lines": [
+              "SUPPORTED_DATASET_PATHS: Union[set[str], dict[str, Callable]] = set()"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_dataset.py",
+            "line_number": 607,
+            "content": "SUPPORTED_DATASET_PATHS = {",
+            "context_lines": [
+              "SUPPORTED_DATASET_PATHS = {"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_dataset.py",
+            "line_number": 668,
+            "content": "SUPPORTED_DATASET_PATHS = {",
+            "context_lines": [
+              "SUPPORTED_DATASET_PATHS = {"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_dataset.py",
+            "line_number": 689,
+            "content": "parser_fn = self.SUPPORTED_DATASET_PATHS.get(self.dataset_path)",
+            "context_lines": [
+              "parser_fn = self.SUPPORTED_DATASET_PATHS.get(self.dataset_path)"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_dataset.py",
+            "line_number": 729,
+            "content": "SUPPORTED_DATASET_PATHS = {",
+            "context_lines": [
+              "SUPPORTED_DATASET_PATHS = {"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_dataset.py",
+            "line_number": 766,
+            "content": "SUPPORTED_DATASET_PATHS = {",
+            "context_lines": [
+              "SUPPORTED_DATASET_PATHS = {"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_serving.py",
+            "line_number": 590,
+            "content": "if args.dataset_path in VisionArenaDataset.SUPPORTED_DATASET_PATHS:",
+            "context_lines": [
+              "if args.dataset_path in VisionArenaDataset.SUPPORTED_DATASET_PATHS:"
+            ]
+          }
+        ]
+      },
+      "warnings": []
+    },
+    "security-1-001-context": {
+      "request_id": "security-1-001-context",
+      "candidate_id": "security-1-001",
+      "file_snippets": {
+        "benchmarks/benchmark_throughput.py": "# SPDX-License-Identifier: Apache-2.0\n\"\"\"Benchmark offline inference throughput.\"\"\"\nimport argparse\nimport dataclasses\nimport json\nimport os\nimport random\nimport time\nimport warnings\nfrom typing import Any, Optional, Union\n\nimport torch\nimport uvloop\nfrom benchmark_dataset import (AIMODataset, BurstGPTDataset,\n                               ConversationDataset, InstructCoderDataset,\n                               RandomDataset, SampleRequest, ShareGPTDataset,\n                               SonnetDataset, VisionArenaDataset)\nfrom benchmark_utils import convert_to_pytorch_benchmark_format, write_to_json\nfrom tqdm import tqdm\nfrom transformers import (AutoModelForCausalLM, AutoTokenizer,\n                          PreTrainedTokenizerBase)\n\nfrom vllm.engine.arg_utils import AsyncEngineArgs, EngineArgs\nfrom vllm.entrypoints.openai.api_server import (\n    build_async_engine_client_from_engine_args)\nfrom vllm.inputs import TextPrompt, TokensPrompt\nfrom vllm.lora.request import LoRARequest\nfrom vllm.outputs import RequestOutput\nfrom vllm.sampling_params import BeamSearchParams\nfrom vllm.utils import FlexibleArgumentParser, merge_async_iterators\n\n\ndef run_vllm(\n    requests: list[SampleRequest],\n    n: int,\n    engine_args: EngineArgs,\n    disable_detokenize: bool = False,\n) -> tuple[float, Optional[list[RequestOutput]]]:\n    from vllm import LLM, SamplingParams\n    llm = LLM(**dataclasses.asdict(engine_args))\n    assert all(\n        llm.llm_engine.model_config.max_model_len >= (\n            request.prompt_len + request.expected_output_len)\n        for request in requests), (\n            \"Please ensure that max_model_len is greater than the sum of\"\n            \" prompt_len and expected_output_len for all requests.\")\n    # Add the requests to the engine.\n    prompts: list[Union[TextPrompt, TokensPrompt]] = []\n    sampling_params: list[SamplingParams] = []\n    for request in requests:\n        prompts.append(\n            TokensPrompt(prompt_token_ids=request.prompt[\"prompt_token_ids\"],\n                       multi_modal_data=request.multi_modal_data)\n            if \"prompt_token_ids\" in request.prompt else \\\n            TextPrompt(prompt=request.prompt,\n                       multi_modal_data=request.multi_modal_data))\n        sampling_params.append(\n            SamplingParams(\n                n=n,\n                temperature=1.0,\n                top_p=1.0,\n                ignore_eos=True,\n                max_tokens=request.expected_output_len,\n                detokenize=not disable_detokenize,\n            ))\n    lora_requests: Optional[list[LoRARequest]] = None\n    if engine_args.enable_lora:\n        lora_requests = [request.lora_request for request in requests]\n\n    use_beam_search = False\n\n    outputs = None\n    if not use_beam_search:\n        start = time.perf_counter()\n        outputs = llm.generate(prompts,\n                               sampling_params,\n                               lora_request=lora_requests,\n                               use_tqdm=True)\n        end = time.perf_counter()\n    else:\n        assert lora_requests is None, \"BeamSearch API does not support LoRA\"\n        prompts = [request.prompt for request in requests]\n        # output_len should be the same for all requests.\n        output_len = requests[0][2]\n        for request in requests:\n            assert request.expected_output_len == output_len\n        start = time.perf_counter()\n        llm.beam_search(\n            prompts,\n            BeamSearchParams(\n                beam_width=n,\n                max_tokens=output_len,\n                ignore_eos=True,\n            ))\n        end = time.perf_counter()\n    return end - start, outputs\n\n\ndef run_vllm_chat(\n        requests: list[SampleRequest],\n        n: int,\n        engine_args: EngineArgs,\n        disable_detokenize: bool = False) -> tuple[float, list[RequestOutput]]:\n    \"\"\"\n    Run vLLM chat benchmark. This function is recommended ONLY for benchmarking\n    multimodal models as it properly handles multimodal inputs and chat\n    formatting. For non-multimodal models, use run_vllm() instead.\n    \"\"\"\n    from vllm import LLM, SamplingParams\n    llm = LLM(**dataclasses.asdict(engine_args))\n\n    assert all(\n        llm.llm_engine.model_config.max_model_len >= (\n            request.prompt_len + request.expected_output_len)\n        for request in requests), (\n            \"Please ensure that max_model_len is greater than the sum of \"\n            \"prompt_len and expected_output_len for all requests.\")\n\n    prompts = []\n    sampling_params: list[SamplingParams] = []\n    for request in requests:\n        prompts.append(request.prompt)\n        sampling_params.append(\n            SamplingParams(\n                n=n,\n                temperature=1.0,\n                top_p=1.0,\n                ignore_eos=True,\n                max_tokens=request.expected_output_len,\n                detokenize=not disable_detokenize,\n            ))\n    start = time.perf_counter()\n    outputs = llm.chat(prompts, sampling_params, use_tqdm=True)\n    end = time.perf_counter()\n    return end - start, outputs\n\n\nasync def run_vllm_async(\n    requests: list[SampleRequest],\n    n: int,\n    engine_args: AsyncEngineArgs,\n    disable_frontend_multiprocessing: bool = False,\n    disable_detokenize: bool = False,\n) -> float:\n    from vllm import SamplingParams\n\n    async with build_async_engine_client_from_engine_args(\n            engine_args, disable_frontend_multiprocessing) as llm:\n        assert all(\n            llm.model_config.max_model_len >= (request.prompt_len +\n                                               request.expected_output_len)\n            for request in requests), (\n                \"Please ensure that max_model_len is greater than the sum of\"\n                \" prompt_len and expected_output_len for all requests.\")\n\n        # Add the requests to the engine.\n        prompts: list[Union[TextPrompt, TokensPrompt]] = []\n        sampling_params: list[SamplingParams] = []\n        lora_requests: list[Optional[LoRARequest]] = []\n        for request in requests:\n            prompts.append(\n                TokensPrompt(prompt_token_ids=request.prompt[\"prompt_token_ids\"],\n                        multi_modal_data=request.multi_modal_data)\n                if \"prompt_token_ids\" in request.prompt else \\\n                TextPrompt(prompt=request.prompt,\n                           multi_modal_data=request.multi_modal_data))\n            sampling_params.append(\n                SamplingParams(\n                    n=n,\n                    temperature=1.0,\n                    top_p=1.0,\n                    ignore_eos=True,\n                    max_tokens=request.expected_output_len,\n                    detokenize=not disable_detokenize,\n                ))\n            lora_requests.append(request.lora_request)\n\n        generators = []\n        start = time.perf_counter()\n        for i, (prompt, sp,\n                lr) in enumerate(zip(prompts, sampling_params, lora_requests)):\n            generator = llm.generate(prompt,\n                                     sp,\n                                     lora_request=lr,\n                                     request_id=f\"test{i}\")\n            generators.append(generator)\n        all_gens = merge_async_iterators(*generators)\n        async for i, res in all_gens:\n            pass\n        end = time.perf_counter()\n        return end - start\n\n\ndef run_hf(\n    requests: list[SampleRequest],\n    model: str,\n    tokenizer: PreTrainedTokenizerBase,\n    n: int,\n    max_batch_size: int,\n    trust_remote_code: bool,\n    disable_detokenize: bool = False,\n) -> float:\n    llm = AutoModelForCausalLM.from_pretrained(\n        model, torch_dtype=torch.float16, trust_remote_code=trust_remote_code)\n    if llm.config.model_type == \"llama\":\n        # To enable padding in the HF backend.\n        tokenizer.pad_token = tokenizer.eos_token\n    llm = llm.cuda()\n\n    pbar = tqdm(total=len(requests))\n    start = time.perf_counter()\n    batch: list[str] = []\n    max_prompt_\n--- structural neighbors ---\nsymbol:dded3d3d3b15b2f8:run_vllm_chat (symbol, benchmarks/benchmark_throughput.py); symbol:5708eff701be1a2b:main (symbol, benchmarks/benchmark_throughput.py); symbol:57f0be5c2e0ea478:run_mii (symbol, benchmarks/benchmark_throughput.py); symbol:e5cbd6427b3bce3b:validate_args (symbol, benchmarks/benchmark_throughput.py); symbol:ae0820053b5d23e1:run_hf (symbol, benchmarks/benchmark_throughput.py); symbol:88bb46b95ad7c119:run_vllm_async (symbol, benchmarks/benchmark_throughput.py); symbol:50f4ed1b11082871:get_requests (symbol, benchmarks/benchmark_throughput.py); symbol:8172bf2b3b983abe:run_vllm (symbol, benchmarks/benchmark_throughput.py); symbol:3314d760badbbb36:save_to_pytorch_benchmark_format (symbol, benchmarks/benchmark_throughput.py)",
+        "path/to/aimodataset.py": "sed: can't read path/to/aimodataset.py: No such file or directory\n"
+      },
+      "search_hits": {
+        "AIMODataset": [
+          {
+            "file_path": "benchmarks/benchmark_throughput.py",
+            "line_number": 14,
+            "content": "from benchmark_dataset import (AIMODataset, BurstGPTDataset,",
+            "context_lines": [
+              "from benchmark_dataset import (AIMODataset, BurstGPTDataset,"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_throughput.py",
+            "line_number": 335,
+            "content": "elif args.dataset_path in AIMODataset.SUPPORTED_DATASET_PATHS:",
+            "context_lines": [
+              "elif args.dataset_path in AIMODataset.SUPPORTED_DATASET_PATHS:"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_throughput.py",
+            "line_number": 336,
+            "content": "dataset_cls = AIMODataset",
+            "context_lines": [
+              "dataset_cls = AIMODataset"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_throughput.py",
+            "line_number": 478,
+            "content": "| AIMODataset.SUPPORTED_DATASET_PATHS):",
+            "context_lines": [
+              "| AIMODataset.SUPPORTED_DATASET_PATHS):"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_dataset.py",
+            "line_number": 762,
+            "content": "class AIMODataset(HuggingFaceDataset):",
+            "context_lines": [
+              "class AIMODataset(HuggingFaceDataset):"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_serving.py",
+            "line_number": 52,
+            "content": "from benchmark_dataset import (AIMODataset, BurstGPTDataset,",
+            "context_lines": [
+              "from benchmark_dataset import (AIMODataset, BurstGPTDataset,"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_serving.py",
+            "line_number": 599,
+            "content": "elif args.dataset_path in AIMODataset.SUPPORTED_DATASET_PATHS:",
+            "context_lines": [
+              "elif args.dataset_path in AIMODataset.SUPPORTED_DATASET_PATHS:"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_serving.py",
+            "line_number": 600,
+            "content": "dataset_class = AIMODataset",
+            "context_lines": [
+              "dataset_class = AIMODataset"
+            ]
+          }
+        ],
+        "validation": [
+          {
+            "file_path": "examples/online_serving/disagg_examples/disagg_proxy_demo.py",
+            "line_number": 170,
+            "content": "detail=\"Instance validation failed.\")",
+            "context_lines": [
+              "detail=\"Instance validation failed.\")"
+            ]
+          },
+          {
+            "file_path": "benchmarks/benchmark_dataset.py",
+            "line_number": 767,
+            "content": "\"AI-MO/aimo-validation-aime\", \"AI-MO/NuminaMath-1.5\",",
+            "context_lines": [
+              "\"AI-MO/aimo-validation-aime\", \"AI-MO/NuminaMath-1.5\","
+            ]
+          },
+          {
+            "file_path": "benchmarks/README.md",
+            "line_number": 59,
+            "content": "<td><code>AI-MO/aimo-validation-aime</code> , <code>AI-MO/NuminaMath-1.5</code>, <code>AI-MO/NuminaMath-CoT</code></td>",
+            "context_lines": [
+              "<td><code>AI-MO/aimo-validation-aime</code> , <code>AI-MO/NuminaMath-1.5</code>, <code>AI-MO/NuminaMath-CoT</code></td>"
+            ]
+          },
+          {
+            "file_path": "benchmarks/README.md",
+            "line_number": 196,
+            "content": "**`AI-MO/aimo-validation-aime`**",
+            "context_lines": [
+              "**`AI-MO/aimo-validation-aime`**"
+            ]
+          },
+          {
+            "file_path": "benchmarks/README.md",
+            "line_number": 202,
+            "content": "--dataset-path AI-MO/aimo-validation-aime \\",
+            "context_lines": [
+              "--dataset-path AI-MO/aimo-validation-aime \\"
+            ]
+          },
+          {
+            "file_path": "benchmarks/README.md",
+            "line_number": 298,
+            "content": "**`AI-MO/aimo-validation-aime`**",
+            "context_lines": [
+              "**`AI-MO/aimo-validation-aime`**"
+            ]
+          },
+          {
+            "file_path": "benchmarks/README.md",
+            "line_number": 305,
+            "content": "--dataset-path AI-MO/aimo-validation-aime \\",
+            "context_lines": [
+              "--dataset-path AI-MO/aimo-validation-aime \\"
+            ]
+          },
+          {
+            "file_path": "docs/source/getting_started/installation/gpu/rocm.inc.md",
+            "line_number": 116,
+            "content": "Please check [LLM inference performance validation on AMD Instinct MI300X](https://rocm.docs.amd.com/en/latest/how-to/performance-validation/mi300x/vllm-benchmark.html)",
+            "context_lines": [
+              "Please check [LLM inference performance validation on AMD Instinct MI300X](https://rocm.docs.amd.com/en/latest/how-to/performance-validation/mi300x/vllm-benchmark.html)"
+            ]
+          },
+          {
+            "file_path": "docs/source/features/spec_decode.md",
+            "line_number": 246,
+            "content": "\\- vLLM’s implementation of speculative decoding is algorithmically validated to be lossless. Key validation tests include:",
+            "context_lines": [
+              "\\- vLLM’s implementation of speculative decoding is algorithmically validated to be lossless. Key validation tests include:"
+            ]
+          },
+          {
+            "file_path": "docs/source/features/quantization/quark.md",
+            "line_number": 67,
+            "content": "dataset = load_dataset(\"mit-han-lab/pile-val-backup\", split=\"validation\")",
+            "context_lines": [
+              "dataset = load_dataset(\"mit-han-lab/pile-val-backup\", split=\"validation\")"
+            ]
+          },
+          {
+            "file_path": "tests/quantization/test_fp8.py",
+            "line_number": 73,
+            "content": "# NOTE: This code path requires validation on Non-CUDA platform",
+            "context_lines": [
+              "# NOTE: This code path requires validation on Non-CUDA platform"
+            ]
+          },
+          {
+            "file_path": "vllm/engine/llm_engine.py",
+            "line_number": 163,
+            "content": "def enable_output_validation(cls):",
+            "context_lines": [
+              "def enable_output_validation(cls):"
+            ]
+          },
+          {
+            "file_path": "vllm/engine/async_llm_engine.py",
+            "line_number": 772,
+            "content": "# TODO: use a vLLM specific error for failed validation",
+            "context_lines": [
+              "# TODO: use a vLLM specific error for failed validation"
+            ]
+          },
+          {
+            "file_path": "tests/entrypoints/llm/test_guided_generate.py",
+            "line_number": 272,
+            "content": "def test_validation_against_both_guided_decoding_options(sample_regex, llm):",
+            "context_lines": [
+              "def test_validation_against_both_guided_decoding_options(sample_regex, llm):"
+            ]
+          },
+          {
+            "file_path": "vllm/v1/engine/processor.py",
+            "line_number": 143,
+            "content": "# Request content validation",
+            "context_lines": [
+              "# Request content validation"
+            ]
+          }
+        ],
+        "untrusted data handling": []
+      },
+      "warnings": []
+    }
+  }
+}

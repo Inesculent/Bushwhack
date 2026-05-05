@@ -1,0 +1,90 @@
+[
+  {
+    "id": "4_1",
+    "file_path": "graphrag/entity_resolution.py",
+    "line_start": 111,
+    "line_end": 111,
+    "content": "-                merging_nodes = list(sub_connect_graph.nodes)\n+                merging_nodes = list(sub_connect_graph.nodes())",
+    "severity": "high",
+    "feedback_type": "defect_detection",
+    "recommendation": "Change `merging_nodes = list(sub_connect_graph.nodes)` to `merging_nodes = list(sub_connect_graph.nodes())`.",
+    "references": []
+  },
+  {
+    "id": "2:task2_candidate2",
+    "file_path": "graphrag/general/extractor.py",
+    "line_start": 201,
+    "line_end": 201,
+    "content": "-            for attr in [\"keywords\", \"source_id\"]:\n-                node0_attrs[attr] = sorted(set(node0_attrs[attr].extend(node1_attrs[attr])))\n+            node0_attrs[\"source_id\"] = sorted(set(node0_attrs[\"source_id\"].extend(node1_attrs.get(\"source_id\", []))))",
+    "severity": "high",
+    "feedback_type": "defect_detection",
+    "recommendation": "Use a different approach to extend and deduplicate the lists. For example, use `node0_attrs[attr] = sorted(set(node0_attrs[attr] + node1_attrs.get(attr, [])))`.",
+    "references": []
+  },
+  {
+    "id": "4_2",
+    "file_path": "graphrag/general/extractor.py",
+    "line_start": 201,
+    "line_end": 202,
+    "content": "-            for attr in [\"keywords\", \"source_id\"]:\n-                node0_attrs[attr] = sorted(set(node0_attrs[attr].extend(node1_attrs[attr])))",
+    "severity": "high",
+    "feedback_type": "defect_detection",
+    "recommendation": "Change `node0_attrs[attr] = sorted(set(node0_attrs[attr].extend(node1_attrs[attr])))` to `node0_attrs[attr].extend(node1_attrs.get(attr, [])); node0_attrs[attr] = sorted(set(node0_attrs[attr]))`.",
+    "references": []
+  },
+  {
+    "id": "2:task2_candidate3",
+    "file_path": "graphrag/general/extractor.py",
+    "line_start": 212,
+    "line_end": 213,
+    "content": "-                        edge0_attrs[\"keywords\"] = list(set(edge0_attrs[\"keywords\"].extend(edge1_attrs[\"keywords\"])))\n-                        edge0_attrs[\"source_id\"] = list(set(edge0_attrs[\"source_id\"].extend(edge1_attrs[\"source_id\"])))\n+                        for attr in [\"keywords\", \"source_id\"]:\n+                            edge0_attrs[attr] = sorted(set(edge0_attrs[attr].extend(edge1_attrs.get(attr, []))))",
+    "severity": "high",
+    "feedback_type": "defect_detection",
+    "recommendation": "Use a different approach to extend and deduplicate the lists. For example, use `edge0_attrs[attr] = sorted(set(edge0_attrs[attr] + edge1_attrs.get(attr, [])))`.",
+    "references": []
+  },
+  {
+    "id": "1_missing_test_1",
+    "file_path": "graphrag/general/extractor.py",
+    "line_start": 201,
+    "line_end": 213,
+    "content": "async def _merge_graph_nodes(self, graph: nx.Graph, nodes: list[str], change: GraphChange):",
+    "severity": "medium",
+    "feedback_type": "code_improvement",
+    "recommendation": "Add unit tests to verify the behavior of `_merge_graph_nodes` when `node1_attrs` or `edge1_attrs` do not contain the expected attributes.",
+    "references": []
+  },
+  {
+    "id": "1_defect_1",
+    "file_path": "graphrag/general/extractor.py",
+    "line_start": 212,
+    "line_end": 212,
+    "content": "node0_attrs[attr] = sorted(set(node0_attrs[attr].extend(node1_attrs.get(attr, []))))",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Replace `.extend()` with `+` operator or `+=` assignment to concatenate lists correctly.\nExample: `node0_attrs[attr] = sorted(set(node0_attrs[attr] + node1_attrs.get(attr, [])))`",
+    "references": []
+  },
+  {
+    "id": "1_defect_2",
+    "file_path": "graphrag/general/extractor.py",
+    "line_start": 216,
+    "line_end": 216,
+    "content": "edge0_attrs[attr] = sorted(set(edge0_attrs[attr].extend(edge1_attrs.get(attr, []))))",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Replace `.extend()` with `+` operator or `+=` assignment to concatenate lists correctly.\nExample: `edge0_attrs[attr] = sorted(set(edge0_attrs[attr] + edge1_attrs.get(attr, [])))`",
+    "references": []
+  },
+  {
+    "id": "3:task3_candidate1",
+    "file_path": "graphrag/utils.py",
+    "line_start": 439,
+    "line_end": 441,
+    "content": "nursery.start_soon(lambda: trio.to_thread.run_sync(lambda: settings.docStoreConn.delete({\"knowledge_graph_kwd\": [\"relation\"], \"from_entity_kwd\": from_node, \"to_entity_kwd\": to_node}, search.index_name(tenant_id), kb_id)))",
+    "severity": "medium",
+    "feedback_type": "optimization",
+    "recommendation": "Consider batching deletions or using a different concurrency model that minimizes threading overhead.",
+    "references": []
+  }
+]

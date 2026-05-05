@@ -1,0 +1,206 @@
+{
+  "metadata": {
+    "experiment": "reviewer_graph_basic",
+    "run_id": "430a96cc0085",
+    "graph_run_id": "430a96cc0085:browser-use__browser-use__pr3172",
+    "pr_started_at": "2026-05-05T07:03:47.482084+00:00",
+    "pr_url": "https://github.com/browser-use/browser-use/pull/3172",
+    "pr_title": "speed-ups",
+    "pr_description": "Auto-generated PR for branch: speed-ups\n    \n<!-- This is an auto-generated description by cubic. -->\n---\n\n## Summary by cubic\nSpeeds up Gemini chat calls by removing manual retries and optimizing structured-output parsing. Adds support for Gemini 2.5 models and provides clearer error messages.\n\n- **New Features**\n  - Support for gemini-2.5-flash, gemini-2.5-flash-lite, and gemini-2.5-pro.\n\n- **Refactors**\n  - Removed custom retry loop; rely on Google client retries to avoid long backoffs.\n  - Faster structured output: use native JSON mode first, strip code fences, and improve fallback for non-JSON models.\n  - thinking_budget now defaults to dynamic (-1).\n\n<!-- End of auto-generated description by cubic. -->",
+    "pr_repo": "browser-use/browser-use",
+    "pr_number": 3172,
+    "review_repo_url": "https://github.com/browser-use/browser-use",
+    "review_pr_number": 3172,
+    "review_trace_enabled": true,
+    "structural_extractor": {
+      "mode": "sandbox_entities",
+      "files_attempted": 245,
+      "files_parsed": 245,
+      "gap_count": 0,
+      "node_count": 3228,
+      "edge_count": 9789,
+      "topology_algorithm": "graspologic_leiden",
+      "community_count": 91,
+      "topology_splits_applied": 0
+    },
+    "review_planner": {
+      "summary": "Default parallel review plan.",
+      "task_count": 4,
+      "specialties": [
+        "general",
+        "logic",
+        "performance",
+        "security"
+      ],
+      "tasks": [
+        {
+          "id": "review-security",
+          "title": "Security review",
+          "description": "Review the change for authorization, injection, secrets, unsafe file/network access, and deserialization risks.",
+          "target_files": [
+            "browser_use/llm/google/chat.py"
+          ],
+          "subtasks": [],
+          "specialty": "security",
+          "depth": 1,
+          "assigned_model": null
+        },
+        {
+          "id": "review-logic",
+          "title": "Correctness review",
+          "description": "Review the change for behavioral regressions, edge cases, broken state transitions, and API contract violations.",
+          "target_files": [
+            "browser_use/llm/google/chat.py"
+          ],
+          "subtasks": [],
+          "specialty": "logic",
+          "depth": 1,
+          "assigned_model": null
+        },
+        {
+          "id": "review-performance",
+          "title": "Performance review",
+          "description": "Review the change for repeated expensive work, accidental quadratic behavior, N+1 access patterns, and concurrency bottlenecks.",
+          "target_files": [
+            "browser_use/llm/google/chat.py"
+          ],
+          "subtasks": [],
+          "specialty": "performance",
+          "depth": 1,
+          "assigned_model": null
+        },
+        {
+          "id": "review-general",
+          "title": "General review",
+          "description": "Review maintainability, error handling, tests, and integration consistency for the changed code.",
+          "target_files": [
+            "browser_use/llm/google/chat.py"
+          ],
+          "subtasks": [],
+          "specialty": "general",
+          "depth": 1,
+          "assigned_model": null
+        }
+      ],
+      "warnings": [
+        "planner_llm_fallback:APIConnectionError: Connection error."
+      ]
+    },
+    "review_synthesizer": {
+      "worker_count": 4,
+      "reflection_report_count": 0,
+      "raw_finding_count": 7,
+      "final_finding_count": 7,
+      "dropped_duplicate_ids": [],
+      "worker_reports": [
+        {
+          "task_id": "review-general",
+          "specialty": "general",
+          "explored_files": [
+            "browser_use/llm/google/chat.py"
+          ],
+          "context_summary": "The code has undergone significant restructuring, particularly in the `ainvoke` method, which now includes detailed logging and improved error handling. However, there are several areas that need attention regarding maintainability, error handling, and testing.",
+          "warnings": [
+            "The removal of the `_is_retryable_error` function and the manual retry loop could potentially lead to reduced resilience in the face of transient errors. Ensure that the Google client's internal retry mechanism is robust and meets the application's needs."
+          ]
+        },
+        {
+          "task_id": "review-logic",
+          "specialty": "logic",
+          "explored_files": [
+            "browser_use/llm/google/chat.py"
+          ],
+          "context_summary": "The review identified several potential issues related to error handling, logging, and API call management in the `ChatGoogle` class.",
+          "warnings": [
+            "The removal of the manual retry mechanism may lead to increased failure rates if the Google client's internal retry logic is not sufficient or if specific exceptions are not handled appropriately."
+          ]
+        },
+        {
+          "task_id": "review-performance",
+          "specialty": "performance",
+          "explored_files": [
+            "browser_use/llm/google/chat.py"
+          ],
+          "context_summary": "The performance review did not identify any significant performance regressions, accidental quadratic behavior, N+1 access patterns, or concurrency bottlenecks introduced by the assigned change.",
+          "warnings": [
+            "The code includes detailed logging and timing information, which is good for debugging and monitoring performance. However, the absence of caching or batching strategies for repeated API calls could be a concern if the same queries are made frequently.",
+            "The retry mechanism has been removed, and the Google client is expected to handle retries internally. Ensure that the internal retry strategy is robust and efficient to prevent excessive API calls in case of transient errors."
+          ]
+        },
+        {
+          "task_id": "review-security",
+          "specialty": "security",
+          "explored_files": [
+            "browser_use/llm/google/chat.py"
+          ],
+          "context_summary": "No critical security issues were identified in the provided changes.",
+          "warnings": [
+            "The code now includes detailed logging which can help in diagnosing issues but should be monitored to ensure no sensitive information is logged inadvertently."
+          ]
+        }
+      ],
+      "reflection_reports": []
+    },
+    "pr_finished_at": "2026-05-05T07:04:14.510594+00:00"
+  },
+  "node_history": [
+    "sandbox_structural_extractor",
+    "review_planner",
+    "general_review_worker",
+    "logic_review_worker",
+    "performance_review_worker",
+    "security_review_worker",
+    "review_synthesizer"
+  ],
+  "worker_reports": [
+    {
+      "task_id": "review-general",
+      "specialty": "general",
+      "explored_files": [
+        "browser_use/llm/google/chat.py"
+      ],
+      "context_summary": "The code has undergone significant restructuring, particularly in the `ainvoke` method, which now includes detailed logging and improved error handling. However, there are several areas that need attention regarding maintainability, error handling, and testing.",
+      "warnings": [
+        "The removal of the `_is_retryable_error` function and the manual retry loop could potentially lead to reduced resilience in the face of transient errors. Ensure that the Google client's internal retry mechanism is robust and meets the application's needs."
+      ]
+    },
+    {
+      "task_id": "review-logic",
+      "specialty": "logic",
+      "explored_files": [
+        "browser_use/llm/google/chat.py"
+      ],
+      "context_summary": "The review identified several potential issues related to error handling, logging, and API call management in the `ChatGoogle` class.",
+      "warnings": [
+        "The removal of the manual retry mechanism may lead to increased failure rates if the Google client's internal retry logic is not sufficient or if specific exceptions are not handled appropriately."
+      ]
+    },
+    {
+      "task_id": "review-performance",
+      "specialty": "performance",
+      "explored_files": [
+        "browser_use/llm/google/chat.py"
+      ],
+      "context_summary": "The performance review did not identify any significant performance regressions, accidental quadratic behavior, N+1 access patterns, or concurrency bottlenecks introduced by the assigned change.",
+      "warnings": [
+        "The code includes detailed logging and timing information, which is good for debugging and monitoring performance. However, the absence of caching or batching strategies for repeated API calls could be a concern if the same queries are made frequently.",
+        "The retry mechanism has been removed, and the Google client is expected to handle retries internally. Ensure that the internal retry strategy is robust and efficient to prevent excessive API calls in case of transient errors."
+      ]
+    },
+    {
+      "task_id": "review-security",
+      "specialty": "security",
+      "explored_files": [
+        "browser_use/llm/google/chat.py"
+      ],
+      "context_summary": "No critical security issues were identified in the provided changes.",
+      "warnings": [
+        "The code now includes detailed logging which can help in diagnosing issues but should be monitored to ensure no sensitive information is logged inadvertently."
+      ]
+    }
+  ],
+  "candidate_findings": [],
+  "reflection_reports": [],
+  "focused_context_requests": [],
+  "focused_context_results": {}
+}

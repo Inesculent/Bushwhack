@@ -1,0 +1,46 @@
+[
+  {
+    "id": "logic_1_1",
+    "file_path": "comfy/controlnet.py",
+    "line_start": 824,
+    "line_end": 824,
+    "content": "prefix_replace[\"adapter.body.{}.\"] = \"body.{}.\").format(i * 2)",
+    "severity": "high",
+    "feedback_type": "defect_detection",
+    "recommendation": "Restore the inner loop with the second variable `j` or ensure that the new logic correctly handles the intended prefix replacements.",
+    "references": []
+  },
+  {
+    "id": "general_1_candidate_2",
+    "file_path": "server.py",
+    "line_start": 584,
+    "line_end": 586,
+    "content": "@routes.get(\"/history/{prompt_id}\")\n        async def get_history(request):\n            prompt_id = request.match_info.get(\"prompt_id\", None)\n",
+    "severity": "high",
+    "feedback_type": "defect_detection",
+    "recommendation": "Ensure the route decorator matches the function name. Update the route decorator to reference `get_history_prompt_id` or rename the function back to `get_history`.",
+    "references": []
+  },
+  {
+    "id": "performance_1_missing_test_1",
+    "file_path": "comfy/ldm/modules/sub_quadratic_attention.py",
+    "line_start": 22,
+    "line_end": 22,
+    "content": "-from torch import Tensor",
+    "severity": "medium",
+    "feedback_type": "code_improvement",
+    "recommendation": "Add tests to ensure that the `Tensor` type is correctly imported and used throughout the module and its dependencies.",
+    "references": []
+  },
+  {
+    "id": "general_1_candidate_3",
+    "file_path": "server.py",
+    "line_start": 831,
+    "line_end": 834,
+    "content": "try:\n                json_data = handler(json_data)\n            except Exception:\n                logging.warning(f\"[ERROR] An error occurred during the on_prompt_handler processing\")\n",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Include the exception variable in the logging statement to provide more detailed error information.",
+    "references": []
+  }
+]

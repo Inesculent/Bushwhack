@@ -1,0 +1,18 @@
+{
+  "experiment": "reviewer_graph_parallel",
+  "run_id": "7727edc1d372",
+  "started_at": "2026-05-05T07:30:30.942239+00:00",
+  "finished_at": "2026-05-05T08:29:28.092125+00:00",
+  "dataset": "aacr_bench",
+  "dataset_path": "data\\processed\\aacr_bench_graph_ready.csv",
+  "planner_model_key": "qwen2.5-coder-32b",
+  "worker_model_key": "qwen2.5-coder-32b",
+  "reviewer_use_legacy_specialist_workers": false,
+  "pr_url_filter": "https://github.com/vllm-project/vllm/pull/19231",
+  "repo_root": "",
+  "trace": true,
+  "total_prs": 22,
+  "succeeded": 21, 
+  "failed": 1,
+  "elapsed_ms": 3537143
+}

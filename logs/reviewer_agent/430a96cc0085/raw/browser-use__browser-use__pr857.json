@@ -1,0 +1,328 @@
+{
+  "metadata": {
+    "experiment": "reviewer_graph_basic",
+    "run_id": "430a96cc0085",
+    "graph_run_id": "430a96cc0085:browser-use__browser-use__pr857",
+    "pr_started_at": "2026-05-05T07:03:17.222292+00:00",
+    "pr_url": "https://github.com/browser-use/browser-use/pull/857",
+    "pr_title": "Add anti bot detection via patchright",
+    "pr_description": "This PR adds anti bot detection via ~~`rebrowser`~~ `patchright`\r\n\r\nAs per their documentation they don't recommend applying patches manually as it's error prone and instead recommend using their drop-in package\r\n\r\nThis achieves a trust score of 69, previous score was 0\r\n\r\nhttps://github.com/user-attachments/assets/3a781733-1702-4e99-a4d9-a087ed3d3d15\r\n\r\n\r\n\r\n/claim #852\r\n/closes #852",
+    "pr_repo": "browser-use/browser-use",
+    "pr_number": 857,
+    "review_repo_url": "https://github.com/browser-use/browser-use",
+    "review_pr_number": 857,
+    "review_trace_enabled": true,
+    "structural_extractor": {
+      "mode": "sandbox_entities",
+      "files_attempted": 144,
+      "files_parsed": 143,
+      "gap_count": 1,
+      "node_count": 1343,
+      "edge_count": 3608,
+      "topology_algorithm": "graspologic_leiden",
+      "community_count": 76,
+      "topology_splits_applied": 0
+    },
+    "review_planner": {
+      "summary": "Default parallel review plan.",
+      "task_count": 4,
+      "specialties": [
+        "general",
+        "logic",
+        "performance",
+        "security"
+      ],
+      "tasks": [
+        {
+          "id": "review-security",
+          "title": "Security review",
+          "description": "Review the change for authorization, injection, secrets, unsafe file/network access, and deserialization risks.",
+          "target_files": [
+            "browser_use/agent/service.py",
+            "browser_use/browser/browser.py",
+            "browser_use/browser/context.py",
+            "browser_use/browser/dolphin_service.py",
+            "browser_use/controller/registry/views.py",
+            "browser_use/controller/service.py",
+            "browser_use/dom/service.py",
+            "docs/customize/agent-settings.mdx",
+            "pyproject.toml",
+            "tests/test_attach_chrome.py",
+            "tests/test_full_screen.py"
+          ],
+          "subtasks": [],
+          "specialty": "security",
+          "depth": 1,
+          "assigned_model": null
+        },
+        {
+          "id": "review-logic",
+          "title": "Correctness review",
+          "description": "Review the change for behavioral regressions, edge cases, broken state transitions, and API contract violations.",
+          "target_files": [
+            "browser_use/agent/service.py",
+            "browser_use/browser/browser.py",
+            "browser_use/browser/context.py",
+            "browser_use/browser/dolphin_service.py",
+            "browser_use/controller/registry/views.py",
+            "browser_use/controller/service.py",
+            "browser_use/dom/service.py",
+            "docs/customize/agent-settings.mdx",
+            "pyproject.toml",
+            "tests/test_attach_chrome.py",
+            "tests/test_full_screen.py"
+          ],
+          "subtasks": [],
+          "specialty": "logic",
+          "depth": 1,
+          "assigned_model": null
+        },
+        {
+          "id": "review-performance",
+          "title": "Performance review",
+          "description": "Review the change for repeated expensive work, accidental quadratic behavior, N+1 access patterns, and concurrency bottlenecks.",
+          "target_files": [
+            "browser_use/agent/service.py",
+            "browser_use/browser/browser.py",
+            "browser_use/browser/context.py",
+            "browser_use/browser/dolphin_service.py",
+            "browser_use/controller/registry/views.py",
+            "browser_use/controller/service.py",
+            "browser_use/dom/service.py",
+            "docs/customize/agent-settings.mdx",
+            "pyproject.toml",
+            "tests/test_attach_chrome.py",
+            "tests/test_full_screen.py"
+          ],
+          "subtasks": [],
+          "specialty": "performance",
+          "depth": 1,
+          "assigned_model": null
+        },
+        {
+          "id": "review-general",
+          "title": "General review",
+          "description": "Review maintainability, error handling, tests, and integration consistency for the changed code.",
+          "target_files": [
+            "browser_use/agent/service.py",
+            "browser_use/browser/browser.py",
+            "browser_use/browser/context.py",
+            "browser_use/browser/dolphin_service.py",
+            "browser_use/controller/registry/views.py",
+            "browser_use/controller/service.py",
+            "browser_use/dom/service.py",
+            "docs/customize/agent-settings.mdx",
+            "pyproject.toml",
+            "tests/test_attach_chrome.py",
+            "tests/test_full_screen.py"
+          ],
+          "subtasks": [],
+          "specialty": "general",
+          "depth": 1,
+          "assigned_model": null
+        }
+      ],
+      "warnings": [
+        "planner_llm_fallback:APIConnectionError: Connection error."
+      ]
+    },
+    "review_synthesizer": {
+      "worker_count": 4,
+      "reflection_report_count": 0,
+      "raw_finding_count": 7,
+      "final_finding_count": 6,
+      "dropped_duplicate_ids": [
+        "review-logic:finding-1"
+      ],
+      "worker_reports": [
+        {
+          "task_id": "review-general",
+          "specialty": "general",
+          "explored_files": [
+            "browser_use/agent/service.py",
+            "browser_use/browser/browser.py",
+            "browser_use/browser/context.py",
+            "browser_use/browser/dolphin_service.py",
+            "browser_use/controller/registry/views.py",
+            "browser_use/controller/service.py",
+            "browser_use/dom/service.py",
+            "docs/customize/agent-settings.mdx",
+            "pyproject.toml",
+            "tests/test_attach_chrome.py",
+            "tests/test_full_screen.py"
+          ],
+          "context_summary": "The review identified several potential issues related to maintainability, error handling, and integration consistency.",
+          "warnings": [
+            "The diff shows a significant change in the `browser_use/browser/context.py` file where the anti-detection script is commented out. Ensure that this change is intentional and does not impact the functionality of the browser context.",
+            "The introduction of `patchright` as a dependency in `pyproject.toml` should be reviewed to ensure it aligns with the project's requirements and does not introduce additional complexity or security risks."
+          ]
+        },
+        {
+          "task_id": "review-logic",
+          "specialty": "logic",
+          "explored_files": [
+            "browser_use/agent/service.py",
+            "browser_use/browser/browser.py",
+            "browser_use/browser/context.py",
+            "browser_use/browser/dolphin_service.py",
+            "browser_use/controller/registry/views.py",
+            "browser_use/controller/service.py",
+            "browser_use/dom/service.py",
+            "docs/customize/agent-settings.mdx",
+            "pyproject.toml",
+            "tests/test_attach_chrome.py",
+            "tests/test_full_screen.py"
+          ],
+          "context_summary": "The review did not identify any high-severity issues, security vulnerabilities, performance regressions, or critical behavioral changes that would lead to defects or serious user-facing regressions. However, there are some medium-severity findings related to potential inconsistencies and missing validations.",
+          "warnings": [
+            "There are no concrete issues identified, but the removal of anti-detection scripts and the override of `disable_security` on `new_context_config` warrant further scrutiny to ensure they do not introduce unintended consequences."
+          ]
+        },
+        {
+          "task_id": "review-performance",
+          "specialty": "performance",
+          "explored_files": [
+            "browser_use/agent/service.py",
+            "browser_use/browser/browser.py",
+            "browser_use/browser/context.py",
+            "browser_use/browser/dolphin_service.py",
+            "browser_use/controller/registry/views.py",
+            "browser_use/controller/service.py",
+            "browser_use/dom/service.py",
+            "docs/customize/agent-settings.mdx",
+            "pyproject.toml",
+            "tests/test_attach_chrome.py",
+            "tests/test_full_screen.py"
+          ],
+          "context_summary": "No significant performance regressions or scalability risks were identified in the provided code changes. The modifications primarily involve replacing `playwright` imports with `patchright` imports and making some minor adjustments to the browser configuration and context setup. These changes do not introduce any obvious performance issues based on the given context.",
+          "warnings": [
+            "The replacement of `playwright` with `patchright` assumes that `patchright` maintains the same performance characteristics and does not introduce additional overhead. Ensure that `patchright` is optimized for the intended use cases."
+          ]
+        },
+        {
+          "task_id": "review-security",
+          "specialty": "security",
+          "explored_files": [
+            "browser_use/agent/service.py",
+            "browser_use/browser/browser.py",
+            "browser_use/browser/context.py",
+            "browser_use/browser/dolphin_service.py",
+            "browser_use/controller/registry/views.py",
+            "browser_use/controller/service.py",
+            "browser_use/dom/service.py",
+            "docs/customize/agent-settings.mdx",
+            "pyproject.toml",
+            "tests/test_attach_chrome.py",
+            "tests/test_full_screen.py"
+          ],
+          "context_summary": "No high-severity security issues were found based on the provided context. However, there are some potential medium-severity concerns related to security.",
+          "warnings": [
+            "The code includes several instances of importing `async_playwright` from `patchright.async_api` instead of `playwright.async_api`. Ensure that `patchright` is a trusted library and does not introduce any security vulnerabilities. Verify that the version specified in `pyproject.toml` is secure and up-to-date."
+          ]
+        }
+      ],
+      "reflection_reports": []
+    },
+    "pr_finished_at": "2026-05-05T07:03:47.481081+00:00"
+  },
+  "node_history": [
+    "sandbox_structural_extractor",
+    "review_planner",
+    "general_review_worker",
+    "logic_review_worker",
+    "performance_review_worker",
+    "security_review_worker",
+    "review_synthesizer"
+  ],
+  "worker_reports": [
+    {
+      "task_id": "review-general",
+      "specialty": "general",
+      "explored_files": [
+        "browser_use/agent/service.py",
+        "browser_use/browser/browser.py",
+        "browser_use/browser/context.py",
+        "browser_use/browser/dolphin_service.py",
+        "browser_use/controller/registry/views.py",
+        "browser_use/controller/service.py",
+        "browser_use/dom/service.py",
+        "docs/customize/agent-settings.mdx",
+        "pyproject.toml",
+        "tests/test_attach_chrome.py",
+        "tests/test_full_screen.py"
+      ],
+      "context_summary": "The review identified several potential issues related to maintainability, error handling, and integration consistency.",
+      "warnings": [
+        "The diff shows a significant change in the `browser_use/browser/context.py` file where the anti-detection script is commented out. Ensure that this change is intentional and does not impact the functionality of the browser context.",
+        "The introduction of `patchright` as a dependency in `pyproject.toml` should be reviewed to ensure it aligns with the project's requirements and does not introduce additional complexity or security risks."
+      ]
+    },
+    {
+      "task_id": "review-logic",
+      "specialty": "logic",
+      "explored_files": [
+        "browser_use/agent/service.py",
+        "browser_use/browser/browser.py",
+        "browser_use/browser/context.py",
+        "browser_use/browser/dolphin_service.py",
+        "browser_use/controller/registry/views.py",
+        "browser_use/controller/service.py",
+        "browser_use/dom/service.py",
+        "docs/customize/agent-settings.mdx",
+        "pyproject.toml",
+        "tests/test_attach_chrome.py",
+        "tests/test_full_screen.py"
+      ],
+      "context_summary": "The review did not identify any high-severity issues, security vulnerabilities, performance regressions, or critical behavioral changes that would lead to defects or serious user-facing regressions. However, there are some medium-severity findings related to potential inconsistencies and missing validations.",
+      "warnings": [
+        "There are no concrete issues identified, but the removal of anti-detection scripts and the override of `disable_security` on `new_context_config` warrant further scrutiny to ensure they do not introduce unintended consequences."
+      ]
+    },
+    {
+      "task_id": "review-performance",
+      "specialty": "performance",
+      "explored_files": [
+        "browser_use/agent/service.py",
+        "browser_use/browser/browser.py",
+        "browser_use/browser/context.py",
+        "browser_use/browser/dolphin_service.py",
+        "browser_use/controller/registry/views.py",
+        "browser_use/controller/service.py",
+        "browser_use/dom/service.py",
+        "docs/customize/agent-settings.mdx",
+        "pyproject.toml",
+        "tests/test_attach_chrome.py",
+        "tests/test_full_screen.py"
+      ],
+      "context_summary": "No significant performance regressions or scalability risks were identified in the provided code changes. The modifications primarily involve replacing `playwright` imports with `patchright` imports and making some minor adjustments to the browser configuration and context setup. These changes do not introduce any obvious performance issues based on the given context.",
+      "warnings": [
+        "The replacement of `playwright` with `patchright` assumes that `patchright` maintains the same performance characteristics and does not introduce additional overhead. Ensure that `patchright` is optimized for the intended use cases."
+      ]
+    },
+    {
+      "task_id": "review-security",
+      "specialty": "security",
+      "explored_files": [
+        "browser_use/agent/service.py",
+        "browser_use/browser/browser.py",
+        "browser_use/browser/context.py",
+        "browser_use/browser/dolphin_service.py",
+        "browser_use/controller/registry/views.py",
+        "browser_use/controller/service.py",
+        "browser_use/dom/service.py",
+        "docs/customize/agent-settings.mdx",
+        "pyproject.toml",
+        "tests/test_attach_chrome.py",
+        "tests/test_full_screen.py"
+      ],
+      "context_summary": "No high-severity security issues were found based on the provided context. However, there are some potential medium-severity concerns related to security.",
+      "warnings": [
+        "The code includes several instances of importing `async_playwright` from `patchright.async_api` instead of `playwright.async_api`. Ensure that `patchright` is a trusted library and does not introduce any security vulnerabilities. Verify that the version specified in `pyproject.toml` is secure and up-to-date."
+      ]
+    }
+  ],
+  "candidate_findings": [],
+  "reflection_reports": [],
+  "focused_context_requests": [],
+  "focused_context_results": {}
+}

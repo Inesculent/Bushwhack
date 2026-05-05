@@ -1,0 +1,220 @@
+{
+  "metadata": {
+    "experiment": "reviewer_graph_basic",
+    "run_id": "430a96cc0085",
+    "graph_run_id": "430a96cc0085:vllm-project__vllm__pr19756",
+    "pr_started_at": "2026-05-05T07:13:08.956571+00:00",
+    "pr_url": "https://github.com/vllm-project/vllm/pull/19756",
+    "pr_title": "[Multimodal] Optimize Qwen2/2.5-VL startup time",
+    "pr_description": "## Essential Elements of an Effective PR Description Checklist\n- [ ] The purpose of the PR, such as \"Fix some issue (link existing issues this PR will resolve)\".\n- [ ] The test plan, such as providing test command.\n- [ ] The test results, such as pasting the results comparison before and after, or e2e results\n- [ ] (Optional) The necessary documentation update, such as updating `supported_models.md` and `examples` for a new model.\n\n\n## Purpose\n\nCurrently, processing large dummy inputs takes 40 secs of the startup time for Qwen2/2.5-VL (it happens twice and each takes 20 secs). This can be skipped by pre-computing the maximum token count per modality.\n\n## Test Plan\n\n## Test Result\n\n## (Optional) Documentation Update\n\n<!--- pyml disable-next-line no-emphasis-as-heading -->",
+    "pr_repo": "vllm-project/vllm",
+    "pr_number": 19756,
+    "review_repo_url": "https://github.com/vllm-project/vllm",
+    "review_pr_number": 19756,
+    "review_trace_enabled": true,
+    "structural_extractor": {
+      "mode": "sandbox_entities",
+      "files_attempted": 1668,
+      "files_parsed": 1601,
+      "gap_count": 67,
+      "node_count": 16261,
+      "edge_count": 89719,
+      "topology_algorithm": "graspologic_leiden",
+      "community_count": 389,
+      "topology_splits_applied": 0
+    },
+    "review_planner": {
+      "summary": "The changes introduce a new method `get_max_tokens_per_item` in three files. This method is intended to return the maximum number of tokens per item for each modality, which can improve performance by avoiding dummy input generation and processing.",
+      "task_count": 4,
+      "specialties": [
+        "general",
+        "logic",
+        "performance",
+        "security"
+      ],
+      "tasks": [
+        {
+          "id": "security-1",
+          "title": "Security Review for get_max_tokens_per_item",
+          "description": "Verify that the new method `get_max_tokens_per_item` does not introduce any security vulnerabilities. Check for potential injection attacks or improper handling of input parameters.",
+          "target_files": [
+            "vllm/model_executor/models/qwen2_vl.py",
+            "vllm/multimodal/processing.py",
+            "vllm/multimodal/profiling.py"
+          ],
+          "subtasks": [],
+          "specialty": "security",
+          "depth": 1,
+          "assigned_model": null
+        },
+        {
+          "id": "logic-1",
+          "title": "Logic Review for get_max_tokens_per_item",
+          "description": "Verify the logic in the new method `get_max_tokens_per_item` to ensure it correctly calculates the maximum number of tokens per item for each modality. Check for edge cases, especially when `mm_counts` is `None`.",
+          "target_files": [
+            "vllm/model_executor/models/qwen2_vl.py",
+            "vllm/multimodal/processing.py",
+            "vllm/multimodal/profiling.py"
+          ],
+          "subtasks": [],
+          "specialty": "logic",
+          "depth": 1,
+          "assigned_model": null
+        },
+        {
+          "id": "performance-1",
+          "title": "Performance Review for get_max_tokens_per_item",
+          "description": "Evaluate the performance impact of the new method `get_max_tokens_per_item`. Ensure that it improves performance by avoiding dummy input generation and processing, as described in the comments.",
+          "target_files": [
+            "vllm/model_executor/models/qwen2_vl.py",
+            "vllm/multimodal/processing.py",
+            "vllm/multimodal/profiling.py"
+          ],
+          "subtasks": [],
+          "specialty": "performance",
+          "depth": 1,
+          "assigned_model": null
+        },
+        {
+          "id": "general-1",
+          "title": "General Code Review for get_max_tokens_per_item",
+          "description": "Perform a general code review of the new method `get_max_tokens_per_item` to ensure it adheres to coding standards and best practices. Check for missing documentation, consistency, and potential improvements.",
+          "target_files": [
+            "vllm/model_executor/models/qwen2_vl.py",
+            "vllm/multimodal/processing.py",
+            "vllm/multimodal/profiling.py"
+          ],
+          "subtasks": [],
+          "specialty": "general",
+          "depth": 1,
+          "assigned_model": null
+        }
+      ],
+      "warnings": []
+    },
+    "review_synthesizer": {
+      "worker_count": 4,
+      "reflection_report_count": 0,
+      "raw_finding_count": 6,
+      "final_finding_count": 6,
+      "dropped_duplicate_ids": [],
+      "worker_reports": [
+        {
+          "task_id": "general-1",
+          "specialty": "general",
+          "explored_files": [
+            "vllm/model_executor/models/qwen2_vl.py",
+            "vllm/multimodal/profiling.py"
+          ],
+          "context_summary": "Review of the new method `get_max_tokens_per_item` across the specified files.",
+          "warnings": [
+            "No concrete evidence of missing tests for the new method `get_max_tokens_per_item`. Ensure that tests cover various scenarios, including edge cases where `mm_counts` is `None` or contains unexpected values."
+          ]
+        },
+        {
+          "task_id": "logic-1",
+          "specialty": "logic",
+          "explored_files": [
+            "vllm/model_executor/models/qwen2_vl.py"
+          ],
+          "context_summary": "No critical issues found in the introduced `get_max_tokens_per_item` method based on the provided context. However, there are some areas that could benefit from additional testing and clarification.",
+          "warnings": [
+            "The implementation assumes that `self.processing_info.get_max_tokens_per_item` is correctly implemented and returns the expected results. Additional unit tests covering various scenarios, including edge cases like `mm_counts` being `None` or containing unexpected keys, should be added to ensure robustness."
+          ]
+        },
+        {
+          "task_id": "performance-1",
+          "specialty": "performance",
+          "explored_files": [
+            "vllm/model_executor/models/qwen2_vl.py",
+            "vllm/multimodal/profiling.py"
+          ],
+          "context_summary": "No concrete performance issues were identified in the added `get_max_tokens_per_item` method or its usage. However, there are some areas where further investigation could help ensure optimal performance.",
+          "warnings": [
+            "The `get_max_tokens_per_item` method is intended to avoid the generation and processing of dummy inputs, which can be slow. However, the implementation does not provide evidence of significant performance improvements over the existing approach. It would be beneficial to measure the performance impact of this change in a real-world scenario to confirm its effectiveness.",
+            "The method assumes that the pre-computed maximum token counts are accurate and respect the model's maximum sequence length and the maximum number of items of each modality allowed. There is no validation or error handling in place to ensure these assumptions hold true. Adding checks or assertions could help catch potential discrepancies early.",
+            "The warning message in `get_mm_max_tokens` uses the term 'wosrt-case' instead of 'worst-case'. This typo should be corrected for clarity."
+          ]
+        },
+        {
+          "task_id": "security-1",
+          "specialty": "security",
+          "explored_files": [
+            "vllm/model_executor/models/qwen2_vl.py",
+            "vllm/multimodal/processing.py"
+          ],
+          "context_summary": "No concrete security issues were found in the introduced `get_max_tokens_per_item` method or its usage in the provided context.",
+          "warnings": [
+            "The method `get_max_tokens_per_item` does not handle user-controlled inputs directly, nor does it involve any operations that could lead to injection attacks, path traversal, or other common security vulnerabilities. However, it is crucial to ensure that the values passed to this method (such as `seq_len` and `mm_counts`) are properly validated and sanitized if they originate from external sources."
+          ]
+        }
+      ],
+      "reflection_reports": []
+    },
+    "pr_finished_at": "2026-05-05T07:14:14.813249+00:00"
+  },
+  "node_history": [
+    "sandbox_structural_extractor",
+    "review_planner",
+    "general_review_worker",
+    "logic_review_worker",
+    "performance_review_worker",
+    "security_review_worker",
+    "review_synthesizer"
+  ],
+  "worker_reports": [
+    {
+      "task_id": "general-1",
+      "specialty": "general",
+      "explored_files": [
+        "vllm/model_executor/models/qwen2_vl.py",
+        "vllm/multimodal/profiling.py"
+      ],
+      "context_summary": "Review of the new method `get_max_tokens_per_item` across the specified files.",
+      "warnings": [
+        "No concrete evidence of missing tests for the new method `get_max_tokens_per_item`. Ensure that tests cover various scenarios, including edge cases where `mm_counts` is `None` or contains unexpected values."
+      ]
+    },
+    {
+      "task_id": "logic-1",
+      "specialty": "logic",
+      "explored_files": [
+        "vllm/model_executor/models/qwen2_vl.py"
+      ],
+      "context_summary": "No critical issues found in the introduced `get_max_tokens_per_item` method based on the provided context. However, there are some areas that could benefit from additional testing and clarification.",
+      "warnings": [
+        "The implementation assumes that `self.processing_info.get_max_tokens_per_item` is correctly implemented and returns the expected results. Additional unit tests covering various scenarios, including edge cases like `mm_counts` being `None` or containing unexpected keys, should be added to ensure robustness."
+      ]
+    },
+    {
+      "task_id": "performance-1",
+      "specialty": "performance",
+      "explored_files": [
+        "vllm/model_executor/models/qwen2_vl.py",
+        "vllm/multimodal/profiling.py"
+      ],
+      "context_summary": "No concrete performance issues were identified in the added `get_max_tokens_per_item` method or its usage. However, there are some areas where further investigation could help ensure optimal performance.",
+      "warnings": [
+        "The `get_max_tokens_per_item` method is intended to avoid the generation and processing of dummy inputs, which can be slow. However, the implementation does not provide evidence of significant performance improvements over the existing approach. It would be beneficial to measure the performance impact of this change in a real-world scenario to confirm its effectiveness.",
+        "The method assumes that the pre-computed maximum token counts are accurate and respect the model's maximum sequence length and the maximum number of items of each modality allowed. There is no validation or error handling in place to ensure these assumptions hold true. Adding checks or assertions could help catch potential discrepancies early.",
+        "The warning message in `get_mm_max_tokens` uses the term 'wosrt-case' instead of 'worst-case'. This typo should be corrected for clarity."
+      ]
+    },
+    {
+      "task_id": "security-1",
+      "specialty": "security",
+      "explored_files": [
+        "vllm/model_executor/models/qwen2_vl.py",
+        "vllm/multimodal/processing.py"
+      ],
+      "context_summary": "No concrete security issues were found in the introduced `get_max_tokens_per_item` method or its usage in the provided context.",
+      "warnings": [
+        "The method `get_max_tokens_per_item` does not handle user-controlled inputs directly, nor does it involve any operations that could lead to injection attacks, path traversal, or other common security vulnerabilities. However, it is crucial to ensure that the values passed to this method (such as `seq_len` and `mm_counts`) are properly validated and sanitized if they originate from external sources."
+      ]
+    }
+  ],
+  "candidate_findings": [],
+  "reflection_reports": [],
+  "focused_context_requests": [],
+  "focused_context_results": {}
+}

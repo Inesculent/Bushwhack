@@ -1,0 +1,226 @@
+{
+  "metadata": {
+    "experiment": "reviewer_graph_basic",
+    "run_id": "430a96cc0085",
+    "graph_run_id": "430a96cc0085:infiniflow__ragflow__pr6553",
+    "pr_started_at": "2026-05-05T07:06:27.143784+00:00",
+    "pr_url": "https://github.com/infiniflow/ragflow/pull/6553",
+    "pr_title": "Feat: Improve 'user_canvan_version' delete and 'document' delete performance",
+    "pr_description": "### What problem does this PR solve?\r\n\r\n1.  Add delete_by_ids method\r\n2. Add get_doc_ids_by_doc_names\r\n3. Improve user_canvan_version's logic (avoid O(n) db IO)\r\n4. Improve document delete logic (avoid O(n) db IO)\r\n\r\n### Type of change\r\n\r\n- [x] Performance Improvement",
+    "pr_repo": "infiniflow/ragflow",
+    "pr_number": 6553,
+    "review_repo_url": "https://github.com/infiniflow/ragflow",
+    "review_pr_number": 6553,
+    "review_trace_enabled": true,
+    "structural_extractor": {
+      "mode": "sandbox_entities",
+      "files_attempted": 984,
+      "files_parsed": 272,
+      "gap_count": 712,
+      "node_count": 3837,
+      "edge_count": 13752,
+      "topology_algorithm": "graspologic_leiden",
+      "community_count": 771,
+      "topology_splits_applied": 0
+    },
+    "review_planner": {
+      "summary": "The diff introduces new methods for handling multiple document IDs and record deletions in bulk. It also modifies how documents are retrieved and validated in the `document_rm` function.",
+      "task_count": 4,
+      "specialties": [
+        "general",
+        "logic",
+        "performance",
+        "security"
+      ],
+      "tasks": [
+        {
+          "id": "security",
+          "title": "Security Review",
+          "description": "Verify that the new methods introduced (`delete_by_ids`, `get_doc_ids_by_doc_names`) do not introduce any security vulnerabilities, such as SQL injection or improper input validation. Ensure that all user inputs are properly sanitized and validated.",
+          "target_files": [
+            "api/db/services/common_service.py",
+            "api/db/services/document_service.py"
+          ],
+          "subtasks": [],
+          "specialty": "security",
+          "depth": 1,
+          "assigned_model": null
+        },
+        {
+          "id": "logic",
+          "title": "Logic Review",
+          "description": "Verify the correctness of the new methods (`delete_by_ids`, `get_doc_ids_by_doc_names`). Ensure that the logic for retrieving and deleting documents is correct and handles edge cases appropriately. Check the `document_rm` function to ensure it correctly uses the new methods and handles document retrieval and deletion.",
+          "target_files": [
+            "api/apps/api_app.py",
+            "api/db/services/common_service.py",
+            "api/db/services/document_service.py"
+          ],
+          "subtasks": [],
+          "specialty": "logic",
+          "depth": 1,
+          "assigned_model": null
+        },
+        {
+          "id": "performance",
+          "title": "Performance Review",
+          "description": "Evaluate the performance impact of the new methods (`delete_by_ids`, `get_doc_ids_by_doc_names`). Ensure that bulk operations are efficient and do not introduce significant performance regressions. Check the `document_rm` function to ensure that the new logic does not degrade performance.",
+          "target_files": [
+            "api/db/services/common_service.py",
+            "api/db/services/document_service.py",
+            "api/apps/api_app.py"
+          ],
+          "subtasks": [],
+          "specialty": "performance",
+          "depth": 1,
+          "assigned_model": null
+        },
+        {
+          "id": "general",
+          "title": "General Code Review",
+          "description": "Review the overall quality and maintainability of the changes. Ensure that the code adheres to best practices and is well-documented. Check for any missing tests that could cover the new functionality and verify that existing tests are still valid.",
+          "target_files": [
+            "api/apps/api_app.py",
+            "api/db/services/common_service.py",
+            "api/db/services/document_service.py",
+            "api/db/services/user_canvas_version.py"
+          ],
+          "subtasks": [],
+          "specialty": "general",
+          "depth": 1,
+          "assigned_model": null
+        }
+      ],
+      "warnings": []
+    },
+    "review_synthesizer": {
+      "worker_count": 4,
+      "reflection_report_count": 0,
+      "raw_finding_count": 9,
+      "final_finding_count": 9,
+      "dropped_duplicate_ids": [],
+      "worker_reports": [
+        {
+          "task_id": "general",
+          "specialty": "general",
+          "explored_files": [
+            "api/apps/api_app.py",
+            "api/db/services/common_service.py",
+            "api/db/services/document_service.py",
+            "api/db/services/user_canvas_version.py"
+          ],
+          "context_summary": "The review identified several areas for improvement related to maintainability, test coverage, and error handling.",
+          "warnings": [
+            "No evidence of direct integration points or dependencies being affected outside the provided target files. Ensure that changes do not inadvertently impact other parts of the system."
+          ]
+        },
+        {
+          "task_id": "logic",
+          "specialty": "logic",
+          "explored_files": [
+            "api/apps/api_app.py",
+            "api/db/services/common_service.py",
+            "api/db/services/document_service.py"
+          ],
+          "context_summary": "No critical issues found in the introduced changes.",
+          "warnings": [
+            "The `document_rm` function in `api/apps/api_app.py` assumes that `DocumentService.get_doc_ids_by_doc_names` will always return valid document IDs. However, there is no validation to ensure that the document names provided in the request actually correspond to existing documents. This could lead to a situation where `doc_dic` does not contain some of the IDs expected in `doc_ids`, causing the function to return a 'Document not found!' error even if some documents exist. Consider adding a check to handle cases where some document names do not map to any documents."
+          ]
+        },
+        {
+          "task_id": "performance",
+          "specialty": "performance",
+          "explored_files": [
+            "api/apps/api_app.py",
+            "api/db/services/common_service.py",
+            "api/db/services/document_service.py"
+          ],
+          "context_summary": "The performance review focuses on identifying potential performance regressions or scalability risks introduced by the new methods (`delete_by_ids`, `get_doc_ids_by_doc_names`) and the updated `document_rm` function.",
+          "warnings": [
+            "No direct evidence of performance regressions or scalability risks was found in the provided context. However, the recommendations above aim to improve the efficiency of the introduced methods and the updated `document_rm` function."
+          ]
+        },
+        {
+          "task_id": "security",
+          "specialty": "security",
+          "explored_files": [
+            "api/db/services/common_service.py",
+            "api/db/services/document_service.py"
+          ],
+          "context_summary": "No concrete security issues were identified in the provided changes.",
+          "warnings": [
+            "The `delete_by_ids` method in `common_service.py` does not perform any input validation on the `pids` parameter. Ensure that the caller of this method sanitizes and validates the input to prevent unexpected behavior or potential vulnerabilities."
+          ]
+        }
+      ],
+      "reflection_reports": []
+    },
+    "pr_finished_at": "2026-05-05T07:07:30.461095+00:00"
+  },
+  "node_history": [
+    "sandbox_structural_extractor",
+    "review_planner",
+    "general_review_worker",
+    "logic_review_worker",
+    "performance_review_worker",
+    "security_review_worker",
+    "review_synthesizer"
+  ],
+  "worker_reports": [
+    {
+      "task_id": "general",
+      "specialty": "general",
+      "explored_files": [
+        "api/apps/api_app.py",
+        "api/db/services/common_service.py",
+        "api/db/services/document_service.py",
+        "api/db/services/user_canvas_version.py"
+      ],
+      "context_summary": "The review identified several areas for improvement related to maintainability, test coverage, and error handling.",
+      "warnings": [
+        "No evidence of direct integration points or dependencies being affected outside the provided target files. Ensure that changes do not inadvertently impact other parts of the system."
+      ]
+    },
+    {
+      "task_id": "logic",
+      "specialty": "logic",
+      "explored_files": [
+        "api/apps/api_app.py",
+        "api/db/services/common_service.py",
+        "api/db/services/document_service.py"
+      ],
+      "context_summary": "No critical issues found in the introduced changes.",
+      "warnings": [
+        "The `document_rm` function in `api/apps/api_app.py` assumes that `DocumentService.get_doc_ids_by_doc_names` will always return valid document IDs. However, there is no validation to ensure that the document names provided in the request actually correspond to existing documents. This could lead to a situation where `doc_dic` does not contain some of the IDs expected in `doc_ids`, causing the function to return a 'Document not found!' error even if some documents exist. Consider adding a check to handle cases where some document names do not map to any documents."
+      ]
+    },
+    {
+      "task_id": "performance",
+      "specialty": "performance",
+      "explored_files": [
+        "api/apps/api_app.py",
+        "api/db/services/common_service.py",
+        "api/db/services/document_service.py"
+      ],
+      "context_summary": "The performance review focuses on identifying potential performance regressions or scalability risks introduced by the new methods (`delete_by_ids`, `get_doc_ids_by_doc_names`) and the updated `document_rm` function.",
+      "warnings": [
+        "No direct evidence of performance regressions or scalability risks was found in the provided context. However, the recommendations above aim to improve the efficiency of the introduced methods and the updated `document_rm` function."
+      ]
+    },
+    {
+      "task_id": "security",
+      "specialty": "security",
+      "explored_files": [
+        "api/db/services/common_service.py",
+        "api/db/services/document_service.py"
+      ],
+      "context_summary": "No concrete security issues were identified in the provided changes.",
+      "warnings": [
+        "The `delete_by_ids` method in `common_service.py` does not perform any input validation on the `pids` parameter. Ensure that the caller of this method sanitizes and validates the input to prevent unexpected behavior or potential vulnerabilities."
+      ]
+    }
+  ],
+  "candidate_findings": [],
+  "reflection_reports": [],
+  "focused_context_requests": [],
+  "focused_context_results": {}
+}

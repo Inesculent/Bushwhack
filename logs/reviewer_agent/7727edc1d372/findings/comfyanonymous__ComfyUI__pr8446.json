@@ -1,0 +1,90 @@
+[
+  {
+    "id": "check_missing_tests_1",
+    "file_path": "comfy_extras/nodes_train.py",
+    "line_start": 10,
+    "line_end": 31,
+    "content": "New class `TrainSampler` introduced without corresponding tests.",
+    "severity": "medium",
+    "feedback_type": "code_improvement",
+    "recommendation": "Add unit tests for the `TrainSampler` class to ensure its correct operation and handle various edge cases.",
+    "references": []
+  },
+  {
+    "id": "check_new_nodes_performance_1",
+    "file_path": "comfy_extras/nodes_train.py",
+    "line_start": 26,
+    "line_end": 33,
+    "content": "def sample(self, model_wrap, sigmas, extra_args, callback, noise, latent_image=None, denoise_mask=None, disable_pbar=False):",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Ensure the model is set to training mode before sampling by adding `model_wrap.train()` at the beginning of the `sample` method.",
+    "references": []
+  },
+  {
+    "id": "check_missing_tests_2",
+    "file_path": "comfy_extras/nodes_train.py",
+    "line_start": 33,
+    "line_end": 46,
+    "content": "New class `BiasDiff` introduced without corresponding tests.",
+    "severity": "medium",
+    "feedback_type": "code_improvement",
+    "recommendation": "Add unit tests for the `BiasDiff` class to verify its functionality and ensure it handles different tensor types and sizes correctly.",
+    "references": []
+  },
+  {
+    "id": "check_missing_tests_3",
+    "file_path": "comfy_extras/nodes_train.py",
+    "line_start": 48,
+    "line_end": 110,
+    "content": "Utility function `load_and_process_images` introduced without corresponding tests.",
+    "severity": "medium",
+    "feedback_type": "code_improvement",
+    "recommendation": "Add unit tests for the `load_and_process_images` function to ensure it correctly handles different image formats, resizing methods, and edge cases like invalid images.",
+    "references": []
+  },
+  {
+    "id": "check_new_nodes_performance_2",
+    "file_path": "comfy_extras/nodes_train.py",
+    "line_start": 48,
+    "line_end": 54,
+    "content": "try:\n            loss = self.loss_fn(denoised, latent.clone())\n        except RuntimeError as e:",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Add a mechanism to handle the exception more robustly, possibly by resetting the model to training mode or logging additional information.",
+    "references": []
+  },
+  {
+    "id": "check_missing_tests_4",
+    "file_path": "comfy_extras/nodes_train.py",
+    "line_start": 112,
+    "line_end": 167,
+    "content": "New class `LoadImageSetNode` introduced without corresponding tests.",
+    "severity": "medium",
+    "feedback_type": "code_improvement",
+    "recommendation": "Add unit tests for the `LoadImageSetNode` class to verify its functionality, including handling of different image formats, resize methods, and edge cases like invalid image paths.",
+    "references": []
+  },
+  {
+    "id": "check_new_nodes_performance_3",
+    "file_path": "comfy_extras/nodes_train.py",
+    "line_start": 132,
+    "line_end": 143,
+    "content": "if resize_method == \"None\":\n                raise ValueError(\n                    \"Your input image size does not match the first image in the dataset. Either select a valid resize method or use the same size for all images.\"\n                )",
+    "severity": "medium",
+    "feedback_type": "code_improvement",
+    "recommendation": "Add unit tests to verify the behavior when image sizes do not match and ensure the correct error message is raised.",
+    "references": []
+  },
+  {
+    "id": "check_missing_tests_5",
+    "file_path": "comfy_extras/nodes_train.py",
+    "line_start": 169,
+    "line_end": 220,
+    "content": "New class `LoadImageSetFromFolderNode` introduced without corresponding tests.",
+    "severity": "medium",
+    "feedback_type": "code_improvement",
+    "recommendation": "Add unit tests for the `LoadImageSetFromFolderNode` class to verify its functionality, including handling of different image formats, resize methods, and edge cases like invalid folder paths.",
+    "references": []
+  }
+]

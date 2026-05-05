@@ -1,0 +1,46 @@
+[
+  {
+    "id": "security-1-001",
+    "file_path": "src/backend/base/langflow/graph/graph/utils.py",
+    "line_start": 146,
+    "line_end": 155,
+    "content": "The change in the `update_target_handle` function modifies how the `proxy` object is accessed and iterates over `g_nodes` to find a matching `proxy_id`. There is no explicit input validation for `new_edge` or `g_nodes` in this function.",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Add validation checks to ensure that `new_edge` and `g_nodes` meet expected formats and constraints before processing.",
+    "references": []
+  },
+  {
+    "id": "performance-2-1",
+    "file_path": "src/backend/base/langflow/graph/graph/utils.py",
+    "line_start": 152,
+    "line_end": 155,
+    "content": "for node in g_nodes:\n    if node[\"id\"] == proxy_id:\n        set_new_target_handle(proxy_id, new_edge, target_handle, node)\n        break",
+    "severity": "medium",
+    "feedback_type": "optimization",
+    "recommendation": "Consider reverting to using `next()` with a generator expression to avoid iterating through the entire list unnecessarily.",
+    "references": []
+  },
+  {
+    "id": "security-1-002",
+    "file_path": "src/backend/base/langflow/graph/graph/utils.py",
+    "line_start": 177,
+    "line_end": 190,
+    "content": "The `set_new_target_handle` function constructs `new_target_handle` using data from `node` without validating its contents. This could lead to issues if `node` contains unexpected or malicious data.",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Add validation checks to ensure that `node` data meets expected formats and constraints before using it to construct `new_target_handle`.",
+    "references": []
+  },
+  {
+    "id": "logic-2-002",
+    "file_path": "src/backend/base/langflow/graph/graph/utils.py",
+    "line_start": 183,
+    "line_end": 185,
+    "content": "field_template_proxy = node_data[\"template\"][field][\"proxy\"]\nnew_target_handle[\"proxy\"] = {\n    \"field\": field_template_proxy[\"field\"],\n    \"id\": field_template_proxy[\"id\"],\n}",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Add a check to ensure that `node_data['template'][field]['proxy']` exists before accessing its keys to avoid potential KeyErrors.",
+    "references": []
+  }
+]

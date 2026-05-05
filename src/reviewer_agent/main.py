@@ -66,6 +66,11 @@ def parse_args() -> argparse.Namespace:
         help="Emit reviewer graph tracing logs for planning, worker dispatch, and synthesis.",
     )
     parser.add_argument(
+        "--basic-graph",
+        action="store_true",
+        help="Use the basic reviewer graph without adversarial critique/reflection nodes.",
+    )
+    parser.add_argument(
         "--llm-timeout",
         type=int,
         default=None,
@@ -105,6 +110,7 @@ def main() -> None:
         output_root=args.output_root,
         repo_root=args.repo_root,
         trace=args.trace,
+        use_basic_graph=args.basic_graph,
     )
     logger.info("run_id: %s", artifacts.run_id)
     logger.info("output_dir: %s", artifacts.output_dir)

@@ -8,7 +8,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable, List, Optional
+from typing import Any, Callable, Iterable, List, Optional
 
 import pandas as pd
 
@@ -19,9 +19,11 @@ from src.data.research_pipeline.logging_utils import configure_logger
 from src.data.research_pipeline.utils import ensure_directories, parse_pr_number, parse_repo_from_pr_url
 from src.domain.state import GraphState
 from src.orchestration.reviewer_graph import run_reviewer
+from src.orchestration.reviewer_graph_basic import run_reviewer_basic
 
 DEFAULT_AACR_PROCESSED_PATH: Path = PROCESSED_DIR / "aacr_bench_graph_ready.csv"
 EXPERIMENT_TAG = "reviewer_graph_parallel"
+BASIC_EXPERIMENT_TAG = "reviewer_graph_basic"
 
 
 def _utc_now_iso() -> str:
@@ -126,6 +128,8 @@ def _invoke_for_pr(
     repo_root: Optional[Path],
     trace: bool,
     started_at: str,
+    run_reviewer_fn: Callable[[GraphState], dict[str, Any]],
+    experiment_tag: str,
 ) -> dict[str, Any]:
     graph_run_id = f"{run_id}:{_slug_for_pr_url(pr_url)}"
     repo_url = f"https://github.com/{context.repo}"
@@ -144,7 +148,7 @@ def _invoke_for_pr(
         "token_usage": 0,
         "node_history": [],
         "metadata": {
-            "experiment": EXPERIMENT_TAG,
+            "experiment": experiment_tag,
             "run_id": run_id,
             "graph_run_id": graph_run_id,
             "pr_started_at": started_at,
@@ -158,7 +162,7 @@ def _invoke_for_pr(
             "review_trace_enabled": trace,
         },
     }
-    return run_reviewer(initial_state)
+    return run_reviewer_fn(initial_state)
 
 
 def run_aacr_reviewer(
@@ -169,6 +173,7 @@ def run_aacr_reviewer(
     output_root: Optional[Path] = None,
     repo_root: Optional[Path] = None,
     trace: bool = False,
+    use_basic_graph: bool = False,
 ) -> ReviewerRunArtifacts:
     settings = get_settings()
     ensure_directories([LOG_DIR])
@@ -179,12 +184,16 @@ def run_aacr_reviewer(
     run_dir, raw_dir, findings_dir = _prepare_output_dirs(Path(resolved_output_root), resolved_run_id)
     run_started_at = _utc_now_iso()
 
+    experiment_tag = BASIC_EXPERIMENT_TAG if use_basic_graph else EXPERIMENT_TAG
+    run_reviewer_fn = run_reviewer_basic if use_basic_graph else run_reviewer
+
     logger.info(
-        "Starting reviewer-graph AACR run run_id=%s dataset=%s output=%s trace=%s",
+        "Starting reviewer-graph AACR run run_id=%s dataset=%s output=%s trace=%s basic=%s",
         resolved_run_id,
         dataset_path,
         run_dir,
         trace,
+        use_basic_graph,
     )
 
     pr_urls = _load_pr_urls(dataset_path, limit=limit, logger=logger, pr_url=pr_url)
@@ -235,6 +244,8 @@ def run_aacr_reviewer(
                 repo_root=repo_root,
                 trace=trace,
                 started_at=pr_started_at,
+                run_reviewer_fn=run_reviewer_fn,
+                experiment_tag=experiment_tag,
             )
         except Exception as exc:  # noqa: BLE001 - per-PR isolation; harness continues
             elapsed_ms = int((time.perf_counter() - started) * 1000)

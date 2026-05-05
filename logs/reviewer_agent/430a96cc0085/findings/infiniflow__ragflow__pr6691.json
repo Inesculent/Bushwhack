@@ -1,0 +1,89 @@
+[
+  {
+    "id": "general-1-1",
+    "file_path": "graphrag/general/extractor.py",
+    "line_start": 201,
+    "line_end": 201,
+    "content": "node0_attrs[attr] = sorted(set(node0_attrs[attr].extend(node1_attrs[attr])))",
+    "severity": "high",
+    "feedback_type": "code_improvement",
+    "recommendation": "The `extend` method modifies the list in-place and returns `None`. The current code will assign `None` to `node0_attrs[attr]`. It should be modified to extend the list and then assign it back.",
+    "references": [
+      "https://docs.python.org/3/tutorial/datastructures.html#more-on-lists"
+    ]
+  },
+  {
+    "id": "general-1-3",
+    "file_path": "graphrag/general/extractor.py",
+    "line_start": 212,
+    "line_end": 212,
+    "content": "node0_attrs['source_id'] = sorted(set(node0_attrs['source_id'].extend(node1_attrs.get('source_id', []))))",
+    "severity": "high",
+    "feedback_type": "code_improvement",
+    "recommendation": "Similar to the previous issue, the `extend` method returns `None`, so the current code will not work as intended. It should be modified to extend the list and then sort and assign it back.",
+    "references": [
+      "https://docs.python.org/3/tutorial/datastructures.html#more-on-lists"
+    ]
+  },
+  {
+    "id": "logic-1-3",
+    "file_path": "graphrag/general/extractor.py",
+    "line_start": 212,
+    "line_end": 212,
+    "content": "edge0_attrs[attr] = sorted(set(edge0_attrs[attr].extend(edge1_attrs[attr])))",
+    "severity": "high",
+    "feedback_type": "code_improvement",
+    "recommendation": "Similar to the previous issue, this line also contains a logical error due to the misuse of the `extend` method. It should be corrected to `edge0_attrs[attr] = sorted(set(edge0_attrs[attr] + edge1_attrs.get(attr, [])))`.",
+    "references": []
+  },
+  {
+    "id": "general-1-4",
+    "file_path": "graphrag/general/extractor.py",
+    "line_start": 216,
+    "line_end": 216,
+    "content": "edge0_attrs[attr] = sorted(set(edge0_attrs[attr].extend(edge1_attrs[attr])))",
+    "severity": "high",
+    "feedback_type": "code_improvement",
+    "recommendation": "The `extend` method returns `None`, so the current code will not work as intended. It should be modified to extend the list and then sort and assign it back.",
+    "references": [
+      "https://docs.python.org/3/tutorial/datastructures.html#more-on-lists"
+    ]
+  },
+  {
+    "id": "logic-1-1",
+    "file_path": "graphrag/entity_resolution.py",
+    "line_start": 111,
+    "line_end": 111,
+    "content": "merging_nodes = list(sub_connect_graph.nodes())",
+    "severity": "medium",
+    "feedback_type": "code_improvement",
+    "recommendation": "The change here is correct as it uses the proper method to retrieve nodes from a subgraph. However, it does not affect the core logic of merging nodes or handling edges, so no critical issue is introduced.",
+    "references": []
+  },
+  {
+    "id": "general-1-2",
+    "file_path": "graphrag/general/extractor.py",
+    "line_start": 202,
+    "line_end": 202,
+    "content": "for attr in ['keywords', 'source_id']:",
+    "severity": "medium",
+    "feedback_type": "code_improvement",
+    "recommendation": "The loop over `attr` can be simplified by using a list comprehension or a separate function to handle the extension and sorting of attributes.",
+    "references": [
+      "https://docs.python.org/3/tutorial/controlflow.html#for-statements"
+    ]
+  },
+  {
+    "id": "general-1-5",
+    "file_path": "graphrag/utils.py",
+    "line_start": 439,
+    "line_end": 439,
+    "content": "nursery.start_soon(lambda: settings.docStoreConn.delete(...))",
+    "severity": "medium",
+    "feedback_type": "code_improvement",
+    "recommendation": "Using `trio.to_thread.run_sync` ensures that the blocking I/O operation (`settings.docStoreConn.delete`) runs in a separate thread, preventing it from blocking the main event loop. This is a good practice for maintaining responsiveness in asynchronous applications.",
+    "references": [
+      "https://trio.readthedocs.io/en/stable/reference-core.html#trio.to_thread.run_sync"
+    ]
+  }
+]

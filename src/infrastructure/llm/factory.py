@@ -56,7 +56,7 @@ MODELS = {
         provider="local",
     ),
     "qwen2.5-coder-32b": LLMConfig(
-        model_name="Qwen/Qwen2.5-Coder-32B-Instruct",
+        model_name="/lustre/fs1/home/dy828490/bushwhack_dev/Qwen2.5-Coder-32B-Instruct",
         provider="local",
     ),
     "qwen2.5-coder-32b-ollama": LLMConfig(
