@@ -1,17 +1,17 @@
 # Bushwhack Code Review Orchestrator
 
-Autonomous multi-agent code review orchestrator for repository-wide, context-aware analysis.
+Autonomous code review orchestration with LangGraph, plus research pipelines for benchmark evaluation.
 
-This project is designed around a LangGraph-driven workflow and Hexagonal Architecture (Ports and Adapters), with strict separation between domain logic, orchestration logic, and infrastructure adapters.
+The codebase follows Hexagonal Architecture (Ports and Adapters): domain schemas/interfaces in the core, orchestration graphs in the middle, and infrastructure adapters on the edge.
 
-## What This Project Does
+## What Is Implemented Today
 
-- Builds repository context from code changes.
-- Plans specialized review tasks dynamically.
-- Executes specialist reviewers in parallel.
-- Synthesizes findings into a final review payload.
-
-The target pattern is Plan-and-Solve + Reflexion, where context building, planning, execution, and synthesis are separated into explicit graph nodes.
+- Baseline context graph that summarizes diffs and builds a structural graph from the repository.
+- Reviewer graphs that plan review tasks and route them to specialist worker nodes, with an optional critique/reflection loop.
+- AST parsing via native Tree-sitter or a local MCP server, with caching.
+- Optional Redis checkpointing for LangGraph runs.
+- Research pipelines for SWE-PRBench and AACR-Bench dataset processing and evaluation.
+- A stub HTTP API and CLI for future review submission (not yet wired to the graphs).
 
 ## Architecture Summary
 
@@ -29,39 +29,45 @@ No direct infrastructure dependencies should live here.
 
 LangGraph orchestration logic:
 
-- `explorer` node: gathers context for changed code.
-- `planner` node: generates structured review tasks.
-- `worker` node(s): performs specialized reviews.
-- `synthesizer` node: deduplicates, validates, and formats findings.
+- `context_graph.py` runs `explorer` and `structural_extractor` for baseline context building.
+- `reviewer_graph.py` runs a full planner/worker/synthesizer flow with critique + reflection nodes.
+- `reviewer_graph_basic.py` runs a simpler parallel reviewer flow without critique/reflection.
 
-This layer should use dependency injection and interfaces from `src/domain`, not direct infrastructure clients.
+This layer uses dependency injection and interfaces from `src/domain`, not direct infrastructure clients.
 
 ### 3) Infrastructure Layer (`src/infrastructure`)
 
 Adapter implementations for external systems:
 
 - Search adapter (`ripgrep`) for fast local search.
-- MCP client + AST parser adapter.
-- Cache adapters (memory/Redis-style interface).
-- HTTP gateway and sandbox integrations.
+- AST parsers: native Tree-sitter in-process or MCP-backed AST server.
+- Cache adapter (in-memory; Redis cache stubs exist but are not wired).
+- Redis checkpointing via LangGraph in the orchestration entrypoints.
+- HTTP gateway stub and sandbox utilities.
 
 ## Current Repository Layout
 
 ```text
 .
+├── data/
+├── logs/
 ├── mcp/
 │   ├── fs-mcp/
 │   └── github-mcp/
+├── plots/
 ├── scripts/
 │   ├── cli.py
 │   └── review.bat
 ├── src/
-│   ├── benchmark.py
 │   ├── config.py
 │   ├── main.py
+│   ├── benchmark.py
+│   ├── data/
 │   ├── domain/
 │   ├── infrastructure/
-│   └── orchestration/
+│   ├── orchestration/
+│   ├── reviewer_agent/
+│   └── solo_agent/
 ├── conftest.py
 ├── pytest.ini
 ├── requirements.txt
@@ -83,13 +89,17 @@ pip install -r requirements.txt
 ## 2) Configure Environment Variables
 
 Create a local `.env` file at repository root. Settings are loaded from `src/config.py` using prefix `REVIEW_`.
+See `FLAGS_DOCUMENTATION.md` for the full list.
 
-Useful settings:
+Useful settings to get started:
 
+- `REVIEW_AST_ENABLED=true`
 - `REVIEW_AST_MCP_ENABLED=false`
 - `REVIEW_AST_MCP_COMMAND=python`
 - `REVIEW_AST_MCP_ARGS=["mcp/fs-mcp/server.py"]`
-- `REVIEW_AST_MCP_TIMEOUT_SECONDS=30`
+- `REVIEW_REDIS_ENABLED=true`
+- `REVIEW_LOCAL_LLM_BASE_URL=http://localhost:8000/v1`
+- `REVIEW_GITHUB_PERSONAL_ACCESS_TOKEN=...` (for dataset enrichment)
 
 ## 2.1) Run Redis For LangGraph Checkpointing (Optional)
 
@@ -108,16 +118,46 @@ docker compose -f docker-compose.redis.yml down
 This Redis container is separate from MCP Dockerfiles in `mcp/fs-mcp` and `mcp/github-mcp`.
 Those Dockerfiles are for MCP server processes, while this compose service is only for shared state/checkpoint storage.
 
-Recommended `.env` values for upcoming Redis integration:
+If Redis is unavailable, set `REVIEW_REDIS_ENABLED=false` to run without checkpointing.
+
+Recommended `.env` values:
 
 - `REVIEW_REDIS_ENABLED=true`
 - `REVIEW_REDIS_URL=redis://localhost:6379/0`
 - `REVIEW_REDIS_NAMESPACE=langgraph`
 - `REVIEW_REDIS_TTL_SECONDS=3600`
 
-## 3) Run the API Gateway
+## 3) Run the Baseline Context Graph
 
-Start FastAPI:
+This runs the baseline explorer + structural extractor graph.
+
+```powershell
+python -m src.main --repo-path . --diff-file path\to\diff.txt
+```
+
+## 4) Run the Reviewer Graphs (Dataset Harness)
+
+Parallel reviewer graph over the processed AACR dataset:
+
+```powershell
+python -m src.reviewer_agent.main --dataset aacr
+```
+
+Useful flags:
+
+- `--basic-graph` to skip critique/reflection nodes.
+- `--trace` to emit review-trace logs.
+- `--limit 10` for smoke runs.
+
+## 5) Run the Solo Agent (Dataset Harness)
+
+```powershell
+python -m src.solo_agent.main --dataset aacr
+```
+
+## 6) Run the API Gateway (Stub)
+
+Start FastAPI (placeholder endpoint only):
 
 ```powershell
 python -m uvicorn src.infrastructure.http.app:app --host 127.0.0.1 --port 8000 --reload
@@ -127,9 +167,11 @@ Current endpoint:
 
 - `POST /review`
 
-## 4) Trigger a Review from CLI
+Note: The handler is a stub that prints the payload and returns `{"status": "approved"}`. It does not invoke the LangGraph flows yet.
 
-The CLI sends staged git diff content to the API.
+## 7) Trigger a Review from CLI (Stub)
+
+The CLI sends staged git diff content to the API stub.
 
 ```powershell
 python scripts/cli.py --review
@@ -141,7 +183,7 @@ Expected behavior:
 - If API responds with approved status: prints "Code review approved".
 - Otherwise: prints "Code review failed".
 
-## 5) Run Tests
+## 8) Run Tests
 
 ```powershell
 pytest -q
@@ -153,7 +195,7 @@ You can also scope to infrastructure tests:
 pytest src/infrastructure/tests -q
 ```
 
-## 6) Run Research Dataset Pipeline
+## 9) Run Research Dataset Pipeline
 
 The repository now includes a modular two-phase dataset pipeline for:
 
@@ -200,16 +242,5 @@ Repository structure complexity metrics are also included:
 
 - `reference.md` contains the full architecture and feature plan.
 - `structure.txt` captures the intended structure baseline.
-- Several orchestration files are currently scaffolded and are expected to be filled as implementation progresses.
+- `orchestration.md` and `status.md` track ongoing work and research checkpoints.
 
-## New Repository Initialization (When You Are Ready)
-
-If this folder is not initialized yet and you want a clean repo later:
-
-```powershell
-git init
-git add .
-git status --short
-```
-
-Before first commit, confirm local-only files are excluded by `.gitignore` (virtual env, `.env`, caches, and planning docs).
