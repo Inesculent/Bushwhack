@@ -18,12 +18,16 @@ flowchart TD
 
     reviewPlanner --> routeCritiqueTasks{Fan out planned tasks}
     routeCritiqueTasks -->|Send per task| generalCritiquer[general_critiquer]
-    generalCritiquer --> adversarialReflection[adversarial_reflection]
+    generalCritiquer --> initialFocusedContext[initial_focused_context]
+    initialFocusedContext --> adversarialReflection[adversarial_reflection]
 
     adversarialReflection --> needsContext{Any routed reflection needs context?}
     needsContext -->|yes| focusedContext[focused_context]
-    focusedContext --> critiqueRevision[critique_revision]
-    critiqueRevision --> adversarialCleanup[adversarial_cleanup]
+    focusedContext --> routeCritiqueRevision{Route critique revision}
+    routeCritiqueRevision -->|Send per shard| critiqueRevisionDigest[critique_revision_digest]
+    critiqueRevisionDigest --> critiqueRevisionReduce[critique_revision_reduce]
+    critiqueRevisionReduce --> adversarialCleanup[adversarial_cleanup]
+    routeCritiqueRevision -->|skip| adversarialCleanup
     needsContext -->|no| adversarialCleanup
 
     adversarialCleanup --> reviewSynthesizer[review_synthesizer]
@@ -39,14 +43,14 @@ The graph state type is `GraphState` in `src/domain/state.py`. Important channel
 - Inputs: `run_id`, `repo_path`, `git_diff`.
 - Preflight and structural context: `diff_manifest_ref`, `preflight_summary`, `preflight_errors`, `preflight_warnings`, `structural_graph_node_link`, `structural_topology`, `structural_extraction_gaps`.
 - Planning state: `root_task_id`, `task_registry`, `task_status_by_id`.
-- Adversarial review state: `candidate_findings`, `reflection_reports`, `focused_context_requests`, `focused_context_results`.
+- Adversarial review state: `candidate_findings`, `reflection_reports`, `focused_context_requests`, `focused_context_results`, `critique_revision_digests` (map-step outputs merged by shard id).
 - Outputs: `findings` and `final_findings`.
 - Debugging: `metadata`, `node_history`, `token_usage`.
 
 Parallel fan-out relies on reducers:
 
 - List channels such as `candidate_findings`, `reflection_reports`, `findings`, and `node_history` use `operator.add`.
-- Dict channels such as `task_registry`, `task_status_by_id`, and `focused_context_results` use dict union reducers.
+- Dict channels such as `task_registry`, `task_status_by_id`, `focused_context_results`, and `critique_revision_digests` use dict union reducers.
 - `metadata` uses `merge_graph_metadata`, a recursive dict merge. This is required because multiple parallel `general_critiquer` nodes update `metadata` in the same LangGraph step.
 
 ## Preflight And Structural Extraction
@@ -122,6 +126,8 @@ Each `general_critiquer`:
 4. Normalizes `candidate_id` and `patch_task_id`.
 5. Marks the task completed in `task_status_by_id`.
 
+Execution continues through `initial_focused_context` (same bounded fulfiller as post-reflection focused context) before `adversarial_reflection`.
+
 The general critiquer is also responsible for routing each candidate to one or more reflector domains through `CandidateFinding.reflection_specialties`. Most findings should route to exactly one domain. Cross-domain findings can route to multiple domains.
 
 Current limitation: `CritiquerOutput.initial_focus_requests` are recorded in metadata but are not emitted into `focused_context_requests`. The active focused-context cycle is driven by reflection reports, not by initial critiquer requests.
@@ -153,7 +159,7 @@ Reflection verdicts:
 
 If a routed domain expert returns `not_applicable`, cleanup records the candidate as misrouted and drops it. This is intentional: it exposes cases where the general critiquer assigned the wrong domain.
 
-## Focused Context And Revision
+## Focused Context And Critique Revision (Map / Reduce)
 
 After reflection, `_route_focused_after_reflection` checks for any `ReflectionReport` with:
 
@@ -171,11 +177,28 @@ If any exist:
    - max symbol queries: `5`
    - max search hits per query: `15`
    - max file slice chars: `8000`
-   - max total result chars: `24000`
+   - max total result chars per fulfilled request: `24000`
 3. The fulfiller can read file slices, run bounded text searches, return AST entity summaries when available, and add structural neighbor summaries.
-4. `critique_revision` performs a second-pass revision for candidates that needed context and have focused evidence.
 
-This is a one-cycle context loop. There is no recursive agent loop.
+Post-reflection revision is intentionally split so prompts cannot concatenate **every** focused-context payload for **every** candidate into one model call (that scaling bug dominated token usage on large PRs).
+
+`_route_critique_revision` runs immediately after `focused_context`:
+
+- If there are no reflection `needs_context` candidates, or there is no usable focused evidence for those candidates, it routes straight to `adversarial_cleanup` (same skip behavior as before).
+- Otherwise it builds deterministic **shards**: each shard is one `CandidateFinding` plus a character-budgeted subset of that candidate's `FocusedContextResult` rows. Shard ids are stable (`{candidate_id}:{shard_index}`) so parallel digest updates merge safely via `critique_revision_digests` using dict union.
+- For each shard, the graph issues `Send("critique_revision_digest", payload)`, passing a transient `critique_revision_shard` payload for that invocation only.
+
+The critique revision stage has two LLM nodes:
+
+1. **`critique_revision_digest` (map)** — Condenses a single shard into compact bullets and an `impact` label (`supports` / `weakens` / `contradicts` / `unclear`). Prompt template: `critique_revision_digest.md`. Failures still emit a minimal digest with warnings so downstream cleanup can reason about coverage gaps.
+2. **`critique_revision_reduce` (reduce)** — Consumes candidate summaries plus **only** the merged digests (not the raw focused-context blobs again). Emits `CritiqueRevisionOutput`, normalized so duplicate or unknown `candidate_id` entries become warnings instead of corrupting promotion. Prompt template: `critique_revision.md`. Writes `metadata["critique_revision"]`, including `revisions` for cleanup plus trace fields such as `candidate_count`, `shard_count_planned`, `digest_count`, `digest_shard_ids`, and `missing_digest_shards`.
+
+Settings (`Settings` in `src/config.py`) tune shard sizing:
+
+- `reviewer_critique_revision_max_shard_chars` — approximate serialized JSON budget per digest shard.
+- `reviewer_critique_revision_max_candidate_chars` — truncation guard when inlining candidate JSON into prompts.
+
+This is still a **single** focused-context cycle after reflection (no recursion back through reflection).
 
 ## Cleanup And Synthesis
 
@@ -241,11 +264,12 @@ Focused context can read file prefixes/slices and run bounded search, but it doe
 
 ### Raw Artifacts Are Better But Not Complete Provenance
 
-The harness writes candidates, reflections, focused requests, focused results, worker reports, and metadata. It does not yet write a complete preflight manifest or exact prompt payloads / prompt sizes for each node.
+The harness writes candidates, reflections, focused requests, focused results, critique revision digests (when present), worker reports, and metadata. It does not yet write a complete preflight manifest or exact prompt payloads / prompt sizes for each node.
 
 ## Operational Notes
 
 - Redis checkpointing is used when `redis_enabled` is true. If Redis checkpointing fails, `run_reviewer` falls back to an in-memory graph run.
 - The same `LazyReviewContextProvider` is shared across the graph run and is stopped by the wrapper around `review_synthesizer`.
-- Local LLM model keys come from `Settings.reviewer_planner_model_key` and `Settings.reviewer_worker_model_key`.
+- Local LLM model keys come from `Settings.reviewer_planner_model_key` and `Settings.reviewer_worker_model_key` (used by critiquer, reflection, digest, and reduce nodes).
+- Critique revision shard sizing uses `Settings.reviewer_critique_revision_max_shard_chars` and `Settings.reviewer_critique_revision_max_candidate_chars`.
 - `reviewer_use_legacy_specialist_workers` can be enabled to bypass the adversarial critiquer/reflection path and use the older specialist worker fan-out.

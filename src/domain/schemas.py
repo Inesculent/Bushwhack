@@ -217,6 +217,42 @@ class CritiqueRevisionOutput(BaseModel):
     warnings: List[str] = Field(default_factory=list)
 
 
+CritiqueRevisionImpact = Literal["supports", "weakens", "contradicts", "unclear"]
+
+
+class CritiqueRevisionShardPayload(BaseModel):
+    """One map-step unit: one candidate plus a bounded subset of focused context results."""
+
+    shard_id: str
+    candidate_id: str
+    candidate: CandidateFinding
+    focused_results: List[FocusedContextResult] = Field(default_factory=list)
+
+
+class CritiqueRevisionDigestOutput(BaseModel):
+    """Structured output for condensing one shard before the final revision merge."""
+
+    candidate_id: str
+    request_ids: List[str] = Field(default_factory=list)
+    evidence_bullets: List[str] = Field(
+        default_factory=list,
+        description="Very short bullets summarizing what this shard adds; do not paste large code.",
+    )
+    impact: CritiqueRevisionImpact = "unclear"
+    warnings: List[str] = Field(default_factory=list)
+
+
+class CritiqueRevisionDigest(BaseModel):
+    """Stored digest from one shard, keyed by shard_id in graph state."""
+
+    shard_id: str
+    candidate_id: str
+    request_ids: List[str] = Field(default_factory=list)
+    evidence_bullets: List[str] = Field(default_factory=list)
+    impact: CritiqueRevisionImpact = "unclear"
+    warnings: List[str] = Field(default_factory=list)
+
+
 class Insight(BaseModel):
     source_node: str
     content: str

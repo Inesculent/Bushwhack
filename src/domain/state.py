@@ -2,6 +2,7 @@ from typing import TypedDict, List, Annotated, Dict, Any, Literal, Required, Not
 import operator
 from .schemas import (
     CandidateFinding,
+    CritiqueRevisionDigest,
     FocusedContextRequest,
     FocusedContextResult,
     PreflightParseIssue,
@@ -69,6 +70,8 @@ class GraphState(TypedDict, total=False):
     reflection_reports: Annotated[List[ReflectionReport], operator.add]
     focused_context_requests: Annotated[List[FocusedContextRequest], operator.add]
     focused_context_results: Annotated[Dict[str, FocusedContextResult], operator.or_]
+    critique_revision_digests: Annotated[Dict[str, CritiqueRevisionDigest], operator.or_]
+    critique_revision_shard: NotRequired[Dict[str, Any]]
 
     # Data for debugging and analysis
     current_task_id: NotRequired[str]

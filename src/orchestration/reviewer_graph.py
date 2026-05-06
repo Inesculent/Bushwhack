@@ -31,7 +31,13 @@ from src.infrastructure.structural_topology import (
 )
 from src.orchestration.context.review_context import LazyReviewContextProvider
 from src.orchestration.nodes.application.cleanup import make_adversarial_cleanup_node
-from src.orchestration.nodes.application.critique_revision import make_critique_revision_node
+from src.orchestration.nodes.application.critique_revision import (
+    _has_focused_evidence,
+    _needs_revision_candidates,
+    make_critique_revision_digest_node,
+    make_critique_revision_reduce_node,
+    plan_critique_revision_shards,
+)
 from src.orchestration.nodes.application.critiquer import make_general_critiquer_node
 from src.orchestration.nodes.application.focused_context import make_focused_context_node
 from src.orchestration.nodes.application.planner import make_review_planner_node
@@ -96,6 +102,55 @@ def _route_focused_after_reflection(state: GraphState) -> str:
         if report is not None and report.verdict == "needs_context" and report.focused_request is not None:
             return "focused_context"
     return "adversarial_cleanup"
+
+
+def _route_critique_revision(state: GraphState):
+    """Fan out digest workers when revision work exists; otherwise skip to cleanup."""
+    metadata = state.get("metadata", {}) or {}
+    candidate_ids = _needs_revision_candidates(state)
+    if not candidate_ids:
+        if metadata.get("review_trace_enabled"):
+            trace_logger.info(
+                "TRACE dispatch_critique_revision run_id=%s route=%s",
+                state.get("run_id", "unknown"),
+                "adversarial_cleanup_no_candidates",
+            )
+        return "adversarial_cleanup"
+    if not _has_focused_evidence(state, candidate_ids):
+        if metadata.get("review_trace_enabled"):
+            trace_logger.info(
+                "TRACE dispatch_critique_revision run_id=%s route=%s",
+                state.get("run_id", "unknown"),
+                "adversarial_cleanup_no_focused_evidence",
+            )
+        return "adversarial_cleanup"
+    settings = get_settings()
+    shards = plan_critique_revision_shards(
+        state,
+        candidate_ids,
+        max_shard_chars=settings.reviewer_critique_revision_max_shard_chars,
+        max_candidate_chars=settings.reviewer_critique_revision_max_candidate_chars,
+    )
+    if not shards:
+        if metadata.get("review_trace_enabled"):
+            trace_logger.info(
+                "TRACE dispatch_critique_revision run_id=%s route=%s",
+                state.get("run_id", "unknown"),
+                "adversarial_cleanup_no_shards",
+            )
+        return "adversarial_cleanup"
+    sends: List[Send] = []
+    for shard in shards:
+        payload = dict(state)
+        payload["critique_revision_shard"] = shard.model_dump(mode="json")
+        sends.append(Send("critique_revision_digest", payload))
+    if metadata.get("review_trace_enabled"):
+        trace_logger.info(
+            "TRACE dispatch_critique_revision run_id=%s shards=%s",
+            state.get("run_id", "unknown"),
+            len(shards),
+        )
+    return sends
 
 
 def _route_initial_context(state: GraphState) -> str:
@@ -339,7 +394,8 @@ def build_graph(checkpointer: Any = None):
         builder.add_node("adversarial_reflection", make_adversarial_reflection_node())
         builder.add_node("initial_focused_context", make_focused_context_node(context_provider))
         builder.add_node("focused_context", make_focused_context_node(context_provider))
-        builder.add_node("critique_revision", make_critique_revision_node())
+        builder.add_node("critique_revision_digest", make_critique_revision_digest_node())
+        builder.add_node("critique_revision_reduce", make_critique_revision_reduce_node())
         builder.add_node("adversarial_cleanup", make_adversarial_cleanup_node())
         builder.add_conditional_edges("review_planner", _route_critique_tasks)
         builder.add_edge("general_critiquer", "initial_focused_context")
@@ -352,8 +408,9 @@ def build_graph(checkpointer: Any = None):
                 "adversarial_cleanup": "adversarial_cleanup",
             },
         )
-        builder.add_edge("focused_context", "critique_revision")
-        builder.add_edge("critique_revision", "adversarial_cleanup")
+        builder.add_conditional_edges("focused_context", _route_critique_revision)
+        builder.add_edge("critique_revision_digest", "critique_revision_reduce")
+        builder.add_edge("critique_revision_reduce", "adversarial_cleanup")
         builder.add_edge("adversarial_cleanup", "review_synthesizer")
 
     builder.add_conditional_edges(

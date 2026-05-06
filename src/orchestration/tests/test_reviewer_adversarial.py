@@ -7,6 +7,7 @@ import pytest
 from src.config import get_settings
 from src.domain.schemas import (
     CandidateFinding,
+    CritiqueRevisionDigest,
     FocusedContextRequest,
     FocusedContextResult,
     ReflectionReport,
@@ -340,3 +341,169 @@ def test_reflection_routes_candidates_only_to_declared_domains() -> None:
         "general": 1,
     }
     assert out["metadata"]["adversarial_reflection"]["total_routed_candidate_reviews"] == 2
+
+
+def test_plan_critique_revision_shards_splits_when_over_budget() -> None:
+    from src.orchestration.nodes.application.critique_revision import plan_critique_revision_shards
+
+    cid = "t1:c1"
+    cand = CandidateFinding(
+        candidate_id=cid,
+        patch_task_id="t1",
+        file_path="src/x.py",
+        line_start=1,
+        line_end=2,
+        content="issue",
+    )
+    results: dict[str, FocusedContextResult] = {}
+    for i in range(8):
+        rid = f"req{i}"
+        results[rid] = FocusedContextResult(
+            request_id=rid,
+            candidate_id=cid,
+            file_snippets={"f.py": "x" * 3000},
+        )
+    state: dict = {
+        "candidate_findings": [cand],
+        "focused_context_results": results,
+    }
+    shards = plan_critique_revision_shards(
+        state,
+        [cid],
+        max_shard_chars=5000,
+        max_candidate_chars=8000,
+    )
+    assert len(shards) >= 2
+    assert sum(len(s.focused_results) for s in shards) == 8
+
+
+def test_critique_revision_digest_dict_reducer_merge() -> None:
+    import operator
+
+    a = CritiqueRevisionDigest(
+        shard_id="c:0",
+        candidate_id="c",
+        request_ids=["r1"],
+        evidence_bullets=["one"],
+        impact="unclear",
+    )
+    b = CritiqueRevisionDigest(
+        shard_id="c:1",
+        candidate_id="c",
+        request_ids=["r2"],
+        evidence_bullets=["two"],
+        impact="supports",
+    )
+    merged = operator.or_({"c:0": a}, {"c:1": b})
+    assert set(merged.keys()) == {"c:0", "c:1"}
+
+
+def test_normalize_revision_rows_dedupes_and_warns() -> None:
+    from src.domain.schemas import CritiqueRevisionItem
+    from src.orchestration.nodes.application.critique_revision import _normalize_revision_rows
+
+    rows, warns = _normalize_revision_rows(
+        [
+            CritiqueRevisionItem(candidate_id="x", verdict="accept", updated_evidence_summary="a"),
+            CritiqueRevisionItem(candidate_id="x", verdict="reject", updated_evidence_summary="b"),
+            CritiqueRevisionItem(candidate_id="y", verdict="accept", updated_evidence_summary="c"),
+        ],
+        {"x"},
+    )
+    assert len(rows) == 1
+    assert rows[0]["verdict"] == "reject"
+    assert any("duplicate" in w for w in warns)
+    assert any("unknown" in w for w in warns)
+
+
+def test_critique_revision_reduce_offline_writes_metadata() -> None:
+    from src.orchestration.nodes.application.critique_revision import make_critique_revision_reduce_node
+
+    cid = "t:c1"
+    cand = CandidateFinding(
+        candidate_id=cid,
+        patch_task_id="t",
+        file_path="src/x.py",
+        line_start=1,
+        line_end=2,
+        content="issue",
+        claim_type="defect",
+        failure_mode="f",
+        evidence_summary="e",
+        recommendation="r",
+    )
+    state: dict = {
+        "run_id": "t",
+        "repo_path": ".",
+        "git_diff": "",
+        "candidate_findings": [cand],
+        "reflection_reports": [
+            ReflectionReport(
+                candidate_id=cid,
+                reflector_specialty="security",
+                verdict="needs_context",
+                rationale="more",
+            ),
+        ],
+        "focused_context_results": {
+            "r1": FocusedContextResult(
+                request_id="r1",
+                candidate_id=cid,
+                file_snippets={"s.py": "code"},
+            ),
+        },
+        "critique_revision_digests": {
+            "c1:0": CritiqueRevisionDigest(
+                shard_id="c1:0",
+                candidate_id=cid,
+                request_ids=["r1"],
+                evidence_bullets=["caller checks auth"],
+                impact="supports",
+            ),
+        },
+        "metadata": {},
+    }
+    node = make_critique_revision_reduce_node(use_llm=False)
+    out = node(state)
+    cr = out["metadata"]["critique_revision"]
+    assert cr["digest_count"] == 1
+    assert cr["shard_count_planned"] >= 1
+    assert cr["revisions"] == []
+
+
+def test_critique_revision_digest_offline_emits_digest() -> None:
+    from src.domain.schemas import CritiqueRevisionShardPayload
+    from src.orchestration.nodes.application.critique_revision import make_critique_revision_digest_node
+
+    cid = "t:c1"
+    cand = CandidateFinding(
+        candidate_id=cid,
+        patch_task_id="t",
+        file_path="src/x.py",
+        line_start=1,
+        line_end=2,
+        content="issue",
+        claim_type="defect",
+        failure_mode="f",
+        evidence_summary="e",
+        recommendation="r",
+    )
+    shard = CritiqueRevisionShardPayload(
+        shard_id="c1:0",
+        candidate_id=cid,
+        candidate=cand,
+        focused_results=[
+            FocusedContextResult(request_id="r1", candidate_id=cid, file_snippets={"a.py": "z"}),
+        ],
+    )
+    node = make_critique_revision_digest_node(use_llm=False)
+    out = node(
+        {
+            "run_id": "t",
+            "repo_path": ".",
+            "git_diff": "",
+            "critique_revision_shard": shard.model_dump(mode="json"),
+            "metadata": {},
+        }
+    )
+    assert "c1:0" in out["critique_revision_digests"]

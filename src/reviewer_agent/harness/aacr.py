@@ -81,6 +81,10 @@ def _write_raw(raw_dir: Path, slug: str, result: dict[str, Any]) -> Path:
             key: (val.model_dump() if hasattr(val, "model_dump") else val)
             for key, val in (result.get("focused_context_results", {}) or {}).items()
         },
+        "critique_revision_digests": {
+            key: (val.model_dump() if hasattr(val, "model_dump") else val)
+            for key, val in (result.get("critique_revision_digests", {}) or {}).items()
+        },
     }
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
     return path

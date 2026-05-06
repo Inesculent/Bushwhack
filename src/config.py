@@ -195,6 +195,16 @@ class Settings(BaseSettings):
 		default=False,
 		description="When true, route review_planner tasks to legacy specialist workers instead of the adversarial critiquer loop.",
 	)
+	reviewer_critique_revision_max_shard_chars: int = Field(
+		default=12_000,
+		ge=2_000,
+		description="Approximate max characters of focused context JSON per critique-revision digest shard.",
+	)
+	reviewer_critique_revision_max_candidate_chars: int = Field(
+		default=8_000,
+		ge=500,
+		description="Truncate inlined CandidateFinding JSON per digest shard prompt.",
+	)
 
 	def get_ast_mcp_cwd(self) -> str:
 		"""Return an absolute working directory for MCP server startup."""

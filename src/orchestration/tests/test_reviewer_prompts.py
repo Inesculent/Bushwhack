@@ -9,6 +9,7 @@ def test_reviewer_prompt_files_exist_for_all_roles():
         "critiquer.md",
         "cleanup.md",
         "critique_revision.md",
+        "critique_revision_digest.md",
         "reflection/security.md",
         "reflection/logic.md",
         "reflection/performance.md",

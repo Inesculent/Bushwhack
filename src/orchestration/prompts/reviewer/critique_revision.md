@@ -1,6 +1,6 @@
-# Critique Revision
+# Critique Revision (reduce step)
 
-Candidates below were flagged with `needs_context`. You are given focused tool results (file excerpts, search hits, structural neighbors).
+Candidates below were flagged with `needs_context`. They have already been mapped into **digest summaries** (bullets + impact per shard). Use those digests as the evidence budget — do not assume missing raw snippets.
 
 For **each** candidate, decide post-context:
 - `verdict` = `accept` if the issue remains well supported, or `reject` if new context disproves or weakens it beyond surfacing.
