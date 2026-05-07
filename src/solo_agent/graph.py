@@ -9,11 +9,14 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict
 
-from langgraph.checkpoint.redis import RedisSaver
 from langgraph.graph import END, START, StateGraph
 
 from src.config import get_settings
 from src.domain.state import GraphState
+from src.infrastructure.redis_checkpoint import (
+    assert_redis_checkpoint_writable,
+    redis_checkpoint_saver,
+)
 from src.solo_agent.worker import NODE_NAME, worker_node
 
 logger = logging.getLogger(__name__)
@@ -39,7 +42,11 @@ def run_solo(state: GraphState) -> Dict[str, Any]:
 
     thread_id = state.get("run_id", "solo_agent")
     try:
-        with RedisSaver.from_conn_string(settings.redis_url) as checkpointer:
+        assert_redis_checkpoint_writable(
+            settings.redis_url,
+            namespace=settings.redis_namespace,
+        )
+        with redis_checkpoint_saver(settings) as checkpointer:
             graph = build_graph(checkpointer=checkpointer)
             return graph.invoke(
                 state,

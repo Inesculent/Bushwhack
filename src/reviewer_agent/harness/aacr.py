@@ -18,6 +18,7 @@ from src.data.research_pipeline.github_api import GitHubPullRequestEnricher, Pul
 from src.data.research_pipeline.logging_utils import configure_logger
 from src.data.research_pipeline.utils import ensure_directories, parse_pr_number, parse_repo_from_pr_url
 from src.domain.state import GraphState
+from src.infrastructure.redis_checkpoint import delete_checkpoint_thread
 from src.orchestration.reviewer_graph import run_reviewer
 from src.orchestration.reviewer_graph_basic import run_reviewer_basic
 
@@ -41,6 +42,20 @@ class ReviewerRunArtifacts:
     processed: int
     succeeded: int
     failed: int
+
+
+@dataclass(frozen=True, slots=True)
+class DatasetRange:
+    """1-based inclusive dataset row range after PR URL de-duplication."""
+
+    start: int
+    end: Optional[int] = None
+
+    def validate(self) -> None:
+        if self.start < 1:
+            raise ValueError("Dataset range start must be >= 1.")
+        if self.end is not None and self.end < self.start:
+            raise ValueError("Dataset range end must be >= start.")
 
 
 def _slug_for_pr_url(pr_url: str) -> str:
@@ -97,12 +112,29 @@ def _write_findings(findings_dir: Path, slug: str, findings: Iterable[Any]) -> P
     return path
 
 
+def _write_manifest(manifest_path: Path, rows: List[dict[str, Any]]) -> pd.DataFrame:
+    new_df = pd.DataFrame(rows)
+    if manifest_path.exists():
+        existing_df = pd.read_csv(manifest_path)
+        merged_df = pd.concat([existing_df, new_df], ignore_index=True)
+        if "pr_url" in merged_df.columns:
+            merged_df = merged_df.drop_duplicates(subset=["pr_url"], keep="last")
+    else:
+        merged_df = new_df
+    merged_df.to_csv(manifest_path, index=False)
+    return merged_df
+
+
 def _load_pr_urls(
     source: pd.DataFrame | Path,
     limit: Optional[int],
     logger: logging.Logger,
     pr_url: Optional[str] = None,
+    dataset_range: Optional[DatasetRange] = None,
 ) -> List[str]:
+    if dataset_range is not None:
+        dataset_range.validate()
+
     if isinstance(source, pd.DataFrame):
         df = source
     else:
@@ -120,6 +152,10 @@ def _load_pr_urls(
             raise ValueError(f"Requested PR URL not found in AACR-Bench dataset: {requested_url}")
 
     urls = url_series.drop_duplicates().tolist()
+    if dataset_range is not None:
+        start_idx = dataset_range.start - 1
+        end_idx = dataset_range.end
+        urls = urls[start_idx:end_idx]
     if limit is not None and limit > 0:
         urls = urls[:limit]
     return urls
@@ -169,15 +205,36 @@ def _invoke_for_pr(
     return run_reviewer_fn(initial_state)
 
 
+def _cleanup_pr_checkpoints(settings: Any, graph_run_id: str, logger: logging.Logger) -> bool:
+    if not settings.redis_enabled or not settings.reviewer_cleanup_redis_checkpoints:
+        return False
+
+    try:
+        delete_checkpoint_thread(settings, graph_run_id)
+    except Exception as exc:  # noqa: BLE001 - cleanup must not fail experiments
+        logger.warning(
+            "Redis checkpoint cleanup failed for thread_id=%s: %s: %s",
+            graph_run_id,
+            exc.__class__.__name__,
+            exc,
+        )
+        return False
+
+    logger.info("Deleted Redis checkpoints for thread_id=%s", graph_run_id)
+    return True
+
+
 def run_aacr_reviewer(
     dataset_path: Path = DEFAULT_AACR_PROCESSED_PATH,
     run_id: Optional[str] = None,
     limit: Optional[int] = None,
     pr_url: Optional[str] = None,
+    dataset_range: Optional[DatasetRange] = None,
     output_root: Optional[Path] = None,
     repo_root: Optional[Path] = None,
     trace: bool = False,
     use_basic_graph: bool = False,
+    cli_flags: Optional[dict[str, Any]] = None,
 ) -> ReviewerRunArtifacts:
     settings = get_settings()
     ensure_directories([LOG_DIR])
@@ -200,7 +257,13 @@ def run_aacr_reviewer(
         use_basic_graph,
     )
 
-    pr_urls = _load_pr_urls(dataset_path, limit=limit, logger=logger, pr_url=pr_url)
+    pr_urls = _load_pr_urls(
+        dataset_path,
+        limit=limit,
+        logger=logger,
+        pr_url=pr_url,
+        dataset_range=dataset_range,
+    )
     logger.info("Reviewer-graph AACR run will process %s unique PR URLs", len(pr_urls))
 
     enricher = GitHubPullRequestEnricher(
@@ -215,6 +278,7 @@ def run_aacr_reviewer(
 
     for idx, pr_url in enumerate(pr_urls, start=1):
         slug = _slug_for_pr_url(pr_url)
+        graph_run_id = f"{resolved_run_id}:{slug}"
         pr_started_at = _utc_now_iso()
         row: dict[str, Any] = {
             "pr_url": pr_url,
@@ -227,6 +291,7 @@ def run_aacr_reviewer(
             "finding_count": 0,
             "elapsed_ms": 0,
             "error": "",
+            "redis_checkpoints_cleaned": False,
         }
 
         context = enricher.fetch_pr_context(pr_url)
@@ -257,6 +322,11 @@ def run_aacr_reviewer(
             row["finished_at"] = _utc_now_iso()
             row["elapsed_ms"] = elapsed_ms
             row["error"] = f"{exc.__class__.__name__}: {exc}"
+            row["redis_checkpoints_cleaned"] = _cleanup_pr_checkpoints(
+                settings,
+                graph_run_id,
+                logger,
+            )
             manifest_rows.append(row)
             failed += 1
             logger.exception("[%s/%s] Reviewer-graph run failed for %s", idx, len(pr_urls), pr_url)
@@ -277,6 +347,11 @@ def run_aacr_reviewer(
         row["findings_path"] = str(findings_path.relative_to(run_dir))
         row["finding_count"] = len(findings)
         row["elapsed_ms"] = elapsed_ms
+        row["redis_checkpoints_cleaned"] = _cleanup_pr_checkpoints(
+            settings,
+            graph_run_id,
+            logger,
+        )
         manifest_rows.append(row)
         succeeded += 1
 
@@ -289,14 +364,13 @@ def run_aacr_reviewer(
             elapsed_ms,
         )
 
-    manifest_df = pd.DataFrame(manifest_rows)
     manifest_path = run_dir / "manifest.csv"
-    manifest_df.to_csv(manifest_path, index=False)
+    manifest_df = _write_manifest(manifest_path, manifest_rows)
 
     run_meta_path = run_dir / "run_meta.json"
     run_finished_at = _utc_now_iso()
     run_meta = {
-        "experiment": EXPERIMENT_TAG,
+        "experiment": experiment_tag,
         "run_id": resolved_run_id,
         "started_at": run_started_at,
         "finished_at": run_finished_at,
@@ -306,9 +380,20 @@ def run_aacr_reviewer(
         "worker_model_key": settings.reviewer_worker_model_key,
         "reviewer_use_legacy_specialist_workers": settings.reviewer_use_legacy_specialist_workers,
         "pr_url_filter": pr_url or "",
+        "dataset_range": (
+            {"start": dataset_range.start, "end": dataset_range.end}
+            if dataset_range is not None
+            else None
+        ),
         "repo_root": str(repo_root) if repo_root is not None else "",
         "trace": trace,
+        "basic_graph": use_basic_graph,
+        "cli_flags": dict(cli_flags) if cli_flags else {},
+        "redis_checkpoint_cleanup_enabled": (
+            settings.redis_enabled and settings.reviewer_cleanup_redis_checkpoints
+        ),
         "total_prs": len(pr_urls),
+        "manifest_total_rows": len(manifest_df),
         "succeeded": succeeded,
         "failed": failed,
         "elapsed_ms": int((time.perf_counter() - run_started) * 1000),

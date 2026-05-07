@@ -1,13 +1,16 @@
 from typing import Any
 import logging
 
-from langgraph.checkpoint.redis import RedisSaver
 from langgraph.graph import END, START, StateGraph
 
 from src.config import get_settings
 from src.domain.interfaces import IASTParser
 from src.domain.state import GraphState
 from src.infrastructure.factory import build_ast_parser, build_cache_service, build_preflight_service
+from src.infrastructure.redis_checkpoint import (
+    assert_redis_checkpoint_writable,
+    redis_checkpoint_saver,
+)
 from src.orchestration.nodes.exploration.explorer import explorer_node
 from src.orchestration.nodes.exploration.structural_extractor import make_structural_extractor_node
 
@@ -55,7 +58,11 @@ def run_baseline(state: GraphState) -> dict[str, Any]:
 
     thread_id = state.get("run_id", "baseline")
     try:
-        with RedisSaver.from_conn_string(settings.redis_url) as checkpointer:
+        assert_redis_checkpoint_writable(
+            settings.redis_url,
+            namespace=settings.redis_namespace,
+        )
+        with redis_checkpoint_saver(settings) as checkpointer:
             graph = build_graph(checkpointer=checkpointer)
             return graph.invoke(
                 state,

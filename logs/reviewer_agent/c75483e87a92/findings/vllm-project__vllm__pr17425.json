@@ -1,0 +1,46 @@
+[
+  {
+    "id": "logic-1-1",
+    "file_path": "vllm/logger.py",
+    "line_start": 53,
+    "line_end": 53,
+    "content": "@lru_cache\ndef _print_info_once(logger: Logger, msg: str, *args: Hashable) -> None:",
+    "severity": "medium",
+    "feedback_type": "code_improvement",
+    "recommendation": "Update the call to `logger.info` to use the `*args` arguments: `logger.info(msg, *args, stacklevel=2)`.",
+    "references": []
+  },
+  {
+    "id": "logic-1-2",
+    "file_path": "vllm/logger.py",
+    "line_start": 73,
+    "line_end": 73,
+    "content": "def info_once(self, msg: str, *args: Hashable) -> None:",
+    "severity": "medium",
+    "feedback_type": "code_improvement",
+    "recommendation": "Update the call to `_print_info_once` to use the `*args` arguments: `_print_info_once(self, msg, *args)`.",
+    "references": []
+  },
+  {
+    "id": "logic-1-3",
+    "file_path": "vllm/logger.py",
+    "line_start": 78,
+    "line_end": 78,
+    "content": "def warning_once(self, msg: str, *args: Hashable) -> None:",
+    "severity": "medium",
+    "feedback_type": "code_improvement",
+    "recommendation": "Update the call to `_print_warning_once` to use the `*args` arguments: `_print_warning_once(self, msg, *args)`.",
+    "references": []
+  },
+  {
+    "id": "general-1_candidate_2",
+    "file_path": "vllm/model_executor/model_loader/weight_utils.py",
+    "line_start": 716,
+    "line_end": 716,
+    "content": "def maybe_remap_kv_scale_name(name: str, params_dict: dict) -> Optional[str]:",
+    "severity": "medium",
+    "feedback_type": "code_improvement",
+    "recommendation": "Add a test case to verify the behavior of `maybe_remap_kv_scale_name` when `remapped_name` is not found in `params_dict`.",
+    "references": []
+  }
+]

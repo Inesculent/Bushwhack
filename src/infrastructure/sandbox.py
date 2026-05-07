@@ -141,7 +141,7 @@ class RepoSandbox:
             raise RuntimeError("Sandbox is not started.")
         
         exit_code, output = self.container.exec_run(cmd, workdir=workdir)
-        decoded_output = output.decode("utf-8")
+        decoded_output = output.decode("utf-8", errors="replace")
 
         if check_exit_code and exit_code != 0:
             raise RuntimeError(

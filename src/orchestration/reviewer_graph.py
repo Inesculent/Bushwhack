@@ -4,7 +4,6 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List
 
-from langgraph.checkpoint.redis import RedisSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Send
 
@@ -22,6 +21,10 @@ from src.domain.schemas import (
 from src.domain.state import GraphState
 from src.infrastructure.remote_review_workflow import collect_structural_entities
 from src.infrastructure.factory import build_ast_parser, build_cache_service, build_preflight_service
+from src.infrastructure.redis_checkpoint import (
+    assert_redis_checkpoint_writable,
+    redis_checkpoint_saver,
+)
 from src.infrastructure.sandbox import RepoSandbox
 from src.infrastructure.structural_graph import StructuralGraphBuilder
 from src.infrastructure.structural_topology import (
@@ -332,9 +335,12 @@ def _make_cleanup_synthesizer(context_provider: LazyReviewContextProvider):
     return cleanup_synthesizer_node
 
 
-def build_graph(checkpointer: Any = None):
+def build_graph(
+    checkpointer: Any = None,
+    context_provider: LazyReviewContextProvider | None = None,
+):
     settings = get_settings()
-    context_provider = LazyReviewContextProvider()
+    context_provider = context_provider or LazyReviewContextProvider()
     preflight_service = build_preflight_service()
     ast_parser: IASTParser | None = None
 
@@ -434,31 +440,50 @@ def build_graph(checkpointer: Any = None):
 def run_reviewer(state: GraphState) -> Dict[str, Any]:
     settings = get_settings()
     if not settings.redis_enabled:
-        graph = build_graph()
-        return graph.invoke(state)
+        context_provider = LazyReviewContextProvider()
+        try:
+            graph = build_graph(context_provider=context_provider)
+            return graph.invoke(state)
+        finally:
+            context_provider.stop()
 
     thread_id = state.get("run_id", "reviewer_graph")
+    context_provider = LazyReviewContextProvider()
     try:
-        with RedisSaver.from_conn_string(settings.redis_url) as checkpointer:
-            graph = build_graph(checkpointer=checkpointer)
+        assert_redis_checkpoint_writable(
+            settings.redis_url,
+            namespace=settings.redis_namespace,
+        )
+        with redis_checkpoint_saver(settings) as checkpointer:
+            graph = build_graph(
+                checkpointer=checkpointer,
+                context_provider=context_provider,
+            )
             return graph.invoke(
                 state,
                 config={"configurable": {"thread_id": thread_id}},
             )
     except Exception as exc:
+        context_provider.stop()
         logger.warning(
-            "Redis checkpoint unavailable for reviewer run; continuing without checkpointing: %s: %s",
+            "Checkpointed reviewer run failed; retrying without checkpointing: %s: %s",
             exc.__class__.__name__,
             exc,
         )
-        graph = build_graph()
-        result = graph.invoke(state)
-        metadata = dict(result.get("metadata", {}))
-        metadata["checkpoint_warning"] = (
-            f"Redis checkpoint unavailable; ran without checkpointing: {exc.__class__.__name__}: {exc}"
-        )
-        result["metadata"] = metadata
-        return result
+        context_provider = LazyReviewContextProvider()
+        graph = build_graph(context_provider=context_provider)
+        try:
+            result = graph.invoke(state)
+            metadata = dict(result.get("metadata", {}))
+            metadata["checkpoint_warning"] = (
+                f"Checkpointed run failed; retried without checkpointing: {exc.__class__.__name__}: {exc}"
+            )
+            result["metadata"] = metadata
+            return result
+        finally:
+            context_provider.stop()
+    finally:
+        context_provider.stop()
 
 
 graph = build_graph()

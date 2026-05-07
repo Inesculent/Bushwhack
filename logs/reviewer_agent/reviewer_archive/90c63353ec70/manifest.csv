@@ -1,2 +1,0 @@
-pr_url,slug,started_at,finished_at,status,raw_path,findings_path,finding_count,elapsed_ms,error
-https://github.com/vllm-project/vllm/pull/12608,vllm-project__vllm__pr12608,2026-05-05T09:13:39.696064+00:00,2026-05-05T09:21:10.543169+00:00,ok,raw\vllm-project__vllm__pr12608.json,findings\vllm-project__vllm__pr12608.json,16,449770,

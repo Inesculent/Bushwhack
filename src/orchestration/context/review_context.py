@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import threading
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Sequence, Set
 
 from src.config import get_settings
 from src.domain.interfaces import IASTParser, ICodeSearcher
@@ -136,12 +136,22 @@ class LazyReviewContextProvider:
         """Read a bounded prefix of a repository-relative file path."""
         return self._read_file(file_path)[:max_chars]
 
-    def search_bounded(self, query: str, *, max_hits: int) -> List[SearchResult]:
+    def search_bounded(
+        self,
+        query: str,
+        *,
+        max_hits: int,
+        file_paths: Sequence[str] | None = None,
+    ) -> List[SearchResult]:
         """Run a single bounded text search when the sandbox searcher is available."""
         if self._searcher is None:
             return []
         try:
-            return self._searcher.search_text(query=query, repository_path="/repo")[:max_hits]
+            return self._searcher.search_text(
+                query=query,
+                repository_path="/repo",
+                file_paths=file_paths,
+            )[:max_hits]
         except Exception as exc:  # noqa: BLE001
             logger.warning("bounded search failed query=%r reason=%s", query, exc)
             return []
@@ -318,8 +328,14 @@ class BoundedReviewContextFulfiller:
                 file_snippets[fp] = merged[:MAX_FILE_SLICE_CHARS]
                 total_chars = sum(len(v) for v in file_snippets.values())
 
+        focused_paths = request.file_paths[:MAX_FILES_PER_REQUEST] or None
+
         for sym in request.symbol_queries[:MAX_SYMBOL_QUERIES]:
-            hits = self._provider.search_bounded(sym, max_hits=MAX_SEARCH_RESULTS_PER_QUERY)
+            hits = self._provider.search_bounded(
+                sym,
+                max_hits=MAX_SEARCH_RESULTS_PER_QUERY,
+                file_paths=focused_paths,
+            )
             search_hits[sym] = hits
             total_chars += sum(len(h.content) for h in hits)
             if total_chars > MAX_TOTAL_RESULT_CHARS:
@@ -327,7 +343,11 @@ class BoundedReviewContextFulfiller:
                 break
 
         for tq in request.text_queries[:MAX_TEXT_QUERIES]:
-            hits = self._provider.search_bounded(tq, max_hits=MAX_SEARCH_RESULTS_PER_QUERY)
+            hits = self._provider.search_bounded(
+                tq,
+                max_hits=MAX_SEARCH_RESULTS_PER_QUERY,
+                file_paths=focused_paths,
+            )
             search_hits[tq] = hits
             total_chars += sum(len(h.content) for h in hits)
             if total_chars > MAX_TOTAL_RESULT_CHARS:

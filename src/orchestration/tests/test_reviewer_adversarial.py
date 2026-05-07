@@ -12,6 +12,7 @@ from src.domain.schemas import (
     FocusedContextResult,
     ReflectionReport,
     ReviewFinding,
+    SearchResult,
     ReviewTask,
 )
 from src.domain.state import merge_graph_metadata
@@ -57,7 +58,7 @@ def test_bounded_fulfiller_respects_file_cap() -> None:
             calls["reads"] += 1
             return f"body-{file_path}"
 
-        def search_bounded(self, query: str, *, max_hits: int):
+        def search_bounded(self, query: str, *, max_hits: int, file_paths=None):
             return []
 
         def ast_entities_for_file(self, file_path: str):
@@ -76,6 +77,49 @@ def test_bounded_fulfiller_respects_file_cap() -> None:
     result = fulfiller.fulfill(state, req)  # type: ignore[arg-type]
     assert len(result.file_snippets) <= 5
     assert calls["reads"] <= 5
+
+
+def test_bounded_fulfiller_scopes_searches_to_requested_files() -> None:
+    calls: list[tuple[str, tuple[str, ...] | None]] = []
+
+    class StubProvider:
+        def _ensure_started(self, state: dict) -> None:
+            return None
+
+        def read_file_slice(self, file_path: str, *, max_chars: int = 20000) -> str:
+            return ""
+
+        def search_bounded(self, query: str, *, max_hits: int, file_paths=None):
+            calls.append((query, tuple(file_paths) if file_paths else None))
+            return [
+                SearchResult(
+                    file_path="middleware/cache_middleware.py",
+                    line_number=1,
+                    content="fragments",
+                    context_lines=["fragments"],
+                )
+            ]
+
+        def ast_entities_for_file(self, file_path: str):
+            return [], []
+
+    fulfiller = BoundedReviewContextFulfiller(StubProvider())  # type: ignore[arg-type]
+    req = FocusedContextRequest(
+        request_id="r1",
+        candidate_id="c1",
+        requested_by_specialty="general",
+        file_paths=["middleware/cache_middleware.py"],
+        symbol_queries=["cache_control"],
+        text_queries=["fragments"],
+    )
+
+    result = fulfiller.fulfill({"run_id": "t", "metadata": {}}, req)  # type: ignore[arg-type]
+
+    assert result.search_hits["fragments"][0].file_path == "middleware/cache_middleware.py"
+    assert calls == [
+        ("cache_control", ("middleware/cache_middleware.py",)),
+        ("fragments", ("middleware/cache_middleware.py",)),
+    ]
 
 
 def test_adversarial_cleanup_promotes_on_unanimous_accept() -> None:

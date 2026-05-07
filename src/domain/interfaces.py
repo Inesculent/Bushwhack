@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from pydantic import BaseModel
-from typing import List, Optional, Any, Dict
+from typing import List, Optional, Any, Dict, Sequence
 from .schemas import SearchResult, CodeEntity, DiffManifest, PreflightRequest
 
 """Domain ports.
@@ -13,7 +13,12 @@ Contract:
 
 class ICodeSearcher(ABC):
     @abstractmethod
-    def search_text(self, query: str, repository_path: str) -> List[SearchResult]:
+    def search_text(
+        self,
+        query: str,
+        repository_path: str,
+        file_paths: Sequence[str] | None = None,
+    ) -> List[SearchResult]:
         """
         Search in the specified repository and return repository-relative matches.
         """

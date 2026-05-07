@@ -33,6 +33,7 @@ Desktop.ini
 *.tmp
 tmp/
 temp/
+logs/reviewer_agent/reviewer_archive/
 
 # Planning/reference docs not intended for initial commit
 reference.md

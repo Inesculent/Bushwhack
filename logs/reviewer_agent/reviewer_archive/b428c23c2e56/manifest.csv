@@ -1,2 +1,0 @@
-pr_url,slug,started_at,finished_at,status,raw_path,findings_path,finding_count,elapsed_ms,error
-https://github.com/infiniflow/ragflow/pull/6553,infiniflow__ragflow__pr6553,2026-05-04T20:14:28.164546+00:00,2026-05-04T20:17:33.549196+00:00,ok,raw\infiniflow__ragflow__pr6553.json,findings\infiniflow__ragflow__pr6553.json,14,184365,

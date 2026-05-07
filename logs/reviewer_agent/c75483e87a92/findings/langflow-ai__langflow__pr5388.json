@@ -1,0 +1,13 @@
+[
+  {
+    "id": "performance_1",
+    "file_path": "src/backend/base/langflow/graph/graph/utils.py",
+    "line_start": 148,
+    "line_end": 152,
+    "content": "for node in g_nodes:\n    if node[\"id\"] == proxy_id:\n        set_new_target_handle(proxy_id, new_edge, target_handle, node)\n        break",
+    "severity": "medium",
+    "feedback_type": "optimization",
+    "recommendation": "Consider reverting to using a generator expression with next() or adding a break statement to exit the loop early once the matching node is found.",
+    "references": []
+  }
+]

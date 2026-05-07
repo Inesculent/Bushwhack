@@ -1,0 +1,134 @@
+[
+  {
+    "id": "general_1_candidate_1",
+    "file_path": "api/apps/api_app.py",
+    "line_start": 630,
+    "line_end": 632,
+    "content": "+    docs = DocumentService.get_by_ids(doc_ids)\n+    doc_dic = {}\n+    for doc in docs:\n+        doc_dic[doc.id] = doc\n",
+    "severity": "medium",
+    "feedback_type": "code_improvement",
+    "recommendation": "Add error handling around `DocumentService.get_by_ids` to manage cases where not all documents are retrieved successfully.",
+    "references": []
+  },
+  {
+    "id": "logic_1_candidate_1",
+    "file_path": "api/apps/api_app.py",
+    "line_start": 631,
+    "line_end": 631,
+    "content": "+        docs = DocumentService.get_by_ids(doc_ids)\n+        doc_dic = {}\n+        for doc in docs:\n+            doc_dic[doc.id] = doc\n+",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Ensure `DocumentService.get_by_ids` only returns existing documents and add a check to handle cases where some document IDs do not exist.",
+    "references": []
+  },
+  {
+    "id": "security_1_candidate_4",
+    "file_path": "api/apps/api_app.py",
+    "line_start": 633,
+    "line_end": 636,
+    "content": "+    docs = DocumentService.get_by_ids(doc_ids)\n+    doc_dic = {}\n+    for doc in docs:\n+        doc_dic[doc.id] = doc",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Add validation to check if all `doc_ids` are present in the returned documents and add tests to cover these scenarios.",
+    "references": []
+  },
+  {
+    "id": "general_1_candidate_3",
+    "file_path": "api/db/services/common_service.py",
+    "line_start": 271,
+    "line_end": 281,
+    "content": "+    @classmethod\n+    @DB.connection_context()\n+    def delete_by_ids(cls, pids):\n+        # Delete multiple records by their IDs\n+        # Args:\n+        #     pids: List of record IDs\n+        # Returns:\n+        #     Number of records deleted\n+        with DB.atomic():\n+            res = cls.model.delete().where(cls.model.id.in_(pids)).execute()\n+            return res",
+    "severity": "medium",
+    "feedback_type": "code_improvement",
+    "recommendation": "Add input validation to `delete_by_ids` to handle cases where `pids` is empty or contains invalid IDs.",
+    "references": []
+  },
+  {
+    "id": "performance_1_2",
+    "file_path": "api/db/services/common_service.py",
+    "line_start": 272,
+    "line_end": 279,
+    "content": "with DB.atomic():\n    res = cls.model.delete().where(cls.model.id.in_(pids)).execute()\n    return res",
+    "severity": "medium",
+    "feedback_type": "optimization",
+    "recommendation": "Benchmark the performance of `delete_by_ids` against the previous method and consider optimizing the method if necessary, possibly by breaking down the transaction into smaller chunks or using a different approach for large lists.",
+    "references": []
+  },
+  {
+    "id": "security_1_candidate_3",
+    "file_path": "api/db/services/common_service.py",
+    "line_start": 272,
+    "line_end": 279,
+    "content": "+    @classmethod\n+    @DB.connection_context()\n+    def delete_by_ids(cls, pids):\n+        # Delete multiple records by their IDs\n+        # Args:\n+        #     pids: List of record IDs\n+        # Returns:\n+        #     Number of records deleted\n+        with DB.atomic():\n+            res = cls.model.delete().where(cls.model.id.in_(pids)).execute()\n+            return res",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Add validation for `pids` and tests to ensure proper handling of empty or invalid IDs.",
+    "references": []
+  },
+  {
+    "id": "logic_1_candidate_3",
+    "file_path": "api/db/services/common_service.py",
+    "line_start": 274,
+    "line_end": 281,
+    "content": "+    @classmethod\n+    @DB.connection_context()\n+    def delete_by_ids(cls, pids):\n+        # Delete multiple records by their IDs\n+        # Args:\n+        #     pids: List of record IDs\n+        # Returns:\n+        #     Number of records deleted\n+        with DB.atomic():\n+            res = cls.model.delete().where(cls.model.id.in_(pids)).execute()\n+            return res",
+    "severity": "medium",
+    "feedback_type": "code_improvement",
+    "recommendation": "Add tests for `delete_by_ids` to cover edge cases like empty lists or invalid IDs.",
+    "references": []
+  },
+  {
+    "id": "logic_1_candidate_2",
+    "file_path": "api/db/services/document_service.py",
+    "line_start": 365,
+    "line_end": 370,
+    "content": "+    @classmethod\n+    @DB.connection_context()\n+    def get_doc_ids_by_doc_names(cls, doc_names):\n+        if not doc_names:\n+            return []\n+\n+        query = cls.model.select(cls.model.id).where(cls.model.name.in_(doc_names))\n+        return list(query.scalars().iterator())",
+    "severity": "medium",
+    "feedback_type": "code_improvement",
+    "recommendation": "Add tests for `get_doc_ids_by_doc_names` to cover edge cases like duplicate document names and very large input lists.",
+    "references": []
+  },
+  {
+    "id": "general_1_candidate_2",
+    "file_path": "api/db/services/document_service.py",
+    "line_start": 366,
+    "line_end": 374,
+    "content": "+    @classmethod\n+    @DB.connection_context()\n+    def get_doc_ids_by_doc_names(cls, doc_names):\n+        if not doc_names:\n+            return []\n+\n+        query = cls.model.select(cls.model.id).where(cls.model.name.in_(doc_names))\n+        return list(query.scalars().iterator())",
+    "severity": "medium",
+    "feedback_type": "code_improvement",
+    "recommendation": "Add input validation to `get_doc_ids_by_doc_names` to ensure that all elements in `doc_names` are valid strings.",
+    "references": []
+  },
+  {
+    "id": "security_1_candidate_1",
+    "file_path": "api/db/services/document_service.py",
+    "line_start": 368,
+    "line_end": 370,
+    "content": "+        if not doc_names:\n+            return []\n+",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Ensure that this behavior is intentional and add a test case to verify this scenario.",
+    "references": []
+  },
+  {
+    "id": "performance_1_1",
+    "file_path": "api/db/services/document_service.py",
+    "line_start": 370,
+    "line_end": 371,
+    "content": "query = cls.model.select(cls.model.id).where(cls.model.name.in_(doc_names))\nreturn list(query.scalars().iterator())",
+    "severity": "medium",
+    "feedback_type": "optimization",
+    "recommendation": "Consider benchmarking the performance of `get_doc_ids_by_doc_names` against the previous method and optimize the query if necessary, possibly by adding an index on the `name` column or using a different approach for large lists.",
+    "references": []
+  },
+  {
+    "id": "security_1_candidate_2",
+    "file_path": "api/db/services/document_service.py",
+    "line_start": 373,
+    "line_end": 374,
+    "content": "+        query = cls.model.select(cls.model.id).where(cls.model.name.in_(doc_names))\n+        return list(query.scalars().iterator())",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Add validation for `doc_names` and tests to ensure proper handling of invalid or non-existent document names.",
+    "references": []
+  }
+]

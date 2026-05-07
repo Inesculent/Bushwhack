@@ -1,2 +1,0 @@
-pr_url,slug,started_at,finished_at,status,raw_path,findings_path,finding_count,elapsed_ms,error
-https://github.com/infiniflow/ragflow/pull/6553,infiniflow__ragflow__pr6553,2026-05-04T20:13:52.087737+00:00,2026-05-04T20:13:57.239618+00:00,error,,,0,4112,"RuntimeError: Docker is not running or not accessible: Error while fetching server API version: (2, 'CreateFile', 'The system cannot find the file specified.')"

@@ -1,0 +1,2634 @@
+{
+  "metadata": {
+    "experiment": "reviewer_graph_parallel",
+    "run_id": "c75483e87a92",
+    "graph_run_id": "c75483e87a92:comfyanonymous__ComfyUI__pr6542",
+    "pr_started_at": "2026-05-07T03:41:09.862579+00:00",
+    "pr_url": "https://github.com/comfyanonymous/ComfyUI/pull/6542",
+    "pr_title": "Fix for running via DirectML",
+    "pr_description": "Several fixes for running via DirectML\r\nFix empty image generation issue with Flux1\r\nadd CPU fallback for unsupported path. Verified the model works on AMD GPUs",
+    "pr_repo": "comfyanonymous/ComfyUI",
+    "pr_number": 6542,
+    "review_repo_url": "https://github.com/comfyanonymous/ComfyUI",
+    "review_pr_number": 6542,
+    "review_trace_enabled": true,
+    "structural_extractor": {
+      "mode": "sandbox_entities",
+      "files_attempted": 288,
+      "files_parsed": 237,
+      "gap_count": 51,
+      "node_count": 4013,
+      "edge_count": 16424,
+      "topology_algorithm": "graspologic_leiden",
+      "community_count": 94,
+      "topology_splits_applied": 0
+    },
+    "review_planner": {
+      "summary": "The changes involve modifications to handle DirectML specifically in `clip_model.py`, `ldm/flux/math.py`, and the addition of a new function `is_directml_enabled()` in `model_management.py`. The review focuses on potential issues related to these changes.",
+      "task_count": 4,
+      "specialties": [
+        "general",
+        "logic",
+        "performance",
+        "security"
+      ],
+      "tasks": [
+        {
+          "id": "security_1",
+          "title": "Security Review",
+          "description": "Verify that the new conditionals related to DirectML do not introduce any security vulnerabilities. Check for proper handling of user inputs and data validation.",
+          "target_files": [
+            "comfy/clip_model.py",
+            "comfy/ldm/flux/math.py",
+            "comfy/model_management.py"
+          ],
+          "subtasks": [],
+          "specialty": "security",
+          "depth": 1,
+          "assigned_model": null
+        },
+        {
+          "id": "logic_1",
+          "title": "Logic Review",
+          "description": "Evaluate the logic changes in `clip_model.py` and `ldm/flux/math.py` to ensure they correctly handle the DirectML case without breaking existing functionality. Verify that `is_directml_enabled()` behaves as expected in all scenarios.",
+          "target_files": [
+            "comfy/clip_model.py",
+            "comfy/ldm/flux/math.py",
+            "comfy/model_management.py"
+          ],
+          "subtasks": [],
+          "specialty": "logic",
+          "depth": 1,
+          "assigned_model": null
+        },
+        {
+          "id": "performance_1",
+          "title": "Performance Review",
+          "description": "Assess the performance implications of the changes, particularly the new `torch.full` usage in `clip_model.py` and the additional conditional in `ldm/flux/math.py`. Ensure that these changes do not introduce performance regressions.",
+          "target_files": [
+            "comfy/clip_model.py",
+            "comfy/ldm/flux/math.py"
+          ],
+          "subtasks": [],
+          "specialty": "performance",
+          "depth": 1,
+          "assigned_model": null
+        },
+        {
+          "id": "general_1",
+          "title": "General Review",
+          "description": "Check for any missing tests related to the DirectML handling in `clip_model.py` and `ldm/flux/math.py`. Ensure that the new `is_directml_enabled()` function is adequately tested. Verify that the changes do not break integration contracts or user-facing behavior.",
+          "target_files": [
+            "comfy/clip_model.py",
+            "comfy/ldm/flux/math.py",
+            "comfy/model_management.py"
+          ],
+          "subtasks": [],
+          "specialty": "general",
+          "depth": 1,
+          "assigned_model": null
+        }
+      ],
+      "warnings": []
+    },
+    "general_critiquer": {
+      "by_task": {
+        "general_1": {
+          "summary": "Reviewed the changes in `clip_model.py`, `ldm/flux/math.py`, and `model_management.py`. Identified potential issues related to the new `is_directml_enabled()` function and the changes made to handle DirectML.",
+          "candidate_count": 2,
+          "warnings": [
+            "No direct evidence of integration contract breaks or user-facing behavior changes was found in the provided context. Further review may be necessary to ensure compatibility with existing systems."
+          ],
+          "initial_focus_requests": [
+            {
+              "request_id": "general_1_request_test_coverage",
+              "candidate_id": "general_1_missing_test_is_directml_enabled",
+              "requested_by_specialty": "general",
+              "file_paths": [
+                "tests/**/*"
+              ],
+              "symbol_queries": [
+                "is_directml_enabled"
+              ],
+              "text_queries": [
+                "test is_directml_enabled"
+              ],
+              "reason": "To verify if there are existing tests for `is_directml_enabled()` in the test suite and to check the test coverage for DirectML-related functionalities."
+            },
+            {
+              "request_id": "general_1_request_causal_mask_behavior",
+              "candidate_id": "general_1_defect_causal_mask_initialization",
+              "requested_by_specialty": "general",
+              "file_paths": [
+                "comfy/clip_model.py"
+              ],
+              "symbol_queries": [
+                "causal_mask"
+              ],
+              "text_queries": [
+                "causal_mask initialization"
+              ],
+              "reason": "To check the behavior of `causal_mask` with both initialization methods and to verify if there are any known issues with `torch.full` and `torch.empty` in DirectML."
+            }
+          ]
+        },
+        "logic_1": {
+          "summary": "Review of changes in `clip_model.py`, `ldm/flux/math.py`, and `model_management.py` to ensure correct handling of DirectML without breaking existing functionality.",
+          "candidate_count": 2,
+          "warnings": [],
+          "initial_focus_requests": [
+            {
+              "request_id": "logic_1_1",
+              "candidate_id": "logic_1_1",
+              "requested_by_specialty": "general",
+              "file_paths": [
+                "comfy/clip_model.py"
+              ],
+              "symbol_queries": [
+                "torch.full",
+                "torch.empty.fill_",
+                "-torch.finfo(x.dtype).max",
+                "float(\"-inf\")"
+              ],
+              "text_queries": [
+                "behavioral differences",
+                "precision issues",
+                "unexpected behavior"
+              ],
+              "reason": "To understand the potential behavioral differences and precision issues introduced by the change."
+            },
+            {
+              "request_id": "logic_1_2",
+              "candidate_id": "logic_1_2",
+              "requested_by_specialty": "performance",
+              "file_paths": [
+                "comfy/ldm/flux/math.py",
+                "comfy/model_management.py"
+              ],
+              "symbol_queries": [
+                "is_directml_enabled()",
+                "torch.device(\"cpu\")"
+              ],
+              "text_queries": [
+                "performance impact",
+                "existing performance optimizations",
+                "DirectML constraints"
+              ],
+              "reason": "To evaluate the performance impact of moving computations to the CPU when DirectML is enabled."
+            }
+          ]
+        },
+        "performance_1": {
+          "summary": "The review focuses on the performance implications of the changes introduced in `clip_model.py` and `ldm/flux/math.py`. The changes include using `torch.full` instead of `torch.empty.fill_` in `clip_model.py` and adding a condition for DirectML in `ldm/flux/math.py`. The review did not find any concrete performance regressions, security risks, or defects based on the provided context.",
+          "candidate_count": 0,
+          "warnings": [
+            "No concrete performance issues were identified based on the provided context. Further investigation into the performance impact of the changes is recommended."
+          ],
+          "initial_focus_requests": [
+            {
+              "request_id": "performance_1_request_1",
+              "candidate_id": "performance_1",
+              "requested_by_specialty": "general",
+              "file_paths": [
+                "comfy/clip_model.py"
+              ],
+              "symbol_queries": [
+                "torch.full",
+                "torch.empty.fill_"
+              ],
+              "text_queries": [
+                "performance impact",
+                "memory usage",
+                "speed"
+              ],
+              "reason": "To understand the performance impact of replacing `torch.empty.fill_` with `torch.full`."
+            },
+            {
+              "request_id": "performance_1_request_2",
+              "candidate_id": "performance_1",
+              "requested_by_specialty": "general",
+              "file_paths": [
+                "comfy/ldm/flux/math.py"
+              ],
+              "symbol_queries": [
+                "is_directml_enabled"
+              ],
+              "text_queries": [
+                "performance impact",
+                "memory usage",
+                "speed"
+              ],
+              "reason": "To understand the performance impact of the added condition for DirectML."
+            }
+          ]
+        },
+        "security_1": {
+          "summary": "The review identified potential security and performance-related issues introduced by the changes related to DirectML.",
+          "candidate_count": 2,
+          "warnings": [],
+          "initial_focus_requests": [
+            {
+              "request_id": "security_1_request_1",
+              "candidate_id": "security_1_1",
+              "requested_by_specialty": "performance",
+              "file_paths": [
+                "comfy/clip_model.py"
+              ],
+              "symbol_queries": [
+                "forward"
+              ],
+              "text_queries": [
+                "torch.full",
+                "torch.empty",
+                "fill_",
+                "causal_mask"
+              ],
+              "reason": "To understand the performance impact of using `torch.full` versus `torch.empty` followed by `fill_` in the context of DirectML usage."
+            },
+            {
+              "request_id": "security_1_request_2",
+              "candidate_id": "security_1_2",
+              "requested_by_specialty": "security",
+              "file_paths": [
+                "comfy/ldm/flux/math.py"
+              ],
+              "symbol_queries": [
+                "rope"
+              ],
+              "text_queries": [
+                "is_directml_enabled",
+                "device",
+                "cpu"
+              ],
+              "reason": "To investigate the security implications of moving operations to the CPU when DirectML is enabled and to ensure that sensitive data is appropriately handled."
+            },
+            {
+              "request_id": "security_1_1:auto-context:1",
+              "candidate_id": "security_1_1",
+              "requested_by_specialty": "performance",
+              "file_paths": [
+                "comfy/clip_model.py",
+                "comfy/ldm/flux/math.py",
+                "comfy/model_management.py"
+              ],
+              "symbol_queries": [],
+              "text_queries": [
+                "comfy/clip_model.py",
+                "Potential performance regression due to different initialization methods for causal_mask based on DirectML status.",
+                "Potential performance regression due to different initialization methods for causal_mask based on DirectML status. def forward(self, input_tokens, attention_mas"
+              ],
+              "reason": "Deterministic context requirement for a high-risk or externally dependent performance_regression candidate."
+            }
+          ]
+        }
+      }
+    },
+    "focused_context": {
+      "fulfilled_ids": [
+        "context_request_1",
+        "general_1_request_causal_mask_behavior",
+        "general_1_request_test_coverage",
+        "logic_1_1",
+        "logic_1_2",
+        "performance_1_request_1",
+        "performance_1_request_2",
+        "security_1_1:auto-context:1",
+        "security_1_request_1",
+        "security_1_request_2"
+      ],
+      "warnings": []
+    },
+    "adversarial_reflection": {
+      "report_count": 7,
+      "focused_request_count": 1,
+      "routed_candidate_counts": {
+        "security": 1,
+        "logic": 0,
+        "performance": 3,
+        "general": 3
+      },
+      "total_routed_candidate_reviews": 7,
+      "warnings": []
+    },
+    "critique_revision": {
+      "revisions": [
+        {
+          "candidate_id": "logic_1_2",
+          "verdict": "reject",
+          "updated_evidence_summary": "No evidence of performance impact analysis or existing performance optimizations for DirectML in the provided context. Impact remains unclear."
+        },
+        {
+          "candidate_id": "security_1_1",
+          "verdict": "reject",
+          "updated_evidence_summary": "Impact weakens as the change is only applied when DirectML is enabled, suggesting varying performance characteristics between DirectML and other backends."
+        },
+        {
+          "candidate_id": "security_1_2",
+          "verdict": "reject",
+          "updated_evidence_summary": "No specific security implications or performance benchmarks are provided in the evidence. Impact remains unclear."
+        }
+      ],
+      "warnings": [],
+      "candidate_count": 3,
+      "shard_count_planned": 5,
+      "digest_count": 5,
+      "digest_shard_ids": [
+        "logic_1_2:0",
+        "security_1_1:0",
+        "security_1_1:1",
+        "security_1_2:0",
+        "security_1_2:1"
+      ],
+      "missing_digest_shards": []
+    },
+    "adversarial_cleanup": {
+      "promoted_count": 3,
+      "dropped_candidate_ids": [
+        "logic_1_2",
+        "security_1_1",
+        "security_1_2"
+      ],
+      "ignored_off_domain_rejections": {},
+      "ignored_off_domain_context_requests": {},
+      "misrouted_candidate_ids": {},
+      "candidate_lifecycle": {
+        "general_1_missing_test_is_directml_enabled": {
+          "decision": "promoted",
+          "reason": "accepted_by_relevant_reflectors",
+          "claim_type": "missing_test",
+          "final_category": "general",
+          "relevant_reflectors": [
+            "general"
+          ],
+          "had_focused_context": true
+        },
+        "general_1_defect_causal_mask_initialization": {
+          "decision": "promoted",
+          "reason": "accepted_by_relevant_reflectors",
+          "claim_type": "defect",
+          "final_category": "logic",
+          "relevant_reflectors": [
+            "general"
+          ],
+          "had_focused_context": true
+        },
+        "logic_1_1": {
+          "decision": "promoted",
+          "reason": "accepted_by_relevant_reflectors",
+          "claim_type": "defect",
+          "final_category": "logic",
+          "relevant_reflectors": [
+            "general"
+          ],
+          "had_focused_context": true
+        },
+        "logic_1_2": {
+          "decision": "dropped",
+          "reason": "non_promotable_claim_type",
+          "claim_type": "uncertain",
+          "suspected_category": "performance"
+        },
+        "security_1_1": {
+          "decision": "dropped",
+          "reason": "revision_reject",
+          "claim_type": "performance_regression",
+          "suspected_category": "performance"
+        },
+        "security_1_2": {
+          "decision": "dropped",
+          "reason": "non_promotable_claim_type",
+          "claim_type": "uncertain",
+          "suspected_category": "security"
+        }
+      }
+    },
+    "review_synthesizer": {
+      "worker_count": 0,
+      "reflection_report_count": 7,
+      "raw_finding_count": 3,
+      "final_finding_count": 3,
+      "dropped_duplicate_ids": [],
+      "worker_reports": [],
+      "reflection_reports": [
+        {
+          "candidate_id": "security_1_2",
+          "reflector_specialty": "security",
+          "verdict": "needs_context",
+          "rationale": "The change extends the condition to move certain operations to the CPU when DirectML is enabled. This might affect performance and could potentially introduce security issues if sensitive data is processed on the CPU. Additional context is required to determine the security implications of this change.",
+          "reclassified_category": null,
+          "focused_request": {
+            "request_id": "context_request_1",
+            "candidate_id": "security_1_2",
+            "requested_by_specialty": "security",
+            "file_paths": [
+              "comfy/ldm/flux/math.py",
+              "comfy/model_management.py"
+            ],
+            "symbol_queries": [
+              "is_directml_enabled",
+              "rope"
+            ],
+            "text_queries": [
+              "CPU processing",
+              "sensitive data handling"
+            ],
+            "reason": "To understand the security implications of moving operations to the CPU when DirectML is enabled."
+          }
+        },
+        {
+          "candidate_id": "logic_1_2",
+          "reflector_specialty": "performance",
+          "verdict": "needs_context",
+          "rationale": "The change might inadvertently move computations to the CPU when DirectML is enabled, which could lead to performance regressions. However, the actual performance impact requires benchmarking and understanding the existing performance optimizations and constraints for DirectML.",
+          "reclassified_category": null,
+          "focused_request": null
+        },
+        {
+          "candidate_id": "security_1_1",
+          "reflector_specialty": "performance",
+          "verdict": "needs_context",
+          "rationale": "The change introduces a conditional check for DirectML and uses `torch.full` instead of `torch.empty` followed by `fill_`. This could lead to performance differences as `torch.full` initializes the tensor with a specific value, which might be slower than `torch.empty`. Performance benchmarks comparing `torch.full` and `torch.empty` followed by `fill_` are needed to confirm the performance impact.",
+          "reclassified_category": null,
+          "focused_request": null
+        },
+        {
+          "candidate_id": "security_1_2",
+          "reflector_specialty": "performance",
+          "verdict": "needs_context",
+          "rationale": "The change extends the condition to move certain operations to the CPU when DirectML is enabled. This might affect performance and could potentially introduce security issues if sensitive data is processed on the CPU. Performance benchmarks comparing CPU and DirectML execution paths are needed to understand the impact.",
+          "reclassified_category": null,
+          "focused_request": null
+        },
+        {
+          "candidate_id": "general_1_missing_test_is_directml_enabled",
+          "reflector_specialty": "general",
+          "verdict": "accept",
+          "rationale": "The `is_directml_enabled()` function is a critical part of the codebase, and the absence of tests can lead to incorrect behavior when DirectML is enabled or disabled. The candidate provides a clear failure mode and suggests adding unit tests to verify the function's behavior in different scenarios.",
+          "reclassified_category": null,
+          "focused_request": null
+        },
+        {
+          "candidate_id": "general_1_defect_causal_mask_initialization",
+          "reflector_specialty": "general",
+          "verdict": "reclassify",
+          "rationale": "The candidate identifies a potential defect in the initialization of `causal_mask` based on the DirectML status. This issue is more aligned with logic and behavior than general maintainability, as it involves ensuring consistent behavior across different conditions.",
+          "reclassified_category": "logic",
+          "focused_request": null
+        },
+        {
+          "candidate_id": "logic_1_1",
+          "reflector_specialty": "general",
+          "verdict": "reclassify",
+          "rationale": "The candidate raises concerns about the use of `torch.full` and `torch.empty.fill_` with different values, which could introduce precision issues or unexpected behavior. This issue is more aligned with logic and behavior than general maintainability, as it involves ensuring consistent behavior across different conditions.",
+          "reclassified_category": "logic",
+          "focused_request": null
+        }
+      ]
+    },
+    "checkpoint_warning": "Redis checkpoint unavailable; ran without checkpointing: RedisCheckpointUnavailable: Redis checkpoint writes unavailable: ResponseError: MISCONF Redis is configured to save RDB snapshots, but it's currently unable to persist to disk. Commands that may modify the data set are disabled, because this instance is configured to report errors during writes if RDB snapshotting fails (stop-writes-on-bgsave-error option). Please check the Redis logs for details about the RDB error.",
+    "pr_finished_at": "2026-05-07T03:42:59.413705+00:00"
+  },
+  "node_history": [
+    "sandbox_structural_extractor",
+    "review_planner",
+    "general_critiquer",
+    "general_critiquer",
+    "general_critiquer",
+    "general_critiquer",
+    "focused_context",
+    "adversarial_reflection",
+    "focused_context",
+    "critique_revision_digest",
+    "critique_revision_digest",
+    "critique_revision_digest",
+    "critique_revision_digest",
+    "critique_revision_digest",
+    "critique_revision_reduce",
+    "adversarial_cleanup",
+    "review_synthesizer"
+  ],
+  "worker_reports": [],
+  "candidate_findings": [
+    {
+      "candidate_id": "general_1_missing_test_is_directml_enabled",
+      "patch_task_id": "general_1",
+      "file_path": "comfy/model_management.py",
+      "line_start": 997,
+      "line_end": 1003,
+      "content": "def is_directml_enabled():\n    global directml_enabled\n    if directml_enabled:\n        return True\n\n    return False\n",
+      "claim_type": "missing_test",
+      "failure_mode": "The `is_directml_enabled()` function may not be correctly tested, leading to incorrect behavior when DirectML is enabled or disabled.",
+      "evidence_summary": "The `is_directml_enabled()` function was introduced, but there are no tests provided to verify its behavior in different scenarios.",
+      "required_context": [
+        "Check if there are existing tests for `is_directml_enabled()` in the test suite.",
+        "Verify the test coverage for DirectML-related functionalities."
+      ],
+      "confidence": 0.8,
+      "suspected_category": "general",
+      "reflection_specialties": [
+        "general"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "medium",
+      "recommendation": "Add unit tests to verify the behavior of `is_directml_enabled()` when DirectML is enabled and disabled. Ensure that the tests cover different scenarios and edge cases."
+    },
+    {
+      "candidate_id": "general_1_defect_causal_mask_initialization",
+      "patch_task_id": "general_1",
+      "file_path": "comfy/clip_model.py",
+      "line_start": 108,
+      "line_end": 114,
+      "content": "-        causal_mask = torch.empty(x.shape[1], x.shape[1], dtype=x.dtype, device=x.device).fill_(-torch.finfo(x.dtype).max).triu_(1)\n+        if comfy.model_management.is_directml_enabled():\n+            causal_mask = torch.full((x.shape[1], x.shape[1]), -torch.finfo(x.dtype).max, dtype=x.dtype, device=x.device).triu_(1)\n+        else:\n+            causal_mask = torch.empty(x.shape[1], x.shape[1], dtype=x.dtype, device=x.device).fill_(float(\"-inf\")).triu_(1)\n",
+      "claim_type": "defect",
+      "failure_mode": "The initialization of `causal_mask` may lead to incorrect values when DirectML is enabled, potentially causing unexpected behavior in the model.",
+      "evidence_summary": "The initialization method for `causal_mask` has been changed based on whether DirectML is enabled. However, using `torch.full` with `-torch.finfo(x.dtype).max` and `torch.empty` with `float('-inf')` may not be equivalent and could lead to inconsistencies.",
+      "required_context": [
+        "Check the behavior of `causal_mask` with both initialization methods to ensure they produce the same result.",
+        "Verify if there are any known issues with `torch.full` and `torch.empty` in DirectML."
+      ],
+      "confidence": 0.7,
+      "suspected_category": "logic",
+      "reflection_specialties": [
+        "general"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "medium",
+      "recommendation": "Ensure that the initialization of `causal_mask` produces the same result regardless of whether DirectML is enabled. Consider standardizing the initialization method across both branches or adding comments explaining the rationale behind the change."
+    },
+    {
+      "candidate_id": "logic_1_1",
+      "patch_task_id": "logic_1",
+      "file_path": "comfy/clip_model.py",
+      "line_start": 106,
+      "line_end": 110,
+      "content": "        if comfy.model_management.is_directml_enabled():\n            causal_mask = torch.full((x.shape[1], x.shape[1]), -torch.finfo(x.dtype).max, dtype=x.dtype, device=x.device).triu_(1)\n        else:\n            causal_mask = torch.empty(x.shape[1], x.shape[1], dtype=x.dtype, device=x.device).fill_(float(\"-inf\")).triu_(1)",
+      "claim_type": "defect",
+      "failure_mode": "The use of `torch.full` instead of `torch.empty.fill_` might introduce a subtle difference in behavior, especially if the `torch.full` implementation has different performance characteristics or edge cases compared to `torch.empty.fill_`. However, the primary concern here is the use of `float(\"-inf\")` which could lead to potential precision issues or unexpected behavior compared to `-torch.finfo(x.dtype).max`.",
+      "evidence_summary": "The change introduces a conditional check for DirectML and uses `torch.full` with `float(\"-inf\")` instead of `torch.empty.fill_` with `-torch.finfo(x.dtype).max`.",
+      "required_context": [
+        "Behavioral differences between `torch.full` and `torch.empty.fill_`, and the implications of using `float(\"-inf\")` vs `-torch.finfo(x.dtype).max` in the context of DirectML"
+      ],
+      "confidence": 0.8,
+      "suspected_category": "logic",
+      "reflection_specialties": [
+        "general"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "medium",
+      "recommendation": "Verify that the change does not introduce any precision issues or unexpected behavior. Consider using `-torch.finfo(x.dtype).max` consistently across all conditions to maintain uniform behavior."
+    },
+    {
+      "candidate_id": "logic_1_2",
+      "patch_task_id": "logic_1",
+      "file_path": "comfy/ldm/flux/math.py",
+      "line_start": 25,
+      "line_end": 27,
+      "content": "    if comfy.model_management.is_device_mps(pos.device) or comfy.model_management.is_intel_xpu() or comfy.model_management.is_directml_enabled():\n        device = torch.device(\"cpu\")\n    else:",
+      "claim_type": "uncertain",
+      "failure_mode": "The change might inadvertently move computations to the CPU when DirectML is enabled, which could lead to performance regressions.",
+      "evidence_summary": "The addition of `is_directml_enabled()` to the condition that sets `device` to `torch.device(\"cpu\")` could cause computations to be moved to the CPU when DirectML is enabled.",
+      "required_context": [
+        "Performance impact of moving computations to the CPU when DirectML is enabled",
+        "Existing performance optimizations and constraints for DirectML"
+      ],
+      "confidence": 0.6,
+      "suspected_category": "performance",
+      "reflection_specialties": [
+        "performance"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "medium",
+      "recommendation": "Evaluate the performance impact of moving computations to the CPU when DirectML is enabled. Ensure that this change aligns with the intended performance optimizations for DirectML."
+    },
+    {
+      "candidate_id": "security_1_1",
+      "patch_task_id": "security_1",
+      "file_path": "comfy/clip_model.py",
+      "line_start": 104,
+      "line_end": 109,
+      "content": "def forward(self, input_tokens, attention_mask=None, intermediate_output=None, final_layer_norm_intermediate=True, dtype=torch.float32):\n    x = self.embeddings(input_tokens, dtype=dtype)\n\n    if attention_mask is not None:\n        mask = 1.0 - attention_mask.to(x.dtype).reshape((attention_mask.shape[0], 1, -1, attention_mask.shape[-1])).expand(attention_mask.shape[0], 1, attention_mask.shape[-1], attention_mask.shape[-1])\n        mask = mask.masked_fill(mask.to(torch.bool), -torch.finfo(x.dtype).max)\n\n-    causal_mask = torch.empty(x.shape[1], x.shape[1], dtype=x.dtype, device=x.device).fill_(-torch.finfo(x.dtype).max).triu_(1)\n+    if comfy.model_management.is_directml_enabled():\n+        causal_mask = torch.full((x.shape[1], x.shape[1]), -torch.finfo(x.dtype).max, dtype=x.dtype, device=x.device).triu_(1)\n+    else:\n+        causal_mask = torch.empty(x.shape[1], x.shape[1], dtype=x.dtype, device=x.device).fill_(float('-inf')).triu_(1)\n+\n    if mask is not None:\n        mask += causal_mask\n    else:\n        mask = causal_mask",
+      "claim_type": "performance_regression",
+      "failure_mode": "Potential performance regression due to different initialization methods for causal_mask based on DirectML status.",
+      "evidence_summary": "The change introduces a conditional check for DirectML and uses `torch.full` instead of `torch.empty` followed by `fill_`. This could lead to performance differences as `torch.full` initializes the tensor with a specific value, which might be slower than `torch.empty`.",
+      "required_context": [
+        "Performance benchmarks comparing `torch.full` and `torch.empty` followed by `fill_`.",
+        "Usage patterns and frequency of DirectML in production environments."
+      ],
+      "confidence": 0.6,
+      "suspected_category": "performance",
+      "reflection_specialties": [
+        "performance"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "medium",
+      "recommendation": "Evaluate the performance impact of using `torch.full` versus `torch.empty` followed by `fill_` in the context of DirectML usage. Consider using a consistent method across all conditions if performance is critical."
+    },
+    {
+      "candidate_id": "security_1_2",
+      "patch_task_id": "security_1",
+      "file_path": "comfy/ldm/flux/math.py",
+      "line_start": 22,
+      "line_end": 27,
+      "content": "def attention(q: Tensor, k: Tensor, v: Tensor, pe: Tensor, mask=None) -> Tensor:\n    q_shape = q.shape\n    k_shape = k.shape\n\n    q = q.float().reshape(*q.shape[:-1], -1, 1, 2)\n    k = k.float().reshape(*k.shape[:-1], -1, 1, 2)\n    q = (pe[..., 0] * q[..., 0] + pe[..., 1] * q[..., 1]).reshape(*q_shape).type_as(v)\n    k = (pe[..., 0] * k[..., 0] + pe[..., 1] * k[..., 1]).reshape(*k_shape).type_as(v)\n\n    heads = q.shape[1]\n    x = optimized_attention(q, k, v, heads, skip_reshape=True, mask=mask)\n    return x\n\n\ndef rope(pos: Tensor, dim: int, theta: int) -> Tensor:\n    assert dim % 2 == 0\n-    if comfy.model_management.is_device_mps(pos.device) or comfy.model_management.is_intel_xpu():\n+    if comfy.model_management.is_device_mps(pos.device) or comfy.model_management.is_intel_xpu() or comfy.model_management.is_directml_enabled():\n        device = torch.device('cpu')\n    else:\n        device = pos.device",
+      "claim_type": "uncertain",
+      "failure_mode": "Unclear if moving operations to CPU when DirectML is enabled poses a security risk or performance bottleneck.",
+      "evidence_summary": "The change extends the condition to move certain operations to the CPU when DirectML is enabled. This might affect performance and could potentially introduce security issues if sensitive data is processed on the CPU.",
+      "required_context": [
+        "Security implications of processing data on the CPU when DirectML is enabled.",
+        "Performance benchmarks comparing CPU and DirectML execution paths.",
+        "Authorization checks and data handling policies for CPU operations."
+      ],
+      "confidence": 0.4,
+      "suspected_category": "security",
+      "reflection_specialties": [
+        "security",
+        "performance"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "medium",
+      "recommendation": "Investigate the security and performance implications of moving operations to the CPU when DirectML is enabled. Ensure that sensitive data is appropriately handled and that performance is optimized."
+    }
+  ],
+  "reflection_reports": [
+    {
+      "candidate_id": "security_1_2",
+      "reflector_specialty": "security",
+      "verdict": "needs_context",
+      "rationale": "The change extends the condition to move certain operations to the CPU when DirectML is enabled. This might affect performance and could potentially introduce security issues if sensitive data is processed on the CPU. Additional context is required to determine the security implications of this change.",
+      "reclassified_category": null,
+      "focused_request": {
+        "request_id": "context_request_1",
+        "candidate_id": "security_1_2",
+        "requested_by_specialty": "security",
+        "file_paths": [
+          "comfy/ldm/flux/math.py",
+          "comfy/model_management.py"
+        ],
+        "symbol_queries": [
+          "is_directml_enabled",
+          "rope"
+        ],
+        "text_queries": [
+          "CPU processing",
+          "sensitive data handling"
+        ],
+        "reason": "To understand the security implications of moving operations to the CPU when DirectML is enabled."
+      }
+    },
+    {
+      "candidate_id": "logic_1_2",
+      "reflector_specialty": "performance",
+      "verdict": "needs_context",
+      "rationale": "The change might inadvertently move computations to the CPU when DirectML is enabled, which could lead to performance regressions. However, the actual performance impact requires benchmarking and understanding the existing performance optimizations and constraints for DirectML.",
+      "reclassified_category": null,
+      "focused_request": null
+    },
+    {
+      "candidate_id": "security_1_1",
+      "reflector_specialty": "performance",
+      "verdict": "needs_context",
+      "rationale": "The change introduces a conditional check for DirectML and uses `torch.full` instead of `torch.empty` followed by `fill_`. This could lead to performance differences as `torch.full` initializes the tensor with a specific value, which might be slower than `torch.empty`. Performance benchmarks comparing `torch.full` and `torch.empty` followed by `fill_` are needed to confirm the performance impact.",
+      "reclassified_category": null,
+      "focused_request": null
+    },
+    {
+      "candidate_id": "security_1_2",
+      "reflector_specialty": "performance",
+      "verdict": "needs_context",
+      "rationale": "The change extends the condition to move certain operations to the CPU when DirectML is enabled. This might affect performance and could potentially introduce security issues if sensitive data is processed on the CPU. Performance benchmarks comparing CPU and DirectML execution paths are needed to understand the impact.",
+      "reclassified_category": null,
+      "focused_request": null
+    },
+    {
+      "candidate_id": "general_1_missing_test_is_directml_enabled",
+      "reflector_specialty": "general",
+      "verdict": "accept",
+      "rationale": "The `is_directml_enabled()` function is a critical part of the codebase, and the absence of tests can lead to incorrect behavior when DirectML is enabled or disabled. The candidate provides a clear failure mode and suggests adding unit tests to verify the function's behavior in different scenarios.",
+      "reclassified_category": null,
+      "focused_request": null
+    },
+    {
+      "candidate_id": "general_1_defect_causal_mask_initialization",
+      "reflector_specialty": "general",
+      "verdict": "reclassify",
+      "rationale": "The candidate identifies a potential defect in the initialization of `causal_mask` based on the DirectML status. This issue is more aligned with logic and behavior than general maintainability, as it involves ensuring consistent behavior across different conditions.",
+      "reclassified_category": "logic",
+      "focused_request": null
+    },
+    {
+      "candidate_id": "logic_1_1",
+      "reflector_specialty": "general",
+      "verdict": "reclassify",
+      "rationale": "The candidate raises concerns about the use of `torch.full` and `torch.empty.fill_` with different values, which could introduce precision issues or unexpected behavior. This issue is more aligned with logic and behavior than general maintainability, as it involves ensuring consistent behavior across different conditions.",
+      "reclassified_category": "logic",
+      "focused_request": null
+    }
+  ],
+  "focused_context_requests": [
+    {
+      "request_id": "general_1_request_test_coverage",
+      "candidate_id": "general_1_missing_test_is_directml_enabled",
+      "requested_by_specialty": "general",
+      "file_paths": [
+        "tests/**/*"
+      ],
+      "symbol_queries": [
+        "is_directml_enabled"
+      ],
+      "text_queries": [
+        "test is_directml_enabled"
+      ],
+      "reason": "To verify if there are existing tests for `is_directml_enabled()` in the test suite and to check the test coverage for DirectML-related functionalities."
+    },
+    {
+      "request_id": "general_1_request_causal_mask_behavior",
+      "candidate_id": "general_1_defect_causal_mask_initialization",
+      "requested_by_specialty": "general",
+      "file_paths": [
+        "comfy/clip_model.py"
+      ],
+      "symbol_queries": [
+        "causal_mask"
+      ],
+      "text_queries": [
+        "causal_mask initialization"
+      ],
+      "reason": "To check the behavior of `causal_mask` with both initialization methods and to verify if there are any known issues with `torch.full` and `torch.empty` in DirectML."
+    },
+    {
+      "request_id": "logic_1_1",
+      "candidate_id": "logic_1_1",
+      "requested_by_specialty": "general",
+      "file_paths": [
+        "comfy/clip_model.py"
+      ],
+      "symbol_queries": [
+        "torch.full",
+        "torch.empty.fill_",
+        "-torch.finfo(x.dtype).max",
+        "float(\"-inf\")"
+      ],
+      "text_queries": [
+        "behavioral differences",
+        "precision issues",
+        "unexpected behavior"
+      ],
+      "reason": "To understand the potential behavioral differences and precision issues introduced by the change."
+    },
+    {
+      "request_id": "logic_1_2",
+      "candidate_id": "logic_1_2",
+      "requested_by_specialty": "performance",
+      "file_paths": [
+        "comfy/ldm/flux/math.py",
+        "comfy/model_management.py"
+      ],
+      "symbol_queries": [
+        "is_directml_enabled()",
+        "torch.device(\"cpu\")"
+      ],
+      "text_queries": [
+        "performance impact",
+        "existing performance optimizations",
+        "DirectML constraints"
+      ],
+      "reason": "To evaluate the performance impact of moving computations to the CPU when DirectML is enabled."
+    },
+    {
+      "request_id": "performance_1_request_1",
+      "candidate_id": "performance_1",
+      "requested_by_specialty": "general",
+      "file_paths": [
+        "comfy/clip_model.py"
+      ],
+      "symbol_queries": [
+        "torch.full",
+        "torch.empty.fill_"
+      ],
+      "text_queries": [
+        "performance impact",
+        "memory usage",
+        "speed"
+      ],
+      "reason": "To understand the performance impact of replacing `torch.empty.fill_` with `torch.full`."
+    },
+    {
+      "request_id": "performance_1_request_2",
+      "candidate_id": "performance_1",
+      "requested_by_specialty": "general",
+      "file_paths": [
+        "comfy/ldm/flux/math.py"
+      ],
+      "symbol_queries": [
+        "is_directml_enabled"
+      ],
+      "text_queries": [
+        "performance impact",
+        "memory usage",
+        "speed"
+      ],
+      "reason": "To understand the performance impact of the added condition for DirectML."
+    },
+    {
+      "request_id": "security_1_request_1",
+      "candidate_id": "security_1_1",
+      "requested_by_specialty": "performance",
+      "file_paths": [
+        "comfy/clip_model.py"
+      ],
+      "symbol_queries": [
+        "forward"
+      ],
+      "text_queries": [
+        "torch.full",
+        "torch.empty",
+        "fill_",
+        "causal_mask"
+      ],
+      "reason": "To understand the performance impact of using `torch.full` versus `torch.empty` followed by `fill_` in the context of DirectML usage."
+    },
+    {
+      "request_id": "security_1_request_2",
+      "candidate_id": "security_1_2",
+      "requested_by_specialty": "security",
+      "file_paths": [
+        "comfy/ldm/flux/math.py"
+      ],
+      "symbol_queries": [
+        "rope"
+      ],
+      "text_queries": [
+        "is_directml_enabled",
+        "device",
+        "cpu"
+      ],
+      "reason": "To investigate the security implications of moving operations to the CPU when DirectML is enabled and to ensure that sensitive data is appropriately handled."
+    },
+    {
+      "request_id": "security_1_1:auto-context:1",
+      "candidate_id": "security_1_1",
+      "requested_by_specialty": "performance",
+      "file_paths": [
+        "comfy/clip_model.py",
+        "comfy/ldm/flux/math.py",
+        "comfy/model_management.py"
+      ],
+      "symbol_queries": [],
+      "text_queries": [
+        "comfy/clip_model.py",
+        "Potential performance regression due to different initialization methods for causal_mask based on DirectML status.",
+        "Potential performance regression due to different initialization methods for causal_mask based on DirectML status. def forward(self, input_tokens, attention_mas"
+      ],
+      "reason": "Deterministic context requirement for a high-risk or externally dependent performance_regression candidate."
+    },
+    {
+      "request_id": "context_request_1",
+      "candidate_id": "security_1_2",
+      "requested_by_specialty": "security",
+      "file_paths": [
+        "comfy/ldm/flux/math.py",
+        "comfy/model_management.py"
+      ],
+      "symbol_queries": [
+        "is_directml_enabled",
+        "rope"
+      ],
+      "text_queries": [
+        "CPU processing",
+        "sensitive data handling"
+      ],
+      "reason": "To understand the security implications of moving operations to the CPU when DirectML is enabled."
+    }
+  ],
+  "focused_context_results": {
+    "general_1_request_test_coverage": {
+      "request_id": "general_1_request_test_coverage",
+      "candidate_id": "general_1_missing_test_is_directml_enabled",
+      "file_snippets": {
+        "tests/**/*": "sed: can't read tests/**/*: No such file or directory\n"
+      },
+      "search_hits": {
+        "is_directml_enabled": [
+          {
+            "file_path": "comfy/model_management.py",
+            "line_number": 993,
+            "content": "def is_directml_enabled():",
+            "context_lines": [
+              "def is_directml_enabled():"
+            ]
+          },
+          {
+            "file_path": "comfy/clip_model.py",
+            "line_number": 107,
+            "content": "if comfy.model_management.is_directml_enabled():",
+            "context_lines": [
+              "if comfy.model_management.is_directml_enabled():"
+            ]
+          },
+          {
+            "file_path": "comfy/ldm/flux/math.py",
+            "line_number": 25,
+            "content": "if comfy.model_management.is_device_mps(pos.device) or comfy.model_management.is_intel_xpu() or comfy.model_management.is_directml_enabled():",
+            "context_lines": [
+              "if comfy.model_management.is_device_mps(pos.device) or comfy.model_management.is_intel_xpu() or comfy.model_management.is_directml_enabled():"
+            ]
+          }
+        ],
+        "test is_directml_enabled": []
+      },
+      "warnings": []
+    },
+    "general_1_request_causal_mask_behavior": {
+      "request_id": "general_1_request_causal_mask_behavior",
+      "candidate_id": "general_1_defect_causal_mask_initialization",
+      "file_snippets": {
+        "comfy/clip_model.py": "import torch\nfrom comfy.ldm.modules.attention import optimized_attention_for_device\nimport comfy.ops\n\nclass CLIPAttention(torch.nn.Module):\n    def __init__(self, embed_dim, heads, dtype, device, operations):\n        super().__init__()\n\n        self.heads = heads\n        self.q_proj = operations.Linear(embed_dim, embed_dim, bias=True, dtype=dtype, device=device)\n        self.k_proj = operations.Linear(embed_dim, embed_dim, bias=True, dtype=dtype, device=device)\n        self.v_proj = operations.Linear(embed_dim, embed_dim, bias=True, dtype=dtype, device=device)\n\n        self.out_proj = operations.Linear(embed_dim, embed_dim, bias=True, dtype=dtype, device=device)\n\n    def forward(self, x, mask=None, optimized_attention=None):\n        q = self.q_proj(x)\n        k = self.k_proj(x)\n        v = self.v_proj(x)\n\n        out = optimized_attention(q, k, v, self.heads, mask)\n        return self.out_proj(out)\n\nACTIVATIONS = {\"quick_gelu\": lambda a: a * torch.sigmoid(1.702 * a),\n               \"gelu\": torch.nn.functional.gelu,\n               \"gelu_pytorch_tanh\": lambda a: torch.nn.functional.gelu(a, approximate=\"tanh\"),\n}\n\nclass CLIPMLP(torch.nn.Module):\n    def __init__(self, embed_dim, intermediate_size, activation, dtype, device, operations):\n        super().__init__()\n        self.fc1 = operations.Linear(embed_dim, intermediate_size, bias=True, dtype=dtype, device=device)\n        self.activation = ACTIVATIONS[activation]\n        self.fc2 = operations.Linear(intermediate_size, embed_dim, bias=True, dtype=dtype, device=device)\n\n    def forward(self, x):\n        x = self.fc1(x)\n        x = self.activation(x)\n        x = self.fc2(x)\n        return x\n\nclass CLIPLayer(torch.nn.Module):\n    def __init__(self, embed_dim, heads, intermediate_size, intermediate_activation, dtype, device, operations):\n        super().__init__()\n        self.layer_norm1 = operations.LayerNorm(embed_dim, dtype=dtype, device=device)\n        self.self_attn = CLIPAttention(embed_dim, heads, dtype, device, operations)\n        self.layer_norm2 = operations.LayerNorm(embed_dim, dtype=dtype, device=device)\n        self.mlp = CLIPMLP(embed_dim, intermediate_size, intermediate_activation, dtype, device, operations)\n\n    def forward(self, x, mask=None, optimized_attention=None):\n        x += self.self_attn(self.layer_norm1(x), mask, optimized_attention)\n        x += self.mlp(self.layer_norm2(x))\n        return x\n\n\nclass CLIPEncoder(torch.nn.Module):\n    def __init__(self, num_layers, embed_dim, heads, intermediate_size, intermediate_activation, dtype, device, operations):\n        super().__init__()\n        self.layers = torch.nn.ModuleList([CLIPLayer(embed_dim, heads, intermediate_size, intermediate_activation, dtype, device, operations) for i in range(num_layers)])\n\n    def forward(self, x, mask=None, intermediate_output=None):\n        optimized_attention = optimized_attention_for_device(x.device, mask=mask is not None, small_input=True)\n\n        if intermediate_output is not None:\n            if intermediate_output < 0:\n                intermediate_output = len(self.layers) + intermediate_output\n\n        intermediate = None\n        for i, l in enumerate(self.layers):\n            x = l(x, mask, optimized_attention)\n            if i == intermediate_output:\n                intermediate = x.clone()\n        return x, intermediate\n\nclass CLIPEmbeddings(torch.nn.Module):\n    def __init__(self, embed_dim, vocab_size=49408, num_positions=77, dtype=None, device=None, operations=None):\n        super().__init__()\n        self.token_embedding = operations.Embedding(vocab_size, embed_dim, dtype=dtype, device=device)\n        self.position_embedding = operations.Embedding(num_positions, embed_dim, dtype=dtype, device=device)\n\n    def forward(self, input_tokens, dtype=torch.float32):\n        return self.token_embedding(input_tokens, out_dtype=dtype) + comfy.ops.cast_to(self.position_embedding.weight, dtype=dtype, device=input_tokens.device)\n\n\nclass CLIPTextModel_(torch.nn.Module):\n    def __init__(self, config_dict, dtype, device, operations):\n        num_layers = config_dict[\"num_hidden_layers\"]\n        embed_dim = config_dict[\"hidden_size\"]\n        heads = config_dict[\"num_attention_heads\"]\n        intermediate_size = config_dict[\"intermediate_size\"]\n        intermediate_activation = config_dict[\"hidden_act\"]\n        num_positions = config_dict[\"max_position_embeddings\"]\n        self.eos_token_id = config_dict[\"eos_token_id\"]\n\n        super().__init__()\n        self.embeddings = CLIPEmbeddings(embed_dim, num_positions=num_positions, dtype=dtype, device=device, operations=operations)\n        self.encoder = CLIPEncoder(num_layers, embed_dim, heads, intermediate_size, intermediate_activation, dtype, device, operations)\n        self.final_layer_norm = operations.LayerNorm(embed_dim, dtype=dtype, device=device)\n\n    def forward(self, input_tokens, attention_mask=None, intermediate_output=None, final_layer_norm_intermediate=True, dtype=torch.float32):\n        x = self.embeddings(input_tokens, dtype=dtype)\n        mask = None\n        if attention_mask is not None:\n            mask = 1.0 - attention_mask.to(x.dtype).reshape((attention_mask.shape[0], 1, -1, attention_mask.shape[-1])).expand(attention_mask.shape[0], 1, attention_mask.shape[-1], attention_mask.shape[-1])\n            mask = mask.masked_fill(mask.to(torch.bool), -torch.finfo(x.dtype).max)\n\n        if comfy.model_management.is_directml_enabled():\n            causal_mask = torch.full((x.shape[1], x.shape[1]), -torch.finfo(x.dtype).max, dtype=x.dtype, device=x.device).triu_(1)\n        else:\n            causal_mask = torch.empty(x.shape[1], x.shape[1], dtype=x.dtype, device=x.device).fill_(float(\"-inf\")).triu_(1)\n\n        if mask is not None:\n            mask += causal_mask\n        else:\n            mask = causal_mask\n\n        x, i = self.encoder(x, mask=mask, intermediate_output=intermediate_output)\n        x = self.final_layer_norm(x)\n        if i is not None and final_layer_norm_intermediate:\n            i = self.final_layer_norm(i)\n\n        pooled_output = x[torch.arange(x.shape[0], device=x.device), (torch.round(input_tokens).to(dtype=torch.int, device=x.device) == self.eos_token_id).int().argmax(dim=-1),]\n        return x, i, pooled_output\n\nclass CLIPTextModel(torch.nn.Module):\n    def __init__(self, config_dict, dtype, device, operations):\n        super().__init__()\n        self.num_layers = config_dict[\"num_hidden_layers\"]\n        self.text_model = CLIPTextModel_(config_dict, dtype, device, operations)\n        embed_dim = config_dict[\"hidden_size\"]\n        self.text_projection = operations.Linear(embed_dim, embed_dim, bias=False, dtype=dtype, device=device)\n        self.dtype = dtype\n\n    def get_input_embeddings(self):\n        return self.text_model.embeddings.token_embedding\n\n    def set_input_embeddings(self, embeddings):\n        self.text_model.embeddings.token_embedding = embeddings\n\n    def forward(self, *args, **kwargs):\n        x = self.text_model(*args, **kwargs)\n        out = self.text_projection(x[2])\n        return (x[0], x[1], out, x[2])\n\n\nclass CLIPVisionEmbeddings(torch.nn.Module):\n    def __init__(self, embed_dim, num_channels=3, patch_size=14, image_size=224, model_type=\"\", dtype=None, device=None, operations=None):\n        super().__init__()\n\n        num_patches = (image_size // patch_size) ** 2\n        if model_type == \"siglip_vision_model\":\n            self.class_embedding = None\n            patch_bias = True\n        else:\n            num_patches = num_patches + 1\n            self.class_embedding = torch.nn.Parameter(torch.empty(embed_dim, dtype=dtype, device=device))\n            patch_bias = False\n\n        self.patch_embedding = operations.Conv2d(\n            in_channels=num_channels,\n            out_channels=embed_dim,\n            kernel_size=patch_size,\n            stride=patch_size,\n            bias=patch_bias,\n            dtype=dtype,\n            device=device\n        )\n\n        self.position_embedding = operations.Embedding(\n--- structural neighbors ---\nsymbol:73b0a23779bc2cb4:CLIPLayer (symbol, comfy/clip_model.py); symbol:bb0f47472e866035:CLIPMLP (symbol, comfy/clip_model.py); symbol:bbd5bed081e65222:CLIPVisionModelProjection (symbol, comfy/clip_model.py); symbol:b801499d4cd3c513:CLIPEmbeddings (symbol, comfy/clip_model.py); symbol:4d217ccbabfaef4b:CLIPAttention (symbol, comfy/clip_model.py); symbol:fef6ed063e126cbe:CLIPEncoder (symbol, comfy/clip_model.py); symbol:3cff9b965dea6a5c:CLIPTextModel (symbol, comfy/clip_model.py); symbol:e6e78e05499728bb:CLIPVisionEmbeddings (symbol, comfy/clip_model.py); symbol:d07a70a872cc78c8:CLIPVision (symbol, comfy/clip_model.py); symbol:3c7dc9f8540fa5aa:CLIPTextModel_ (symbol, comfy/clip_model.py)"
+      },
+      "search_hits": {
+        "causal_mask": [
+          {
+            "file_path": "comfy/clip_model.py",
+            "line_number": 108,
+            "content": "causal_mask = torch.full((x.shape[1], x.shape[1]), -torch.finfo(x.dtype).max, dtype=x.dtype, device=x.device).triu_(1)",
+            "context_lines": [
+              "causal_mask = torch.full((x.shape[1], x.shape[1]), -torch.finfo(x.dtype).max, dtype=x.dtype, device=x.device).triu_(1)"
+            ]
+          },
+          {
+            "file_path": "comfy/clip_model.py",
+            "line_number": 110,
+            "content": "causal_mask = torch.empty(x.shape[1], x.shape[1], dtype=x.dtype, device=x.device).fill_(float(\"-inf\")).triu_(1)",
+            "context_lines": [
+              "causal_mask = torch.empty(x.shape[1], x.shape[1], dtype=x.dtype, device=x.device).fill_(float(\"-inf\")).triu_(1)"
+            ]
+          },
+          {
+            "file_path": "comfy/clip_model.py",
+            "line_number": 113,
+            "content": "mask += causal_mask",
+            "context_lines": [
+              "mask += causal_mask"
+            ]
+          },
+          {
+            "file_path": "comfy/clip_model.py",
+            "line_number": 115,
+            "content": "mask = causal_mask",
+            "context_lines": [
+              "mask = causal_mask"
+            ]
+          },
+          {
+            "file_path": "comfy/text_encoders/llama.py",
+            "line_number": 260,
+            "content": "causal_mask = torch.empty(x.shape[1], x.shape[1], dtype=x.dtype, device=x.device).fill_(float(\"-inf\")).triu_(1)",
+            "context_lines": [
+              "causal_mask = torch.empty(x.shape[1], x.shape[1], dtype=x.dtype, device=x.device).fill_(float(\"-inf\")).triu_(1)"
+            ]
+          },
+          {
+            "file_path": "comfy/text_encoders/llama.py",
+            "line_number": 262,
+            "content": "mask += causal_mask",
+            "context_lines": [
+              "mask += causal_mask"
+            ]
+          },
+          {
+            "file_path": "comfy/text_encoders/llama.py",
+            "line_number": 264,
+            "content": "mask = causal_mask",
+            "context_lines": [
+              "mask = causal_mask"
+            ]
+          }
+        ],
+        "causal_mask initialization": []
+      },
+      "warnings": []
+    },
+    "logic_1_1": {
+      "request_id": "logic_1_1",
+      "candidate_id": "logic_1_1",
+      "file_snippets": {
+        "comfy/clip_model.py": "import torch\nfrom comfy.ldm.modules.attention import optimized_attention_for_device\nimport comfy.ops\n\nclass CLIPAttention(torch.nn.Module):\n    def __init__(self, embed_dim, heads, dtype, device, operations):\n        super().__init__()\n\n        self.heads = heads\n        self.q_proj = operations.Linear(embed_dim, embed_dim, bias=True, dtype=dtype, device=device)\n        self.k_proj = operations.Linear(embed_dim, embed_dim, bias=True, dtype=dtype, device=device)\n        self.v_proj = operations.Linear(embed_dim, embed_dim, bias=True, dtype=dtype, device=device)\n\n        self.out_proj = operations.Linear(embed_dim, embed_dim, bias=True, dtype=dtype, device=device)\n\n    def forward(self, x, mask=None, optimized_attention=None):\n        q = self.q_proj(x)\n        k = self.k_proj(x)\n        v = self.v_proj(x)\n\n        out = optimized_attention(q, k, v, self.heads, mask)\n        return self.out_proj(out)\n\nACTIVATIONS = {\"quick_gelu\": lambda a: a * torch.sigmoid(1.702 * a),\n               \"gelu\": torch.nn.functional.gelu,\n               \"gelu_pytorch_tanh\": lambda a: torch.nn.functional.gelu(a, approximate=\"tanh\"),\n}\n\nclass CLIPMLP(torch.nn.Module):\n    def __init__(self, embed_dim, intermediate_size, activation, dtype, device, operations):\n        super().__init__()\n        self.fc1 = operations.Linear(embed_dim, intermediate_size, bias=True, dtype=dtype, device=device)\n        self.activation = ACTIVATIONS[activation]\n        self.fc2 = operations.Linear(intermediate_size, embed_dim, bias=True, dtype=dtype, device=device)\n\n    def forward(self, x):\n        x = self.fc1(x)\n        x = self.activation(x)\n        x = self.fc2(x)\n        return x\n\nclass CLIPLayer(torch.nn.Module):\n    def __init__(self, embed_dim, heads, intermediate_size, intermediate_activation, dtype, device, operations):\n        super().__init__()\n        self.layer_norm1 = operations.LayerNorm(embed_dim, dtype=dtype, device=device)\n        self.self_attn = CLIPAttention(embed_dim, heads, dtype, device, operations)\n        self.layer_norm2 = operations.LayerNorm(embed_dim, dtype=dtype, device=device)\n        self.mlp = CLIPMLP(embed_dim, intermediate_size, intermediate_activation, dtype, device, operations)\n\n    def forward(self, x, mask=None, optimized_attention=None):\n        x += self.self_attn(self.layer_norm1(x), mask, optimized_attention)\n        x += self.mlp(self.layer_norm2(x))\n        return x\n\n\nclass CLIPEncoder(torch.nn.Module):\n    def __init__(self, num_layers, embed_dim, heads, intermediate_size, intermediate_activation, dtype, device, operations):\n        super().__init__()\n        self.layers = torch.nn.ModuleList([CLIPLayer(embed_dim, heads, intermediate_size, intermediate_activation, dtype, device, operations) for i in range(num_layers)])\n\n    def forward(self, x, mask=None, intermediate_output=None):\n        optimized_attention = optimized_attention_for_device(x.device, mask=mask is not None, small_input=True)\n\n        if intermediate_output is not None:\n            if intermediate_output < 0:\n                intermediate_output = len(self.layers) + intermediate_output\n\n        intermediate = None\n        for i, l in enumerate(self.layers):\n            x = l(x, mask, optimized_attention)\n            if i == intermediate_output:\n                intermediate = x.clone()\n        return x, intermediate\n\nclass CLIPEmbeddings(torch.nn.Module):\n    def __init__(self, embed_dim, vocab_size=49408, num_positions=77, dtype=None, device=None, operations=None):\n        super().__init__()\n        self.token_embedding = operations.Embedding(vocab_size, embed_dim, dtype=dtype, device=device)\n        self.position_embedding = operations.Embedding(num_positions, embed_dim, dtype=dtype, device=device)\n\n    def forward(self, input_tokens, dtype=torch.float32):\n        return self.token_embedding(input_tokens, out_dtype=dtype) + comfy.ops.cast_to(self.position_embedding.weight, dtype=dtype, device=input_tokens.device)\n\n\nclass CLIPTextModel_(torch.nn.Module):\n    def __init__(self, config_dict, dtype, device, operations):\n        num_layers = config_dict[\"num_hidden_layers\"]\n        embed_dim = config_dict[\"hidden_size\"]\n        heads = config_dict[\"num_attention_heads\"]\n        intermediate_size = config_dict[\"intermediate_size\"]\n        intermediate_activation = config_dict[\"hidden_act\"]\n        num_positions = config_dict[\"max_position_embeddings\"]\n        self.eos_token_id = config_dict[\"eos_token_id\"]\n\n        super().__init__()\n        self.embeddings = CLIPEmbeddings(embed_dim, num_positions=num_positions, dtype=dtype, device=device, operations=operations)\n        self.encoder = CLIPEncoder(num_layers, embed_dim, heads, intermediate_size, intermediate_activation, dtype, device, operations)\n        self.final_layer_norm = operations.LayerNorm(embed_dim, dtype=dtype, device=device)\n\n    def forward(self, input_tokens, attention_mask=None, intermediate_output=None, final_layer_norm_intermediate=True, dtype=torch.float32):\n        x = self.embeddings(input_tokens, dtype=dtype)\n        mask = None\n        if attention_mask is not None:\n            mask = 1.0 - attention_mask.to(x.dtype).reshape((attention_mask.shape[0], 1, -1, attention_mask.shape[-1])).expand(attention_mask.shape[0], 1, attention_mask.shape[-1], attention_mask.shape[-1])\n            mask = mask.masked_fill(mask.to(torch.bool), -torch.finfo(x.dtype).max)\n\n        if comfy.model_management.is_directml_enabled():\n            causal_mask = torch.full((x.shape[1], x.shape[1]), -torch.finfo(x.dtype).max, dtype=x.dtype, device=x.device).triu_(1)\n        else:\n            causal_mask = torch.empty(x.shape[1], x.shape[1], dtype=x.dtype, device=x.device).fill_(float(\"-inf\")).triu_(1)\n\n        if mask is not None:\n            mask += causal_mask\n        else:\n            mask = causal_mask\n\n        x, i = self.encoder(x, mask=mask, intermediate_output=intermediate_output)\n        x = self.final_layer_norm(x)\n        if i is not None and final_layer_norm_intermediate:\n            i = self.final_layer_norm(i)\n\n        pooled_output = x[torch.arange(x.shape[0], device=x.device), (torch.round(input_tokens).to(dtype=torch.int, device=x.device) == self.eos_token_id).int().argmax(dim=-1),]\n        return x, i, pooled_output\n\nclass CLIPTextModel(torch.nn.Module):\n    def __init__(self, config_dict, dtype, device, operations):\n        super().__init__()\n        self.num_layers = config_dict[\"num_hidden_layers\"]\n        self.text_model = CLIPTextModel_(config_dict, dtype, device, operations)\n        embed_dim = config_dict[\"hidden_size\"]\n        self.text_projection = operations.Linear(embed_dim, embed_dim, bias=False, dtype=dtype, device=device)\n        self.dtype = dtype\n\n    def get_input_embeddings(self):\n        return self.text_model.embeddings.token_embedding\n\n    def set_input_embeddings(self, embeddings):\n        self.text_model.embeddings.token_embedding = embeddings\n\n    def forward(self, *args, **kwargs):\n        x = self.text_model(*args, **kwargs)\n        out = self.text_projection(x[2])\n        return (x[0], x[1], out, x[2])\n\n\nclass CLIPVisionEmbeddings(torch.nn.Module):\n    def __init__(self, embed_dim, num_channels=3, patch_size=14, image_size=224, model_type=\"\", dtype=None, device=None, operations=None):\n        super().__init__()\n\n        num_patches = (image_size // patch_size) ** 2\n        if model_type == \"siglip_vision_model\":\n            self.class_embedding = None\n            patch_bias = True\n        else:\n            num_patches = num_patches + 1\n            self.class_embedding = torch.nn.Parameter(torch.empty(embed_dim, dtype=dtype, device=device))\n            patch_bias = False\n\n        self.patch_embedding = operations.Conv2d(\n            in_channels=num_channels,\n            out_channels=embed_dim,\n            kernel_size=patch_size,\n            stride=patch_size,\n            bias=patch_bias,\n            dtype=dtype,\n            device=device\n        )\n\n        self.position_embedding = operations.Embedding(\n--- structural neighbors ---\nsymbol:73b0a23779bc2cb4:CLIPLayer (symbol, comfy/clip_model.py); symbol:bb0f47472e866035:CLIPMLP (symbol, comfy/clip_model.py); symbol:bbd5bed081e65222:CLIPVisionModelProjection (symbol, comfy/clip_model.py); symbol:b801499d4cd3c513:CLIPEmbeddings (symbol, comfy/clip_model.py); symbol:4d217ccbabfaef4b:CLIPAttention (symbol, comfy/clip_model.py); symbol:fef6ed063e126cbe:CLIPEncoder (symbol, comfy/clip_model.py); symbol:3cff9b965dea6a5c:CLIPTextModel (symbol, comfy/clip_model.py); symbol:e6e78e05499728bb:CLIPVisionEmbeddings (symbol, comfy/clip_model.py); symbol:d07a70a872cc78c8:CLIPVision (symbol, comfy/clip_model.py); symbol:3c7dc9f8540fa5aa:CLIPTextModel_ (symbol, comfy/clip_model.py)"
+      },
+      "search_hits": {
+        "torch.full": [
+          {
+            "file_path": "nodes.py",
+            "line_number": 1865,
+            "content": "r = torch.full([batch_size, height, width, 1], ((color >> 16) & 0xFF) / 0xFF)",
+            "context_lines": [
+              "r = torch.full([batch_size, height, width, 1], ((color >> 16) & 0xFF) / 0xFF)"
+            ]
+          },
+          {
+            "file_path": "nodes.py",
+            "line_number": 1866,
+            "content": "g = torch.full([batch_size, height, width, 1], ((color >> 8) & 0xFF) / 0xFF)",
+            "context_lines": [
+              "g = torch.full([batch_size, height, width, 1], ((color >> 8) & 0xFF) / 0xFF)"
+            ]
+          },
+          {
+            "file_path": "nodes.py",
+            "line_number": 1867,
+            "content": "b = torch.full([batch_size, height, width, 1], ((color) & 0xFF) / 0xFF)",
+            "context_lines": [
+              "b = torch.full([batch_size, height, width, 1], ((color) & 0xFF) / 0xFF)"
+            ]
+          },
+          {
+            "file_path": "comfy_extras/nodes_mask.py",
+            "line_number": 171,
+            "content": "out = torch.full((1, height, width), value, dtype=torch.float32, device=\"cpu\")",
+            "context_lines": [
+              "out = torch.full((1, height, width), value, dtype=torch.float32, device=\"cpu\")"
+            ]
+          },
+          {
+            "file_path": "comfy_extras/nodes_stable3d.py",
+            "line_number": 16,
+            "content": "90 - torch.full_like(elevation, 0)",
+            "context_lines": [
+              "90 - torch.full_like(elevation, 0)"
+            ]
+          },
+          {
+            "file_path": "comfy/text_encoders/t5.py",
+            "line_number": 130,
+            "content": "relative_position_if_large, torch.full_like(relative_position_if_large, num_buckets - 1)",
+            "context_lines": [
+              "relative_position_if_large, torch.full_like(relative_position_if_large, num_buckets - 1)"
+            ]
+          },
+          {
+            "file_path": "comfy/clip_model.py",
+            "line_number": 108,
+            "content": "causal_mask = torch.full((x.shape[1], x.shape[1]), -torch.finfo(x.dtype).max, dtype=x.dtype, device=x.device).triu_(1)",
+            "context_lines": [
+              "causal_mask = torch.full((x.shape[1], x.shape[1]), -torch.finfo(x.dtype).max, dtype=x.dtype, device=x.device).triu_(1)"
+            ]
+          }
+        ],
+        "torch.empty.fill_": [],
+        "-torch.finfo(x.dtype).max": [],
+        "float(\"-inf\")": [],
+        "behavioral differences": [],
+        "precision issues": [],
+        "unexpected behavior": []
+      },
+      "warnings": []
+    },
+    "logic_1_2": {
+      "request_id": "logic_1_2",
+      "candidate_id": "logic_1_2",
+      "file_snippets": {
+        "comfy/ldm/flux/math.py": "import torch\nfrom einops import rearrange\nfrom torch import Tensor\n\nfrom comfy.ldm.modules.attention import optimized_attention\nimport comfy.model_management\n\n\ndef attention(q: Tensor, k: Tensor, v: Tensor, pe: Tensor, mask=None) -> Tensor:\n    q_shape = q.shape\n    k_shape = k.shape\n\n    q = q.float().reshape(*q.shape[:-1], -1, 1, 2)\n    k = k.float().reshape(*k.shape[:-1], -1, 1, 2)\n    q = (pe[..., 0] * q[..., 0] + pe[..., 1] * q[..., 1]).reshape(*q_shape).type_as(v)\n    k = (pe[..., 0] * k[..., 0] + pe[..., 1] * k[..., 1]).reshape(*k_shape).type_as(v)\n\n    heads = q.shape[1]\n    x = optimized_attention(q, k, v, heads, skip_reshape=True, mask=mask)\n    return x\n\n\ndef rope(pos: Tensor, dim: int, theta: int) -> Tensor:\n    assert dim % 2 == 0\n    if comfy.model_management.is_device_mps(pos.device) or comfy.model_management.is_intel_xpu() or comfy.model_management.is_directml_enabled():\n        device = torch.device(\"cpu\")\n    else:\n        device = pos.device\n\n    scale = torch.linspace(0, (dim - 2) / dim, steps=dim//2, dtype=torch.float64, device=device)\n    omega = 1.0 / (theta**scale)\n    out = torch.einsum(\"...n,d->...nd\", pos.to(dtype=torch.float32, device=device), omega)\n    out = torch.stack([torch.cos(out), -torch.sin(out), torch.sin(out), torch.cos(out)], dim=-1)\n    out = rearrange(out, \"b n d (i j) -> b n d i j\", i=2, j=2)\n    return out.to(dtype=torch.float32, device=pos.device)\n\n\ndef apply_rope(xq: Tensor, xk: Tensor, freqs_cis: Tensor):\n    xq_ = xq.float().reshape(*xq.shape[:-1], -1, 1, 2)\n    xk_ = xk.float().reshape(*xk.shape[:-1], -1, 1, 2)\n    xq_out = freqs_cis[..., 0] * xq_[..., 0] + freqs_cis[..., 1] * xq_[..., 1]\n    xk_out = freqs_cis[..., 0] * xk_[..., 0] + freqs_cis[..., 1] * xk_[..., 1]\n    return xq_out.reshape(*xq.shape).type_as(xq), xk_out.reshape(*xk.shape).type_as(xk)\n\n\n--- structural neighbors ---\nsymbol:55bf760fefa95a34:attention (symbol, comfy/ldm/flux/math.py); symbol:1b27528199311a35:apply_rope (symbol, comfy/ldm/flux/math.py); symbol:90299f88051612b8:rope (symbol, comfy/ldm/flux/math.py)",
+        "comfy/model_management.py": "\"\"\"\n    This file is part of ComfyUI.\n    Copyright (C) 2024 Comfy\n\n    This program is free software: you can redistribute it and/or modify\n    it under the terms of the GNU General Public License as published by\n    the Free Software Foundation, either version 3 of the License, or\n    (at your option) any later version.\n\n    This program is distributed in the hope that it will be useful,\n    but WITHOUT ANY WARRANTY; without even the implied warranty of\n    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the\n    GNU General Public License for more details.\n\n    You should have received a copy of the GNU General Public License\n    along with this program.  If not, see <https://www.gnu.org/licenses/>.\n\"\"\"\n\nimport psutil\nimport logging\nfrom enum import Enum\nfrom comfy.cli_args import args\nimport torch\nimport sys\nimport platform\nimport weakref\nimport gc\n\nclass VRAMState(Enum):\n    DISABLED = 0    #No vram present: no need to move models to vram\n    NO_VRAM = 1     #Very low vram: enable all the options to save vram\n    LOW_VRAM = 2\n    NORMAL_VRAM = 3\n    HIGH_VRAM = 4\n    SHARED = 5      #No dedicated vram: memory shared between CPU and GPU but models still need to be moved between both.\n\nclass CPUState(Enum):\n    GPU = 0\n    CPU = 1\n    MPS = 2\n\n# Determine VRAM State\nvram_state = VRAMState.NORMAL_VRAM\nset_vram_to = VRAMState.NORMAL_VRAM\ncpu_state = CPUState.GPU\n\ntotal_vram = 0\n\nxpu_available = False\ntorch_version = \"\"\ntry:\n    torch_version = torch.version.__version__\n    xpu_available = (int(torch_version[0]) < 2 or (int(torch_version[0]) == 2 and int(torch_version[2]) <= 4)) and torch.xpu.is_available()\nexcept:\n    pass\n\nlowvram_available = True\nif args.deterministic:\n    logging.info(\"Using deterministic algorithms for pytorch\")\n    torch.use_deterministic_algorithms(True, warn_only=True)\n\ndirectml_enabled = False\nif args.directml is not None:\n    import torch_directml\n    directml_enabled = True\n    device_index = args.directml\n    if device_index < 0:\n        directml_device = torch_directml.device()\n    else:\n        directml_device = torch_directml.device(device_index)\n    logging.info(\"Using directml with device: {}\".format(torch_directml.device_name(device_index)))\n    # torch_directml.disable_tiled_resources(True)\n    lowvram_available = False #TODO: need to find a way to get free memory in directml before this can be enabled by default.\n\ntry:\n    import intel_extension_for_pytorch as ipex\n    _ = torch.xpu.device_count()\n    xpu_available = xpu_available or torch.xpu.is_available()\nexcept:\n    xpu_available = xpu_available or (hasattr(torch, \"xpu\") and torch.xpu.is_available())\n\ntry:\n    if torch.backends.mps.is_available():\n        cpu_state = CPUState.MPS\n        import torch.mps\nexcept:\n    pass\n\ntry:\n    import torch_npu  # noqa: F401\n    _ = torch.npu.device_count()\n    npu_available = torch.npu.is_available()\nexcept:\n    npu_available = False\n\nif args.cpu:\n    cpu_state = CPUState.CPU\n\ndef is_intel_xpu():\n    global cpu_state\n    global xpu_available\n    if cpu_state == CPUState.GPU:\n        if xpu_available:\n            return True\n    return False\n\ndef is_ascend_npu():\n    global npu_available\n    if npu_available:\n        return True\n    return False\n\ndef get_torch_device():\n    global directml_enabled\n    global cpu_state\n    if directml_enabled:\n        global directml_device\n        return directml_device\n    if cpu_state == CPUState.MPS:\n        return torch.device(\"mps\")\n    if cpu_state == CPUState.CPU:\n        return torch.device(\"cpu\")\n    else:\n        if is_intel_xpu():\n            return torch.device(\"xpu\", torch.xpu.current_device())\n        elif is_ascend_npu():\n            return torch.device(\"npu\", torch.npu.current_device())\n        else:\n            return torch.device(torch.cuda.current_device())\n\ndef get_total_memory(dev=None, torch_total_too=False):\n    global directml_enabled\n    if dev is None:\n        dev = get_torch_device()\n\n    if hasattr(dev, 'type') and (dev.type == 'cpu' or dev.type == 'mps'):\n        mem_total = psutil.virtual_memory().total\n        mem_total_torch = mem_total\n    else:\n        if directml_enabled:\n            mem_total = 1024 * 1024 * 1024 #TODO\n            mem_total_torch = mem_total\n        elif is_intel_xpu():\n            stats = torch.xpu.memory_stats(dev)\n            mem_reserved = stats['reserved_bytes.all.current']\n            mem_total_torch = mem_reserved\n            mem_total = torch.xpu.get_device_properties(dev).total_memory\n        elif is_ascend_npu():\n            stats = torch.npu.memory_stats(dev)\n            mem_reserved = stats['reserved_bytes.all.current']\n            _, mem_total_npu = torch.npu.mem_get_info(dev)\n            mem_total_torch = mem_reserved\n            mem_total = mem_total_npu\n        else:\n            stats = torch.cuda.memory_stats(dev)\n            mem_reserved = stats['reserved_bytes.all.current']\n            _, mem_total_cuda = torch.cuda.mem_get_info(dev)\n            mem_total_torch = mem_reserved\n            mem_total = mem_total_cuda\n\n    if torch_total_too:\n        return (mem_total, mem_total_torch)\n    else:\n        return mem_total\n\ntotal_vram = get_total_memory(get_torch_device()) / (1024 * 1024)\ntotal_ram = psutil.virtual_memory().total / (1024 * 1024)\nlogging.info(\"Total VRAM {:0.0f} MB, total RAM {:0.0f} MB\".format(total_vram, total_ram))\n\ntry:\n    logging.info(\"pytorch version: {}\".format(torch_version))\nexcept:\n    pass\n\ntry:\n    OOM_EXCEPTION = torch.cuda.OutOfMemoryError\nexcept:\n    OOM_EXCEPTION = Exception\n\nXFORMERS_VERSION = \"\"\nXFORMERS_ENABLED_VAE = True\nif args.disable_xformers:\n    XFORMERS_IS_AVAILABLE = False\nelse:\n    try:\n        import xformers\n        import xformers.ops\n        XFORMERS_IS_AVAILABLE = True\n        try:\n            XFORMERS_IS_AVAILABLE = xformers._has_cpp_library\n        except:\n            pass\n        try:\n            XFORMERS_VERSION = xformers.version.__version__\n            logging.info(\"xformers version: {}\".format(XFORMERS_VERSION))\n            if XFORMERS_VERSION.startswith(\"0.0.18\"):\n                logging.warning(\"\\nWARNING: This version of xformers has a major bug where you will get black images when generating high resolution images.\")\n                logging.warning(\"Please downgrade or upgrade xformers to a different version.\\n\")\n                XFORMERS_ENABLED_VAE = False\n        except:\n            pass\n    except:\n        XFORMERS_IS_AVAILABLE = False\n\ndef is_nvidia():\n    global cpu_state\n    if cpu_state == CPUState.GPU:\n        if torch.version.cuda:\n            return True\n    return False\n\ndef is_amd():\n    global cpu_state\n    if cpu_state == CPUState.GPU:\n        if torch.version.hip:\n            return True\n    return False\n\nMIN_WEIGHT_MEMORY_RATIO = 0.4\nif is_nvidia():\n\n--- structural neighbors ---\nsymbol:972e92f4d8b550e4:unet_dtype (symbol, comfy/model_management.py); symbol:9cdf9a1951343cac:LoadedModel (symbol, comfy/model_management.py); symbol:fd2f70f3dbd9b862:device_should_use_non_blocking (symbol, comfy/model_management.py); symbol:78cd6716a08c84c4:get_autocast_device (symbol, comfy/model_management.py); symbol:c5d357ce683d98aa:get_total_memory (symbol, comfy/model_management.py); symbol:78616726a691e827:mac_version (symbol, comfy/model_management.py); symbol:e68ba7d39c85c314:xformers_enabled_vae (symbol, comfy/model_management.py); symbol:274f6080322eb8f2:loaded_models (symbol, comfy/model_management.py); symbol:de87a4de39575b75:text_encoder_dtype (symbol, comfy/model_management.py); symbol:fee1aa3d01b6cde0:get_torch_device (symbol, comfy/model_management.py); symbol:73024e8d5ba62195:load_models_gpu (symbol, comfy/model_management.py); symbol:133eeff66746b1c2:is_nvidia (symbol, comfy/model_management.py)"
+      },
+      "search_hits": {
+        "is_directml_enabled()": [
+          {
+            "file_path": "comfy/model_management.py",
+            "line_number": 993,
+            "content": "def is_directml_enabled():",
+            "context_lines": [
+              "def is_directml_enabled():"
+            ]
+          },
+          {
+            "file_path": "comfy/ldm/flux/math.py",
+            "line_number": 25,
+            "content": "if comfy.model_management.is_device_mps(pos.device) or comfy.model_management.is_intel_xpu() or comfy.model_management.is_directml_enabled():",
+            "context_lines": [
+              "if comfy.model_management.is_device_mps(pos.device) or comfy.model_management.is_intel_xpu() or comfy.model_management.is_directml_enabled():"
+            ]
+          },
+          {
+            "file_path": "comfy/clip_model.py",
+            "line_number": 107,
+            "content": "if comfy.model_management.is_directml_enabled():",
+            "context_lines": [
+              "if comfy.model_management.is_directml_enabled():"
+            ]
+          }
+        ],
+        "torch.device(\"cpu\")": [],
+        "performance impact": [],
+        "existing performance optimizations": [],
+        "DirectML constraints": []
+      },
+      "warnings": []
+    },
+    "performance_1_request_1": {
+      "request_id": "performance_1_request_1",
+      "candidate_id": "performance_1",
+      "file_snippets": {
+        "comfy/clip_model.py": "import torch\nfrom comfy.ldm.modules.attention import optimized_attention_for_device\nimport comfy.ops\n\nclass CLIPAttention(torch.nn.Module):\n    def __init__(self, embed_dim, heads, dtype, device, operations):\n        super().__init__()\n\n        self.heads = heads\n        self.q_proj = operations.Linear(embed_dim, embed_dim, bias=True, dtype=dtype, device=device)\n        self.k_proj = operations.Linear(embed_dim, embed_dim, bias=True, dtype=dtype, device=device)\n        self.v_proj = operations.Linear(embed_dim, embed_dim, bias=True, dtype=dtype, device=device)\n\n        self.out_proj = operations.Linear(embed_dim, embed_dim, bias=True, dtype=dtype, device=device)\n\n    def forward(self, x, mask=None, optimized_attention=None):\n        q = self.q_proj(x)\n        k = self.k_proj(x)\n        v = self.v_proj(x)\n\n        out = optimized_attention(q, k, v, self.heads, mask)\n        return self.out_proj(out)\n\nACTIVATIONS = {\"quick_gelu\": lambda a: a * torch.sigmoid(1.702 * a),\n               \"gelu\": torch.nn.functional.gelu,\n               \"gelu_pytorch_tanh\": lambda a: torch.nn.functional.gelu(a, approximate=\"tanh\"),\n}\n\nclass CLIPMLP(torch.nn.Module):\n    def __init__(self, embed_dim, intermediate_size, activation, dtype, device, operations):\n        super().__init__()\n        self.fc1 = operations.Linear(embed_dim, intermediate_size, bias=True, dtype=dtype, device=device)\n        self.activation = ACTIVATIONS[activation]\n        self.fc2 = operations.Linear(intermediate_size, embed_dim, bias=True, dtype=dtype, device=device)\n\n    def forward(self, x):\n        x = self.fc1(x)\n        x = self.activation(x)\n        x = self.fc2(x)\n        return x\n\nclass CLIPLayer(torch.nn.Module):\n    def __init__(self, embed_dim, heads, intermediate_size, intermediate_activation, dtype, device, operations):\n        super().__init__()\n        self.layer_norm1 = operations.LayerNorm(embed_dim, dtype=dtype, device=device)\n        self.self_attn = CLIPAttention(embed_dim, heads, dtype, device, operations)\n        self.layer_norm2 = operations.LayerNorm(embed_dim, dtype=dtype, device=device)\n        self.mlp = CLIPMLP(embed_dim, intermediate_size, intermediate_activation, dtype, device, operations)\n\n    def forward(self, x, mask=None, optimized_attention=None):\n        x += self.self_attn(self.layer_norm1(x), mask, optimized_attention)\n        x += self.mlp(self.layer_norm2(x))\n        return x\n\n\nclass CLIPEncoder(torch.nn.Module):\n    def __init__(self, num_layers, embed_dim, heads, intermediate_size, intermediate_activation, dtype, device, operations):\n        super().__init__()\n        self.layers = torch.nn.ModuleList([CLIPLayer(embed_dim, heads, intermediate_size, intermediate_activation, dtype, device, operations) for i in range(num_layers)])\n\n    def forward(self, x, mask=None, intermediate_output=None):\n        optimized_attention = optimized_attention_for_device(x.device, mask=mask is not None, small_input=True)\n\n        if intermediate_output is not None:\n            if intermediate_output < 0:\n                intermediate_output = len(self.layers) + intermediate_output\n\n        intermediate = None\n        for i, l in enumerate(self.layers):\n            x = l(x, mask, optimized_attention)\n            if i == intermediate_output:\n                intermediate = x.clone()\n        return x, intermediate\n\nclass CLIPEmbeddings(torch.nn.Module):\n    def __init__(self, embed_dim, vocab_size=49408, num_positions=77, dtype=None, device=None, operations=None):\n        super().__init__()\n        self.token_embedding = operations.Embedding(vocab_size, embed_dim, dtype=dtype, device=device)\n        self.position_embedding = operations.Embedding(num_positions, embed_dim, dtype=dtype, device=device)\n\n    def forward(self, input_tokens, dtype=torch.float32):\n        return self.token_embedding(input_tokens, out_dtype=dtype) + comfy.ops.cast_to(self.position_embedding.weight, dtype=dtype, device=input_tokens.device)\n\n\nclass CLIPTextModel_(torch.nn.Module):\n    def __init__(self, config_dict, dtype, device, operations):\n        num_layers = config_dict[\"num_hidden_layers\"]\n        embed_dim = config_dict[\"hidden_size\"]\n        heads = config_dict[\"num_attention_heads\"]\n        intermediate_size = config_dict[\"intermediate_size\"]\n        intermediate_activation = config_dict[\"hidden_act\"]\n        num_positions = config_dict[\"max_position_embeddings\"]\n        self.eos_token_id = config_dict[\"eos_token_id\"]\n\n        super().__init__()\n        self.embeddings = CLIPEmbeddings(embed_dim, num_positions=num_positions, dtype=dtype, device=device, operations=operations)\n        self.encoder = CLIPEncoder(num_layers, embed_dim, heads, intermediate_size, intermediate_activation, dtype, device, operations)\n        self.final_layer_norm = operations.LayerNorm(embed_dim, dtype=dtype, device=device)\n\n    def forward(self, input_tokens, attention_mask=None, intermediate_output=None, final_layer_norm_intermediate=True, dtype=torch.float32):\n        x = self.embeddings(input_tokens, dtype=dtype)\n        mask = None\n        if attention_mask is not None:\n            mask = 1.0 - attention_mask.to(x.dtype).reshape((attention_mask.shape[0], 1, -1, attention_mask.shape[-1])).expand(attention_mask.shape[0], 1, attention_mask.shape[-1], attention_mask.shape[-1])\n            mask = mask.masked_fill(mask.to(torch.bool), -torch.finfo(x.dtype).max)\n\n        if comfy.model_management.is_directml_enabled():\n            causal_mask = torch.full((x.shape[1], x.shape[1]), -torch.finfo(x.dtype).max, dtype=x.dtype, device=x.device).triu_(1)\n        else:\n            causal_mask = torch.empty(x.shape[1], x.shape[1], dtype=x.dtype, device=x.device).fill_(float(\"-inf\")).triu_(1)\n\n        if mask is not None:\n            mask += causal_mask\n        else:\n            mask = causal_mask\n\n        x, i = self.encoder(x, mask=mask, intermediate_output=intermediate_output)\n        x = self.final_layer_norm(x)\n        if i is not None and final_layer_norm_intermediate:\n            i = self.final_layer_norm(i)\n\n        pooled_output = x[torch.arange(x.shape[0], device=x.device), (torch.round(input_tokens).to(dtype=torch.int, device=x.device) == self.eos_token_id).int().argmax(dim=-1),]\n        return x, i, pooled_output\n\nclass CLIPTextModel(torch.nn.Module):\n    def __init__(self, config_dict, dtype, device, operations):\n        super().__init__()\n        self.num_layers = config_dict[\"num_hidden_layers\"]\n        self.text_model = CLIPTextModel_(config_dict, dtype, device, operations)\n        embed_dim = config_dict[\"hidden_size\"]\n        self.text_projection = operations.Linear(embed_dim, embed_dim, bias=False, dtype=dtype, device=device)\n        self.dtype = dtype\n\n    def get_input_embeddings(self):\n        return self.text_model.embeddings.token_embedding\n\n    def set_input_embeddings(self, embeddings):\n        self.text_model.embeddings.token_embedding = embeddings\n\n    def forward(self, *args, **kwargs):\n        x = self.text_model(*args, **kwargs)\n        out = self.text_projection(x[2])\n        return (x[0], x[1], out, x[2])\n\n\nclass CLIPVisionEmbeddings(torch.nn.Module):\n    def __init__(self, embed_dim, num_channels=3, patch_size=14, image_size=224, model_type=\"\", dtype=None, device=None, operations=None):\n        super().__init__()\n\n        num_patches = (image_size // patch_size) ** 2\n        if model_type == \"siglip_vision_model\":\n            self.class_embedding = None\n            patch_bias = True\n        else:\n            num_patches = num_patches + 1\n            self.class_embedding = torch.nn.Parameter(torch.empty(embed_dim, dtype=dtype, device=device))\n            patch_bias = False\n\n        self.patch_embedding = operations.Conv2d(\n            in_channels=num_channels,\n            out_channels=embed_dim,\n            kernel_size=patch_size,\n            stride=patch_size,\n            bias=patch_bias,\n            dtype=dtype,\n            device=device\n        )\n\n        self.position_embedding = operations.Embedding(\n--- structural neighbors ---\nsymbol:73b0a23779bc2cb4:CLIPLayer (symbol, comfy/clip_model.py); symbol:bb0f47472e866035:CLIPMLP (symbol, comfy/clip_model.py); symbol:bbd5bed081e65222:CLIPVisionModelProjection (symbol, comfy/clip_model.py); symbol:b801499d4cd3c513:CLIPEmbeddings (symbol, comfy/clip_model.py); symbol:4d217ccbabfaef4b:CLIPAttention (symbol, comfy/clip_model.py); symbol:fef6ed063e126cbe:CLIPEncoder (symbol, comfy/clip_model.py); symbol:3cff9b965dea6a5c:CLIPTextModel (symbol, comfy/clip_model.py); symbol:e6e78e05499728bb:CLIPVisionEmbeddings (symbol, comfy/clip_model.py); symbol:d07a70a872cc78c8:CLIPVision (symbol, comfy/clip_model.py); symbol:3c7dc9f8540fa5aa:CLIPTextModel_ (symbol, comfy/clip_model.py)"
+      },
+      "search_hits": {
+        "torch.full": [
+          {
+            "file_path": "nodes.py",
+            "line_number": 1865,
+            "content": "r = torch.full([batch_size, height, width, 1], ((color >> 16) & 0xFF) / 0xFF)",
+            "context_lines": [
+              "r = torch.full([batch_size, height, width, 1], ((color >> 16) & 0xFF) / 0xFF)"
+            ]
+          },
+          {
+            "file_path": "nodes.py",
+            "line_number": 1866,
+            "content": "g = torch.full([batch_size, height, width, 1], ((color >> 8) & 0xFF) / 0xFF)",
+            "context_lines": [
+              "g = torch.full([batch_size, height, width, 1], ((color >> 8) & 0xFF) / 0xFF)"
+            ]
+          },
+          {
+            "file_path": "nodes.py",
+            "line_number": 1867,
+            "content": "b = torch.full([batch_size, height, width, 1], ((color) & 0xFF) / 0xFF)",
+            "context_lines": [
+              "b = torch.full([batch_size, height, width, 1], ((color) & 0xFF) / 0xFF)"
+            ]
+          },
+          {
+            "file_path": "comfy/text_encoders/t5.py",
+            "line_number": 130,
+            "content": "relative_position_if_large, torch.full_like(relative_position_if_large, num_buckets - 1)",
+            "context_lines": [
+              "relative_position_if_large, torch.full_like(relative_position_if_large, num_buckets - 1)"
+            ]
+          },
+          {
+            "file_path": "comfy/clip_model.py",
+            "line_number": 108,
+            "content": "causal_mask = torch.full((x.shape[1], x.shape[1]), -torch.finfo(x.dtype).max, dtype=x.dtype, device=x.device).triu_(1)",
+            "context_lines": [
+              "causal_mask = torch.full((x.shape[1], x.shape[1]), -torch.finfo(x.dtype).max, dtype=x.dtype, device=x.device).triu_(1)"
+            ]
+          },
+          {
+            "file_path": "comfy_extras/nodes_mask.py",
+            "line_number": 171,
+            "content": "out = torch.full((1, height, width), value, dtype=torch.float32, device=\"cpu\")",
+            "context_lines": [
+              "out = torch.full((1, height, width), value, dtype=torch.float32, device=\"cpu\")"
+            ]
+          },
+          {
+            "file_path": "comfy_extras/nodes_stable3d.py",
+            "line_number": 16,
+            "content": "90 - torch.full_like(elevation, 0)",
+            "context_lines": [
+              "90 - torch.full_like(elevation, 0)"
+            ]
+          }
+        ],
+        "torch.empty.fill_": [],
+        "performance impact": [],
+        "memory usage": [
+          {
+            "file_path": "comfy/ldm/modules/diffusionmodules/openaimodel.py",
+            "line_number": 389,
+            "content": ":param use_checkpoint: use gradient checkpointing to reduce memory usage.",
+            "context_lines": [
+              ":param use_checkpoint: use gradient checkpointing to reduce memory usage."
+            ]
+          }
+        ],
+        "speed": [
+          {
+            "file_path": "README.md",
+            "line_number": 259,
+            "content": "You can also try setting this env variable `PYTORCH_TUNABLEOP_ENABLED=1` which might speed things up at the cost of a very slow initial run.",
+            "context_lines": [
+              "You can also try setting this env variable `PYTORCH_TUNABLEOP_ENABLED=1` which might speed things up at the cost of a very slow initial run."
+            ]
+          },
+          {
+            "file_path": "nodes.py",
+            "line_number": 1523,
+            "content": "\"sampler_name\": (comfy.samplers.KSampler.SAMPLERS, {\"tooltip\": \"The algorithm used when sampling, this can affect the quality, speed, and style of the generated output.\"}),",
+            "context_lines": [
+              "\"sampler_name\": (comfy.samplers.KSampler.SAMPLERS, {\"tooltip\": \"The algorithm used when sampling, this can affect the quality, speed, and style of the generated output.\"}),"
+            ]
+          },
+          {
+            "file_path": "comfy/hooks.py",
+            "line_number": 31,
+            "content": "Priority of hook memory optimization vs. speed, mostly related to WeightHooks.",
+            "context_lines": [
+              "Priority of hook memory optimization vs. speed, mostly related to WeightHooks."
+            ]
+          },
+          {
+            "file_path": "comfy/hooks.py",
+            "line_number": 37,
+            "content": "MaxSpeed = \"maxspeed\"",
+            "context_lines": [
+              "MaxSpeed = \"maxspeed\""
+            ]
+          },
+          {
+            "file_path": "comfy/sd1_tokenizer/vocab.json",
+            "line_number": 39156,
+            "content": "\"speed\": 6860,",
+            "context_lines": [
+              "\"speed\": 6860,"
+            ]
+          },
+          {
+            "file_path": "comfy/sd1_tokenizer/vocab.json",
+            "line_number": 39157,
+            "content": "\"speed</w>\": 4163,",
+            "context_lines": [
+              "\"speed</w>\": 4163,"
+            ]
+          },
+          {
+            "file_path": "comfy/sd1_tokenizer/vocab.json",
+            "line_number": 39158,
+            "content": "\"speeding</w>\": 27264,",
+            "context_lines": [
+              "\"speeding</w>\": 27264,"
+            ]
+          },
+          {
+            "file_path": "comfy/sd1_tokenizer/vocab.json",
+            "line_number": 39159,
+            "content": "\"speeds</w>\": 22017,",
+            "context_lines": [
+              "\"speeds</w>\": 22017,"
+            ]
+          },
+          {
+            "file_path": "comfy/sd1_tokenizer/vocab.json",
+            "line_number": 39160,
+            "content": "\"speedway</w>\": 11480,",
+            "context_lines": [
+              "\"speedway</w>\": 11480,"
+            ]
+          },
+          {
+            "file_path": "comfy/sd1_tokenizer/vocab.json",
+            "line_number": 39161,
+            "content": "\"speedy</w>\": 21603,",
+            "context_lines": [
+              "\"speedy</w>\": 21603,"
+            ]
+          },
+          {
+            "file_path": "comfy/sd1_tokenizer/merges.txt",
+            "line_number": 10970,
+            "content": "speed way</w>",
+            "context_lines": [
+              "speed way</w>"
+            ]
+          },
+          {
+            "file_path": "web/assets/GraphView-D9ZzDQZV.js",
+            "line_number": 1825,
+            "content": "name: \"Canvas zoom speed\",",
+            "context_lines": [
+              "name: \"Canvas zoom speed\","
+            ]
+          },
+          {
+            "file_path": "web/assets/GraphView-D9ZzDQZV.js",
+            "line_number": 2560,
+            "content": "canvasStore.canvas.zoom_speed = zoomSpeed;",
+            "context_lines": [
+              "canvasStore.canvas.zoom_speed = zoomSpeed;"
+            ]
+          },
+          {
+            "file_path": "web/assets/MaintenanceView-Df7CHNWW.js",
+            "line_number": 19744,
+            "content": "return \"\\n.p-speeddial {\\n    position: static;\\n    display: flex;\\n    gap: \".concat(dt(\"speeddial.gap\"), \";\\n}\\n\\n.p-speeddial-button {\\n    z-index: 1;\\n}\\n\\n.p-speeddial-button.p-speeddial-rotate {\\n    transition: transform 250ms cubic-bezier(0.4, 0, 0.2, 1) 0ms, background \").concat(dt(\"speeddial.transition.duration\"), \", color \").concat(dt(\"speeddial.transition.duration\"), \", border-color \").concat(dt(\"speeddial.transition.duration\"), \",\\n    box-shadow \").concat(dt(\"speeddial.transition.duration\"), \", outline-color \").concat(dt(\"speeddial.transition.duration\"), \";\\n    will-change: transform;\\n}\\n\\n.p-speeddial-list {\\n    margin: 0;\\n    padding: 0;\\n    list-style: none;\\n    display: flex;\\n    align-items: center;\\n    justify-content: center;\\n    transition: inset-block-start 0s linear \").concat(dt(\"speeddial.transition.duration\"), \";\\n    pointer-events: none;\\n    outline: 0 none;\\n    z-index: 2;\\n    gap: \").concat(dt(\"speeddial.gap\"), \";\\n}\\n\\n.p-speeddial-item {\\n    transform: scale(0);\\n    opacity: 0;\\n    transition: transform 200ms cubic-bezier(0.4, 0, 0.2, 1) 0ms, opacity 0.8s;\\n    will-change: transform;\\n}\\n\\n.p-speeddial-circle .p-speeddial-item,\\n.p-speeddial-semi-circle .p-speeddial-item,\\n.p-speeddial-quarter-circle .p-speeddial-item {\\n    position: absolute;\\n}\\n\\n.p-speeddial-mask {\\n    position: absolute;\\n    inset-inline-start: 0;\\n    inset-block-start: 0;\\n    width: 100%;\\n    height: 100%;\\n    opacity: 0;\\n    background: \").concat(dt(\"mask.background\"), \";\\n    border-radius: 6px;\\n    transition: opacity 150ms;\\n}\\n\\n.p-speeddial-mask-visible {\\n    pointer-events: none;\\n    opacity: 1;\\n    transition: opacity 150ms;\\n}\\n\\n.p-speeddial-open .p-speeddial-list {\\n    pointer-events: auto;\\n}\\n\\n.p-speeddial-open .p-speeddial-item {\\n    transform: scale(1);\\n    opacity: 1;\\n}\\n\\n.p-speeddial-open .p-speeddial-rotate {\\n    transform: rotate(45deg);\\n}\\n\");",
+            "context_lines": [
+              "return \"\\n.p-speeddial {\\n    position: static;\\n    display: flex;\\n    gap: \".concat(dt(\"speeddial.gap\"), \";\\n}\\n\\n.p-speeddial-button {\\n    z-index: 1;\\n}\\n\\n.p-speeddial-button.p-speeddial-rotate {\\n    transition: transform 250ms cubic-bezier(0.4, 0, 0.2, 1) 0ms, background \").concat(dt(\"speeddial.transition.duration\"), \", color \").concat(dt(\"speeddial.transition.duration\"), \", border-color \").concat(dt(\"speeddial.transition.duration\"), \",\\n    box-shadow \").concat(dt(\"speeddial.transition.duration\"), \", outline-color \").concat(dt(\"speeddial.transition.duration\"), \";\\n    will-change: transform;\\n}\\n\\n.p-speeddial-list {\\n    margin: 0;\\n    padding: 0;\\n    list-style: none;\\n    display: flex;\\n    align-items: center;\\n    justify-content: center;\\n    transition: inset-block-start 0s linear \").concat(dt(\"speeddial.transition.duration\"), \";\\n    pointer-events: none;\\n    outline: 0 none;\\n    z-index: 2;\\n    gap: \").concat(dt(\"speeddial.gap\"), \";\\n}\\n\\n.p-speeddial-item {\\n    transform: scale(0);\\n    opacity: 0;\\n    transition: transform 200ms cubic-bezier(0.4, 0, 0.2, 1) 0ms, opacity 0.8s;\\n    will-change: transform;\\n}\\n\\n.p-speeddial-circle .p-speeddial-item,\\n.p-speeddial-semi-circle .p-speeddial-item,\\n.p-speeddial-quarter-circle .p-speeddial-item {\\n    position: absolute;\\n}\\n\\n.p-speeddial-mask {\\n    position: absolute;\\n    inset-inline-start: 0;\\n    inset-block-start: 0;\\n    width: 100%;\\n    height: 100%;\\n    opacity: 0;\\n    background: \").concat(dt(\"mask.background\"), \";\\n    border-radius: 6px;\\n    transition: opacity 150ms;\\n}\\n\\n.p-speeddial-mask-visible {\\n    pointer-events: none;\\n    opacity: 1;\\n    transition: opacity 150ms;\\n}\\n\\n.p-speeddial-open .p-speeddial-list {\\n    pointer-events: auto;\\n}\\n\\n.p-speeddial-open .p-speeddial-item {\\n    transform: scale(1);\\n    opacity: 1;\\n}\\n\\n.p-speeddial-open .p-speeddial-rotate {\\n    transform: rotate(45deg);\\n}\\n\");"
+            ]
+          },
+          {
+            "file_path": "web/assets/MaintenanceView-Df7CHNWW.js",
+            "line_number": 19765,
+            "content": "return [\"p-speeddial p-component p-speeddial-\".concat(props.type), _defineProperty$8(_defineProperty$8(_defineProperty$8({}, \"p-speeddial-direction-\".concat(props.direction), props.type !== \"circle\"), \"p-speeddial-open\", instance.d_visible), \"p-disabled\", props.disabled)];",
+            "context_lines": [
+              "return [\"p-speeddial p-component p-speeddial-\".concat(props.type), _defineProperty$8(_defineProperty$8(_defineProperty$8({}, \"p-speeddial-direction-\".concat(props.direction), props.type !== \"circle\"), \"p-speeddial-open\", instance.d_visible), \"p-disabled\", props.disabled)];"
+            ]
+          }
+        ]
+      },
+      "warnings": []
+    },
+    "performance_1_request_2": {
+      "request_id": "performance_1_request_2",
+      "candidate_id": "performance_1",
+      "file_snippets": {
+        "comfy/ldm/flux/math.py": "import torch\nfrom einops import rearrange\nfrom torch import Tensor\n\nfrom comfy.ldm.modules.attention import optimized_attention\nimport comfy.model_management\n\n\ndef attention(q: Tensor, k: Tensor, v: Tensor, pe: Tensor, mask=None) -> Tensor:\n    q_shape = q.shape\n    k_shape = k.shape\n\n    q = q.float().reshape(*q.shape[:-1], -1, 1, 2)\n    k = k.float().reshape(*k.shape[:-1], -1, 1, 2)\n    q = (pe[..., 0] * q[..., 0] + pe[..., 1] * q[..., 1]).reshape(*q_shape).type_as(v)\n    k = (pe[..., 0] * k[..., 0] + pe[..., 1] * k[..., 1]).reshape(*k_shape).type_as(v)\n\n    heads = q.shape[1]\n    x = optimized_attention(q, k, v, heads, skip_reshape=True, mask=mask)\n    return x\n\n\ndef rope(pos: Tensor, dim: int, theta: int) -> Tensor:\n    assert dim % 2 == 0\n    if comfy.model_management.is_device_mps(pos.device) or comfy.model_management.is_intel_xpu() or comfy.model_management.is_directml_enabled():\n        device = torch.device(\"cpu\")\n    else:\n        device = pos.device\n\n    scale = torch.linspace(0, (dim - 2) / dim, steps=dim//2, dtype=torch.float64, device=device)\n    omega = 1.0 / (theta**scale)\n    out = torch.einsum(\"...n,d->...nd\", pos.to(dtype=torch.float32, device=device), omega)\n    out = torch.stack([torch.cos(out), -torch.sin(out), torch.sin(out), torch.cos(out)], dim=-1)\n    out = rearrange(out, \"b n d (i j) -> b n d i j\", i=2, j=2)\n    return out.to(dtype=torch.float32, device=pos.device)\n\n\ndef apply_rope(xq: Tensor, xk: Tensor, freqs_cis: Tensor):\n    xq_ = xq.float().reshape(*xq.shape[:-1], -1, 1, 2)\n    xk_ = xk.float().reshape(*xk.shape[:-1], -1, 1, 2)\n    xq_out = freqs_cis[..., 0] * xq_[..., 0] + freqs_cis[..., 1] * xq_[..., 1]\n    xk_out = freqs_cis[..., 0] * xk_[..., 0] + freqs_cis[..., 1] * xk_[..., 1]\n    return xq_out.reshape(*xq.shape).type_as(xq), xk_out.reshape(*xk.shape).type_as(xk)\n\n\n--- structural neighbors ---\nsymbol:55bf760fefa95a34:attention (symbol, comfy/ldm/flux/math.py); symbol:1b27528199311a35:apply_rope (symbol, comfy/ldm/flux/math.py); symbol:90299f88051612b8:rope (symbol, comfy/ldm/flux/math.py)"
+      },
+      "search_hits": {
+        "is_directml_enabled": [
+          {
+            "file_path": "comfy/ldm/flux/math.py",
+            "line_number": 25,
+            "content": "if comfy.model_management.is_device_mps(pos.device) or comfy.model_management.is_intel_xpu() or comfy.model_management.is_directml_enabled():",
+            "context_lines": [
+              "if comfy.model_management.is_device_mps(pos.device) or comfy.model_management.is_intel_xpu() or comfy.model_management.is_directml_enabled():"
+            ]
+          },
+          {
+            "file_path": "comfy/model_management.py",
+            "line_number": 993,
+            "content": "def is_directml_enabled():",
+            "context_lines": [
+              "def is_directml_enabled():"
+            ]
+          },
+          {
+            "file_path": "comfy/clip_model.py",
+            "line_number": 107,
+            "content": "if comfy.model_management.is_directml_enabled():",
+            "context_lines": [
+              "if comfy.model_management.is_directml_enabled():"
+            ]
+          }
+        ],
+        "performance impact": [],
+        "memory usage": [
+          {
+            "file_path": "comfy/ldm/modules/diffusionmodules/openaimodel.py",
+            "line_number": 389,
+            "content": ":param use_checkpoint: use gradient checkpointing to reduce memory usage.",
+            "context_lines": [
+              ":param use_checkpoint: use gradient checkpointing to reduce memory usage."
+            ]
+          }
+        ],
+        "speed": [
+          {
+            "file_path": "nodes.py",
+            "line_number": 1523,
+            "content": "\"sampler_name\": (comfy.samplers.KSampler.SAMPLERS, {\"tooltip\": \"The algorithm used when sampling, this can affect the quality, speed, and style of the generated output.\"}),",
+            "context_lines": [
+              "\"sampler_name\": (comfy.samplers.KSampler.SAMPLERS, {\"tooltip\": \"The algorithm used when sampling, this can affect the quality, speed, and style of the generated output.\"}),"
+            ]
+          },
+          {
+            "file_path": "comfy/hooks.py",
+            "line_number": 31,
+            "content": "Priority of hook memory optimization vs. speed, mostly related to WeightHooks.",
+            "context_lines": [
+              "Priority of hook memory optimization vs. speed, mostly related to WeightHooks."
+            ]
+          },
+          {
+            "file_path": "comfy/hooks.py",
+            "line_number": 37,
+            "content": "MaxSpeed = \"maxspeed\"",
+            "context_lines": [
+              "MaxSpeed = \"maxspeed\""
+            ]
+          },
+          {
+            "file_path": "comfy/sd1_tokenizer/merges.txt",
+            "line_number": 10970,
+            "content": "speed way</w>",
+            "context_lines": [
+              "speed way</w>"
+            ]
+          },
+          {
+            "file_path": "web/assets/GraphView-D9ZzDQZV.js",
+            "line_number": 1825,
+            "content": "name: \"Canvas zoom speed\",",
+            "context_lines": [
+              "name: \"Canvas zoom speed\","
+            ]
+          },
+          {
+            "file_path": "web/assets/GraphView-D9ZzDQZV.js",
+            "line_number": 2560,
+            "content": "canvasStore.canvas.zoom_speed = zoomSpeed;",
+            "context_lines": [
+              "canvasStore.canvas.zoom_speed = zoomSpeed;"
+            ]
+          },
+          {
+            "file_path": "comfy/sd1_tokenizer/vocab.json",
+            "line_number": 39156,
+            "content": "\"speed\": 6860,",
+            "context_lines": [
+              "\"speed\": 6860,"
+            ]
+          },
+          {
+            "file_path": "comfy/sd1_tokenizer/vocab.json",
+            "line_number": 39157,
+            "content": "\"speed</w>\": 4163,",
+            "context_lines": [
+              "\"speed</w>\": 4163,"
+            ]
+          },
+          {
+            "file_path": "comfy/sd1_tokenizer/vocab.json",
+            "line_number": 39158,
+            "content": "\"speeding</w>\": 27264,",
+            "context_lines": [
+              "\"speeding</w>\": 27264,"
+            ]
+          },
+          {
+            "file_path": "comfy/sd1_tokenizer/vocab.json",
+            "line_number": 39159,
+            "content": "\"speeds</w>\": 22017,",
+            "context_lines": [
+              "\"speeds</w>\": 22017,"
+            ]
+          },
+          {
+            "file_path": "comfy/sd1_tokenizer/vocab.json",
+            "line_number": 39160,
+            "content": "\"speedway</w>\": 11480,",
+            "context_lines": [
+              "\"speedway</w>\": 11480,"
+            ]
+          },
+          {
+            "file_path": "comfy/sd1_tokenizer/vocab.json",
+            "line_number": 39161,
+            "content": "\"speedy</w>\": 21603,",
+            "context_lines": [
+              "\"speedy</w>\": 21603,"
+            ]
+          },
+          {
+            "file_path": "web/assets/MaintenanceView-Df7CHNWW.js",
+            "line_number": 19744,
+            "content": "return \"\\n.p-speeddial {\\n    position: static;\\n    display: flex;\\n    gap: \".concat(dt(\"speeddial.gap\"), \";\\n}\\n\\n.p-speeddial-button {\\n    z-index: 1;\\n}\\n\\n.p-speeddial-button.p-speeddial-rotate {\\n    transition: transform 250ms cubic-bezier(0.4, 0, 0.2, 1) 0ms, background \").concat(dt(\"speeddial.transition.duration\"), \", color \").concat(dt(\"speeddial.transition.duration\"), \", border-color \").concat(dt(\"speeddial.transition.duration\"), \",\\n    box-shadow \").concat(dt(\"speeddial.transition.duration\"), \", outline-color \").concat(dt(\"speeddial.transition.duration\"), \";\\n    will-change: transform;\\n}\\n\\n.p-speeddial-list {\\n    margin: 0;\\n    padding: 0;\\n    list-style: none;\\n    display: flex;\\n    align-items: center;\\n    justify-content: center;\\n    transition: inset-block-start 0s linear \").concat(dt(\"speeddial.transition.duration\"), \";\\n    pointer-events: none;\\n    outline: 0 none;\\n    z-index: 2;\\n    gap: \").concat(dt(\"speeddial.gap\"), \";\\n}\\n\\n.p-speeddial-item {\\n    transform: scale(0);\\n    opacity: 0;\\n    transition: transform 200ms cubic-bezier(0.4, 0, 0.2, 1) 0ms, opacity 0.8s;\\n    will-change: transform;\\n}\\n\\n.p-speeddial-circle .p-speeddial-item,\\n.p-speeddial-semi-circle .p-speeddial-item,\\n.p-speeddial-quarter-circle .p-speeddial-item {\\n    position: absolute;\\n}\\n\\n.p-speeddial-mask {\\n    position: absolute;\\n    inset-inline-start: 0;\\n    inset-block-start: 0;\\n    width: 100%;\\n    height: 100%;\\n    opacity: 0;\\n    background: \").concat(dt(\"mask.background\"), \";\\n    border-radius: 6px;\\n    transition: opacity 150ms;\\n}\\n\\n.p-speeddial-mask-visible {\\n    pointer-events: none;\\n    opacity: 1;\\n    transition: opacity 150ms;\\n}\\n\\n.p-speeddial-open .p-speeddial-list {\\n    pointer-events: auto;\\n}\\n\\n.p-speeddial-open .p-speeddial-item {\\n    transform: scale(1);\\n    opacity: 1;\\n}\\n\\n.p-speeddial-open .p-speeddial-rotate {\\n    transform: rotate(45deg);\\n}\\n\");",
+            "context_lines": [
+              "return \"\\n.p-speeddial {\\n    position: static;\\n    display: flex;\\n    gap: \".concat(dt(\"speeddial.gap\"), \";\\n}\\n\\n.p-speeddial-button {\\n    z-index: 1;\\n}\\n\\n.p-speeddial-button.p-speeddial-rotate {\\n    transition: transform 250ms cubic-bezier(0.4, 0, 0.2, 1) 0ms, background \").concat(dt(\"speeddial.transition.duration\"), \", color \").concat(dt(\"speeddial.transition.duration\"), \", border-color \").concat(dt(\"speeddial.transition.duration\"), \",\\n    box-shadow \").concat(dt(\"speeddial.transition.duration\"), \", outline-color \").concat(dt(\"speeddial.transition.duration\"), \";\\n    will-change: transform;\\n}\\n\\n.p-speeddial-list {\\n    margin: 0;\\n    padding: 0;\\n    list-style: none;\\n    display: flex;\\n    align-items: center;\\n    justify-content: center;\\n    transition: inset-block-start 0s linear \").concat(dt(\"speeddial.transition.duration\"), \";\\n    pointer-events: none;\\n    outline: 0 none;\\n    z-index: 2;\\n    gap: \").concat(dt(\"speeddial.gap\"), \";\\n}\\n\\n.p-speeddial-item {\\n    transform: scale(0);\\n    opacity: 0;\\n    transition: transform 200ms cubic-bezier(0.4, 0, 0.2, 1) 0ms, opacity 0.8s;\\n    will-change: transform;\\n}\\n\\n.p-speeddial-circle .p-speeddial-item,\\n.p-speeddial-semi-circle .p-speeddial-item,\\n.p-speeddial-quarter-circle .p-speeddial-item {\\n    position: absolute;\\n}\\n\\n.p-speeddial-mask {\\n    position: absolute;\\n    inset-inline-start: 0;\\n    inset-block-start: 0;\\n    width: 100%;\\n    height: 100%;\\n    opacity: 0;\\n    background: \").concat(dt(\"mask.background\"), \";\\n    border-radius: 6px;\\n    transition: opacity 150ms;\\n}\\n\\n.p-speeddial-mask-visible {\\n    pointer-events: none;\\n    opacity: 1;\\n    transition: opacity 150ms;\\n}\\n\\n.p-speeddial-open .p-speeddial-list {\\n    pointer-events: auto;\\n}\\n\\n.p-speeddial-open .p-speeddial-item {\\n    transform: scale(1);\\n    opacity: 1;\\n}\\n\\n.p-speeddial-open .p-speeddial-rotate {\\n    transform: rotate(45deg);\\n}\\n\");"
+            ]
+          },
+          {
+            "file_path": "web/assets/MaintenanceView-Df7CHNWW.js",
+            "line_number": 19765,
+            "content": "return [\"p-speeddial p-component p-speeddial-\".concat(props.type), _defineProperty$8(_defineProperty$8(_defineProperty$8({}, \"p-speeddial-direction-\".concat(props.direction), props.type !== \"circle\"), \"p-speeddial-open\", instance.d_visible), \"p-disabled\", props.disabled)];",
+            "context_lines": [
+              "return [\"p-speeddial p-component p-speeddial-\".concat(props.type), _defineProperty$8(_defineProperty$8(_defineProperty$8({}, \"p-speeddial-direction-\".concat(props.direction), props.type !== \"circle\"), \"p-speeddial-open\", instance.d_visible), \"p-disabled\", props.disabled)];"
+            ]
+          },
+          {
+            "file_path": "web/assets/MaintenanceView-Df7CHNWW.js",
+            "line_number": 19769,
+            "content": "return [\"p-speeddial-button\", {",
+            "context_lines": [
+              "return [\"p-speeddial-button\", {"
+            ]
+          }
+        ]
+      },
+      "warnings": []
+    },
+    "security_1_request_1": {
+      "request_id": "security_1_request_1",
+      "candidate_id": "security_1_1",
+      "file_snippets": {
+        "comfy/clip_model.py": "import torch\nfrom comfy.ldm.modules.attention import optimized_attention_for_device\nimport comfy.ops\n\nclass CLIPAttention(torch.nn.Module):\n    def __init__(self, embed_dim, heads, dtype, device, operations):\n        super().__init__()\n\n        self.heads = heads\n        self.q_proj = operations.Linear(embed_dim, embed_dim, bias=True, dtype=dtype, device=device)\n        self.k_proj = operations.Linear(embed_dim, embed_dim, bias=True, dtype=dtype, device=device)\n        self.v_proj = operations.Linear(embed_dim, embed_dim, bias=True, dtype=dtype, device=device)\n\n        self.out_proj = operations.Linear(embed_dim, embed_dim, bias=True, dtype=dtype, device=device)\n\n    def forward(self, x, mask=None, optimized_attention=None):\n        q = self.q_proj(x)\n        k = self.k_proj(x)\n        v = self.v_proj(x)\n\n        out = optimized_attention(q, k, v, self.heads, mask)\n        return self.out_proj(out)\n\nACTIVATIONS = {\"quick_gelu\": lambda a: a * torch.sigmoid(1.702 * a),\n               \"gelu\": torch.nn.functional.gelu,\n               \"gelu_pytorch_tanh\": lambda a: torch.nn.functional.gelu(a, approximate=\"tanh\"),\n}\n\nclass CLIPMLP(torch.nn.Module):\n    def __init__(self, embed_dim, intermediate_size, activation, dtype, device, operations):\n        super().__init__()\n        self.fc1 = operations.Linear(embed_dim, intermediate_size, bias=True, dtype=dtype, device=device)\n        self.activation = ACTIVATIONS[activation]\n        self.fc2 = operations.Linear(intermediate_size, embed_dim, bias=True, dtype=dtype, device=device)\n\n    def forward(self, x):\n        x = self.fc1(x)\n        x = self.activation(x)\n        x = self.fc2(x)\n        return x\n\nclass CLIPLayer(torch.nn.Module):\n    def __init__(self, embed_dim, heads, intermediate_size, intermediate_activation, dtype, device, operations):\n        super().__init__()\n        self.layer_norm1 = operations.LayerNorm(embed_dim, dtype=dtype, device=device)\n        self.self_attn = CLIPAttention(embed_dim, heads, dtype, device, operations)\n        self.layer_norm2 = operations.LayerNorm(embed_dim, dtype=dtype, device=device)\n        self.mlp = CLIPMLP(embed_dim, intermediate_size, intermediate_activation, dtype, device, operations)\n\n    def forward(self, x, mask=None, optimized_attention=None):\n        x += self.self_attn(self.layer_norm1(x), mask, optimized_attention)\n        x += self.mlp(self.layer_norm2(x))\n        return x\n\n\nclass CLIPEncoder(torch.nn.Module):\n    def __init__(self, num_layers, embed_dim, heads, intermediate_size, intermediate_activation, dtype, device, operations):\n        super().__init__()\n        self.layers = torch.nn.ModuleList([CLIPLayer(embed_dim, heads, intermediate_size, intermediate_activation, dtype, device, operations) for i in range(num_layers)])\n\n    def forward(self, x, mask=None, intermediate_output=None):\n        optimized_attention = optimized_attention_for_device(x.device, mask=mask is not None, small_input=True)\n\n        if intermediate_output is not None:\n            if intermediate_output < 0:\n                intermediate_output = len(self.layers) + intermediate_output\n\n        intermediate = None\n        for i, l in enumerate(self.layers):\n            x = l(x, mask, optimized_attention)\n            if i == intermediate_output:\n                intermediate = x.clone()\n        return x, intermediate\n\nclass CLIPEmbeddings(torch.nn.Module):\n    def __init__(self, embed_dim, vocab_size=49408, num_positions=77, dtype=None, device=None, operations=None):\n        super().__init__()\n        self.token_embedding = operations.Embedding(vocab_size, embed_dim, dtype=dtype, device=device)\n        self.position_embedding = operations.Embedding(num_positions, embed_dim, dtype=dtype, device=device)\n\n    def forward(self, input_tokens, dtype=torch.float32):\n        return self.token_embedding(input_tokens, out_dtype=dtype) + comfy.ops.cast_to(self.position_embedding.weight, dtype=dtype, device=input_tokens.device)\n\n\nclass CLIPTextModel_(torch.nn.Module):\n    def __init__(self, config_dict, dtype, device, operations):\n        num_layers = config_dict[\"num_hidden_layers\"]\n        embed_dim = config_dict[\"hidden_size\"]\n        heads = config_dict[\"num_attention_heads\"]\n        intermediate_size = config_dict[\"intermediate_size\"]\n        intermediate_activation = config_dict[\"hidden_act\"]\n        num_positions = config_dict[\"max_position_embeddings\"]\n        self.eos_token_id = config_dict[\"eos_token_id\"]\n\n        super().__init__()\n        self.embeddings = CLIPEmbeddings(embed_dim, num_positions=num_positions, dtype=dtype, device=device, operations=operations)\n        self.encoder = CLIPEncoder(num_layers, embed_dim, heads, intermediate_size, intermediate_activation, dtype, device, operations)\n        self.final_layer_norm = operations.LayerNorm(embed_dim, dtype=dtype, device=device)\n\n    def forward(self, input_tokens, attention_mask=None, intermediate_output=None, final_layer_norm_intermediate=True, dtype=torch.float32):\n        x = self.embeddings(input_tokens, dtype=dtype)\n        mask = None\n        if attention_mask is not None:\n            mask = 1.0 - attention_mask.to(x.dtype).reshape((attention_mask.shape[0], 1, -1, attention_mask.shape[-1])).expand(attention_mask.shape[0], 1, attention_mask.shape[-1], attention_mask.shape[-1])\n            mask = mask.masked_fill(mask.to(torch.bool), -torch.finfo(x.dtype).max)\n\n        if comfy.model_management.is_directml_enabled():\n            causal_mask = torch.full((x.shape[1], x.shape[1]), -torch.finfo(x.dtype).max, dtype=x.dtype, device=x.device).triu_(1)\n        else:\n            causal_mask = torch.empty(x.shape[1], x.shape[1], dtype=x.dtype, device=x.device).fill_(float(\"-inf\")).triu_(1)\n\n        if mask is not None:\n            mask += causal_mask\n        else:\n            mask = causal_mask\n\n        x, i = self.encoder(x, mask=mask, intermediate_output=intermediate_output)\n        x = self.final_layer_norm(x)\n        if i is not None and final_layer_norm_intermediate:\n            i = self.final_layer_norm(i)\n\n        pooled_output = x[torch.arange(x.shape[0], device=x.device), (torch.round(input_tokens).to(dtype=torch.int, device=x.device) == self.eos_token_id).int().argmax(dim=-1),]\n        return x, i, pooled_output\n\nclass CLIPTextModel(torch.nn.Module):\n    def __init__(self, config_dict, dtype, device, operations):\n        super().__init__()\n        self.num_layers = config_dict[\"num_hidden_layers\"]\n        self.text_model = CLIPTextModel_(config_dict, dtype, device, operations)\n        embed_dim = config_dict[\"hidden_size\"]\n        self.text_projection = operations.Linear(embed_dim, embed_dim, bias=False, dtype=dtype, device=device)\n        self.dtype = dtype\n\n    def get_input_embeddings(self):\n        return self.text_model.embeddings.token_embedding\n\n    def set_input_embeddings(self, embeddings):\n        self.text_model.embeddings.token_embedding = embeddings\n\n    def forward(self, *args, **kwargs):\n        x = self.text_model(*args, **kwargs)\n        out = self.text_projection(x[2])\n        return (x[0], x[1], out, x[2])\n\n\nclass CLIPVisionEmbeddings(torch.nn.Module):\n    def __init__(self, embed_dim, num_channels=3, patch_size=14, image_size=224, model_type=\"\", dtype=None, device=None, operations=None):\n        super().__init__()\n\n        num_patches = (image_size // patch_size) ** 2\n        if model_type == \"siglip_vision_model\":\n            self.class_embedding = None\n            patch_bias = True\n        else:\n            num_patches = num_patches + 1\n            self.class_embedding = torch.nn.Parameter(torch.empty(embed_dim, dtype=dtype, device=device))\n            patch_bias = False\n\n        self.patch_embedding = operations.Conv2d(\n            in_channels=num_channels,\n            out_channels=embed_dim,\n            kernel_size=patch_size,\n            stride=patch_size,\n            bias=patch_bias,\n            dtype=dtype,\n            device=device\n        )\n\n        self.position_embedding = operations.Embedding(\n--- structural neighbors ---\nsymbol:73b0a23779bc2cb4:CLIPLayer (symbol, comfy/clip_model.py); symbol:bb0f47472e866035:CLIPMLP (symbol, comfy/clip_model.py); symbol:bbd5bed081e65222:CLIPVisionModelProjection (symbol, comfy/clip_model.py); symbol:b801499d4cd3c513:CLIPEmbeddings (symbol, comfy/clip_model.py); symbol:4d217ccbabfaef4b:CLIPAttention (symbol, comfy/clip_model.py); symbol:fef6ed063e126cbe:CLIPEncoder (symbol, comfy/clip_model.py); symbol:3cff9b965dea6a5c:CLIPTextModel (symbol, comfy/clip_model.py); symbol:e6e78e05499728bb:CLIPVisionEmbeddings (symbol, comfy/clip_model.py); symbol:d07a70a872cc78c8:CLIPVision (symbol, comfy/clip_model.py); symbol:3c7dc9f8540fa5aa:CLIPTextModel_ (symbol, comfy/clip_model.py)"
+      },
+      "search_hits": {
+        "forward": [
+          {
+            "file_path": "server.py",
+            "line_number": 715,
+            "content": "# This is very useful for frontend dev server, which need to forward",
+            "context_lines": [
+              "# This is very useful for frontend dev server, which need to forward"
+            ]
+          },
+          {
+            "file_path": "comfy/gligen.py",
+            "line_number": 23,
+            "content": "# feedforward",
+            "context_lines": [
+              "# feedforward"
+            ]
+          },
+          {
+            "file_path": "comfy/gligen.py",
+            "line_number": 29,
+            "content": "def forward(self, x):",
+            "context_lines": [
+              "def forward(self, x):"
+            ]
+          },
+          {
+            "file_path": "comfy/gligen.py",
+            "line_number": 50,
+            "content": "def forward(self, x):",
+            "context_lines": [
+              "def forward(self, x):"
+            ]
+          },
+          {
+            "file_path": "comfy/gligen.py",
+            "line_number": 77,
+            "content": "def forward(self, x, objs):",
+            "context_lines": [
+              "def forward(self, x, objs):"
+            ]
+          },
+          {
+            "file_path": "comfy/gligen.py",
+            "line_number": 114,
+            "content": "def forward(self, x, objs):",
+            "context_lines": [
+              "def forward(self, x, objs):"
+            ]
+          },
+          {
+            "file_path": "comfy/gligen.py",
+            "line_number": 150,
+            "content": "def forward(self, x, objs):",
+            "context_lines": [
+              "def forward(self, x, objs):"
+            ]
+          },
+          {
+            "file_path": "comfy/gligen.py",
+            "line_number": 220,
+            "content": "def forward(self, boxes, masks, positive_embeddings):",
+            "context_lines": [
+              "def forward(self, boxes, masks, positive_embeddings):"
+            ]
+          },
+          {
+            "file_path": "web/assets/index-C1Hb_Yo9.css",
+            "line_number": 1302,
+            "content": ".pi-step-forward-alt:before {",
+            "context_lines": [
+              ".pi-step-forward-alt:before {"
+            ]
+          },
+          {
+            "file_path": "web/assets/index-C1Hb_Yo9.css",
+            "line_number": 1306,
+            "content": ".pi-forward:before {",
+            "context_lines": [
+              ".pi-forward:before {"
+            ]
+          },
+          {
+            "file_path": "web/assets/index-C1Hb_Yo9.css",
+            "line_number": 1318,
+            "content": ".pi-fast-forward:before {",
+            "context_lines": [
+              ".pi-fast-forward:before {"
+            ]
+          },
+          {
+            "file_path": "web/assets/index-C1Hb_Yo9.css",
+            "line_number": 1958,
+            "content": ".pi-step-forward:before {",
+            "context_lines": [
+              ".pi-step-forward:before {"
+            ]
+          },
+          {
+            "file_path": "comfy/t2i_adapter/adapter.py",
+            "line_number": 57,
+            "content": "def forward(self, x):",
+            "context_lines": [
+              "def forward(self, x):"
+            ]
+          },
+          {
+            "file_path": "comfy/t2i_adapter/adapter.py",
+            "line_number": 88,
+            "content": "def forward(self, x):",
+            "context_lines": [
+              "def forward(self, x):"
+            ]
+          },
+          {
+            "file_path": "comfy/t2i_adapter/adapter.py",
+            "line_number": 134,
+            "content": "def forward(self, x):",
+            "context_lines": [
+              "def forward(self, x):"
+            ]
+          }
+        ],
+        "torch.full": [
+          {
+            "file_path": "nodes.py",
+            "line_number": 1865,
+            "content": "r = torch.full([batch_size, height, width, 1], ((color >> 16) & 0xFF) / 0xFF)",
+            "context_lines": [
+              "r = torch.full([batch_size, height, width, 1], ((color >> 16) & 0xFF) / 0xFF)"
+            ]
+          },
+          {
+            "file_path": "nodes.py",
+            "line_number": 1866,
+            "content": "g = torch.full([batch_size, height, width, 1], ((color >> 8) & 0xFF) / 0xFF)",
+            "context_lines": [
+              "g = torch.full([batch_size, height, width, 1], ((color >> 8) & 0xFF) / 0xFF)"
+            ]
+          },
+          {
+            "file_path": "nodes.py",
+            "line_number": 1867,
+            "content": "b = torch.full([batch_size, height, width, 1], ((color) & 0xFF) / 0xFF)",
+            "context_lines": [
+              "b = torch.full([batch_size, height, width, 1], ((color) & 0xFF) / 0xFF)"
+            ]
+          },
+          {
+            "file_path": "comfy/text_encoders/t5.py",
+            "line_number": 130,
+            "content": "relative_position_if_large, torch.full_like(relative_position_if_large, num_buckets - 1)",
+            "context_lines": [
+              "relative_position_if_large, torch.full_like(relative_position_if_large, num_buckets - 1)"
+            ]
+          },
+          {
+            "file_path": "comfy/clip_model.py",
+            "line_number": 108,
+            "content": "causal_mask = torch.full((x.shape[1], x.shape[1]), -torch.finfo(x.dtype).max, dtype=x.dtype, device=x.device).triu_(1)",
+            "context_lines": [
+              "causal_mask = torch.full((x.shape[1], x.shape[1]), -torch.finfo(x.dtype).max, dtype=x.dtype, device=x.device).triu_(1)"
+            ]
+          },
+          {
+            "file_path": "comfy_extras/nodes_mask.py",
+            "line_number": 171,
+            "content": "out = torch.full((1, height, width), value, dtype=torch.float32, device=\"cpu\")",
+            "context_lines": [
+              "out = torch.full((1, height, width), value, dtype=torch.float32, device=\"cpu\")"
+            ]
+          },
+          {
+            "file_path": "comfy_extras/nodes_stable3d.py",
+            "line_number": 16,
+            "content": "90 - torch.full_like(elevation, 0)",
+            "context_lines": [
+              "90 - torch.full_like(elevation, 0)"
+            ]
+          }
+        ],
+        "torch.empty": [
+          {
+            "file_path": "comfy/model_sampling.py",
+            "line_number": 269,
+            "content": "sigmas = torch.empty((self.num_timesteps), dtype=torch.float32)",
+            "context_lines": [
+              "sigmas = torch.empty((self.num_timesteps), dtype=torch.float32)"
+            ]
+          },
+          {
+            "file_path": "comfy/diffusers_convert.py",
+            "line_number": 125,
+            "content": "out = torch.empty(shape, device=tensors[0].device, dtype=tensors[0].dtype)",
+            "context_lines": [
+              "out = torch.empty(shape, device=tensors[0].device, dtype=tensors[0].dtype)"
+            ]
+          },
+          {
+            "file_path": "comfy/model_management.py",
+            "line_number": 865,
+            "content": "r = torch.empty_like(weight, dtype=dtype, device=device)",
+            "context_lines": [
+              "r = torch.empty_like(weight, dtype=dtype, device=device)"
+            ]
+          },
+          {
+            "file_path": "comfy/ldm/audio/embedders.py",
+            "line_number": 18,
+            "content": "self.weights = nn.Parameter(torch.empty(half_dim))",
+            "context_lines": [
+              "self.weights = nn.Parameter(torch.empty(half_dim))"
+            ]
+          },
+          {
+            "file_path": "comfy/ldm/audio/dit.py",
+            "line_number": 18,
+            "content": "self.weight = nn.Parameter(torch.empty(",
+            "context_lines": [
+              "self.weight = nn.Parameter(torch.empty("
+            ]
+          },
+          {
+            "file_path": "comfy/ldm/audio/dit.py",
+            "line_number": 33,
+            "content": "self.gamma = nn.Parameter(torch.empty(dim, dtype=dtype, device=device))",
+            "context_lines": [
+              "self.gamma = nn.Parameter(torch.empty(dim, dtype=dtype, device=device))"
+            ]
+          },
+          {
+            "file_path": "comfy/ldm/audio/dit.py",
+            "line_number": 36,
+            "content": "self.beta = nn.Parameter(torch.empty(dim, dtype=dtype, device=device))",
+            "context_lines": [
+              "self.beta = nn.Parameter(torch.empty(dim, dtype=dtype, device=device))"
+            ]
+          },
+          {
+            "file_path": "comfy/ldm/audio/dit.py",
+            "line_number": 138,
+            "content": "self.register_buffer('inv_freq', torch.empty((dim // 2,), device=device, dtype=dtype))",
+            "context_lines": [
+              "self.register_buffer('inv_freq', torch.empty((dim // 2,), device=device, dtype=dtype))"
+            ]
+          },
+          {
+            "file_path": "comfy/ldm/cosmos/position_embedding.py",
+            "line_number": 189,
+            "content": "self.pos_emb_h = nn.Parameter(torch.empty(len_h, model_channels, device=device, dtype=dtype))",
+            "context_lines": [
+              "self.pos_emb_h = nn.Parameter(torch.empty(len_h, model_channels, device=device, dtype=dtype))"
+            ]
+          },
+          {
+            "file_path": "comfy/ldm/cosmos/position_embedding.py",
+            "line_number": 190,
+            "content": "self.pos_emb_w = nn.Parameter(torch.empty(len_w, model_channels, device=device, dtype=dtype))",
+            "context_lines": [
+              "self.pos_emb_w = nn.Parameter(torch.empty(len_w, model_channels, device=device, dtype=dtype))"
+            ]
+          },
+          {
+            "file_path": "comfy/ldm/cosmos/position_embedding.py",
+            "line_number": 191,
+            "content": "self.pos_emb_t = nn.Parameter(torch.empty(len_t, model_channels, device=device, dtype=dtype))",
+            "context_lines": [
+              "self.pos_emb_t = nn.Parameter(torch.empty(len_t, model_channels, device=device, dtype=dtype))"
+            ]
+          },
+          {
+            "file_path": "comfy/utils.py",
+            "line_number": 673,
+            "content": "output = torch.empty([batch_size] + list(tensor.shape)[1:], dtype=tensor.dtype, device=tensor.device)",
+            "context_lines": [
+              "output = torch.empty([batch_size] + list(tensor.shape)[1:], dtype=tensor.dtype, device=tensor.device)"
+            ]
+          },
+          {
+            "file_path": "comfy/utils.py",
+            "line_number": 921,
+            "content": "output = torch.empty([samples.shape[0], out_channels] + mult_list_upscale(samples.shape[2:]), device=output_device)",
+            "context_lines": [
+              "output = torch.empty([samples.shape[0], out_channels] + mult_list_upscale(samples.shape[2:]), device=output_device)"
+            ]
+          },
+          {
+            "file_path": "comfy/model_detection.py",
+            "line_number": 697,
+            "content": "old_weight = torch.empty_like(weight)",
+            "context_lines": [
+              "old_weight = torch.empty_like(weight)"
+            ]
+          },
+          {
+            "file_path": "comfy/model_detection.py",
+            "line_number": 701,
+            "content": "new = torch.empty(exp, device=weight.device, dtype=weight.dtype)",
+            "context_lines": [
+              "new = torch.empty(exp, device=weight.device, dtype=weight.dtype)"
+            ]
+          }
+        ],
+        "fill_": [
+          {
+            "file_path": "comfy/samplers.py",
+            "line_number": 617,
+            "content": "def apply_empty_x_to_equal_area(conds, uncond, name, uncond_fill_func):",
+            "context_lines": [
+              "def apply_empty_x_to_equal_area(conds, uncond, name, uncond_fill_func):"
+            ]
+          },
+          {
+            "file_path": "comfy/samplers.py",
+            "line_number": 645,
+            "content": "n[name] = uncond_fill_func(cond_cnets, x)",
+            "context_lines": [
+              "n[name] = uncond_fill_func(cond_cnets, x)"
+            ]
+          },
+          {
+            "file_path": "comfy/samplers.py",
+            "line_number": 649,
+            "content": "n[name] = uncond_fill_func(cond_cnets, x)",
+            "context_lines": [
+              "n[name] = uncond_fill_func(cond_cnets, x)"
+            ]
+          },
+          {
+            "file_path": "comfy/ldm/pixart/blocks.py",
+            "line_number": 103,
+            "content": "# self.sr.weight.data.fill_(1/sr_ratio**2)",
+            "context_lines": [
+              "# self.sr.weight.data.fill_(1/sr_ratio**2)"
+            ]
+          },
+          {
+            "file_path": "comfy/ldm/pixart/blocks.py",
+            "line_number": 168,
+            "content": "#     attn_bias.masked_fill_(mask.squeeze(1).repeat(self.num_heads, 1, 1) == 0, float('-inf'))",
+            "context_lines": [
+              "#     attn_bias.masked_fill_(mask.squeeze(1).repeat(self.num_heads, 1, 1) == 0, float('-inf'))"
+            ]
+          },
+          {
+            "file_path": "comfy/ldm/hydit/models.py",
+            "line_number": 12,
+            "content": "from .posemb_layers import get_2d_rotary_pos_embed, get_fill_resize_and_crop",
+            "context_lines": [
+              "from .posemb_layers import get_2d_rotary_pos_embed, get_fill_resize_and_crop"
+            ]
+          },
+          {
+            "file_path": "comfy/ldm/hydit/models.py",
+            "line_number": 18,
+            "content": "start, stop = get_fill_resize_and_crop((th, tw), base_size)",
+            "context_lines": [
+              "start, stop = get_fill_resize_and_crop((th, tw), base_size)"
+            ]
+          },
+          {
+            "file_path": "comfy/ldm/modules/attention.py",
+            "line_number": 138,
+            "content": "sim.masked_fill_(~mask, max_neg_value)",
+            "context_lines": [
+              "sim.masked_fill_(~mask, max_neg_value)"
+            ]
+          },
+          {
+            "file_path": "comfy/ldm/hydit/posemb_layers.py",
+            "line_number": 13,
+            "content": "def get_fill_resize_and_crop(src, tgt):",
+            "context_lines": [
+              "def get_fill_resize_and_crop(src, tgt):"
+            ]
+          },
+          {
+            "file_path": "comfy/ldm/hydit/posemb_layers.py",
+            "line_number": 202,
+            "content": "start, stop = get_fill_resize_and_crop((th, tw), base_size)",
+            "context_lines": [
+              "start, stop = get_fill_resize_and_crop((th, tw), base_size)"
+            ]
+          },
+          {
+            "file_path": "comfy/clip_model.py",
+            "line_number": 110,
+            "content": "causal_mask = torch.empty(x.shape[1], x.shape[1], dtype=x.dtype, device=x.device).fill_(float(\"-inf\")).triu_(1)",
+            "context_lines": [
+              "causal_mask = torch.empty(x.shape[1], x.shape[1], dtype=x.dtype, device=x.device).fill_(float(\"-inf\")).triu_(1)"
+            ]
+          },
+          {
+            "file_path": "comfy/text_encoders/llama.py",
+            "line_number": 260,
+            "content": "causal_mask = torch.empty(x.shape[1], x.shape[1], dtype=x.dtype, device=x.device).fill_(float(\"-inf\")).triu_(1)",
+            "context_lines": [
+              "causal_mask = torch.empty(x.shape[1], x.shape[1], dtype=x.dtype, device=x.device).fill_(float(\"-inf\")).triu_(1)"
+            ]
+          },
+          {
+            "file_path": "comfy_extras/nodes_sag.py",
+            "line_number": 39,
+            "content": "sim.masked_fill_(~mask, max_neg_value)",
+            "context_lines": [
+              "sim.masked_fill_(~mask, max_neg_value)"
+            ]
+          }
+        ],
+        "causal_mask": [
+          {
+            "file_path": "comfy/text_encoders/llama.py",
+            "line_number": 260,
+            "content": "causal_mask = torch.empty(x.shape[1], x.shape[1], dtype=x.dtype, device=x.device).fill_(float(\"-inf\")).triu_(1)",
+            "context_lines": [
+              "causal_mask = torch.empty(x.shape[1], x.shape[1], dtype=x.dtype, device=x.device).fill_(float(\"-inf\")).triu_(1)"
+            ]
+          },
+          {
+            "file_path": "comfy/text_encoders/llama.py",
+            "line_number": 262,
+            "content": "mask += causal_mask",
+            "context_lines": [
+              "mask += causal_mask"
+            ]
+          },
+          {
+            "file_path": "comfy/text_encoders/llama.py",
+            "line_number": 264,
+            "content": "mask = causal_mask",
+            "context_lines": [
+              "mask = causal_mask"
+            ]
+          },
+          {
+            "file_path": "comfy/clip_model.py",
+            "line_number": 108,
+            "content": "causal_mask = torch.full((x.shape[1], x.shape[1]), -torch.finfo(x.dtype).max, dtype=x.dtype, device=x.device).triu_(1)",
+            "context_lines": [
+              "causal_mask = torch.full((x.shape[1], x.shape[1]), -torch.finfo(x.dtype).max, dtype=x.dtype, device=x.device).triu_(1)"
+            ]
+          },
+          {
+            "file_path": "comfy/clip_model.py",
+            "line_number": 110,
+            "content": "causal_mask = torch.empty(x.shape[1], x.shape[1], dtype=x.dtype, device=x.device).fill_(float(\"-inf\")).triu_(1)",
+            "context_lines": [
+              "causal_mask = torch.empty(x.shape[1], x.shape[1], dtype=x.dtype, device=x.device).fill_(float(\"-inf\")).triu_(1)"
+            ]
+          },
+          {
+            "file_path": "comfy/clip_model.py",
+            "line_number": 113,
+            "content": "mask += causal_mask",
+            "context_lines": [
+              "mask += causal_mask"
+            ]
+          },
+          {
+            "file_path": "comfy/clip_model.py",
+            "line_number": 115,
+            "content": "mask = causal_mask",
+            "context_lines": [
+              "mask = causal_mask"
+            ]
+          }
+        ]
+      },
+      "warnings": []
+    },
+    "security_1_request_2": {
+      "request_id": "security_1_request_2",
+      "candidate_id": "security_1_2",
+      "file_snippets": {
+        "comfy/ldm/flux/math.py": "import torch\nfrom einops import rearrange\nfrom torch import Tensor\n\nfrom comfy.ldm.modules.attention import optimized_attention\nimport comfy.model_management\n\n\ndef attention(q: Tensor, k: Tensor, v: Tensor, pe: Tensor, mask=None) -> Tensor:\n    q_shape = q.shape\n    k_shape = k.shape\n\n    q = q.float().reshape(*q.shape[:-1], -1, 1, 2)\n    k = k.float().reshape(*k.shape[:-1], -1, 1, 2)\n    q = (pe[..., 0] * q[..., 0] + pe[..., 1] * q[..., 1]).reshape(*q_shape).type_as(v)\n    k = (pe[..., 0] * k[..., 0] + pe[..., 1] * k[..., 1]).reshape(*k_shape).type_as(v)\n\n    heads = q.shape[1]\n    x = optimized_attention(q, k, v, heads, skip_reshape=True, mask=mask)\n    return x\n\n\ndef rope(pos: Tensor, dim: int, theta: int) -> Tensor:\n    assert dim % 2 == 0\n    if comfy.model_management.is_device_mps(pos.device) or comfy.model_management.is_intel_xpu() or comfy.model_management.is_directml_enabled():\n        device = torch.device(\"cpu\")\n    else:\n        device = pos.device\n\n    scale = torch.linspace(0, (dim - 2) / dim, steps=dim//2, dtype=torch.float64, device=device)\n    omega = 1.0 / (theta**scale)\n    out = torch.einsum(\"...n,d->...nd\", pos.to(dtype=torch.float32, device=device), omega)\n    out = torch.stack([torch.cos(out), -torch.sin(out), torch.sin(out), torch.cos(out)], dim=-1)\n    out = rearrange(out, \"b n d (i j) -> b n d i j\", i=2, j=2)\n    return out.to(dtype=torch.float32, device=pos.device)\n\n\ndef apply_rope(xq: Tensor, xk: Tensor, freqs_cis: Tensor):\n    xq_ = xq.float().reshape(*xq.shape[:-1], -1, 1, 2)\n    xk_ = xk.float().reshape(*xk.shape[:-1], -1, 1, 2)\n    xq_out = freqs_cis[..., 0] * xq_[..., 0] + freqs_cis[..., 1] * xq_[..., 1]\n    xk_out = freqs_cis[..., 0] * xk_[..., 0] + freqs_cis[..., 1] * xk_[..., 1]\n    return xq_out.reshape(*xq.shape).type_as(xq), xk_out.reshape(*xk.shape).type_as(xk)\n\n\n--- structural neighbors ---\nsymbol:55bf760fefa95a34:attention (symbol, comfy/ldm/flux/math.py); symbol:1b27528199311a35:apply_rope (symbol, comfy/ldm/flux/math.py); symbol:90299f88051612b8:rope (symbol, comfy/ldm/flux/math.py)"
+      },
+      "search_hits": {
+        "rope": [
+          {
+            "file_path": "server.py",
+            "line_number": 117,
+            "content": "#I know the proper fix would be to add a cookie but this should take care of the problem in the meantime",
+            "context_lines": [
+              "#I know the proper fix would be to add a cookie but this should take care of the problem in the meantime"
+            ]
+          },
+          {
+            "file_path": "execution.py",
+            "line_number": 767,
+            "content": "\"message\": \"Cannot execute because a node is missing the class_type property.\",",
+            "context_lines": [
+              "\"message\": \"Cannot execute because a node is missing the class_type property.\","
+            ]
+          },
+          {
+            "file_path": "LICENSE",
+            "line_number": 298,
+            "content": "tangible personal property which is normally used for personal, family,",
+            "context_lines": [
+              "tangible personal property which is normally used for personal, family,"
+            ]
+          },
+          {
+            "file_path": "comfy/model_sampling.py",
+            "line_number": 120,
+            "content": "@property",
+            "context_lines": [
+              "@property"
+            ]
+          },
+          {
+            "file_path": "comfy/model_sampling.py",
+            "line_number": 124,
+            "content": "@property",
+            "context_lines": [
+              "@property"
+            ]
+          },
+          {
+            "file_path": "comfy/model_sampling.py",
+            "line_number": 176,
+            "content": "@property",
+            "context_lines": [
+              "@property"
+            ]
+          },
+          {
+            "file_path": "comfy/model_sampling.py",
+            "line_number": 180,
+            "content": "@property",
+            "context_lines": [
+              "@property"
+            ]
+          },
+          {
+            "file_path": "comfy/model_sampling.py",
+            "line_number": 230,
+            "content": "@property",
+            "context_lines": [
+              "@property"
+            ]
+          },
+          {
+            "file_path": "comfy/model_sampling.py",
+            "line_number": 234,
+            "content": "@property",
+            "context_lines": [
+              "@property"
+            ]
+          },
+          {
+            "file_path": "comfy/model_sampling.py",
+            "line_number": 323,
+            "content": "@property",
+            "context_lines": [
+              "@property"
+            ]
+          },
+          {
+            "file_path": "comfy/model_sampling.py",
+            "line_number": 327,
+            "content": "@property",
+            "context_lines": [
+              "@property"
+            ]
+          },
+          {
+            "file_path": "web/assets/KeybindingPanel-CeHhC2F4.js",
+            "line_number": 1,
+            "content": "var __defProp = Object.defineProperty;",
+            "context_lines": [
+              "var __defProp = Object.defineProperty;"
+            ]
+          },
+          {
+            "file_path": "web/assets/WelcomeView-BrXELNIm.js",
+            "line_number": 1,
+            "content": "var __defProp = Object.defineProperty;",
+            "context_lines": [
+              "var __defProp = Object.defineProperty;"
+            ]
+          },
+          {
+            "file_path": "app/frontend_management.py",
+            "line_number": 9,
+            "content": "from functools import cached_property",
+            "context_lines": [
+              "from functools import cached_property"
+            ]
+          },
+          {
+            "file_path": "app/frontend_management.py",
+            "line_number": 41,
+            "content": "@property",
+            "context_lines": [
+              "@property"
+            ]
+          }
+        ],
+        "is_directml_enabled": [
+          {
+            "file_path": "comfy/model_management.py",
+            "line_number": 993,
+            "content": "def is_directml_enabled():",
+            "context_lines": [
+              "def is_directml_enabled():"
+            ]
+          },
+          {
+            "file_path": "comfy/ldm/flux/math.py",
+            "line_number": 25,
+            "content": "if comfy.model_management.is_device_mps(pos.device) or comfy.model_management.is_intel_xpu() or comfy.model_management.is_directml_enabled():",
+            "context_lines": [
+              "if comfy.model_management.is_device_mps(pos.device) or comfy.model_management.is_intel_xpu() or comfy.model_management.is_directml_enabled():"
+            ]
+          },
+          {
+            "file_path": "comfy/clip_model.py",
+            "line_number": 107,
+            "content": "if comfy.model_management.is_directml_enabled():",
+            "context_lines": [
+              "if comfy.model_management.is_directml_enabled():"
+            ]
+          }
+        ],
+        "device": [
+          {
+            "file_path": "main.py",
+            "line_number": 112,
+            "content": "if args.cuda_device is not None:",
+            "context_lines": [
+              "if args.cuda_device is not None:"
+            ]
+          },
+          {
+            "file_path": "main.py",
+            "line_number": 113,
+            "content": "os.environ['CUDA_VISIBLE_DEVICES'] = str(args.cuda_device)",
+            "context_lines": [
+              "os.environ['CUDA_VISIBLE_DEVICES'] = str(args.cuda_device)"
+            ]
+          },
+          {
+            "file_path": "main.py",
+            "line_number": 114,
+            "content": "os.environ['HIP_VISIBLE_DEVICES'] = str(args.cuda_device)",
+            "context_lines": [
+              "os.environ['HIP_VISIBLE_DEVICES'] = str(args.cuda_device)"
+            ]
+          },
+          {
+            "file_path": "main.py",
+            "line_number": 115,
+            "content": "logging.info(\"Set cuda device to: {}\".format(args.cuda_device))",
+            "context_lines": [
+              "logging.info(\"Set cuda device to: {}\".format(args.cuda_device))"
+            ]
+          },
+          {
+            "file_path": "main.py",
+            "line_number": 117,
+            "content": "if args.oneapi_device_selector is not None:",
+            "context_lines": [
+              "if args.oneapi_device_selector is not None:"
+            ]
+          },
+          {
+            "file_path": "main.py",
+            "line_number": 118,
+            "content": "os.environ['ONEAPI_DEVICE_SELECTOR'] = args.oneapi_device_selector",
+            "context_lines": [
+              "os.environ['ONEAPI_DEVICE_SELECTOR'] = args.oneapi_device_selector"
+            ]
+          },
+          {
+            "file_path": "main.py",
+            "line_number": 119,
+            "content": "logging.info(\"Set oneapi device selector to: {}\".format(args.oneapi_device_selector))",
+            "context_lines": [
+              "logging.info(\"Set oneapi device selector to: {}\".format(args.oneapi_device_selector))"
+            ]
+          },
+          {
+            "file_path": "main.py",
+            "line_number": 145,
+            "content": "device = comfy.model_management.get_torch_device()",
+            "context_lines": [
+              "device = comfy.model_management.get_torch_device()"
+            ]
+          },
+          {
+            "file_path": "main.py",
+            "line_number": 146,
+            "content": "device_name = comfy.model_management.get_torch_device_name(device)",
+            "context_lines": [
+              "device_name = comfy.model_management.get_torch_device_name(device)"
+            ]
+          },
+          {
+            "file_path": "main.py",
+            "line_number": 148,
+            "content": "if \"cudaMallocAsync\" in device_name:",
+            "context_lines": [
+              "if \"cudaMallocAsync\" in device_name:"
+            ]
+          },
+          {
+            "file_path": "main.py",
+            "line_number": 150,
+            "content": "if b in device_name:",
+            "context_lines": [
+              "if b in device_name:"
+            ]
+          },
+          {
+            "file_path": "server.py",
+            "line_number": 517,
+            "content": "device = comfy.model_management.get_torch_device()",
+            "context_lines": [
+              "device = comfy.model_management.get_torch_device()"
+            ]
+          },
+          {
+            "file_path": "server.py",
+            "line_number": 518,
+            "content": "device_name = comfy.model_management.get_torch_device_name(device)",
+            "context_lines": [
+              "device_name = comfy.model_management.get_torch_device_name(device)"
+            ]
+          },
+          {
+            "file_path": "server.py",
+            "line_number": 519,
+            "content": "cpu_device = comfy.model_management.torch.device(\"cpu\")",
+            "context_lines": [
+              "cpu_device = comfy.model_management.torch.device(\"cpu\")"
+            ]
+          },
+          {
+            "file_path": "server.py",
+            "line_number": 520,
+            "content": "ram_total = comfy.model_management.get_total_memory(cpu_device)",
+            "context_lines": [
+              "ram_total = comfy.model_management.get_total_memory(cpu_device)"
+            ]
+          }
+        ],
+        "cpu": [
+          {
+            "file_path": "server.py",
+            "line_number": 519,
+            "content": "cpu_device = comfy.model_management.torch.device(\"cpu\")",
+            "context_lines": [
+              "cpu_device = comfy.model_management.torch.device(\"cpu\")"
+            ]
+          },
+          {
+            "file_path": "server.py",
+            "line_number": 520,
+            "content": "ram_total = comfy.model_management.get_total_memory(cpu_device)",
+            "context_lines": [
+              "ram_total = comfy.model_management.get_total_memory(cpu_device)"
+            ]
+          },
+          {
+            "file_path": "server.py",
+            "line_number": 521,
+            "content": "ram_free = comfy.model_management.get_free_memory(cpu_device)",
+            "context_lines": [
+              "ram_free = comfy.model_management.get_free_memory(cpu_device)"
+            ]
+          },
+          {
+            "file_path": "nodes.py",
+            "line_number": 513,
+            "content": "latent = safetensors.torch.load_file(latent_path, device=\"cpu\")",
+            "context_lines": [
+              "latent = safetensors.torch.load_file(latent_path, device=\"cpu\")"
+            ]
+          },
+          {
+            "file_path": "nodes.py",
+            "line_number": 920,
+            "content": "\"device\": ([\"default\", \"cpu\"], {\"advanced\": True}),",
+            "context_lines": [
+              "\"device\": ([\"default\", \"cpu\"], {\"advanced\": True}),"
+            ]
+          },
+          {
+            "file_path": "nodes.py",
+            "line_number": 950,
+            "content": "if device == \"cpu\":",
+            "context_lines": [
+              "if device == \"cpu\":"
+            ]
+          },
+          {
+            "file_path": "nodes.py",
+            "line_number": 951,
+            "content": "model_options[\"load_device\"] = model_options[\"offload_device\"] = torch.device(\"cpu\")",
+            "context_lines": [
+              "model_options[\"load_device\"] = model_options[\"offload_device\"] = torch.device(\"cpu\")"
+            ]
+          },
+          {
+            "file_path": "nodes.py",
+            "line_number": 965,
+            "content": "\"device\": ([\"default\", \"cpu\"], {\"advanced\": True}),",
+            "context_lines": [
+              "\"device\": ([\"default\", \"cpu\"], {\"advanced\": True}),"
+            ]
+          },
+          {
+            "file_path": "nodes.py",
+            "line_number": 987,
+            "content": "if device == \"cpu\":",
+            "context_lines": [
+              "if device == \"cpu\":"
+            ]
+          },
+          {
+            "file_path": "nodes.py",
+            "line_number": 988,
+            "content": "model_options[\"load_device\"] = model_options[\"offload_device\"] = torch.device(\"cpu\")",
+            "context_lines": [
+              "model_options[\"load_device\"] = model_options[\"offload_device\"] = torch.device(\"cpu\")"
+            ]
+          },
+          {
+            "file_path": "nodes.py",
+            "line_number": 1496,
+            "content": "noise = torch.zeros(latent_image.size(), dtype=latent_image.dtype, layout=latent_image.layout, device=\"cpu\")",
+            "context_lines": [
+              "noise = torch.zeros(latent_image.size(), dtype=latent_image.dtype, layout=latent_image.layout, device=\"cpu\")"
+            ]
+          },
+          {
+            "file_path": "nodes.py",
+            "line_number": 1608,
+            "content": "i = 255. * image.cpu().numpy()",
+            "context_lines": [
+              "i = 255. * image.cpu().numpy()"
+            ]
+          },
+          {
+            "file_path": "nodes.py",
+            "line_number": 1689,
+            "content": "mask = torch.zeros((64,64), dtype=torch.float32, device=\"cpu\")",
+            "context_lines": [
+              "mask = torch.zeros((64,64), dtype=torch.float32, device=\"cpu\")"
+            ]
+          },
+          {
+            "file_path": "nodes.py",
+            "line_number": 1748,
+            "content": "mask = torch.zeros((64,64), dtype=torch.float32, device=\"cpu\")",
+            "context_lines": [
+              "mask = torch.zeros((64,64), dtype=torch.float32, device=\"cpu\")"
+            ]
+          },
+          {
+            "file_path": "nodes.py",
+            "line_number": 1849,
+            "content": "def __init__(self, device=\"cpu\"):",
+            "context_lines": [
+              "def __init__(self, device=\"cpu\"):"
+            ]
+          }
+        ]
+      },
+      "warnings": []
+    },
+    "security_1_1:auto-context:1": {
+      "request_id": "security_1_1:auto-context:1",
+      "candidate_id": "security_1_1",
+      "file_snippets": {
+        "comfy/clip_model.py": "import torch\nfrom comfy.ldm.modules.attention import optimized_attention_for_device\nimport comfy.ops\n\nclass CLIPAttention(torch.nn.Module):\n    def __init__(self, embed_dim, heads, dtype, device, operations):\n        super().__init__()\n\n        self.heads = heads\n        self.q_proj = operations.Linear(embed_dim, embed_dim, bias=True, dtype=dtype, device=device)\n        self.k_proj = operations.Linear(embed_dim, embed_dim, bias=True, dtype=dtype, device=device)\n        self.v_proj = operations.Linear(embed_dim, embed_dim, bias=True, dtype=dtype, device=device)\n\n        self.out_proj = operations.Linear(embed_dim, embed_dim, bias=True, dtype=dtype, device=device)\n\n    def forward(self, x, mask=None, optimized_attention=None):\n        q = self.q_proj(x)\n        k = self.k_proj(x)\n        v = self.v_proj(x)\n\n        out = optimized_attention(q, k, v, self.heads, mask)\n        return self.out_proj(out)\n\nACTIVATIONS = {\"quick_gelu\": lambda a: a * torch.sigmoid(1.702 * a),\n               \"gelu\": torch.nn.functional.gelu,\n               \"gelu_pytorch_tanh\": lambda a: torch.nn.functional.gelu(a, approximate=\"tanh\"),\n}\n\nclass CLIPMLP(torch.nn.Module):\n    def __init__(self, embed_dim, intermediate_size, activation, dtype, device, operations):\n        super().__init__()\n        self.fc1 = operations.Linear(embed_dim, intermediate_size, bias=True, dtype=dtype, device=device)\n        self.activation = ACTIVATIONS[activation]\n        self.fc2 = operations.Linear(intermediate_size, embed_dim, bias=True, dtype=dtype, device=device)\n\n    def forward(self, x):\n        x = self.fc1(x)\n        x = self.activation(x)\n        x = self.fc2(x)\n        return x\n\nclass CLIPLayer(torch.nn.Module):\n    def __init__(self, embed_dim, heads, intermediate_size, intermediate_activation, dtype, device, operations):\n        super().__init__()\n        self.layer_norm1 = operations.LayerNorm(embed_dim, dtype=dtype, device=device)\n        self.self_attn = CLIPAttention(embed_dim, heads, dtype, device, operations)\n        self.layer_norm2 = operations.LayerNorm(embed_dim, dtype=dtype, device=device)\n        self.mlp = CLIPMLP(embed_dim, intermediate_size, intermediate_activation, dtype, device, operations)\n\n    def forward(self, x, mask=None, optimized_attention=None):\n        x += self.self_attn(self.layer_norm1(x), mask, optimized_attention)\n        x += self.mlp(self.layer_norm2(x))\n        return x\n\n\nclass CLIPEncoder(torch.nn.Module):\n    def __init__(self, num_layers, embed_dim, heads, intermediate_size, intermediate_activation, dtype, device, operations):\n        super().__init__()\n        self.layers = torch.nn.ModuleList([CLIPLayer(embed_dim, heads, intermediate_size, intermediate_activation, dtype, device, operations) for i in range(num_layers)])\n\n    def forward(self, x, mask=None, intermediate_output=None):\n        optimized_attention = optimized_attention_for_device(x.device, mask=mask is not None, small_input=True)\n\n        if intermediate_output is not None:\n            if intermediate_output < 0:\n                intermediate_output = len(self.layers) + intermediate_output\n\n        intermediate = None\n        for i, l in enumerate(self.layers):\n            x = l(x, mask, optimized_attention)\n            if i == intermediate_output:\n                intermediate = x.clone()\n        return x, intermediate\n\nclass CLIPEmbeddings(torch.nn.Module):\n    def __init__(self, embed_dim, vocab_size=49408, num_positions=77, dtype=None, device=None, operations=None):\n        super().__init__()\n        self.token_embedding = operations.Embedding(vocab_size, embed_dim, dtype=dtype, device=device)\n        self.position_embedding = operations.Embedding(num_positions, embed_dim, dtype=dtype, device=device)\n\n    def forward(self, input_tokens, dtype=torch.float32):\n        return self.token_embedding(input_tokens, out_dtype=dtype) + comfy.ops.cast_to(self.position_embedding.weight, dtype=dtype, device=input_tokens.device)\n\n\nclass CLIPTextModel_(torch.nn.Module):\n    def __init__(self, config_dict, dtype, device, operations):\n        num_layers = config_dict[\"num_hidden_layers\"]\n        embed_dim = config_dict[\"hidden_size\"]\n        heads = config_dict[\"num_attention_heads\"]\n        intermediate_size = config_dict[\"intermediate_size\"]\n        intermediate_activation = config_dict[\"hidden_act\"]\n        num_positions = config_dict[\"max_position_embeddings\"]\n        self.eos_token_id = config_dict[\"eos_token_id\"]\n\n        super().__init__()\n        self.embeddings = CLIPEmbeddings(embed_dim, num_positions=num_positions, dtype=dtype, device=device, operations=operations)\n        self.encoder = CLIPEncoder(num_layers, embed_dim, heads, intermediate_size, intermediate_activation, dtype, device, operations)\n        self.final_layer_norm = operations.LayerNorm(embed_dim, dtype=dtype, device=device)\n\n    def forward(self, input_tokens, attention_mask=None, intermediate_output=None, final_layer_norm_intermediate=True, dtype=torch.float32):\n        x = self.embeddings(input_tokens, dtype=dtype)\n        mask = None\n        if attention_mask is not None:\n            mask = 1.0 - attention_mask.to(x.dtype).reshape((attention_mask.shape[0], 1, -1, attention_mask.shape[-1])).expand(attention_mask.shape[0], 1, attention_mask.shape[-1], attention_mask.shape[-1])\n            mask = mask.masked_fill(mask.to(torch.bool), -torch.finfo(x.dtype).max)\n\n        if comfy.model_management.is_directml_enabled():\n            causal_mask = torch.full((x.shape[1], x.shape[1]), -torch.finfo(x.dtype).max, dtype=x.dtype, device=x.device).triu_(1)\n        else:\n            causal_mask = torch.empty(x.shape[1], x.shape[1], dtype=x.dtype, device=x.device).fill_(float(\"-inf\")).triu_(1)\n\n        if mask is not None:\n            mask += causal_mask\n        else:\n            mask = causal_mask\n\n        x, i = self.encoder(x, mask=mask, intermediate_output=intermediate_output)\n        x = self.final_layer_norm(x)\n        if i is not None and final_layer_norm_intermediate:\n            i = self.final_layer_norm(i)\n\n        pooled_output = x[torch.arange(x.shape[0], device=x.device), (torch.round(input_tokens).to(dtype=torch.int, device=x.device) == self.eos_token_id).int().argmax(dim=-1),]\n        return x, i, pooled_output\n\nclass CLIPTextModel(torch.nn.Module):\n    def __init__(self, config_dict, dtype, device, operations):\n        super().__init__()\n        self.num_layers = config_dict[\"num_hidden_layers\"]\n        self.text_model = CLIPTextModel_(config_dict, dtype, device, operations)\n        embed_dim = config_dict[\"hidden_size\"]\n        self.text_projection = operations.Linear(embed_dim, embed_dim, bias=False, dtype=dtype, device=device)\n        self.dtype = dtype\n\n    def get_input_embeddings(self):\n        return self.text_model.embeddings.token_embedding\n\n    def set_input_embeddings(self, embeddings):\n        self.text_model.embeddings.token_embedding = embeddings\n\n    def forward(self, *args, **kwargs):\n        x = self.text_model(*args, **kwargs)\n        out = self.text_projection(x[2])\n        return (x[0], x[1], out, x[2])\n\n\nclass CLIPVisionEmbeddings(torch.nn.Module):\n    def __init__(self, embed_dim, num_channels=3, patch_size=14, image_size=224, model_type=\"\", dtype=None, device=None, operations=None):\n        super().__init__()\n\n        num_patches = (image_size // patch_size) ** 2\n        if model_type == \"siglip_vision_model\":\n            self.class_embedding = None\n            patch_bias = True\n        else:\n            num_patches = num_patches + 1\n            self.class_embedding = torch.nn.Parameter(torch.empty(embed_dim, dtype=dtype, device=device))\n            patch_bias = False\n\n        self.patch_embedding = operations.Conv2d(\n            in_channels=num_channels,\n            out_channels=embed_dim,\n            kernel_size=patch_size,\n            stride=patch_size,\n            bias=patch_bias,\n            dtype=dtype,\n            device=device\n        )\n\n        self.position_embedding = operations.Embedding(\n--- structural neighbors ---\nsymbol:73b0a23779bc2cb4:CLIPLayer (symbol, comfy/clip_model.py); symbol:bb0f47472e866035:CLIPMLP (symbol, comfy/clip_model.py); symbol:bbd5bed081e65222:CLIPVisionModelProjection (symbol, comfy/clip_model.py); symbol:b801499d4cd3c513:CLIPEmbeddings (symbol, comfy/clip_model.py); symbol:4d217ccbabfaef4b:CLIPAttention (symbol, comfy/clip_model.py); symbol:fef6ed063e126cbe:CLIPEncoder (symbol, comfy/clip_model.py); symbol:3cff9b965dea6a5c:CLIPTextModel (symbol, comfy/clip_model.py); symbol:e6e78e05499728bb:CLIPVisionEmbeddings (symbol, comfy/clip_model.py); symbol:d07a70a872cc78c8:CLIPVision (symbol, comfy/clip_model.py); symbol:3c7dc9f8540fa5aa:CLIPTextModel_ (symbol, comfy/clip_model.py)",
+        "comfy/ldm/flux/math.py": "import torch\nfrom einops import rearrange\nfrom torch import Tensor\n\nfrom comfy.ldm.modules.attention import optimized_attention\nimport comfy.model_management\n\n\ndef attention(q: Tensor, k: Tensor, v: Tensor, pe: Tensor, mask=None) -> Tensor:\n    q_shape = q.shape\n    k_shape = k.shape\n\n    q = q.float().reshape(*q.shape[:-1], -1, 1, 2)\n    k = k.float().reshape(*k.shape[:-1], -1, 1, 2)\n    q = (pe[..., 0] * q[..., 0] + pe[..., 1] * q[..., 1]).reshape(*q_shape).type_as(v)\n    k = (pe[..., 0] * k[..., 0] + pe[..., 1] * k[..., 1]).reshape(*k_shape).type_as(v)\n\n    heads = q.shape[1]\n    x = optimized_attention(q, k, v, heads, skip_reshape=True, mask=mask)\n    return x\n\n\ndef rope(pos: Tensor, dim: int, theta: int) -> Tensor:\n    assert dim % 2 == 0\n    if comfy.model_management.is_device_mps(pos.device) or comfy.model_management.is_intel_xpu() or comfy.model_management.is_directml_enabled():\n        device = torch.device(\"cpu\")\n    else:\n        device = pos.device\n\n    scale = torch.linspace(0, (dim - 2) / dim, steps=dim//2, dtype=torch.float64, device=device)\n    omega = 1.0 / (theta**scale)\n    out = torch.einsum(\"...n,d->...nd\", pos.to(dtype=torch.float32, device=device), omega)\n    out = torch.stack([torch.cos(out), -torch.sin(out), torch.sin(out), torch.cos(out)], dim=-1)\n    out = rearrange(out, \"b n d (i j) -> b n d i j\", i=2, j=2)\n    return out.to(dtype=torch.float32, device=pos.device)\n\n\ndef apply_rope(xq: Tensor, xk: Tensor, freqs_cis: Tensor):\n    xq_ = xq.float().reshape(*xq.shape[:-1], -1, 1, 2)\n    xk_ = xk.float().reshape(*xk.shape[:-1], -1, 1, 2)\n    xq_out = freqs_cis[..., 0] * xq_[..., 0] + freqs_cis[..., 1] * xq_[..., 1]\n    xk_out = freqs_cis[..., 0] * xk_[..., 0] + freqs_cis[..., 1] * xk_[..., 1]\n    return xq_out.reshape(*xq.shape).type_as(xq), xk_out.reshape(*xk.shape).type_as(xk)\n\n\n--- structural neighbors ---\nsymbol:55bf760fefa95a34:attention (symbol, comfy/ldm/flux/math.py); symbol:1b27528199311a35:apply_rope (symbol, comfy/ldm/flux/math.py); symbol:90299f88051612b8:rope (symbol, comfy/ldm/flux/math.py)",
+        "comfy/model_management.py": "\"\"\"\n    This file is part of ComfyUI.\n    Copyright (C) 2024 Comfy\n\n    This program is free software: you can redistribute it and/or modify\n    it under the terms of the GNU General Public License as published by\n    the Free Software Foundation, either version 3 of the License, or\n    (at your option) any later version.\n\n    This program is distributed in the hope that it will be useful,\n    but WITHOUT ANY WARRANTY; without even the implied warranty of\n    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the\n    GNU General Public License for more details.\n\n    You should have received a copy of the GNU General Public License\n    along with this program.  If not, see <https://www.gnu.org/licenses/>.\n\"\"\"\n\nimport psutil\nimport logging\nfrom enum import Enum\nfrom comfy.cli_args import args\nimport torch\nimport sys\nimport platform\nimport weakref\nimport gc\n\nclass VRAMState(Enum):\n    DISABLED = 0    #No vram present: no need to move models to vram\n    NO_VRAM = 1     #Very low vram: enable all the options to save vram\n    LOW_VRAM = 2\n    NORMAL_VRAM = 3\n    HIGH_VRAM = 4\n    SHARED = 5      #No dedicated vram: memory shared between CPU and GPU but models still need to be moved between both.\n\nclass CPUState(Enum):\n    GPU = 0\n    CPU = 1\n    MPS = 2\n\n# Determine VRAM State\nvram_state = VRAMState.NORMAL_VRAM\nset_vram_to = VRAMState.NORMAL_VRAM\ncpu_state = CPUState.GPU\n\ntotal_vram = 0\n\nxpu_available = False\ntorch_version = \"\"\ntry:\n    torch_version = torch.version.__version__\n    xpu_available = (int(torch_version[0]) < 2 or (int(torch_version[0]) == 2 and int(torch_version[2]) <= 4)) and torch.xpu.is_available()\nexcept:\n    pass\n\nlowvram_available = True\nif args.deterministic:\n    logging.info(\"Using deterministic algorithms for pytorch\")\n    torch.use_deterministic_algorithms(True, warn_only=True)\n\ndirectml_enabled = False\nif args.directml is not None:\n    import torch_directml\n    directml_enabled = True\n    device_index = args.directml\n    if device_index < 0:\n        directml_device = torch_directml.device()\n    else:\n        directml_device = torch_directml.device(device_index)\n    logging.info(\"Using directml with device: {}\".format(torch_directml.device_name(device_index)))\n    # torch_directml.disable_tiled_resources(True)\n    lowvram_available = False #TODO: need to find a way to get free memory in directml before this can be enabled by default.\n\ntry:\n    import intel_extension_for_pytorch as ipex\n    _ = torch.xpu.device_count()\n    xpu_available = xpu_available or torch.xpu.is_available()\nexcept:\n    xpu_available = xpu_available or (hasattr(torch, \"xpu\") and torch.xpu.is_available())\n\ntry:\n    if torch.backends.mps.is_available():\n        cpu_state = CPUState.MPS\n        import torch.mps\nexcept:\n    pass\n\ntry:\n    import torch_npu  # noqa: F401\n    _ = torch.npu.device_count()\n    npu_available = torch.npu.is_available()\nexcept:\n    npu_available = False\n\nif args.cpu:\n    cpu_state = CPUState.CPU\n\ndef is_intel_xpu():\n    global cpu_state\n    global xpu_available\n    if cpu_state == CPUState.GPU:\n        if xpu_available:\n            return True\n    return False\n\ndef is_ascend_npu():\n    global npu_available\n    if npu_available:\n        return True\n    return False\n\ndef get_torch_device():\n    global directml_enabled\n    global cpu_state\n    if directml_enabled:\n        global directml_device\n        return directml_device\n    if cpu_state == CPUState.MPS:\n        return torch.device(\"mps\")\n    if cpu_state == CPUState.CPU:\n        return torch.device(\"cpu\")\n    else:\n        if is_intel_xpu():\n            return torch.device(\"xpu\", torch.xpu.current_device())\n        elif is_ascend_npu():\n            return torch.device(\"npu\", torch.npu.current_device())\n        else:\n            return torch.device(torch.cuda.current_device())\n\ndef get_total_memory(dev=None, torch_total_too=False):\n    global directml_enabled\n    if dev is None:\n        dev = get_torch_device()\n\n    if hasattr(dev, 'type') and (dev.type == 'cpu' or dev.type == 'mps'):\n        mem_total = psutil.virtual_memory().total\n        mem_total_torch = mem_total\n    else:\n        if directml_enabled:\n            mem_total = 1024 * 1024 * 1024 #TODO\n            mem_total_torch = mem_total\n        elif is_intel_xpu():\n            stats = torch.xpu.memory_stats(dev)\n            mem_reserved = stats['reserved_bytes.all.current']\n            mem_total_torch = mem_reserved\n            mem_total = torch.xpu.get_device_properties(dev).total_memory\n        elif is_ascend_npu():\n            stats = torch.npu.memory_stats(dev)\n            mem_reserved = stats['reserved_bytes.all.current']\n            _, mem_total_npu = torch.npu.mem_get_info(dev)\n            mem_total_torch = mem_reserved\n            mem_total = mem_total_npu\n        else:\n            stats = torch.cuda.memory_stats(dev)\n            mem_reserved = stats['reserved_bytes.all.current']\n            _, mem_total_cuda = torch.cuda.mem_get_info(dev)\n            mem_total_torch = mem_reserved\n            mem_total = mem_total_cuda\n\n    if torch_total_too:\n        return (mem_total, mem_total_torch)\n    else:\n        return mem_total\n\ntotal_vram = get_total_memory(get_torch_device()) / (1024 * 1024)\ntotal_ram = psutil.virtual_memory().total / (1024 * 1024)\nlogging.info(\"Total VRAM {:0.0f} MB, total RAM {:0.0f} MB\".format(total_vram, total_ram))\n\ntry:\n    logging.info(\"pytorch version: {}\".format(torch_version))\nexcept:\n    pass\n\ntry:\n    OOM_EXCEPTION = torch.cuda.OutOfMemoryError\nexcept:\n    OOM_EXCEPTION = Exception\n\nXFORMERS_VERSION = \"\"\nXFORMERS_ENABLED_VAE = True\nif args.disable_xformers:\n    XFORMERS_IS_AVAILABLE = False\nelse:\n    try:\n        import xformers\n        import xformers.ops\n        XFORMERS_IS_AVAILABLE = True\n        try:\n            XFORMERS_IS_AVAILABLE = xformers._has_cpp_library\n        except:\n            pass\n        try:\n            XFORMERS_VERSION = xformers.version.__version__\n            logging.info(\"xformers version: {}\".format(XFORMERS_VERSION))\n            if XFORMERS_VERSION.startswith(\"0.0.18\"):\n                logging.warning(\"\\nWARNING: This version of xformers has a major bug where you will get black images when generating high resolution images.\")\n                logging.warning(\"Please downgrade or upgrade xformers to a different version.\\n\")\n                XFORMERS_ENABLED_VAE = False\n        except:\n            pass\n    except:\n        XFORMERS_IS_AVAILABLE = False\n\ndef is_nvidia():\n    global cpu_state\n    if cpu_state == CPUState.GPU:\n        if torch.version.cuda:\n            return True\n    return False\n\ndef is_amd():\n    global cpu_state\n    if cpu_state == CPUState.GPU:\n        if torch.version.hip:\n            return True\n    return False\n\nMIN_WEIGHT_MEMORY_RATIO = 0.4\nif is_nvidia():\n\n--- structural neighbors ---\nsymbol:972e92f4d8b550e4:unet_dtype (symbol, comfy/model_management.py); symbol:9cdf9a1951343cac:LoadedModel (symbol, comfy/model_management.py); symbol:fd2f70f3dbd9b862:device_should_use_non_blocking (symbol, comfy/model_management.py); symbol:78cd6716a08c84c4:get_autocast_device (symbol, comfy/model_management.py); symbol:c5d357ce683d98aa:get_total_memory (symbol, comfy/model_management.py); symbol:78616726a691e827:mac_version (symbol, comfy/model_management.py); symbol:e68ba7d39c85c314:xformers_enabled_vae (symbol, comfy/model_management.py); symbol:274f6080322eb8f2:loaded_models (symbol, comfy/model_management.py); symbol:de87a4de39575b75:text_encoder_dtype (symbol, comfy/model_management.py); symbol:fee1aa3d01b6cde0:get_torch_device (symbol, comfy/model_management.py); symbol:73024e8d5ba62195:load_models_gpu (symbol, comfy/model_management.py); symbol:133eeff66746b1c2:is_nvidia (symbol, comfy/model_management.py)"
+      },
+      "search_hits": {
+        "comfy/clip_model.py": [],
+        "Potential performance regression due to different initialization methods for causal_mask based on DirectML status.": [],
+        "Potential performance regression due to different initialization methods for causal_mask based on DirectML status. def forward(self, input_tokens, attention_mas": []
+      },
+      "warnings": []
+    },
+    "context_request_1": {
+      "request_id": "context_request_1",
+      "candidate_id": "security_1_2",
+      "file_snippets": {
+        "comfy/ldm/flux/math.py": "import torch\nfrom einops import rearrange\nfrom torch import Tensor\n\nfrom comfy.ldm.modules.attention import optimized_attention\nimport comfy.model_management\n\n\ndef attention(q: Tensor, k: Tensor, v: Tensor, pe: Tensor, mask=None) -> Tensor:\n    q_shape = q.shape\n    k_shape = k.shape\n\n    q = q.float().reshape(*q.shape[:-1], -1, 1, 2)\n    k = k.float().reshape(*k.shape[:-1], -1, 1, 2)\n    q = (pe[..., 0] * q[..., 0] + pe[..., 1] * q[..., 1]).reshape(*q_shape).type_as(v)\n    k = (pe[..., 0] * k[..., 0] + pe[..., 1] * k[..., 1]).reshape(*k_shape).type_as(v)\n\n    heads = q.shape[1]\n    x = optimized_attention(q, k, v, heads, skip_reshape=True, mask=mask)\n    return x\n\n\ndef rope(pos: Tensor, dim: int, theta: int) -> Tensor:\n    assert dim % 2 == 0\n    if comfy.model_management.is_device_mps(pos.device) or comfy.model_management.is_intel_xpu() or comfy.model_management.is_directml_enabled():\n        device = torch.device(\"cpu\")\n    else:\n        device = pos.device\n\n    scale = torch.linspace(0, (dim - 2) / dim, steps=dim//2, dtype=torch.float64, device=device)\n    omega = 1.0 / (theta**scale)\n    out = torch.einsum(\"...n,d->...nd\", pos.to(dtype=torch.float32, device=device), omega)\n    out = torch.stack([torch.cos(out), -torch.sin(out), torch.sin(out), torch.cos(out)], dim=-1)\n    out = rearrange(out, \"b n d (i j) -> b n d i j\", i=2, j=2)\n    return out.to(dtype=torch.float32, device=pos.device)\n\n\ndef apply_rope(xq: Tensor, xk: Tensor, freqs_cis: Tensor):\n    xq_ = xq.float().reshape(*xq.shape[:-1], -1, 1, 2)\n    xk_ = xk.float().reshape(*xk.shape[:-1], -1, 1, 2)\n    xq_out = freqs_cis[..., 0] * xq_[..., 0] + freqs_cis[..., 1] * xq_[..., 1]\n    xk_out = freqs_cis[..., 0] * xk_[..., 0] + freqs_cis[..., 1] * xk_[..., 1]\n    return xq_out.reshape(*xq.shape).type_as(xq), xk_out.reshape(*xk.shape).type_as(xk)\n\n\n--- structural neighbors ---\nsymbol:55bf760fefa95a34:attention (symbol, comfy/ldm/flux/math.py); symbol:1b27528199311a35:apply_rope (symbol, comfy/ldm/flux/math.py); symbol:90299f88051612b8:rope (symbol, comfy/ldm/flux/math.py)",
+        "comfy/model_management.py": "\"\"\"\n    This file is part of ComfyUI.\n    Copyright (C) 2024 Comfy\n\n    This program is free software: you can redistribute it and/or modify\n    it under the terms of the GNU General Public License as published by\n    the Free Software Foundation, either version 3 of the License, or\n    (at your option) any later version.\n\n    This program is distributed in the hope that it will be useful,\n    but WITHOUT ANY WARRANTY; without even the implied warranty of\n    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the\n    GNU General Public License for more details.\n\n    You should have received a copy of the GNU General Public License\n    along with this program.  If not, see <https://www.gnu.org/licenses/>.\n\"\"\"\n\nimport psutil\nimport logging\nfrom enum import Enum\nfrom comfy.cli_args import args\nimport torch\nimport sys\nimport platform\nimport weakref\nimport gc\n\nclass VRAMState(Enum):\n    DISABLED = 0    #No vram present: no need to move models to vram\n    NO_VRAM = 1     #Very low vram: enable all the options to save vram\n    LOW_VRAM = 2\n    NORMAL_VRAM = 3\n    HIGH_VRAM = 4\n    SHARED = 5      #No dedicated vram: memory shared between CPU and GPU but models still need to be moved between both.\n\nclass CPUState(Enum):\n    GPU = 0\n    CPU = 1\n    MPS = 2\n\n# Determine VRAM State\nvram_state = VRAMState.NORMAL_VRAM\nset_vram_to = VRAMState.NORMAL_VRAM\ncpu_state = CPUState.GPU\n\ntotal_vram = 0\n\nxpu_available = False\ntorch_version = \"\"\ntry:\n    torch_version = torch.version.__version__\n    xpu_available = (int(torch_version[0]) < 2 or (int(torch_version[0]) == 2 and int(torch_version[2]) <= 4)) and torch.xpu.is_available()\nexcept:\n    pass\n\nlowvram_available = True\nif args.deterministic:\n    logging.info(\"Using deterministic algorithms for pytorch\")\n    torch.use_deterministic_algorithms(True, warn_only=True)\n\ndirectml_enabled = False\nif args.directml is not None:\n    import torch_directml\n    directml_enabled = True\n    device_index = args.directml\n    if device_index < 0:\n        directml_device = torch_directml.device()\n    else:\n        directml_device = torch_directml.device(device_index)\n    logging.info(\"Using directml with device: {}\".format(torch_directml.device_name(device_index)))\n    # torch_directml.disable_tiled_resources(True)\n    lowvram_available = False #TODO: need to find a way to get free memory in directml before this can be enabled by default.\n\ntry:\n    import intel_extension_for_pytorch as ipex\n    _ = torch.xpu.device_count()\n    xpu_available = xpu_available or torch.xpu.is_available()\nexcept:\n    xpu_available = xpu_available or (hasattr(torch, \"xpu\") and torch.xpu.is_available())\n\ntry:\n    if torch.backends.mps.is_available():\n        cpu_state = CPUState.MPS\n        import torch.mps\nexcept:\n    pass\n\ntry:\n    import torch_npu  # noqa: F401\n    _ = torch.npu.device_count()\n    npu_available = torch.npu.is_available()\nexcept:\n    npu_available = False\n\nif args.cpu:\n    cpu_state = CPUState.CPU\n\ndef is_intel_xpu():\n    global cpu_state\n    global xpu_available\n    if cpu_state == CPUState.GPU:\n        if xpu_available:\n            return True\n    return False\n\ndef is_ascend_npu():\n    global npu_available\n    if npu_available:\n        return True\n    return False\n\ndef get_torch_device():\n    global directml_enabled\n    global cpu_state\n    if directml_enabled:\n        global directml_device\n        return directml_device\n    if cpu_state == CPUState.MPS:\n        return torch.device(\"mps\")\n    if cpu_state == CPUState.CPU:\n        return torch.device(\"cpu\")\n    else:\n        if is_intel_xpu():\n            return torch.device(\"xpu\", torch.xpu.current_device())\n        elif is_ascend_npu():\n            return torch.device(\"npu\", torch.npu.current_device())\n        else:\n            return torch.device(torch.cuda.current_device())\n\ndef get_total_memory(dev=None, torch_total_too=False):\n    global directml_enabled\n    if dev is None:\n        dev = get_torch_device()\n\n    if hasattr(dev, 'type') and (dev.type == 'cpu' or dev.type == 'mps'):\n        mem_total = psutil.virtual_memory().total\n        mem_total_torch = mem_total\n    else:\n        if directml_enabled:\n            mem_total = 1024 * 1024 * 1024 #TODO\n            mem_total_torch = mem_total\n        elif is_intel_xpu():\n            stats = torch.xpu.memory_stats(dev)\n            mem_reserved = stats['reserved_bytes.all.current']\n            mem_total_torch = mem_reserved\n            mem_total = torch.xpu.get_device_properties(dev).total_memory\n        elif is_ascend_npu():\n            stats = torch.npu.memory_stats(dev)\n            mem_reserved = stats['reserved_bytes.all.current']\n            _, mem_total_npu = torch.npu.mem_get_info(dev)\n            mem_total_torch = mem_reserved\n            mem_total = mem_total_npu\n        else:\n            stats = torch.cuda.memory_stats(dev)\n            mem_reserved = stats['reserved_bytes.all.current']\n            _, mem_total_cuda = torch.cuda.mem_get_info(dev)\n            mem_total_torch = mem_reserved\n            mem_total = mem_total_cuda\n\n    if torch_total_too:\n        return (mem_total, mem_total_torch)\n    else:\n        return mem_total\n\ntotal_vram = get_total_memory(get_torch_device()) / (1024 * 1024)\ntotal_ram = psutil.virtual_memory().total / (1024 * 1024)\nlogging.info(\"Total VRAM {:0.0f} MB, total RAM {:0.0f} MB\".format(total_vram, total_ram))\n\ntry:\n    logging.info(\"pytorch version: {}\".format(torch_version))\nexcept:\n    pass\n\ntry:\n    OOM_EXCEPTION = torch.cuda.OutOfMemoryError\nexcept:\n    OOM_EXCEPTION = Exception\n\nXFORMERS_VERSION = \"\"\nXFORMERS_ENABLED_VAE = True\nif args.disable_xformers:\n    XFORMERS_IS_AVAILABLE = False\nelse:\n    try:\n        import xformers\n        import xformers.ops\n        XFORMERS_IS_AVAILABLE = True\n        try:\n            XFORMERS_IS_AVAILABLE = xformers._has_cpp_library\n        except:\n            pass\n        try:\n            XFORMERS_VERSION = xformers.version.__version__\n            logging.info(\"xformers version: {}\".format(XFORMERS_VERSION))\n            if XFORMERS_VERSION.startswith(\"0.0.18\"):\n                logging.warning(\"\\nWARNING: This version of xformers has a major bug where you will get black images when generating high resolution images.\")\n                logging.warning(\"Please downgrade or upgrade xformers to a different version.\\n\")\n                XFORMERS_ENABLED_VAE = False\n        except:\n            pass\n    except:\n        XFORMERS_IS_AVAILABLE = False\n\ndef is_nvidia():\n    global cpu_state\n    if cpu_state == CPUState.GPU:\n        if torch.version.cuda:\n            return True\n    return False\n\ndef is_amd():\n    global cpu_state\n    if cpu_state == CPUState.GPU:\n        if torch.version.hip:\n            return True\n    return False\n\nMIN_WEIGHT_MEMORY_RATIO = 0.4\nif is_nvidia():\n\n--- structural neighbors ---\nsymbol:972e92f4d8b550e4:unet_dtype (symbol, comfy/model_management.py); symbol:9cdf9a1951343cac:LoadedModel (symbol, comfy/model_management.py); symbol:fd2f70f3dbd9b862:device_should_use_non_blocking (symbol, comfy/model_management.py); symbol:78cd6716a08c84c4:get_autocast_device (symbol, comfy/model_management.py); symbol:c5d357ce683d98aa:get_total_memory (symbol, comfy/model_management.py); symbol:78616726a691e827:mac_version (symbol, comfy/model_management.py); symbol:e68ba7d39c85c314:xformers_enabled_vae (symbol, comfy/model_management.py); symbol:274f6080322eb8f2:loaded_models (symbol, comfy/model_management.py); symbol:de87a4de39575b75:text_encoder_dtype (symbol, comfy/model_management.py); symbol:fee1aa3d01b6cde0:get_torch_device (symbol, comfy/model_management.py); symbol:73024e8d5ba62195:load_models_gpu (symbol, comfy/model_management.py); symbol:133eeff66746b1c2:is_nvidia (symbol, comfy/model_management.py)"
+      },
+      "search_hits": {
+        "is_directml_enabled": [
+          {
+            "file_path": "comfy/model_management.py",
+            "line_number": 993,
+            "content": "def is_directml_enabled():",
+            "context_lines": [
+              "def is_directml_enabled():"
+            ]
+          },
+          {
+            "file_path": "comfy/clip_model.py",
+            "line_number": 107,
+            "content": "if comfy.model_management.is_directml_enabled():",
+            "context_lines": [
+              "if comfy.model_management.is_directml_enabled():"
+            ]
+          },
+          {
+            "file_path": "comfy/ldm/flux/math.py",
+            "line_number": 25,
+            "content": "if comfy.model_management.is_device_mps(pos.device) or comfy.model_management.is_intel_xpu() or comfy.model_management.is_directml_enabled():",
+            "context_lines": [
+              "if comfy.model_management.is_device_mps(pos.device) or comfy.model_management.is_intel_xpu() or comfy.model_management.is_directml_enabled():"
+            ]
+          }
+        ],
+        "rope": [
+          {
+            "file_path": "execution.py",
+            "line_number": 767,
+            "content": "\"message\": \"Cannot execute because a node is missing the class_type property.\",",
+            "context_lines": [
+              "\"message\": \"Cannot execute because a node is missing the class_type property.\","
+            ]
+          },
+          {
+            "file_path": "server.py",
+            "line_number": 117,
+            "content": "#I know the proper fix would be to add a cookie but this should take care of the problem in the meantime",
+            "context_lines": [
+              "#I know the proper fix would be to add a cookie but this should take care of the problem in the meantime"
+            ]
+          },
+          {
+            "file_path": "LICENSE",
+            "line_number": 298,
+            "content": "tangible personal property which is normally used for personal, family,",
+            "context_lines": [
+              "tangible personal property which is normally used for personal, family,"
+            ]
+          },
+          {
+            "file_path": "comfy/model_sampling.py",
+            "line_number": 120,
+            "content": "@property",
+            "context_lines": [
+              "@property"
+            ]
+          },
+          {
+            "file_path": "comfy/model_sampling.py",
+            "line_number": 124,
+            "content": "@property",
+            "context_lines": [
+              "@property"
+            ]
+          },
+          {
+            "file_path": "comfy/model_sampling.py",
+            "line_number": 176,
+            "content": "@property",
+            "context_lines": [
+              "@property"
+            ]
+          },
+          {
+            "file_path": "comfy/model_sampling.py",
+            "line_number": 180,
+            "content": "@property",
+            "context_lines": [
+              "@property"
+            ]
+          },
+          {
+            "file_path": "comfy/model_sampling.py",
+            "line_number": 230,
+            "content": "@property",
+            "context_lines": [
+              "@property"
+            ]
+          },
+          {
+            "file_path": "comfy/model_sampling.py",
+            "line_number": 234,
+            "content": "@property",
+            "context_lines": [
+              "@property"
+            ]
+          },
+          {
+            "file_path": "comfy/model_sampling.py",
+            "line_number": 323,
+            "content": "@property",
+            "context_lines": [
+              "@property"
+            ]
+          },
+          {
+            "file_path": "comfy/model_sampling.py",
+            "line_number": 327,
+            "content": "@property",
+            "context_lines": [
+              "@property"
+            ]
+          },
+          {
+            "file_path": "app/frontend_management.py",
+            "line_number": 9,
+            "content": "from functools import cached_property",
+            "context_lines": [
+              "from functools import cached_property"
+            ]
+          },
+          {
+            "file_path": "app/frontend_management.py",
+            "line_number": 41,
+            "content": "@property",
+            "context_lines": [
+              "@property"
+            ]
+          },
+          {
+            "file_path": "app/frontend_management.py",
+            "line_number": 45,
+            "content": "@property",
+            "context_lines": [
+              "@property"
+            ]
+          },
+          {
+            "file_path": "app/frontend_management.py",
+            "line_number": 49,
+            "content": "@cached_property",
+            "context_lines": [
+              "@cached_property"
+            ]
+          }
+        ],
+        "CPU processing": [],
+        "sensitive data handling": []
+      },
+      "warnings": []
+    }
+  },
+  "critique_revision_digests": {
+    "logic_1_2:0": {
+      "shard_id": "logic_1_2:0",
+      "candidate_id": "logic_1_2",
+      "request_ids": [
+        "logic_1_2"
+      ],
+      "evidence_bullets": [
+        "Added `is_directml_enabled()` to the condition setting `device` to `torch.device('cpu')` in `rope` function.",
+        "`is_directml_enabled()` checks the global `directml_enabled` variable set based on command-line arguments.",
+        "No evidence of performance impact analysis or existing performance optimizations for DirectML in the provided context.",
+        "No specific constraints or considerations for DirectML are mentioned in the context."
+      ],
+      "impact": "unclear",
+      "warnings": [
+        "Insufficient evidence to determine the actual performance impact of moving computations to the CPU when DirectML is enabled."
+      ]
+    },
+    "security_1_1:0": {
+      "shard_id": "security_1_1:0",
+      "candidate_id": "security_1_1",
+      "request_ids": [
+        "security_1_1:auto-context:1"
+      ],
+      "evidence_bullets": [
+        "The change introduces a conditional check for DirectML and uses `torch.full` instead of `torch.empty` followed by `fill_`.",
+        "`torch.full` initializes the tensor with a specific value, while `torch.empty` followed by `fill_` initializes it first and then fills it.",
+        "This could lead to performance differences as `torch.full` might be slower than `torch.empty` followed by `fill_`.",
+        "The change affects the `causal_mask` initialization in the `forward` method of `CLIPTextModel_`.",
+        "No performance benchmarks comparing `torch.full` and `torch.empty` followed by `fill_` are provided in the context.",
+        "The usage patterns and frequency of DirectML in production environments are not specified."
+      ],
+      "impact": "unclear",
+      "warnings": []
+    },
+    "security_1_1:1": {
+      "shard_id": "security_1_1:1",
+      "candidate_id": "security_1_1",
+      "request_ids": [
+        "security_1_request_1"
+      ],
+      "evidence_bullets": [
+        "The change introduces a conditional check for DirectML and uses `torch.full` instead of `torch.empty` followed by `fill_`.",
+        "`torch.full` initializes the tensor with a specific value, while `torch.empty` followed by `fill_` initializes an empty tensor and then fills it with a value.",
+        "This could lead to performance differences, as `torch.full` might be slower than `torch.empty` followed by `fill_`.",
+        "The change is only applied when DirectML is enabled, suggesting that performance characteristics may vary between DirectML and other backends."
+      ],
+      "impact": "weakens",
+      "warnings": []
+    },
+    "security_1_2:0": {
+      "shard_id": "security_1_2:0",
+      "candidate_id": "security_1_2",
+      "request_ids": [
+        "context_request_1"
+      ],
+      "evidence_bullets": [
+        "The change extends the condition to move certain operations to the CPU when DirectML is enabled.",
+        "This affects the `rope` function in `math.py` and potentially other functions using `is_directml_enabled`.",
+        "No specific security implications or performance benchmarks are provided in the evidence.",
+        "No information on authorization checks or data handling policies for CPU operations is included."
+      ],
+      "impact": "unclear",
+      "warnings": []
+    },
+    "security_1_2:1": {
+      "shard_id": "security_1_2:1",
+      "candidate_id": "security_1_2",
+      "request_ids": [
+        "security_1_request_2"
+      ],
+      "evidence_bullets": [
+        "The change extends the condition to move certain operations to the CPU when DirectML is enabled.",
+        "This affects the `rope` function in `comfy/ldm/flux/math.py`.",
+        "No direct evidence of security implications or performance benchmarks in the provided context.",
+        "The `is_directml_enabled` function is defined in `comfy/model_management.py` but its implementation does not provide enough detail on how DirectML is enabled."
+      ],
+      "impact": "unclear",
+      "warnings": [
+        "Insufficient evidence to determine the security and performance impacts of moving operations to the CPU when DirectML is enabled."
+      ]
+    }
+  }
+}

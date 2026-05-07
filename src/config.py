@@ -80,6 +80,10 @@ class Settings(BaseSettings):
 		ge=1,
 		description="TTL for Redis checkpoint entries.",
 	)
+	reviewer_cleanup_redis_checkpoints: bool = Field(
+		default=True,
+		description="Delete per-PR reviewer graph Redis checkpoints after artifacts are written.",
+	)
 	github_personal_access_token: Optional[str] = Field(
 		default=None,
 		validation_alias=AliasChoices(
@@ -194,6 +198,10 @@ class Settings(BaseSettings):
 	reviewer_use_legacy_specialist_workers: bool = Field(
 		default=False,
 		description="When true, route review_planner tasks to legacy specialist workers instead of the adversarial critiquer loop.",
+	)
+	reviewer_cleanup_redis_checkpoints: bool = Field(
+		default=True,
+		description="Delete per-PR Redis checkpoints after reviewer-agent experiments finish each graph run.",
 	)
 	reviewer_critique_revision_max_shard_chars: int = Field(
 		default=12_000,
