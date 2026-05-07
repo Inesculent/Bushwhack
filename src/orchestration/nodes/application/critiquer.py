@@ -9,6 +9,7 @@ from src.config import get_settings
 from src.domain.schemas import CandidateFinding, CritiquerOutput, FocusedContextRequest, ReviewTask
 from src.domain.state import GraphState
 from src.infrastructure.llm.factory import Models
+from src.infrastructure.llm.token_usage import extract_total_tokens_from_llm_result, parse_structured_output
 from src.orchestration.context.review_context import LazyReviewContextProvider
 from src.orchestration.nodes.application.worker import ReviewTaskContext
 from src.orchestration.prompts.renderer import render_reviewer_prompt
@@ -189,6 +190,8 @@ def make_general_critiquer_node(
         if task is None:
             return {"node_history": [f"{node_name}:skipped"]}
 
+        llm_tokens = 0
+
         if _trace_enabled(state):
             trace_logger.info(
                 "TRACE critiquer_start run_id=%s task_id=%s files=%s",
@@ -207,7 +210,9 @@ def make_general_critiquer_node(
             selected_model = model_key or getattr(get_settings(), "reviewer_worker_model_key", None)
             try:
                 llm = Models.worker(CritiquerOutput, model_key=selected_model)
-                response = llm.invoke(_render_critiquer_prompt(state, task, context.render()))
+                invoke_result = llm.invoke(_render_critiquer_prompt(state, task, context.render()))
+                response = parse_structured_output(invoke_result, CritiquerOutput)
+                llm_tokens = extract_total_tokens_from_llm_result(invoke_result)
                 candidates = _normalize_candidates(task=task, candidates=response.candidates)
                 warnings.extend(response.warnings)
                 summary = response.summary
@@ -254,6 +259,7 @@ def make_general_critiquer_node(
             "task_status_by_id": {task.id: "completed"},
             "metadata": metadata,
             "node_history": [node_name],
+            "token_usage": llm_tokens,
         }
 
     return general_critiquer_node

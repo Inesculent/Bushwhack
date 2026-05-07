@@ -14,6 +14,7 @@ from src.domain.schemas import (
 )
 from src.domain.state import GraphState
 from src.infrastructure.llm.factory import Models
+from src.infrastructure.llm.token_usage import extract_total_tokens_from_llm_result, parse_structured_output
 from src.orchestration.prompts.renderer import render_reviewer_prompt
 
 logger = logging.getLogger(__name__)
@@ -118,6 +119,7 @@ def make_adversarial_reflection_node(model_key: str | None = None, use_llm: bool
         all_reports: List[ReflectionReport] = []
         all_requests: List[FocusedContextRequest] = []
         warnings: List[str] = []
+        llm_tokens = 0
 
         if _trace_enabled(state):
             trace_logger.info(
@@ -135,7 +137,9 @@ def make_adversarial_reflection_node(model_key: str | None = None, use_llm: bool
                     continue
                 try:
                     llm = Models.worker(ReflectionBatchOutput, model_key=selected_model)
-                    response = llm.invoke(_render_reflection_prompt(state, specialty, specialty_candidates))
+                    invoke_result = llm.invoke(_render_reflection_prompt(state, specialty, specialty_candidates))
+                    response = parse_structured_output(invoke_result, ReflectionBatchOutput)
+                    llm_tokens += extract_total_tokens_from_llm_result(invoke_result)
                     reps, reqs = _normalize_reports(response, specialty)
                     all_reports.extend(reps)
                     all_requests.extend(reqs)
@@ -178,6 +182,7 @@ def make_adversarial_reflection_node(model_key: str | None = None, use_llm: bool
             "focused_context_requests": all_requests,
             "metadata": metadata,
             "node_history": [node_name],
+            "token_usage": llm_tokens,
         }
 
     return adversarial_reflection_node

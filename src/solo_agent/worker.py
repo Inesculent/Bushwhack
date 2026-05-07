@@ -16,6 +16,7 @@ from src.config import get_settings
 from src.domain.schemas import ReviewFinding
 from src.domain.state import GraphState
 from src.infrastructure.llm.factory import Models
+from src.infrastructure.llm.token_usage import extract_total_tokens_from_llm_result
 from src.solo_agent.parser import new_finding_prefix, parse_solo_response
 from src.solo_agent.prompt import PROMPT_VERSION, render
 
@@ -43,23 +44,6 @@ def _extract_text(response: Any) -> str:
                 parts.append(item["text"])
         return "".join(parts)
     return str(response)
-
-
-def _extract_token_usage(response: Any) -> int:
-    """Pull an integer total-token count off common LangChain response shapes."""
-    metadata = getattr(response, "usage_metadata", None)
-    if isinstance(metadata, dict):
-        total = metadata.get("total_tokens")
-        if isinstance(total, int):
-            return total
-    response_metadata = getattr(response, "response_metadata", None)
-    if isinstance(response_metadata, dict):
-        token_usage = response_metadata.get("token_usage") or response_metadata.get("usage")
-        if isinstance(token_usage, dict):
-            total = token_usage.get("total_tokens")
-            if isinstance(total, int):
-                return total
-    return 0
 
 
 def worker_node(state: GraphState) -> Dict[str, Any]:
@@ -95,7 +79,7 @@ def worker_node(state: GraphState) -> Dict[str, Any]:
     elapsed_ms = int((time.perf_counter() - start) * 1000)
 
     raw_text = _extract_text(response)
-    token_usage = _extract_token_usage(response)
+    token_usage = extract_total_tokens_from_llm_result(response)
 
     prefix = new_finding_prefix(run_id=run_id or None)
     parse_result = parse_solo_response(
@@ -119,6 +103,7 @@ def worker_node(state: GraphState) -> Dict[str, Any]:
             "solo_agent_parse_warnings": parse_result.warnings,
             "solo_agent_had_end_tag": parse_result.had_end_tag,
             "solo_agent_finding_count": len(findings),
+            "llm_total_tokens": token_usage,
         }
     )
 

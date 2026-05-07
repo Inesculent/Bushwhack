@@ -1,0 +1,459 @@
+{
+  "metadata": {
+    "experiment": "reviewer_graph_parallel",
+    "run_id": "c75483e87a92",
+    "graph_run_id": "c75483e87a92:vllm-project__vllm__pr24425",
+    "pr_started_at": "2026-05-07T04:40:21.058806+00:00",
+    "pr_url": "https://github.com/vllm-project/vllm/pull/24425",
+    "pr_title": "[P/D] MultiConnector supports shutdown",
+    "pr_description": "## Purpose\nPart of https://github.com/vllm-project/vllm/pull/22699\n\n\nMultiConnector calls the shutdown method of each Connector during shutdown.\n## Test Plan\n\n## Test Result",
+    "pr_repo": "vllm-project/vllm",
+    "pr_number": 24425,
+    "review_repo_url": "https://github.com/vllm-project/vllm",
+    "review_pr_number": 24425,
+    "review_trace_enabled": false,
+    "structural_extractor": {
+      "mode": "sandbox_entities",
+      "files_attempted": 1892,
+      "files_parsed": 1810,
+      "gap_count": 82,
+      "node_count": 18985,
+      "edge_count": 111354,
+      "topology_algorithm": "graspologic_leiden",
+      "community_count": 431,
+      "topology_splits_applied": 0
+    },
+    "review_planner": {
+      "summary": "The change introduces a new method `shutdown` in the `multi_connector.py` file, which attempts to shut down each connector in `_connectors` and re-raises any exceptions encountered.",
+      "task_count": 4,
+      "specialties": [
+        "general",
+        "logic",
+        "performance",
+        "security"
+      ],
+      "tasks": [
+        {
+          "id": "security_1",
+          "title": "Security Review",
+          "description": "Verify that the `shutdown` method does not introduce any security vulnerabilities. Specifically, check how exceptions are handled and logged to ensure no sensitive information is exposed.",
+          "target_files": [
+            "vllm/distributed/kv_transfer/kv_connector/v1/multi_connector.py"
+          ],
+          "subtasks": [],
+          "specialty": "security",
+          "depth": 1,
+          "assigned_model": "qwen"
+        },
+        {
+          "id": "logic_1",
+          "title": "Logic Review",
+          "description": "Ensure the logic in the `shutdown` method is correct. Verify that all connectors are properly shut down and that exceptions are correctly captured and raised.",
+          "target_files": [
+            "vllm/distributed/kv_transfer/kv_connector/v1/multi_connector.py"
+          ],
+          "subtasks": [],
+          "specialty": "logic",
+          "depth": 1,
+          "assigned_model": "qwen"
+        },
+        {
+          "id": "performance_1",
+          "title": "Performance Review",
+          "description": "Evaluate the performance impact of the new `shutdown` method. Check if there are any potential performance bottlenecks or inefficiencies introduced by the method.",
+          "target_files": [
+            "vllm/distributed/kv_transfer/kv_connector/v1/multi_connector.py"
+          ],
+          "subtasks": [],
+          "specialty": "performance",
+          "depth": 1,
+          "assigned_model": "qwen"
+        },
+        {
+          "id": "general_1",
+          "title": "General Review",
+          "description": "Check for any general issues such as missing documentation, type annotations, or tests related to the new `shutdown` method. Ensure the method adheres to coding standards and best practices.",
+          "target_files": [
+            "vllm/distributed/kv_transfer/kv_connector/v1/multi_connector.py"
+          ],
+          "subtasks": [],
+          "specialty": "general",
+          "depth": 1,
+          "assigned_model": "qwen"
+        }
+      ],
+      "warnings": []
+    },
+    "general_critiquer": {
+      "by_task": {
+        "general_1": {
+          "summary": "No critical issues found in the introduced `shutdown` method. However, there are some potential improvements and considerations.",
+          "candidate_count": 0,
+          "warnings": [
+            "search_failed:test|error|warning|deprecated|compat|migration:UnicodeDecodeError: 'utf-8' codec can't decode byte 0x80 in position 27711: invalid start byte",
+            "The search for tests, errors, warnings, deprecations, compatibility issues, or migrations failed due to a UnicodeDecodeError. This might affect the completeness of the review."
+          ],
+          "initial_focus_requests": [
+            {
+              "request_id": "general_1_focus_1",
+              "candidate_id": "general_1",
+              "requested_by_specialty": "general",
+              "file_paths": [
+                "vllm/distributed/kv_transfer/kv_connector/v1/multi_connector.py"
+              ],
+              "symbol_queries": [
+                "MultiConnector.shutdown"
+              ],
+              "text_queries": [
+                "shutdown method",
+                "exception handling"
+              ],
+              "reason": "To ensure proper exception handling and understand the impact of exceptions during shutdown."
+            }
+          ]
+        },
+        "logic_1": {
+          "summary": "No critical issues found in the added `shutdown` method based on the provided context and diff.",
+          "candidate_count": 0,
+          "warnings": [
+            "search_failed:TODO|FIXME|raise|except|return None|default|fallback:UnicodeDecodeError: 'utf-8' codec can't decode byte 0xc5 in position 2004: invalid continuation byte",
+            "The `shutdown` method captures and raises the last exception encountered during the shutdown of connectors. It is unclear whether this is the desired behavior or if all exceptions should be captured and raised, or if they should be logged without raising."
+          ],
+          "initial_focus_requests": [
+            {
+              "request_id": "logic_1_initial_focus_1",
+              "candidate_id": "logic_1",
+              "requested_by_specialty": "general",
+              "file_paths": [
+                "vllm/distributed/kv_transfer/kv_connector/v1/multi_connector.py"
+              ],
+              "symbol_queries": [],
+              "text_queries": [
+                "callers of multi_connector.shutdown()",
+                "existing shutdown methods in _connectors"
+              ],
+              "reason": "To verify that all connectors are properly shut down and that exceptions are correctly captured and raised."
+            }
+          ]
+        },
+        "performance_1": {
+          "summary": "No concrete performance issues identified in the new `shutdown` method based on the provided diff and context.",
+          "candidate_count": 0,
+          "warnings": [
+            "search_failed:for .* in .*for|sleep|cache|memo|batch|bulk|timeout|retry:UnicodeDecodeError: 'utf-8' codec can't decode byte 0xad in position 15327: invalid start byte",
+            "search_failed: The search for patterns related to loops, caching, batching, etc., failed due to a UnicodeDecodeError. This may affect the completeness of the context gathered."
+          ],
+          "initial_focus_requests": [
+            {
+              "request_id": "performance_1_request_1",
+              "candidate_id": "performance_1",
+              "requested_by_specialty": "general",
+              "file_paths": [
+                "vllm/distributed/kv_transfer/kv_connector/v1/multi_connector.py"
+              ],
+              "symbol_queries": [
+                "c.shutdown()"
+              ],
+              "text_queries": [
+                "shutdown method"
+              ],
+              "reason": "The new `shutdown` method iterates over connectors and calls their `shutdown` methods. We need to understand the implementation of `c.shutdown()` in each connector to assess potential performance impacts."
+            }
+          ]
+        },
+        "security_1": {
+          "summary": "No immediate security vulnerabilities found in the `shutdown` method based on the provided diff and context. However, there is a potential risk related to logging exceptions.",
+          "candidate_count": 1,
+          "warnings": [],
+          "initial_focus_requests": [
+            {
+              "request_id": "security_1_r1",
+              "candidate_id": "security_1_c1",
+              "requested_by_specialty": "security",
+              "file_paths": [
+                "vllm/distributed/kv_transfer/kv_connector/v1/multi_connector.py"
+              ],
+              "symbol_queries": [
+                "c.shutdown()"
+              ],
+              "text_queries": [
+                "exception handling",
+                "logging"
+              ],
+              "reason": "To determine if the exceptions raised by `c.shutdown()` can contain sensitive information."
+            },
+            {
+              "request_id": "security_1_c1:auto-context:1",
+              "candidate_id": "security_1_c1",
+              "requested_by_specialty": "security",
+              "file_paths": [
+                "vllm/distributed/kv_transfer/kv_connector/v1/multi_connector.py"
+              ],
+              "symbol_queries": [],
+              "text_queries": [
+                "vllm/distributed/kv_transfer/kv_connector/v1/multi_connector.py",
+                "Sensitive information might be exposed in the logs if the exception contains sensitive details.",
+                "Sensitive information might be exposed in the logs if the exception contains sensitive details. logger.exception(\"Exception during connector %s shutdown.\", c.__"
+              ],
+              "reason": "Deterministic context requirement for a high-risk or externally dependent security_risk candidate."
+            }
+          ]
+        }
+      }
+    },
+    "focused_context": {
+      "fulfilled_ids": [
+        "general_1_focus_1",
+        "logic_1_initial_focus_1",
+        "performance_1_request_1",
+        "security_1_c1:auto-context:1",
+        "security_1_r1"
+      ],
+      "warnings": []
+    },
+    "adversarial_reflection": {
+      "report_count": 0,
+      "focused_request_count": 0,
+      "routed_candidate_counts": {
+        "security": 1,
+        "logic": 0,
+        "performance": 0,
+        "general": 0
+      },
+      "total_routed_candidate_reviews": 1,
+      "warnings": [
+        "reflection_failed:security:APITimeoutError: Request timed out."
+      ]
+    },
+    "adversarial_cleanup": {
+      "promoted_count": 0,
+      "dropped_candidate_ids": [
+        "security_1_c1"
+      ],
+      "ignored_off_domain_rejections": {},
+      "ignored_off_domain_context_requests": {},
+      "misrouted_candidate_ids": {},
+      "candidate_lifecycle": {
+        "security_1_c1": {
+          "decision": "dropped",
+          "reason": "missing_relevant_reflection",
+          "claim_type": "security_risk",
+          "suspected_category": "security",
+          "expected_reflectors": [
+            "security"
+          ]
+        }
+      }
+    },
+    "review_synthesizer": {
+      "worker_count": 0,
+      "reflection_report_count": 0,
+      "raw_finding_count": 0,
+      "final_finding_count": 0,
+      "dropped_duplicate_ids": [],
+      "worker_reports": [],
+      "reflection_reports": []
+    },
+    "pr_finished_at": "2026-05-07T04:44:59.660671+00:00"
+  },
+  "node_history": [
+    "sandbox_structural_extractor",
+    "review_planner",
+    "general_critiquer",
+    "general_critiquer",
+    "general_critiquer",
+    "general_critiquer",
+    "focused_context",
+    "adversarial_reflection",
+    "adversarial_cleanup",
+    "review_synthesizer"
+  ],
+  "worker_reports": [],
+  "candidate_findings": [
+    {
+      "candidate_id": "security_1_c1",
+      "patch_task_id": "security_1",
+      "file_path": "vllm/distributed/kv_transfer/kv_connector/v1/multi_connector.py",
+      "line_start": 95,
+      "line_end": 96,
+      "content": "logger.exception(\"Exception during connector %s shutdown.\", c.__class__.__name__)",
+      "claim_type": "security_risk",
+      "failure_mode": "Sensitive information might be exposed in the logs if the exception contains sensitive details.",
+      "evidence_summary": "The `logger.exception` call logs the exception traceback, which could include sensitive information if the exception message or stack trace contains such data.",
+      "required_context": [
+        "Check if the exceptions raised by `c.shutdown()` can contain sensitive information."
+      ],
+      "confidence": 0.7,
+      "suspected_category": "security",
+      "reflection_specialties": [
+        "security"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "medium",
+      "recommendation": "Consider sanitizing or filtering out sensitive information from exceptions before logging them. Alternatively, use a different logging level or method that avoids logging full exception tracebacks if they are not necessary for debugging."
+    }
+  ],
+  "reflection_reports": [],
+  "focused_context_requests": [
+    {
+      "request_id": "general_1_focus_1",
+      "candidate_id": "general_1",
+      "requested_by_specialty": "general",
+      "file_paths": [
+        "vllm/distributed/kv_transfer/kv_connector/v1/multi_connector.py"
+      ],
+      "symbol_queries": [
+        "MultiConnector.shutdown"
+      ],
+      "text_queries": [
+        "shutdown method",
+        "exception handling"
+      ],
+      "reason": "To ensure proper exception handling and understand the impact of exceptions during shutdown."
+    },
+    {
+      "request_id": "logic_1_initial_focus_1",
+      "candidate_id": "logic_1",
+      "requested_by_specialty": "general",
+      "file_paths": [
+        "vllm/distributed/kv_transfer/kv_connector/v1/multi_connector.py"
+      ],
+      "symbol_queries": [],
+      "text_queries": [
+        "callers of multi_connector.shutdown()",
+        "existing shutdown methods in _connectors"
+      ],
+      "reason": "To verify that all connectors are properly shut down and that exceptions are correctly captured and raised."
+    },
+    {
+      "request_id": "performance_1_request_1",
+      "candidate_id": "performance_1",
+      "requested_by_specialty": "general",
+      "file_paths": [
+        "vllm/distributed/kv_transfer/kv_connector/v1/multi_connector.py"
+      ],
+      "symbol_queries": [
+        "c.shutdown()"
+      ],
+      "text_queries": [
+        "shutdown method"
+      ],
+      "reason": "The new `shutdown` method iterates over connectors and calls their `shutdown` methods. We need to understand the implementation of `c.shutdown()` in each connector to assess potential performance impacts."
+    },
+    {
+      "request_id": "security_1_r1",
+      "candidate_id": "security_1_c1",
+      "requested_by_specialty": "security",
+      "file_paths": [
+        "vllm/distributed/kv_transfer/kv_connector/v1/multi_connector.py"
+      ],
+      "symbol_queries": [
+        "c.shutdown()"
+      ],
+      "text_queries": [
+        "exception handling",
+        "logging"
+      ],
+      "reason": "To determine if the exceptions raised by `c.shutdown()` can contain sensitive information."
+    },
+    {
+      "request_id": "security_1_c1:auto-context:1",
+      "candidate_id": "security_1_c1",
+      "requested_by_specialty": "security",
+      "file_paths": [
+        "vllm/distributed/kv_transfer/kv_connector/v1/multi_connector.py"
+      ],
+      "symbol_queries": [],
+      "text_queries": [
+        "vllm/distributed/kv_transfer/kv_connector/v1/multi_connector.py",
+        "Sensitive information might be exposed in the logs if the exception contains sensitive details.",
+        "Sensitive information might be exposed in the logs if the exception contains sensitive details. logger.exception(\"Exception during connector %s shutdown.\", c.__"
+      ],
+      "reason": "Deterministic context requirement for a high-risk or externally dependent security_risk candidate."
+    }
+  ],
+  "focused_context_results": {
+    "general_1_focus_1": {
+      "request_id": "general_1_focus_1",
+      "candidate_id": "general_1",
+      "file_snippets": {
+        "vllm/distributed/kv_transfer/kv_connector/v1/multi_connector.py": "Output):\n        for c in self._connectors:\n            c.update_connector_output(connector_output)\n\n    def request_finished(\n        self,\n        request: \"Request\",\n        blocks: list[int],\n    ) -> tuple[bool, Optional[dict[str, Any]]]:\n        async_saves = 0\n        kv_txfer_params = None\n        for c in self._connectors:\n            async_save, txfer_params = c.request_finished(request, blocks)\n            if async_save:\n                async_saves += 1\n            if txfer_params is not None:\n                if kv_txfer_params is not None:\n                    # TODO we can probably change this to merge the dicts here,\n                    # checking for key clashes.\n                    raise RuntimeError(\n                        \"Only one connector can produce KV transfer params\")\n                kv_txfer_params = txfer_params\n        if async_saves > 1:\n            self._extra_async_saves[request.request_id] = async_saves - 1\n\n        # Clean up other state for this request.\n\n--- structural neighbors ---\nsymbol:30632b955c4f4747:MultiKVConnectorMetadata (symbol, vllm/distributed/kv_transfer/kv_connector/v1/multi_connector.py); symbol:48c5b5d43e5515a3:MultiConnector (symbol, vllm/distributed/kv_transfer/kv_connector/v1/multi_connector.py)"
+      },
+      "search_hits": {
+        "MultiConnector.shutdown": [],
+        "shutdown method": [],
+        "exception handling": []
+      },
+      "warnings": []
+    },
+    "logic_1_initial_focus_1": {
+      "request_id": "logic_1_initial_focus_1",
+      "candidate_id": "logic_1",
+      "file_snippets": {
+        "vllm/distributed/kv_transfer/kv_connector/v1/multi_connector.py": "# SPDX-License-Identifier: Apache-2.0\n# SPDX-FileCopyrightText: Copyright contributors to the vLLM project\nimport copy\nfrom collections.abc import Iterable\nfrom dataclasses import dataclass\nfrom typing import TYPE_CHECKING, Any, Optional\n\nimport torch\n\nfrom vllm.config import KVTransferConfig, VllmConfig\nfrom vllm.distributed.kv_events import KVCacheEvent\nfrom vllm.distributed.kv_transfer.kv_connector.factory import (\n    KVConnectorFactory)\nfrom vllm.distributed.kv_transfer.kv_connector.v1.base import (\n    KVConnectorBase_V1, KVConnectorMetadata, KVConnectorRole)\nfrom vllm.logger import init_logger\nfrom vllm.v1.core.kv_cache_manager import KVCacheBlocks\nfrom vllm.v1.core.sched.output import SchedulerOutput\nfrom vllm.v1.outputs import KVConnectorOutput\n\nif TYPE_CHECKING:\n    from vllm.attention.backends.abstract import AttentionMetadata\n    from vllm.forward_context import ForwardContext\n    from vllm.v1.request import Request\n\nlogger = init_logger(__name__)\n\n\n@dataclass\nclass MultiKVConnectorMetadata(KVConnectorMetadata):\n    metadata: tuple[KVConnectorMetadata, ...]\n    extra_async_saves: Optional[dict[str, int]] = None\n\n\nclass MultiConnector(KVConnectorBase_V1):\n    \"\"\"\n    A wrapper for using multiple KVConnectors at the same time.\n\n    The current logic is:\n    - Load KV from the first connector that advertises available tokens from\n      get_num_new_matched_tokens(), based on the order in the config.\n    - Save to all connectors.\n    \"\"\"\n\n    def __init__(self, vllm_config: \"VllmConfig\", role: KVConnectorRole):\n        super().__init__(vllm_config=vllm_config, role=role)\n        self._connectors: list[KVConnectorBase_V1] = []\n        ktcs = vllm_config.kv_transfer_config.kv_connector_extra_config.get(\n            \"connectors\")\n        assert ktcs is not None\n        for ktc in ktcs:\n            temp_config = copy.copy(vllm_config)\n            engine_id = ktc.get(\"engine_id\",\n                                vllm_config.kv_transfer_config.engine_id)\n            temp_config.kv_transfer_config = KVTransferConfig(\n                **ktc, engine_id=engine_id)\n            self._connectors.append(\n                KVConnectorFactory.create_connector(temp_config, role))\n\n        # A mapping from request id to the index of the connector chosen to\n        # load the request from (if any).\n        self._requests_to_connector: dict[str, int] = {}\n\n        # Keeps track of *additional* remaining async saves (beyond 1) to be\n        # finished per request. Not needed for async loads since we only allow\n        # a single connector to load.\n        # Propagated from scheduler to worker side via the connector metadata.\n        self._extra_async_saves: dict[str, int] = {}\n\n    def register_kv_caches(self, kv_caches: dict[str, torch.Tensor]):\n        for c in self._connectors:\n            c.register_kv_caches(kv_caches)\n\n    # We must override the base class method here because we need to bind\n    # the metadata to each connector in the order of the connectors in the\n    # MultiKVConnectorMetadata.\n    def bind_connector_metadata(\n            self, connector_metadata: KVConnectorMetadata) -> None:\n        assert isinstance(connector_metadata, MultiKVConnectorMetadata)\n        if connector_metadata.extra_async_saves:\n            self._extra_async_saves.update(\n                connector_metadata.extra_async_saves)\n        for c, cm in zip(self._connectors, connector_metadata.metadata):\n            c.bind_connector_metadata(cm)\n\n    def clear_connector_metadata(self) -> None:\n        for c in self._connectors:\n            c.clear_connector_metadata()\n\n    def shutdown(self):\n        exception: Optional[Exception] = None\n        for c in self._connectors:\n            try:\n                c.shutdown()\n            except Exception as e:\n                logger.exception(\"Exception during connector %s shutdown.\",\n                                 c.__class__.__name__)\n                exception = e\n        if exception:\n            raise exception\n\n    # ==============================\n    # Worker-side methods\n    # ==============================\n    def start_load_kv(self, forward_context: \"ForwardContext\",\n                      **kwargs) -> None:\n        for c in self._connectors:\n            c.start_load_kv(forward_context, **kwargs)\n\n    def wait_for_layer_load(self, layer_name: str) -> None:\n        for c in self._connectors:\n            c.wait_for_layer_load(layer_name)\n\n    def save_kv_layer(self, layer_name: str, kv_layer: torch.Tensor,\n                      attn_metadata: \"AttentionMetadata\", **kwargs) -> None:\n        for c in self._connectors:\n            c.save_kv_layer(layer_name, kv_layer, attn_metadata, **kwargs)\n\n    def wait_for_save(self):\n        for c in self._connectors:\n            c.wait_for_save()\n\n    def get_finished(\n        self, finished_req_ids: set[str]\n    ) -> tuple[Optional[set[str]], Optional[set[str]]]:\n        finished_sending: set[str] = set()\n        finished_recving: set[str] = set()\n        for c in self._connectors:\n            sending, recving = c.get_finished(finished_req_ids)\n            if not recving and not sending:\n                continue\n            # Aggregate finished recving request ids.\n            finished_recving.update(recving or ())\n            # Aggregate finished sending request ids - only include\n            # once we've drained the \"extra\" count (for cases where\n            # more than one connector is async-saving the same request).\n            for req_id in sending or ():\n                extra_pending = self._extra_async_saves.get(req_id)\n                if extra_pending is None:\n                    finished_sending.add(req_id)\n                    continue\n                assert extra_pending > 0\n                if extra_pending == 1:\n                    del self._extra_async_saves[req_id]\n                else:\n                    self._extra_async_saves[req_id] = extra_pending - 1\n\n        return finished_sending or None, finished_recving or None\n\n    # ==============================\n    # Scheduler-side methods\n    # ==============================\n    def get_num_new_matched_tokens(\n        self,\n        request: \"Request\",\n        num_computed_tokens: int,\n    ) -> tuple[int, bool]:\n        to_return = (0, False)\n        for i, c in enumerate(self._connectors):\n            toks, load_async = c.get_num_new_matched_tokens(\n                request, num_computed_tokens)\n            # The first connector that has new matched tokens will be assigned\n            # to this request.\n            if to_return[0] == 0 and toks > 0:\n                self._requests_to_connector[request.request_id] = i\n                to_return = (toks, load_async)\n        return to_return\n\n    def update_state_after_alloc(self, request: \"Request\",\n                                 blocks: \"KVCacheBlocks\",\n                                 num_external_tokens: int):\n        chosen_connector = self._requests_to_connector.get(\n            request.request_id, -1)\n        empty_blocks = blocks.new_empty()\n        for i, c in enumerate(self._connectors):\n            if i == chosen_connector:\n                # Forward call to the chosen connector (if any).\n                c.update_state_after_alloc(request, blocks,\n                                           num_external_tokens)\n            else:\n                # Call with empty blocks for other connectors.\n                c.update_state_after_alloc(request, empty_blocks, 0)\n\n    def build_connector_meta(\n            self,\n            scheduler_output: SchedulerOutput) -> MultiKVConnectorMetadata:\n        metadata = MultiKVConnectorMetadata(metadata=tuple(\n            c.build_connector_meta(scheduler_output)\n            for c in self._connectors))\n        if self._extra_async_saves:\n            metadata.extra_async_saves = self._extra_async_saves\n            self._extra_async_saves = {}\n        return metadata\n\n    def update_connector_output(self, connector_output: KVConnectorOutput):\n        f\n--- structural neighbors ---\nsymbol:30632b955c4f4747:MultiKVConnectorMetadata (symbol, vllm/distributed/kv_transfer/kv_connector/v1/multi_connector.py); symbol:48c5b5d43e5515a3:MultiConnector (symbol, vllm/distributed/kv_transfer/kv_connector/v1/multi_connector.py)"
+      },
+      "search_hits": {
+        "callers of multi_connector.shutdown()": [],
+        "existing shutdown methods in _connectors": []
+      },
+      "warnings": []
+    },
+    "performance_1_request_1": {
+      "request_id": "performance_1_request_1",
+      "candidate_id": "performance_1",
+      "file_snippets": {
+        "vllm/distributed/kv_transfer/kv_connector/v1/multi_connector.py": "# SPDX-License-Identifier: Apache-2.0\n# SPDX-FileCopyrightText: Copyright contributors to the vLLM project\nimport copy\nfrom collections.abc import Iterable\nfrom dataclasses import dataclass\nfrom typing import TYPE_CHECKING, Any, Optional\n\nimport torch\n\nfrom vllm.config import KVTransferConfig, VllmConfig\nfrom vllm.distributed.kv_events import KVCacheEvent\nfrom vllm.distributed.kv_transfer.kv_connector.factory import (\n    KVConnectorFactory)\nfrom vllm.distributed.kv_transfer.kv_connector.v1.base import (\n    KVConnectorBase_V1, KVConnectorMetadata, KVConnectorRole)\nfrom vllm.logger import init_logger\nfrom vllm.v1.core.kv_cache_manager import KVCacheBlocks\nfrom vllm.v1.core.sched.output import SchedulerOutput\nfrom vllm.v1.outputs import KVConnectorOutput\n\nif TYPE_CHECKING:\n    from vllm.attention.backends.abstract import AttentionMetadata\n    from vllm.forward_context import ForwardContext\n    from vllm.v1.request import Request\n\nlogger = init_logger(__name__)\n\n\n@dataclass\nclass MultiKVConnectorMetadata(KVConnectorMetadata):\n    metadata: tuple[KVConnectorMetadata, ...]\n    extra_async_saves: Optional[dict[str, int]] = None\n\n\nclass MultiConnector(KVConnectorBase_V1):\n    \"\"\"\n    A wrapper for using multiple KVConnectors at the same time.\n\n    The current logic is:\n    - Load KV from the first connector that advertises available tokens from\n      get_num_new_matched_tokens(), based on the order in the config.\n    - Save to all connectors.\n    \"\"\"\n\n    def __init__(self, vllm_config: \"VllmConfig\", role: KVConnectorRole):\n        super().__init__(vllm_config=vllm_config, role=role)\n        self._connectors: list[KVConnectorBase_V1] = []\n        ktcs = vllm_config.kv_transfer_config.kv_connector_extra_config.get(\n            \"connectors\")\n        assert ktcs is not None\n        for ktc in ktcs:\n            temp_config = copy.copy(vllm_config)\n            engine_id = ktc.get(\"engine_id\",\n                                vllm_config.kv_transfer_config.engine_id)\n            temp_config.kv_transfer_config = KVTransferConfig(\n                **ktc, engine_id=engine_id)\n            self._connectors.append(\n                KVConnectorFactory.create_connector(temp_config, role))\n\n        # A mapping from request id to the index of the connector chosen to\n        # load the request from (if any).\n        self._requests_to_connector: dict[str, int] = {}\n\n        # Keeps track of *additional* remaining async saves (beyond 1) to be\n        # finished per request. Not needed for async loads since we only allow\n        # a single connector to load.\n        # Propagated from scheduler to worker side via the connector metadata.\n        self._extra_async_saves: dict[str, int] = {}\n\n    def register_kv_caches(self, kv_caches: dict[str, torch.Tensor]):\n        for c in self._connectors:\n            c.register_kv_caches(kv_caches)\n\n    # We must override the base class method here because we need to bind\n    # the metadata to each connector in the order of the connectors in the\n    # MultiKVConnectorMetadata.\n    def bind_connector_metadata(\n            self, connector_metadata: KVConnectorMetadata) -> None:\n        assert isinstance(connector_metadata, MultiKVConnectorMetadata)\n        if connector_metadata.extra_async_saves:\n            self._extra_async_saves.update(\n                connector_metadata.extra_async_saves)\n        for c, cm in zip(self._connectors, connector_metadata.metadata):\n            c.bind_connector_metadata(cm)\n\n    def clear_connector_metadata(self) -> None:\n        for c in self._connectors:\n            c.clear_connector_metadata()\n\n    def shutdown(self):\n        exception: Optional[Exception] = None\n        for c in self._connectors:\n            try:\n                c.shutdown()\n            except Exception as e:\n                logger.exception(\"Exception during connector %s shutdown.\",\n                                 c.__class__.__name__)\n                exception = e\n        if exception:\n            raise exception\n\n    # ==============================\n    # Worker-side methods\n    # ==============================\n    def start_load_kv(self, forward_context: \"ForwardContext\",\n                      **kwargs) -> None:\n        for c in self._connectors:\n            c.start_load_kv(forward_context, **kwargs)\n\n    def wait_for_layer_load(self, layer_name: str) -> None:\n        for c in self._connectors:\n            c.wait_for_layer_load(layer_name)\n\n    def save_kv_layer(self, layer_name: str, kv_layer: torch.Tensor,\n                      attn_metadata: \"AttentionMetadata\", **kwargs) -> None:\n        for c in self._connectors:\n            c.save_kv_layer(layer_name, kv_layer, attn_metadata, **kwargs)\n\n    def wait_for_save(self):\n        for c in self._connectors:\n            c.wait_for_save()\n\n    def get_finished(\n        self, finished_req_ids: set[str]\n    ) -> tuple[Optional[set[str]], Optional[set[str]]]:\n        finished_sending: set[str] = set()\n        finished_recving: set[str] = set()\n        for c in self._connectors:\n            sending, recving = c.get_finished(finished_req_ids)\n            if not recving and not sending:\n                continue\n            # Aggregate finished recving request ids.\n            finished_recving.update(recving or ())\n            # Aggregate finished sending request ids - only include\n            # once we've drained the \"extra\" count (for cases where\n            # more than one connector is async-saving the same request).\n            for req_id in sending or ():\n                extra_pending = self._extra_async_saves.get(req_id)\n                if extra_pending is None:\n                    finished_sending.add(req_id)\n                    continue\n                assert extra_pending > 0\n                if extra_pending == 1:\n                    del self._extra_async_saves[req_id]\n                else:\n                    self._extra_async_saves[req_id] = extra_pending - 1\n\n        return finished_sending or None, finished_recving or None\n\n    # ==============================\n    # Scheduler-side methods\n    # ==============================\n    def get_num_new_matched_tokens(\n        self,\n        request: \"Request\",\n        num_computed_tokens: int,\n    ) -> tuple[int, bool]:\n        to_return = (0, False)\n        for i, c in enumerate(self._connectors):\n            toks, load_async = c.get_num_new_matched_tokens(\n                request, num_computed_tokens)\n            # The first connector that has new matched tokens will be assigned\n            # to this request.\n            if to_return[0] == 0 and toks > 0:\n                self._requests_to_connector[request.request_id] = i\n                to_return = (toks, load_async)\n        return to_return\n\n    def update_state_after_alloc(self, request: \"Request\",\n                                 blocks: \"KVCacheBlocks\",\n                                 num_external_tokens: int):\n        chosen_connector = self._requests_to_connector.get(\n            request.request_id, -1)\n        empty_blocks = blocks.new_empty()\n        for i, c in enumerate(self._connectors):\n            if i == chosen_connector:\n                # Forward call to the chosen connector (if any).\n                c.update_state_after_alloc(request, blocks,\n                                           num_external_tokens)\n            else:\n                # Call with empty blocks for other connectors.\n                c.update_state_after_alloc(request, empty_blocks, 0)\n\n    def build_connector_meta(\n            self,\n            scheduler_output: SchedulerOutput) -> MultiKVConnectorMetadata:\n        metadata = MultiKVConnectorMetadata(metadata=tuple(\n            c.build_connector_meta(scheduler_output)\n            for c in self._connectors))\n        if self._extra_async_saves:\n            metadata.extra_async_saves = self._extra_async_saves\n            self._extra_async_saves = {}\n        return metadata\n\n    def update_connector_output(self, connector_output: KVConnectorOutput):\n        f\n--- structural neighbors ---\nsymbol:30632b955c4f4747:MultiKVConnectorMetadata (symbol, vllm/distributed/kv_transfer/kv_connector/v1/multi_connector.py); symbol:48c5b5d43e5515a3:MultiConnector (symbol, vllm/distributed/kv_transfer/kv_connector/v1/multi_connector.py)"
+      },
+      "search_hits": {
+        "c.shutdown()": [
+          {
+            "file_path": "vllm/distributed/kv_transfer/kv_connector/v1/multi_connector.py",
+            "line_number": 94,
+            "content": "c.shutdown()",
+            "context_lines": [
+              "c.shutdown()"
+            ]
+          }
+        ],
+        "shutdown method": []
+      },
+      "warnings": []
+    },
+    "security_1_r1": {
+      "request_id": "security_1_r1",
+      "candidate_id": "security_1_c1",
+      "file_snippets": {
+        "vllm/distributed/kv_transfer/kv_connector/v1/multi_connector.py": "# SPDX-License-Identifier: Apache-2.0\n# SPDX-FileCopyrightText: Copyright contributors to the vLLM project\nimport copy\nfrom collections.abc import Iterable\nfrom dataclasses import dataclass\nfrom typing import TYPE_CHECKING, Any, Optional\n\nimport torch\n\nfrom vllm.config import KVTransferConfig, VllmConfig\nfrom vllm.distributed.kv_events import KVCacheEvent\nfrom vllm.distributed.kv_transfer.kv_connector.factory import (\n    KVConnectorFactory)\nfrom vllm.distributed.kv_transfer.kv_connector.v1.base import (\n    KVConnectorBase_V1, KVConnectorMetadata, KVConnectorRole)\nfrom vllm.logger import init_logger\nfrom vllm.v1.core.kv_cache_manager import KVCacheBlocks\nfrom vllm.v1.core.sched.output import SchedulerOutput\nfrom vllm.v1.outputs import KVConnectorOutput\n\nif TYPE_CHECKING:\n    from vllm.attention.backends.abstract import AttentionMetadata\n    from vllm.forward_context import ForwardContext\n    from vllm.v1.request import Request\n\nlogger = init_logger(__name__)\n\n\n@dataclass\nclass MultiKVConnectorMetadata(KVConnectorMetadata):\n    metadata: tuple[KVConnectorMetadata, ...]\n    extra_async_saves: Optional[dict[str, int]] = None\n\n\nclass MultiConnector(KVConnectorBase_V1):\n    \"\"\"\n    A wrapper for using multiple KVConnectors at the same time.\n\n    The current logic is:\n    - Load KV from the first connector that advertises available tokens from\n      get_num_new_matched_tokens(), based on the order in the config.\n    - Save to all connectors.\n    \"\"\"\n\n    def __init__(self, vllm_config: \"VllmConfig\", role: KVConnectorRole):\n        super().__init__(vllm_config=vllm_config, role=role)\n        self._connectors: list[KVConnectorBase_V1] = []\n        ktcs = vllm_config.kv_transfer_config.kv_connector_extra_config.get(\n            \"connectors\")\n        assert ktcs is not None\n        for ktc in ktcs:\n            temp_config = copy.copy(vllm_config)\n            engine_id = ktc.get(\"engine_id\",\n                                vllm_config.kv_transfer_config.engine_id)\n            temp_config.kv_transfer_config = KVTransferConfig(\n                **ktc, engine_id=engine_id)\n            self._connectors.append(\n                KVConnectorFactory.create_connector(temp_config, role))\n\n        # A mapping from request id to the index of the connector chosen to\n        # load the request from (if any).\n        self._requests_to_connector: dict[str, int] = {}\n\n        # Keeps track of *additional* remaining async saves (beyond 1) to be\n        # finished per request. Not needed for async loads since we only allow\n        # a single connector to load.\n        # Propagated from scheduler to worker side via the connector metadata.\n        self._extra_async_saves: dict[str, int] = {}\n\n    def register_kv_caches(self, kv_caches: dict[str, torch.Tensor]):\n        for c in self._connectors:\n            c.register_kv_caches(kv_caches)\n\n    # We must override the base class method here because we need to bind\n    # the metadata to each connector in the order of the connectors in the\n    # MultiKVConnectorMetadata.\n    def bind_connector_metadata(\n            self, connector_metadata: KVConnectorMetadata) -> None:\n        assert isinstance(connector_metadata, MultiKVConnectorMetadata)\n        if connector_metadata.extra_async_saves:\n            self._extra_async_saves.update(\n                connector_metadata.extra_async_saves)\n        for c, cm in zip(self._connectors, connector_metadata.metadata):\n            c.bind_connector_metadata(cm)\n\n    def clear_connector_metadata(self) -> None:\n        for c in self._connectors:\n            c.clear_connector_metadata()\n\n    def shutdown(self):\n        exception: Optional[Exception] = None\n        for c in self._connectors:\n            try:\n                c.shutdown()\n            except Exception as e:\n                logger.exception(\"Exception during connector %s shutdown.\",\n                                 c.__class__.__name__)\n                exception = e\n        if exception:\n            raise exception\n\n    # ==============================\n    # Worker-side methods\n    # ==============================\n    def start_load_kv(self, forward_context: \"ForwardContext\",\n                      **kwargs) -> None:\n        for c in self._connectors:\n            c.start_load_kv(forward_context, **kwargs)\n\n    def wait_for_layer_load(self, layer_name: str) -> None:\n        for c in self._connectors:\n            c.wait_for_layer_load(layer_name)\n\n    def save_kv_layer(self, layer_name: str, kv_layer: torch.Tensor,\n                      attn_metadata: \"AttentionMetadata\", **kwargs) -> None:\n        for c in self._connectors:\n            c.save_kv_layer(layer_name, kv_layer, attn_metadata, **kwargs)\n\n    def wait_for_save(self):\n        for c in self._connectors:\n            c.wait_for_save()\n\n    def get_finished(\n        self, finished_req_ids: set[str]\n    ) -> tuple[Optional[set[str]], Optional[set[str]]]:\n        finished_sending: set[str] = set()\n        finished_recving: set[str] = set()\n        for c in self._connectors:\n            sending, recving = c.get_finished(finished_req_ids)\n            if not recving and not sending:\n                continue\n            # Aggregate finished recving request ids.\n            finished_recving.update(recving or ())\n            # Aggregate finished sending request ids - only include\n            # once we've drained the \"extra\" count (for cases where\n            # more than one connector is async-saving the same request).\n            for req_id in sending or ():\n                extra_pending = self._extra_async_saves.get(req_id)\n                if extra_pending is None:\n                    finished_sending.add(req_id)\n                    continue\n                assert extra_pending > 0\n                if extra_pending == 1:\n                    del self._extra_async_saves[req_id]\n                else:\n                    self._extra_async_saves[req_id] = extra_pending - 1\n\n        return finished_sending or None, finished_recving or None\n\n    # ==============================\n    # Scheduler-side methods\n    # ==============================\n    def get_num_new_matched_tokens(\n        self,\n        request: \"Request\",\n        num_computed_tokens: int,\n    ) -> tuple[int, bool]:\n        to_return = (0, False)\n        for i, c in enumerate(self._connectors):\n            toks, load_async = c.get_num_new_matched_tokens(\n                request, num_computed_tokens)\n            # The first connector that has new matched tokens will be assigned\n            # to this request.\n            if to_return[0] == 0 and toks > 0:\n                self._requests_to_connector[request.request_id] = i\n                to_return = (toks, load_async)\n        return to_return\n\n    def update_state_after_alloc(self, request: \"Request\",\n                                 blocks: \"KVCacheBlocks\",\n                                 num_external_tokens: int):\n        chosen_connector = self._requests_to_connector.get(\n            request.request_id, -1)\n        empty_blocks = blocks.new_empty()\n        for i, c in enumerate(self._connectors):\n            if i == chosen_connector:\n                # Forward call to the chosen connector (if any).\n                c.update_state_after_alloc(request, blocks,\n                                           num_external_tokens)\n            else:\n                # Call with empty blocks for other connectors.\n                c.update_state_after_alloc(request, empty_blocks, 0)\n\n    def build_connector_meta(\n            self,\n            scheduler_output: SchedulerOutput) -> MultiKVConnectorMetadata:\n        metadata = MultiKVConnectorMetadata(metadata=tuple(\n            c.build_connector_meta(scheduler_output)\n            for c in self._connectors))\n        if self._extra_async_saves:\n            metadata.extra_async_saves = self._extra_async_saves\n            self._extra_async_saves = {}\n        return metadata\n\n    def update_connector_output(self, connector_output: KVConnectorOutput):\n        f\n--- structural neighbors ---\nsymbol:30632b955c4f4747:MultiKVConnectorMetadata (symbol, vllm/distributed/kv_transfer/kv_connector/v1/multi_connector.py); symbol:48c5b5d43e5515a3:MultiConnector (symbol, vllm/distributed/kv_transfer/kv_connector/v1/multi_connector.py)"
+      },
+      "search_hits": {
+        "c.shutdown()": [
+          {
+            "file_path": "vllm/distributed/kv_transfer/kv_connector/v1/multi_connector.py",
+            "line_number": 94,
+            "content": "c.shutdown()",
+            "context_lines": [
+              "c.shutdown()"
+            ]
+          }
+        ],
+        "exception handling": [],
+        "logging": []
+      },
+      "warnings": []
+    },
+    "security_1_c1:auto-context:1": {
+      "request_id": "security_1_c1:auto-context:1",
+      "candidate_id": "security_1_c1",
+      "file_snippets": {
+        "vllm/distributed/kv_transfer/kv_connector/v1/multi_connector.py": "# SPDX-License-Identifier: Apache-2.0\n# SPDX-FileCopyrightText: Copyright contributors to the vLLM project\nimport copy\nfrom collections.abc import Iterable\nfrom dataclasses import dataclass\nfrom typing import TYPE_CHECKING, Any, Optional\n\nimport torch\n\nfrom vllm.config import KVTransferConfig, VllmConfig\nfrom vllm.distributed.kv_events import KVCacheEvent\nfrom vllm.distributed.kv_transfer.kv_connector.factory import (\n    KVConnectorFactory)\nfrom vllm.distributed.kv_transfer.kv_connector.v1.base import (\n    KVConnectorBase_V1, KVConnectorMetadata, KVConnectorRole)\nfrom vllm.logger import init_logger\nfrom vllm.v1.core.kv_cache_manager import KVCacheBlocks\nfrom vllm.v1.core.sched.output import SchedulerOutput\nfrom vllm.v1.outputs import KVConnectorOutput\n\nif TYPE_CHECKING:\n    from vllm.attention.backends.abstract import AttentionMetadata\n    from vllm.forward_context import ForwardContext\n    from vllm.v1.request import Request\n\nlogger = init_logger(__name__)\n\n\n@dataclass\nclass MultiKVConnectorMetadata(KVConnectorMetadata):\n    metadata: tuple[KVConnectorMetadata, ...]\n    extra_async_saves: Optional[dict[str, int]] = None\n\n\nclass MultiConnector(KVConnectorBase_V1):\n    \"\"\"\n    A wrapper for using multiple KVConnectors at the same time.\n\n    The current logic is:\n    - Load KV from the first connector that advertises available tokens from\n      get_num_new_matched_tokens(), based on the order in the config.\n    - Save to all connectors.\n    \"\"\"\n\n    def __init__(self, vllm_config: \"VllmConfig\", role: KVConnectorRole):\n        super().__init__(vllm_config=vllm_config, role=role)\n        self._connectors: list[KVConnectorBase_V1] = []\n        ktcs = vllm_config.kv_transfer_config.kv_connector_extra_config.get(\n            \"connectors\")\n        assert ktcs is not None\n        for ktc in ktcs:\n            temp_config = copy.copy(vllm_config)\n            engine_id = ktc.get(\"engine_id\",\n                                vllm_config.kv_transfer_config.engine_id)\n            temp_config.kv_transfer_config = KVTransferConfig(\n                **ktc, engine_id=engine_id)\n            self._connectors.append(\n                KVConnectorFactory.create_connector(temp_config, role))\n\n        # A mapping from request id to the index of the connector chosen to\n        # load the request from (if any).\n        self._requests_to_connector: dict[str, int] = {}\n\n        # Keeps track of *additional* remaining async saves (beyond 1) to be\n        # finished per request. Not needed for async loads since we only allow\n        # a single connector to load.\n        # Propagated from scheduler to worker side via the connector metadata.\n        self._extra_async_saves: dict[str, int] = {}\n\n    def register_kv_caches(self, kv_caches: dict[str, torch.Tensor]):\n        for c in self._connectors:\n            c.register_kv_caches(kv_caches)\n\n    # We must override the base class method here because we need to bind\n    # the metadata to each connector in the order of the connectors in the\n    # MultiKVConnectorMetadata.\n    def bind_connector_metadata(\n            self, connector_metadata: KVConnectorMetadata) -> None:\n        assert isinstance(connector_metadata, MultiKVConnectorMetadata)\n        if connector_metadata.extra_async_saves:\n            self._extra_async_saves.update(\n                connector_metadata.extra_async_saves)\n        for c, cm in zip(self._connectors, connector_metadata.metadata):\n            c.bind_connector_metadata(cm)\n\n    def clear_connector_metadata(self) -> None:\n        for c in self._connectors:\n            c.clear_connector_metadata()\n\n    def shutdown(self):\n        exception: Optional[Exception] = None\n        for c in self._connectors:\n            try:\n                c.shutdown()\n            except Exception as e:\n                logger.exception(\"Exception during connector %s shutdown.\",\n                                 c.__class__.__name__)\n                exception = e\n        if exception:\n            raise exception\n\n    # ==============================\n    # Worker-side methods\n    # ==============================\n    def start_load_kv(self, forward_context: \"ForwardContext\",\n                      **kwargs) -> None:\n        for c in self._connectors:\n            c.start_load_kv(forward_context, **kwargs)\n\n    def wait_for_layer_load(self, layer_name: str) -> None:\n        for c in self._connectors:\n            c.wait_for_layer_load(layer_name)\n\n    def save_kv_layer(self, layer_name: str, kv_layer: torch.Tensor,\n                      attn_metadata: \"AttentionMetadata\", **kwargs) -> None:\n        for c in self._connectors:\n            c.save_kv_layer(layer_name, kv_layer, attn_metadata, **kwargs)\n\n    def wait_for_save(self):\n        for c in self._connectors:\n            c.wait_for_save()\n\n    def get_finished(\n        self, finished_req_ids: set[str]\n    ) -> tuple[Optional[set[str]], Optional[set[str]]]:\n        finished_sending: set[str] = set()\n        finished_recving: set[str] = set()\n        for c in self._connectors:\n            sending, recving = c.get_finished(finished_req_ids)\n            if not recving and not sending:\n                continue\n            # Aggregate finished recving request ids.\n            finished_recving.update(recving or ())\n            # Aggregate finished sending request ids - only include\n            # once we've drained the \"extra\" count (for cases where\n            # more than one connector is async-saving the same request).\n            for req_id in sending or ():\n                extra_pending = self._extra_async_saves.get(req_id)\n                if extra_pending is None:\n                    finished_sending.add(req_id)\n                    continue\n                assert extra_pending > 0\n                if extra_pending == 1:\n                    del self._extra_async_saves[req_id]\n                else:\n                    self._extra_async_saves[req_id] = extra_pending - 1\n\n        return finished_sending or None, finished_recving or None\n\n    # ==============================\n    # Scheduler-side methods\n    # ==============================\n    def get_num_new_matched_tokens(\n        self,\n        request: \"Request\",\n        num_computed_tokens: int,\n    ) -> tuple[int, bool]:\n        to_return = (0, False)\n        for i, c in enumerate(self._connectors):\n            toks, load_async = c.get_num_new_matched_tokens(\n                request, num_computed_tokens)\n            # The first connector that has new matched tokens will be assigned\n            # to this request.\n            if to_return[0] == 0 and toks > 0:\n                self._requests_to_connector[request.request_id] = i\n                to_return = (toks, load_async)\n        return to_return\n\n    def update_state_after_alloc(self, request: \"Request\",\n                                 blocks: \"KVCacheBlocks\",\n                                 num_external_tokens: int):\n        chosen_connector = self._requests_to_connector.get(\n            request.request_id, -1)\n        empty_blocks = blocks.new_empty()\n        for i, c in enumerate(self._connectors):\n            if i == chosen_connector:\n                # Forward call to the chosen connector (if any).\n                c.update_state_after_alloc(request, blocks,\n                                           num_external_tokens)\n            else:\n                # Call with empty blocks for other connectors.\n                c.update_state_after_alloc(request, empty_blocks, 0)\n\n    def build_connector_meta(\n            self,\n            scheduler_output: SchedulerOutput) -> MultiKVConnectorMetadata:\n        metadata = MultiKVConnectorMetadata(metadata=tuple(\n            c.build_connector_meta(scheduler_output)\n            for c in self._connectors))\n        if self._extra_async_saves:\n            metadata.extra_async_saves = self._extra_async_saves\n            self._extra_async_saves = {}\n        return metadata\n\n    def update_connector_output(self, connector_output: KVConnectorOutput):\n        f\n--- structural neighbors ---\nsymbol:30632b955c4f4747:MultiKVConnectorMetadata (symbol, vllm/distributed/kv_transfer/kv_connector/v1/multi_connector.py); symbol:48c5b5d43e5515a3:MultiConnector (symbol, vllm/distributed/kv_transfer/kv_connector/v1/multi_connector.py)"
+      },
+      "search_hits": {
+        "vllm/distributed/kv_transfer/kv_connector/v1/multi_connector.py": [],
+        "Sensitive information might be exposed in the logs if the exception contains sensitive details.": [],
+        "Sensitive information might be exposed in the logs if the exception contains sensitive details. logger.exception(\"Exception during connector %s shutdown.\", c.__": []
+      },
+      "warnings": []
+    }
+  },
+  "critique_revision_digests": {}
+}

@@ -1,0 +1,24 @@
+[
+  {
+    "id": "logic-1-1",
+    "file_path": "benchmarks/benchmark_throughput.py",
+    "line_start": 335,
+    "line_end": 338,
+    "content": "+        elif args.dataset_path in AIMODataset.SUPPORTED_DATASET_PATHS:\n+            dataset_cls = AIMODataset\n+            common_kwargs['dataset_subset'] = None\n+            common_kwargs['dataset_split'] = \"train\"",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Consider making the dataset split configurable via command-line arguments to allow flexibility for different use cases.",
+    "references": []
+  },
+  {
+    "id": "logic-1-2",
+    "file_path": "benchmarks/benchmark_throughput.py",
+    "line_start": 472,
+    "line_end": 476,
+    "content": "+        elif args.dataset_path in (InstructCoderDataset.SUPPORTED_DATASET_PATHS\n+                                   | AIMODataset.SUPPORTED_DATASET_PATHS):",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Ensure that the backend requirement for `AIMODataset` is correctly specified and tested. Consider adding explicit assertions or documentation to clarify the requirements.",
+    "references": []
+  }
+]

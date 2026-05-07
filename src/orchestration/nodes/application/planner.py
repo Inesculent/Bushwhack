@@ -9,6 +9,7 @@ from src.config import get_settings
 from src.domain.schemas import ReviewTask
 from src.domain.state import GraphState
 from src.infrastructure.llm.factory import Models
+from src.infrastructure.llm.token_usage import extract_total_tokens_from_llm_result, parse_structured_output
 from src.orchestration.prompts.renderer import render_reviewer_prompt
 
 logger = logging.getLogger(__name__)
@@ -277,12 +278,15 @@ def make_review_planner_node(model_key: str | None = None, use_llm: bool = True)
         tasks = _default_tasks(state)
         summary = "Default parallel review plan."
         warnings: List[str] = []
+        llm_tokens = 0
 
         if use_llm:
             selected_model = model_key or getattr(get_settings(), "reviewer_planner_model_key", None)
             try:
                 llm = Models.planner(ReviewPlanOutput, model_key=selected_model)
-                response = llm.invoke(_render_planner_prompt(state))
+                invoke_result = llm.invoke(_render_planner_prompt(state))
+                response = parse_structured_output(invoke_result, ReviewPlanOutput)
+                llm_tokens = extract_total_tokens_from_llm_result(invoke_result)
                 tasks = _normalize_tasks(response.tasks, state)
                 summary = response.summary or summary
             except Exception as exc:  # noqa: BLE001 - planner fallback keeps review runs alive
@@ -339,6 +343,7 @@ def make_review_planner_node(model_key: str | None = None, use_llm: bool = True)
             "metadata": metadata,
             "node_history": ["review_planner"],
             "next_step": "review",
+            "token_usage": llm_tokens,
         }
 
     return review_planner_node

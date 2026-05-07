@@ -167,6 +167,7 @@ def run_aacr_solo(
     succeeded = 0
     failed = 0
     run_started = time.perf_counter()
+    total_llm_tokens = 0
 
     for idx, pr_url in enumerate(pr_urls, start=1):
         slug = _slug_for_pr_url(pr_url)
@@ -179,6 +180,7 @@ def run_aacr_solo(
             "finding_count": 0,
             "elapsed_ms": 0,
             "error": "",
+            "token_usage": 0,
         }
 
         context = enricher.fetch_pr_context(pr_url)
@@ -204,7 +206,9 @@ def run_aacr_solo(
             continue
 
         elapsed_ms = int((time.perf_counter() - started) * 1000)
-        metadata = result.get("metadata", {}) or {}
+        metadata = dict(result.get("metadata", {}) or {})
+        pr_tokens = int(result.get("token_usage") or 0)
+        total_llm_tokens += pr_tokens
         raw_text = str(metadata.get("solo_agent_raw_response", ""))
         findings = result.get("findings", []) or []
 
@@ -216,15 +220,17 @@ def run_aacr_solo(
         row["findings_path"] = str(findings_path.relative_to(run_dir))
         row["finding_count"] = len(findings)
         row["elapsed_ms"] = elapsed_ms
+        row["token_usage"] = pr_tokens
         manifest_rows.append(row)
         succeeded += 1
 
         logger.info(
-            "[%s/%s] %s ok findings=%s elapsed_ms=%s",
+            "[%s/%s] %s ok findings=%s token_usage=%s elapsed_ms=%s",
             idx,
             len(pr_urls),
             slug,
             len(findings),
+            pr_tokens,
             elapsed_ms,
         )
 
@@ -244,15 +250,17 @@ def run_aacr_solo(
         "total_prs": len(pr_urls),
         "succeeded": succeeded,
         "failed": failed,
+        "total_llm_tokens": total_llm_tokens,
         "elapsed_ms": int((time.perf_counter() - run_started) * 1000),
     }
     run_meta_path.write_text(json.dumps(run_meta, indent=2), encoding="utf-8")
 
     logger.info(
-        "Finished solo-agent AACR run run_id=%s succeeded=%s failed=%s elapsed_ms=%s",
+        "Finished solo-agent AACR run run_id=%s succeeded=%s failed=%s total_llm_tokens=%s elapsed_ms=%s",
         resolved_run_id,
         succeeded,
         failed,
+        total_llm_tokens,
         run_meta["elapsed_ms"],
     )
 

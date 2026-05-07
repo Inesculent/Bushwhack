@@ -1,0 +1,1338 @@
+{
+  "metadata": {
+    "experiment": "reviewer_graph_parallel",
+    "run_id": "c75483e87a92",
+    "graph_run_id": "c75483e87a92:vllm-project__vllm__pr19756",
+    "pr_started_at": "2026-05-07T04:45:00.057138+00:00",
+    "pr_url": "https://github.com/vllm-project/vllm/pull/19756",
+    "pr_title": "[Multimodal] Optimize Qwen2/2.5-VL startup time",
+    "pr_description": "## Essential Elements of an Effective PR Description Checklist\n- [ ] The purpose of the PR, such as \"Fix some issue (link existing issues this PR will resolve)\".\n- [ ] The test plan, such as providing test command.\n- [ ] The test results, such as pasting the results comparison before and after, or e2e results\n- [ ] (Optional) The necessary documentation update, such as updating `supported_models.md` and `examples` for a new model.\n\n\n## Purpose\n\nCurrently, processing large dummy inputs takes 40 secs of the startup time for Qwen2/2.5-VL (it happens twice and each takes 20 secs). This can be skipped by pre-computing the maximum token count per modality.\n\n## Test Plan\n\n## Test Result\n\n## (Optional) Documentation Update\n\n<!--- pyml disable-next-line no-emphasis-as-heading -->",
+    "pr_repo": "vllm-project/vllm",
+    "pr_number": 19756,
+    "review_repo_url": "https://github.com/vllm-project/vllm",
+    "review_pr_number": 19756,
+    "review_trace_enabled": false,
+    "structural_extractor": {
+      "mode": "sandbox_entities",
+      "files_attempted": 1668,
+      "files_parsed": 1601,
+      "gap_count": 67,
+      "node_count": 16261,
+      "edge_count": 89719,
+      "topology_algorithm": "graspologic_leiden",
+      "community_count": 384,
+      "topology_splits_applied": 0
+    },
+    "review_planner": {
+      "summary": "The changes introduce a new method `get_max_tokens_per_item` in three files: `qwen2_vl.py`, `processing.py`, and `profiling.py`. This method is intended to return the maximum number of tokens per item for each modality, which can improve performance by avoiding dummy input generation.",
+      "task_count": 4,
+      "specialties": [
+        "general",
+        "logic",
+        "performance",
+        "security"
+      ],
+      "tasks": [
+        {
+          "id": "security_1",
+          "title": "Security Review",
+          "description": "Verify that the new method `get_max_tokens_per_item` does not introduce any security vulnerabilities. Check for potential injection points or improper handling of user input.",
+          "target_files": [
+            "vllm/model_executor/models/qwen2_vl.py",
+            "vllm/multimodal/processing.py",
+            "vllm/multimodal/profiling.py"
+          ],
+          "subtasks": [],
+          "specialty": "security",
+          "depth": 1,
+          "assigned_model": null
+        },
+        {
+          "id": "logic_1",
+          "title": "Logic Review",
+          "description": "Verify the logic of the new method `get_max_tokens_per_item` in all three files. Ensure that it correctly calculates the maximum number of tokens per item for each modality and handles edge cases appropriately.",
+          "target_files": [
+            "vllm/model_executor/models/qwen2_vl.py",
+            "vllm/multimodal/processing.py",
+            "vllm/multimodal/profiling.py"
+          ],
+          "subtasks": [],
+          "specialty": "logic",
+          "depth": 1,
+          "assigned_model": null
+        },
+        {
+          "id": "performance_1",
+          "title": "Performance Review",
+          "description": "Evaluate the performance impact of the new method `get_max_tokens_per_item`. Ensure that it improves performance by reducing the need for dummy input generation and processing.",
+          "target_files": [
+            "vllm/model_executor/models/qwen2_vl.py",
+            "vllm/multimodal/processing.py",
+            "vllm/multimodal/profiling.py"
+          ],
+          "subtasks": [],
+          "specialty": "performance",
+          "depth": 1,
+          "assigned_model": null
+        },
+        {
+          "id": "general_1",
+          "title": "General Code Review",
+          "description": "Perform a general review of the changes in the new method `get_max_tokens_per_item`. Check for consistency with existing code, proper documentation, and adherence to coding standards.",
+          "target_files": [
+            "vllm/model_executor/models/qwen2_vl.py",
+            "vllm/multimodal/processing.py",
+            "vllm/multimodal/profiling.py"
+          ],
+          "subtasks": [],
+          "specialty": "general",
+          "depth": 1,
+          "assigned_model": null
+        }
+      ],
+      "warnings": []
+    },
+    "general_critiquer": {
+      "by_task": {
+        "general_1": {
+          "summary": "No high-severity issues found, but some concerns about potential performance regressions and missing tests.",
+          "candidate_count": 2,
+          "warnings": [
+            "No high-severity issues found, but some concerns about potential performance regressions and missing tests were identified."
+          ],
+          "initial_focus_requests": [
+            {
+              "request_id": "general_1_1",
+              "candidate_id": "general_1_1",
+              "requested_by_specialty": "performance",
+              "file_paths": [
+                "vllm/multimodal/profiling.py"
+              ],
+              "symbol_queries": [
+                "logger.warning_once"
+              ],
+              "text_queries": [
+                "sequence length is smaller than the pre-defined worst-case total number of multimodal tokens"
+              ],
+              "reason": "To assess the frequency of the condition and its impact on performance."
+            },
+            {
+              "request_id": "general_1_2",
+              "candidate_id": "general_1_2",
+              "requested_by_specialty": "general",
+              "file_paths": [
+                "vllm/model_executor/models/qwen2_vl.py",
+                "vllm/multimodal/processing.py"
+              ],
+              "symbol_queries": [
+                "get_max_tokens_per_item"
+              ],
+              "text_queries": [
+                "edge cases",
+                "zero or negative mm_counts"
+              ],
+              "reason": "To verify that the new method handles all possible inputs correctly and to identify any potential edge cases."
+            },
+            {
+              "request_id": "general_1_1:auto-context:1",
+              "candidate_id": "general_1_1",
+              "requested_by_specialty": "performance",
+              "file_paths": [
+                "vllm/multimodal/profiling.py",
+                "vllm/model_executor/models/qwen2_vl.py",
+                "vllm/multimodal/processing.py"
+              ],
+              "symbol_queries": [],
+              "text_queries": [
+                "vllm/multimodal/profiling.py",
+                "Potential warning spam if the sequence length is often smaller than the worst-case total number of multimodal tokens, le",
+                "Potential warning spam if the sequence length is often smaller than the worst-case total number of multimodal tokens, leading to performance degradation due to "
+              ],
+              "reason": "Deterministic context requirement for a high-risk or externally dependent performance_regression candidate."
+            }
+          ]
+        },
+        "logic_1": {
+          "summary": "No high-confidence findings were identified based on the provided diff and context. The new method `get_max_tokens_per_item` appears to be implemented consistently across the three files, and the logic seems correct based on the available information. However, some areas require further verification to ensure correctness and handle edge cases appropriately.",
+          "candidate_count": 0,
+          "warnings": [
+            "The implementation of `get_max_tokens_per_item` in `vllm/multimodal/processing.py` returns `None` by default, which relies on generating dummy inputs. This can be slow for certain models, so it's important to ensure that models override this method when possible."
+          ],
+          "initial_focus_requests": [
+            {
+              "request_id": "logic_1_request_1",
+              "candidate_id": "logic_1",
+              "requested_by_specialty": "general",
+              "file_paths": [
+                "vllm/model_executor/models/qwen2_vl.py"
+              ],
+              "symbol_queries": [
+                "get_max_image_tokens",
+                "get_max_video_tokens"
+              ],
+              "text_queries": [
+                "edge cases"
+              ],
+              "reason": "To verify that the methods `get_max_image_tokens` and `get_max_video_tokens` handle edge cases appropriately."
+            },
+            {
+              "request_id": "logic_1_request_2",
+              "candidate_id": "logic_1",
+              "requested_by_specialty": "general",
+              "file_paths": [
+                "vllm/multimodal/processing.py"
+              ],
+              "symbol_queries": [
+                "get_max_tokens_per_item"
+              ],
+              "text_queries": [
+                "override",
+                "pre-computed maximum token counts"
+              ],
+              "reason": "To verify that models correctly override the `get_max_tokens_per_item` method to return pre-computed maximum token counts."
+            },
+            {
+              "request_id": "logic_1_request_3",
+              "candidate_id": "logic_1",
+              "requested_by_specialty": "general",
+              "file_paths": [
+                "vllm/multimodal/profiling.py"
+              ],
+              "symbol_queries": [
+                "get_mm_max_tokens"
+              ],
+              "text_queries": [
+                "dummy inputs",
+                "maximum possible sizes"
+              ],
+              "reason": "To verify that the use of dummy inputs at maximum possible sizes respects the model's maximum sequence length and maximum number of items of each modality allowed."
+            }
+          ]
+        },
+        "performance_1": {
+          "summary": "The new method `get_max_tokens_per_item` aims to improve performance by reducing the need for dummy input generation and processing. However, there are some areas where further evaluation is needed to ensure the method behaves correctly and does not introduce regressions.",
+          "candidate_count": 2,
+          "warnings": [
+            "The added method `get_max_tokens_per_item` is intended to improve performance, but its correctness needs to be verified to ensure it does not introduce regressions or incorrect behavior."
+          ],
+          "initial_focus_requests": [
+            {
+              "request_id": "performance_1_1",
+              "candidate_id": "performance_1_1",
+              "requested_by_specialty": "general",
+              "file_paths": [
+                "vllm/multimodal/profiling.py",
+                "vllm/multimodal/processing.py"
+              ],
+              "symbol_queries": [
+                "get_max_tokens_per_item",
+                "_get_dummy_mm_inputs"
+              ],
+              "text_queries": [
+                "mm_counts",
+                "max_tokens_per_item"
+              ],
+              "reason": "To verify the logic in `get_max_tokens_per_item` and `_get_dummy_mm_inputs` to ensure `total_mm_tokens` is calculated correctly."
+            }
+          ]
+        },
+        "security_1": {
+          "summary": "No high-severity security vulnerabilities were found in the introduced method `get_max_tokens_per_item`. However, there are some areas where additional review is recommended to ensure correctness and potential security implications.",
+          "candidate_count": 1,
+          "warnings": [
+            "No direct evidence of injection points or improper handling of user input was found in the introduced method `get_max_tokens_per_item`. However, indirect security risks related to input validation and handling should be reviewed."
+          ],
+          "initial_focus_requests": [
+            {
+              "request_id": "security_1_focus_1",
+              "candidate_id": "security_1_1",
+              "requested_by_specialty": "general",
+              "file_paths": [
+                "vllm/multimodal/profiling.py"
+              ],
+              "symbol_queries": [
+                "mm_counts",
+                "max_tokens_per_item"
+              ],
+              "text_queries": [
+                "validate mm_counts",
+                "handle missing keys"
+              ],
+              "reason": "To ensure that `mm_counts` is always valid and matches `max_tokens_per_item`, we need to understand how `mm_counts` is used and validated in the broader codebase."
+            }
+          ]
+        }
+      }
+    },
+    "focused_context": {
+      "fulfilled_ids": [
+        "general_1_1",
+        "general_1_1:auto-context:1",
+        "general_1_2",
+        "logic_1_request_1",
+        "logic_1_request_2",
+        "logic_1_request_3",
+        "performance_1_1",
+        "security_1_focus_1"
+      ],
+      "warnings": []
+    },
+    "adversarial_reflection": {
+      "report_count": 5,
+      "focused_request_count": 0,
+      "routed_candidate_counts": {
+        "security": 0,
+        "logic": 0,
+        "performance": 1,
+        "general": 4
+      },
+      "total_routed_candidate_reviews": 5,
+      "warnings": []
+    },
+    "adversarial_cleanup": {
+      "promoted_count": 4,
+      "dropped_candidate_ids": [
+        "performance_1_2"
+      ],
+      "ignored_off_domain_rejections": {},
+      "ignored_off_domain_context_requests": {},
+      "misrouted_candidate_ids": {},
+      "candidate_lifecycle": {
+        "general_1_1": {
+          "decision": "promoted",
+          "reason": "accepted_by_relevant_reflectors",
+          "claim_type": "performance_regression",
+          "final_category": "performance",
+          "relevant_reflectors": [
+            "performance"
+          ],
+          "had_focused_context": true
+        },
+        "general_1_2": {
+          "decision": "promoted",
+          "reason": "accepted_by_relevant_reflectors",
+          "claim_type": "missing_test",
+          "final_category": "general",
+          "relevant_reflectors": [
+            "general"
+          ],
+          "had_focused_context": true
+        },
+        "performance_1_1": {
+          "decision": "promoted",
+          "reason": "accepted_by_relevant_reflectors",
+          "claim_type": "defect",
+          "final_category": "logic",
+          "relevant_reflectors": [
+            "general"
+          ],
+          "had_focused_context": true
+        },
+        "performance_1_2": {
+          "decision": "dropped",
+          "reason": "non_promotable_claim_type",
+          "claim_type": "uncertain",
+          "suspected_category": "logic"
+        },
+        "security_1_1": {
+          "decision": "promoted",
+          "reason": "accepted_by_relevant_reflectors",
+          "claim_type": "defect",
+          "final_category": "logic",
+          "relevant_reflectors": [
+            "general"
+          ],
+          "had_focused_context": true
+        }
+      }
+    },
+    "review_synthesizer": {
+      "worker_count": 0,
+      "reflection_report_count": 5,
+      "raw_finding_count": 4,
+      "final_finding_count": 4,
+      "dropped_duplicate_ids": [],
+      "worker_reports": [],
+      "reflection_reports": [
+        {
+          "candidate_id": "general_1_1",
+          "reflector_specialty": "performance",
+          "verdict": "needs_context",
+          "rationale": "The claim suggests that frequent logging could degrade performance, but the evidence is based on the assumption that the condition occurs frequently. We need to check how often the sequence length is smaller than the worst-case total number of multimodal tokens in typical usage scenarios to determine if this is a real performance issue.",
+          "reclassified_category": null,
+          "focused_request": null
+        },
+        {
+          "candidate_id": "general_1_2",
+          "reflector_specialty": "general",
+          "verdict": "accept",
+          "rationale": "The candidate highlights a missing test for the new method `get_max_tokens_per_item`. This is a valid maintainability concern as it suggests that edge cases might not be covered, potentially leading to incorrect behavior.",
+          "reclassified_category": null,
+          "focused_request": null
+        },
+        {
+          "candidate_id": "performance_1_1",
+          "reflector_specialty": "general",
+          "verdict": "reclassify",
+          "rationale": "The candidate identifies a potential defect in the calculation of `total_mm_tokens`. This is more appropriately categorized as a logic issue rather than a performance issue.",
+          "reclassified_category": "logic",
+          "focused_request": null
+        },
+        {
+          "candidate_id": "performance_1_2",
+          "reflector_specialty": "general",
+          "verdict": "reclassify",
+          "rationale": "The candidate raises a concern about a potential misfire of the warning message due to incorrect calculation of `total_mm_tokens`. This is more appropriately categorized as a logic issue rather than a performance issue.",
+          "reclassified_category": "logic",
+          "focused_request": null
+        },
+        {
+          "candidate_id": "security_1_1",
+          "reflector_specialty": "general",
+          "verdict": "reclassify",
+          "rationale": "The candidate identifies a potential defect in the method's ability to return correct token counts due to improper handling of `mm_counts`. This is more appropriately categorized as a logic issue rather than a security issue.",
+          "reclassified_category": "logic",
+          "focused_request": null
+        }
+      ]
+    },
+    "pr_finished_at": "2026-05-07T04:46:31.895984+00:00"
+  },
+  "node_history": [
+    "sandbox_structural_extractor",
+    "review_planner",
+    "general_critiquer",
+    "general_critiquer",
+    "general_critiquer",
+    "general_critiquer",
+    "focused_context",
+    "adversarial_reflection",
+    "adversarial_cleanup",
+    "review_synthesizer"
+  ],
+  "worker_reports": [],
+  "candidate_findings": [
+    {
+      "candidate_id": "general_1_1",
+      "patch_task_id": "general_1",
+      "file_path": "vllm/multimodal/profiling.py",
+      "line_start": 262,
+      "line_end": 262,
+      "content": "logger.warning_once(...)",
+      "claim_type": "performance_regression",
+      "failure_mode": "Potential warning spam if the sequence length is often smaller than the worst-case total number of multimodal tokens, leading to performance degradation due to frequent logging.",
+      "evidence_summary": "The warning message is logged using `logger.warning_once`, which might still result in repeated logs if the condition occurs frequently. Frequent logging can degrade performance.",
+      "required_context": [
+        "Check how often the sequence length is smaller than the worst-case total number of multimodal tokens in typical usage scenarios."
+      ],
+      "confidence": 0.7,
+      "suspected_category": "performance",
+      "reflection_specialties": [
+        "performance"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "medium",
+      "recommendation": "Consider using a different logging mechanism that avoids frequent logging, such as a rate-limited logger, or ensure that the condition is rare enough not to impact performance."
+    },
+    {
+      "candidate_id": "general_1_2",
+      "patch_task_id": "general_1",
+      "file_path": "vllm/multimodal/profiling.py",
+      "line_start": 256,
+      "line_end": 269,
+      "content": "max_tokens_per_item = self.processing_info.get_max_tokens_per_item(...)\nif max_tokens_per_item is not None:\n    if mm_counts is None:\n        total_mm_tokens = sum(max_tokens_per_item.values())\n    else:\n        total_mm_tokens = sum(max_tokens_per_item[k] * mm_counts[k] for k in max_tokens_per_item.keys() & mm_counts.keys())\n    if total_mm_tokens > seq_len:\n        logger.warning_once(...)\n    return max_tokens_per_item\nmm_inputs = self._get_dummy_mm_inputs(seq_len, mm_counts)\nreturn self._get_mm_num_tokens(mm_inputs)",
+      "claim_type": "missing_test",
+      "failure_mode": "The new method `get_max_tokens_per_item` might not handle edge cases correctly, leading to incorrect token counts or performance issues.",
+      "evidence_summary": "The new method `get_max_tokens_per_item` is added to `qwen2_vl.py` and `processing.py` without corresponding tests. There is a risk that edge cases, such as zero or negative `mm_counts`, are not handled correctly.",
+      "required_context": [
+        "Review the implementation of `get_max_tokens_per_item` in both files to identify potential edge cases and verify that they are handled correctly."
+      ],
+      "confidence": 0.8,
+      "suspected_category": "general",
+      "reflection_specialties": [
+        "general"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "medium",
+      "recommendation": "Add unit tests to cover various edge cases for the new method `get_max_tokens_per_item`, including zero or negative `mm_counts`, to ensure it handles all possible inputs correctly."
+    },
+    {
+      "candidate_id": "performance_1_1",
+      "patch_task_id": "performance_1",
+      "file_path": "vllm/multimodal/profiling.py",
+      "line_start": 261,
+      "line_end": 265,
+      "content": "if mm_counts is None:\n    total_mm_tokens = sum(max_tokens_per_item.values())\nelse:\n    total_mm_tokens = sum(max_tokens_per_item[k] * mm_counts[k]\n                          for k in max_tokens_per_item.keys()\n                          & mm_counts.keys())",
+      "claim_type": "defect",
+      "failure_mode": "Incorrect calculation of total multimodal tokens when `mm_counts` is not `None`. This could lead to incorrect logging or potential failures during inference.",
+      "evidence_summary": "The code calculates `total_mm_tokens` by multiplying the values in `max_tokens_per_item` with the corresponding values in `mm_counts`. However, it does not handle cases where `mm_counts` might have keys not present in `max_tokens_per_item` or vice versa, which could result in incorrect summation.",
+      "required_context": [
+        "Check if `mm_counts` can have keys not present in `max_tokens_per_item` and vice versa, and how the system handles such cases."
+      ],
+      "confidence": 0.8,
+      "suspected_category": "logic",
+      "reflection_specialties": [
+        "general"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "medium",
+      "recommendation": "Ensure that the calculation of `total_mm_tokens` correctly handles cases where `mm_counts` has keys not present in `max_tokens_per_item` and vice versa. Consider adding validation or default handling for such cases."
+    },
+    {
+      "candidate_id": "performance_1_2",
+      "patch_task_id": "performance_1",
+      "file_path": "vllm/multimodal/profiling.py",
+      "line_start": 268,
+      "line_end": 270,
+      "content": "if total_mm_tokens > seq_len:\n    logger.warning_once(\n        \"The sequence length (%d) is smaller than the pre-defined worst-case total number of multimodal tokens (%d). This may cause certain multi-modal inputs to fail during inference. To avoid this, you should increase `max_model_len` or reduce `mm_counts`.\",\n        seq_len,\n        total_mm_tokens,\n    )",
+      "claim_type": "uncertain",
+      "failure_mode": "Potential warning message misfires if `total_mm_tokens` is calculated incorrectly due to missing keys in `mm_counts` or `max_tokens_per_item`.",
+      "evidence_summary": "The warning message is triggered based on the comparison between `seq_len` and `total_mm_tokens`. However, the calculation of `total_mm_tokens` might be incorrect if `mm_counts` and `max_tokens_per_item` do not have matching keys.",
+      "required_context": [
+        "Verify the logic in `get_max_tokens_per_item` and `_get_dummy_mm_inputs` to ensure `total_mm_tokens` is calculated correctly."
+      ],
+      "confidence": 0.7,
+      "suspected_category": "logic",
+      "reflection_specialties": [
+        "general"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "low",
+      "recommendation": "Review the logic in `get_max_tokens_per_item` and `_get_dummy_mm_inputs` to ensure `total_mm_tokens` is calculated correctly. Add tests to cover scenarios where `mm_counts` and `max_tokens_per_item` have different keys."
+    },
+    {
+      "candidate_id": "security_1_1",
+      "patch_task_id": "security_1",
+      "file_path": "vllm/multimodal/profiling.py",
+      "line_start": 258,
+      "line_end": 268,
+      "content": "if max_tokens_per_item is not None:\n            if mm_counts is None:\n                total_mm_tokens = sum(max_tokens_per_item.values())\n            else:\n                total_mm_tokens = sum(max_tokens_per_item[k] * mm_counts[k]\n                                      for k in max_tokens_per_item.keys()\n                                      & mm_counts.keys())\n            if total_mm_tokens > seq_len:\n                logger.warning_once(\n                    \"The sequence length (%d) is smaller than the pre-defined\"\n                    \" worst-case total number of multimodal tokens (%d). \"\n                    \"This may cause certain multi-modal inputs to fail during \"\n                    \"inference. To avoid this, you should increase \"\n                    \"`max_model_len` or reduce `mm_counts`.\",\n                    seq_len,\n                    total_mm_tokens,\n                )\n            return max_tokens_per_item",
+      "claim_type": "defect",
+      "failure_mode": "The method may return incorrect token counts if `mm_counts` is not properly handled, potentially leading to inference failures due to exceeding sequence length limits.",
+      "evidence_summary": "The code calculates `total_mm_tokens` based on `max_tokens_per_item` and `mm_counts`. If `mm_counts` is `None`, it sums all values in `max_tokens_per_item`. If `mm_counts` is provided, it sums the product of corresponding values in `max_tokens_per_item` and `mm_counts`. This logic may not handle cases where `mm_counts` contains keys not present in `max_tokens_per_item` or vice versa, leading to incorrect calculations.",
+      "required_context": [
+        "How `mm_counts` is used and validated in the broader codebase.",
+        "Ensure `mm_counts` always contains valid keys that match those in `max_tokens_per_item`."
+      ],
+      "confidence": 0.8,
+      "suspected_category": "logic",
+      "reflection_specialties": [
+        "general"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "medium",
+      "recommendation": "Validate that `mm_counts` contains only valid keys that match those in `max_tokens_per_item`. Consider adding checks to handle cases where keys might be missing or mismatched, and provide clear error messages or fallbacks if necessary."
+    }
+  ],
+  "reflection_reports": [
+    {
+      "candidate_id": "general_1_1",
+      "reflector_specialty": "performance",
+      "verdict": "needs_context",
+      "rationale": "The claim suggests that frequent logging could degrade performance, but the evidence is based on the assumption that the condition occurs frequently. We need to check how often the sequence length is smaller than the worst-case total number of multimodal tokens in typical usage scenarios to determine if this is a real performance issue.",
+      "reclassified_category": null,
+      "focused_request": null
+    },
+    {
+      "candidate_id": "general_1_2",
+      "reflector_specialty": "general",
+      "verdict": "accept",
+      "rationale": "The candidate highlights a missing test for the new method `get_max_tokens_per_item`. This is a valid maintainability concern as it suggests that edge cases might not be covered, potentially leading to incorrect behavior.",
+      "reclassified_category": null,
+      "focused_request": null
+    },
+    {
+      "candidate_id": "performance_1_1",
+      "reflector_specialty": "general",
+      "verdict": "reclassify",
+      "rationale": "The candidate identifies a potential defect in the calculation of `total_mm_tokens`. This is more appropriately categorized as a logic issue rather than a performance issue.",
+      "reclassified_category": "logic",
+      "focused_request": null
+    },
+    {
+      "candidate_id": "performance_1_2",
+      "reflector_specialty": "general",
+      "verdict": "reclassify",
+      "rationale": "The candidate raises a concern about a potential misfire of the warning message due to incorrect calculation of `total_mm_tokens`. This is more appropriately categorized as a logic issue rather than a performance issue.",
+      "reclassified_category": "logic",
+      "focused_request": null
+    },
+    {
+      "candidate_id": "security_1_1",
+      "reflector_specialty": "general",
+      "verdict": "reclassify",
+      "rationale": "The candidate identifies a potential defect in the method's ability to return correct token counts due to improper handling of `mm_counts`. This is more appropriately categorized as a logic issue rather than a security issue.",
+      "reclassified_category": "logic",
+      "focused_request": null
+    }
+  ],
+  "focused_context_requests": [
+    {
+      "request_id": "general_1_1",
+      "candidate_id": "general_1_1",
+      "requested_by_specialty": "performance",
+      "file_paths": [
+        "vllm/multimodal/profiling.py"
+      ],
+      "symbol_queries": [
+        "logger.warning_once"
+      ],
+      "text_queries": [
+        "sequence length is smaller than the pre-defined worst-case total number of multimodal tokens"
+      ],
+      "reason": "To assess the frequency of the condition and its impact on performance."
+    },
+    {
+      "request_id": "general_1_2",
+      "candidate_id": "general_1_2",
+      "requested_by_specialty": "general",
+      "file_paths": [
+        "vllm/model_executor/models/qwen2_vl.py",
+        "vllm/multimodal/processing.py"
+      ],
+      "symbol_queries": [
+        "get_max_tokens_per_item"
+      ],
+      "text_queries": [
+        "edge cases",
+        "zero or negative mm_counts"
+      ],
+      "reason": "To verify that the new method handles all possible inputs correctly and to identify any potential edge cases."
+    },
+    {
+      "request_id": "general_1_1:auto-context:1",
+      "candidate_id": "general_1_1",
+      "requested_by_specialty": "performance",
+      "file_paths": [
+        "vllm/multimodal/profiling.py",
+        "vllm/model_executor/models/qwen2_vl.py",
+        "vllm/multimodal/processing.py"
+      ],
+      "symbol_queries": [],
+      "text_queries": [
+        "vllm/multimodal/profiling.py",
+        "Potential warning spam if the sequence length is often smaller than the worst-case total number of multimodal tokens, le",
+        "Potential warning spam if the sequence length is often smaller than the worst-case total number of multimodal tokens, leading to performance degradation due to "
+      ],
+      "reason": "Deterministic context requirement for a high-risk or externally dependent performance_regression candidate."
+    },
+    {
+      "request_id": "logic_1_request_1",
+      "candidate_id": "logic_1",
+      "requested_by_specialty": "general",
+      "file_paths": [
+        "vllm/model_executor/models/qwen2_vl.py"
+      ],
+      "symbol_queries": [
+        "get_max_image_tokens",
+        "get_max_video_tokens"
+      ],
+      "text_queries": [
+        "edge cases"
+      ],
+      "reason": "To verify that the methods `get_max_image_tokens` and `get_max_video_tokens` handle edge cases appropriately."
+    },
+    {
+      "request_id": "logic_1_request_2",
+      "candidate_id": "logic_1",
+      "requested_by_specialty": "general",
+      "file_paths": [
+        "vllm/multimodal/processing.py"
+      ],
+      "symbol_queries": [
+        "get_max_tokens_per_item"
+      ],
+      "text_queries": [
+        "override",
+        "pre-computed maximum token counts"
+      ],
+      "reason": "To verify that models correctly override the `get_max_tokens_per_item` method to return pre-computed maximum token counts."
+    },
+    {
+      "request_id": "logic_1_request_3",
+      "candidate_id": "logic_1",
+      "requested_by_specialty": "general",
+      "file_paths": [
+        "vllm/multimodal/profiling.py"
+      ],
+      "symbol_queries": [
+        "get_mm_max_tokens"
+      ],
+      "text_queries": [
+        "dummy inputs",
+        "maximum possible sizes"
+      ],
+      "reason": "To verify that the use of dummy inputs at maximum possible sizes respects the model's maximum sequence length and maximum number of items of each modality allowed."
+    },
+    {
+      "request_id": "performance_1_1",
+      "candidate_id": "performance_1_1",
+      "requested_by_specialty": "general",
+      "file_paths": [
+        "vllm/multimodal/profiling.py",
+        "vllm/multimodal/processing.py"
+      ],
+      "symbol_queries": [
+        "get_max_tokens_per_item",
+        "_get_dummy_mm_inputs"
+      ],
+      "text_queries": [
+        "mm_counts",
+        "max_tokens_per_item"
+      ],
+      "reason": "To verify the logic in `get_max_tokens_per_item` and `_get_dummy_mm_inputs` to ensure `total_mm_tokens` is calculated correctly."
+    },
+    {
+      "request_id": "security_1_focus_1",
+      "candidate_id": "security_1_1",
+      "requested_by_specialty": "general",
+      "file_paths": [
+        "vllm/multimodal/profiling.py"
+      ],
+      "symbol_queries": [
+        "mm_counts",
+        "max_tokens_per_item"
+      ],
+      "text_queries": [
+        "validate mm_counts",
+        "handle missing keys"
+      ],
+      "reason": "To ensure that `mm_counts` is always valid and matches `max_tokens_per_item`, we need to understand how `mm_counts` is used and validated in the broader codebase."
+    }
+  ],
+  "focused_context_results": {
+    "general_1_1": {
+      "request_id": "general_1_1",
+      "candidate_id": "general_1_1",
+      "file_snippets": {},
+      "search_hits": {
+        "logger.warning_once": [
+          {
+            "file_path": "vllm/multimodal/profiling.py",
+            "line_number": 207,
+            "content": "logger.warning_once(",
+            "context_lines": [
+              "logger.warning_once("
+            ]
+          },
+          {
+            "file_path": "vllm/multimodal/profiling.py",
+            "line_number": 232,
+            "content": "logger.warning_once(",
+            "context_lines": [
+              "logger.warning_once("
+            ]
+          },
+          {
+            "file_path": "vllm/multimodal/profiling.py",
+            "line_number": 266,
+            "content": "logger.warning_once(",
+            "context_lines": [
+              "logger.warning_once("
+            ]
+          }
+        ],
+        "sequence length is smaller than the pre-defined worst-case total number of multimodal tokens": []
+      },
+      "warnings": []
+    },
+    "general_1_2": {
+      "request_id": "general_1_2",
+      "candidate_id": "general_1_2",
+      "file_snippets": {
+        "vllm/model_executor/models/qwen2_vl.py": "# SPDX-License-Identifier: Apache-2.0\n# SPDX-FileCopyrightText: Copyright contributors to the vLLM project\n\n# Adapted from\n# https://github.com/huggingface/transformers/blob/19e6e80e10118f855137b90740936c0b11ac397f/src/transformers/models/qwen2_vl/modeling_qwen2_vl.py\n# Copyright 2024 The Qwen team.\n# Copyright 2023 The vLLM team.\n# Copyright 2022 EleutherAI and the HuggingFace Inc. team. All rights reserved.\n#\n# This code is based on EleutherAI's GPT-NeoX library and the GPT-NeoX\n# and OPT implementations in this library. It has been modified from its\n# original forms to accommodate minor architectural differences compared\n# to GPT-NeoX and OPT used by the Meta AI team that trained the model.\n#\n# Licensed under the Apache License, Version 2.0 (the \"License\");\n# you may not use this file except in compliance with the License.\n# You may obtain a copy of the License at\n#\n#     http://www.apache.org/licenses/LICENSE-2.0\n#\n# Unless required by applicable law or agreed to in writing, software\n# distributed under the License is distributed on an \"AS IS\" BASIS,\n# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\n# See the License for the specific language governing permissions and\n# limitations under the License.\n\"\"\"Inference-only Qwen2-VL model compatible with HuggingFace weights.\"\"\"\nfrom collections.abc import Iterable, Mapping, Sequence\nfrom functools import partial\nfrom typing import Any, Callable, Literal, Optional, TypedDict, Union\n\nimport torch\nimport torch.nn as nn\nimport torch.nn.functional as F\nfrom einops import rearrange, repeat\nfrom transformers import AutoConfig, BatchFeature\nfrom transformers.models.qwen2_vl import (Qwen2VLImageProcessor,\n                                          Qwen2VLProcessor)\nfrom transformers.models.qwen2_vl.configuration_qwen2_vl import (\n    Qwen2VLConfig, Qwen2VLVisionConfig)\nfrom transformers.models.qwen2_vl.image_processing_qwen2_vl import smart_resize\nfrom transformers.models.qwen2_vl.video_processing_qwen2_vl import (\n    Qwen2VLVideoProcessor)\n\nfrom vllm.config import VllmConfig\nfrom vllm.distributed import parallel_state, tensor_model_parallel_all_gather\nfrom vllm.distributed import utils as dist_utils\nfrom vllm.logger import init_logger\nfrom vllm.model_executor import SamplingMetadata\nfrom vllm.model_executor.layers.activation import QuickGELU\nfrom vllm.model_executor.layers.linear import (ColumnParallelLinear,\n                                               RowParallelLinear)\nfrom vllm.model_executor.layers.quantization import QuantizationConfig\nfrom vllm.model_executor.layers.quantization.gptq import GPTQConfig\nfrom vllm.model_executor.layers.quantization.gptq_marlin import (\n    GPTQMarlinConfig)\nfrom vllm.model_executor.model_loader.weight_utils import default_weight_loader\nfrom vllm.model_executor.models.module_mapping import MultiModelKeys\nfrom vllm.multimodal import MULTIMODAL_REGISTRY\nfrom vllm.multimodal.inputs import (ImageItem, ModalityData,\n                                    MultiModalDataDict, MultiModalFieldConfig,\n                                    MultiModalKwargs, VideoItem)\nfrom vllm.multimodal.parse import (DictEmbeddingItems, ImageSize,\n                                   ModalityDataItems, MultiModalDataItems,\n                                   MultiModalDataParser)\nfrom vllm.multimodal.processing import (BaseMultiModalProcessor,\n                                        BaseProcessingInfo, PromptReplacement,\n                                        PromptUpdate)\nfrom vllm.multimodal.profiling import BaseDummyInputsBuilder\nfrom vllm.platforms import _Backend, current_platform\nfrom vllm.sequence import IntermediateTensors\nfrom vllm.transformers_utils.config import uses_mrope\nfrom vllm.transformers_utils.processor import (\n    cached_image_processor_from_config)\nfrom vllm.transformers_utils.tokenizer import AnyTokenizer\n\nfrom .interfaces import (MultiModalEmbeddings, SupportsLoRA,\n                         SupportsMultiModal, SupportsPP)\nfrom .utils import (AutoWeightsLoader, WeightsMapper,\n                    init_vllm_registered_model, maybe_prefix,\n                    merge_multimodal_embeddings)\nfrom .vision import get_vit_attn_backend\n\nlogger = init_logger(__name__)\n\n# For profile run\n_MAX_FRAMES_PER_VIDEO = 16\n\n# === Vision Inputs === #\n\n\nclass Qwen2VLImagePixelInputs(TypedDict):\n    type: Literal[\"pixel_values\"]\n    pixel_values: torch.Tensor\n    \"\"\"Shape:\n    `(num_patches, num_channels * patch_size * patch_size)`\n    \"\"\"\n\n    image_grid_thw: torch.Tensor\n    \"\"\"Shape: `(num_images, 3)`\n    This should be in `(grid_t, grid_h, grid_w)` format.\n    \"\"\"\n\n\nclass Qwen2VLImageEmbeddingInputs(TypedDict):\n    type: Literal[\"image_embeds\"]\n    image_embeds: torch.Tensor\n    \"\"\"Supported types:\n    - list[`torch.Tensor`]: A list of tensors holding all images' features.\n        Each tensor holds an image's features.\n    - `torch.Tensor`: A tensor holding all images' features\n        (concatenation of all images' feature tensors).\n    \n    Tensor shape: `(num_image_features, hidden_size)`\n    - `num_image_features` varies based on\n        the number and resolution of the images.\n    - `hidden_size` must match the hidden size of language model backbone.\n    \"\"\"\n\n    image_grid_thw: torch.Tensor\n    \"\"\"Shape: `(num_images, 3)`\n    This should be in `(grid_t, grid_h, grid_w)` format.\n    \"\"\"\n\n\nQwen2VLImageInputs = Union[Qwen2VLImagePixelInputs,\n                           Qwen2VLImageEmbeddingInputs]\n\n\nclass Qwen2VLVideoPixelInputs(TypedDict):\n    type: Literal[\"pixel_values_videos\"]\n    pixel_values_videos: torch.Tensor\n    \"\"\"Shape:\n    `(num_patches,\n      num_channels * temporal_patch_size * patch_size * patch_size)`\n    \"\"\"\n\n    video_grid_thw: torch.Tensor\n    \"\"\"Shape: `(num_videos, 3)`\n\n    This should be in `(grid_t, grid_h, grid_w)` format.\n    \"\"\"\n\n\nclass Qwen2VLVideoEmbeddingInputs(TypedDict):\n    type: Literal[\"video_embeds\"]\n    video_embeds: torch.Tensor\n    \"\"\"Supported types:\n    - list[`torch.Tensor`]: A list of tensors holding all videos' features.\n        Each tensor holds an video's features.\n    - `torch.Tensor`: A tensor holding all videos' features\n        (concatenation of all videos' feature tensors).\n    \n    Tensor shape: `(num_image_features, hidden_size)`\n    - `num_image_features` varies based on \n        the number and resolution of the videos.\n    - `hidden_size` must match the hidden size of language model backbone.\n    \"\"\"\n\n    video_grid_thw: torch.Tensor\n    \"\"\"Shape: `(num_videos, 3)`\n    This should be in `(grid_t, grid_h, grid_w)` format.\n    \"\"\"\n\n\nQwen2VLVideoInputs = Union[Qwen2VLVideoPixelInputs,\n                           Qwen2VLVideoEmbeddingInputs]\n\n# === Vision Encoder === #\n\n\nclass Qwen2VisionMLP(nn.Module):\n\n    def __init__(\n        self,\n        in_features: int,\n        hidden_features: int,\n        act_layer: type[nn.Module] = QuickGELU,\n        quant_config: Optional[QuantizationConfig] = None,\n        prefix: str = \"\",\n    ):\n        super().__init__()\n        self.fc1 = ColumnParallelLinear(in_features,\n                                        hidden_features,\n                                        quant_config=quant_config,\n                                        prefix=f\"{prefix}.fc1\")\n        self.act = act_layer()\n        self.fc2 = RowParallelLinear(hidden_features,\n                                     in_features,\n                                     quant_config=quant_config,\n                                     prefix=f\"{prefix}.fc2\")\n\n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        x_parallel, _ = self.fc1(x)\n        x_parallel = self.act(x_parallel)\n        x, _ = self.fc2(x_parallel)\n        return x\n\n\ndef rotate_half(x: torch.Tensor, interleaved: bool = False) -> torch.Tensor:\n    if not interleaved:\n        x1, x2 = x.chunk(2, dim=-1)\n        return torch.cat((-x2, x1), dim=-1)\n    else:\n        x1, x2 = x[..., ::2], x[..., 1::2]\n        return rearrange(torch.stack((-x2, x1), dim=-1),\n         \n--- structural neighbors ---\nsymbol:ff81d1740fd981dd:Qwen2VLProcessingInfo (symbol, vllm/model_executor/models/qwen2_vl.py); symbol:d416fc71e28d737e:apply_rotary_emb_torch (symbol, vllm/model_executor/models/qwen2_vl.py); symbol:c06740be2d908ade:Qwen2VLVideoEmbeddingInputs (symbol, vllm/model_executor/models/qwen2_vl.py); symbol:34684a5a3cf382f4:Qwen2VLMultiModalDataParser (symbol, vllm/model_executor/models/qwen2_vl.py); symbol:90e29da28ed7c1fd:Qwen2VisionPatchMerger (symbol, vllm/model_executor/models/qwen2_vl.py); symbol:238bd40ba371e3b3:Qwen2VisionMLP (symbol, vllm/model_executor/models/qwen2_vl.py); symbol:ac7aacb591f94d5f:Tarsier2Processor (symbol, vllm/model_executor/models/qwen2_vl.py); symbol:c41f2957195be1d4:rotate_half (symbol, vllm/model_executor/models/qwen2_vl.py); symbol:9d4500be2f6713ad:Qwen2VisionBlock (symbol, vllm/model_executor/models/qwen2_vl.py); symbol:9d044c6038ef588d:Tarsier2ForConditionalGeneration (symbol, vllm/model_executor/models/qwen2_vl.py); symbol:f6ca7a54f51b6c2d:Qwen2VisionAttention (symbol, vllm/model_executor/models/qwen2_vl.py); symbol:3f869a98bd527df4:Tarsier2ImageProcessor (symbol, vllm/model_executor/models/qwen2_vl.py)",
+        "vllm/multimodal/processing.py": "# SPDX-License-Identifier: Apache-2.0\n# SPDX-FileCopyrightText: Copyright contributors to the vLLM project\nimport json\nimport sys\nfrom abc import ABC, abstractmethod\nfrom collections import defaultdict\nfrom collections.abc import (Callable, Generator, ItemsView, Iterable, Mapping,\n                             Sequence)\nfrom dataclasses import dataclass, field\nfrom enum import Enum\nfrom functools import lru_cache\nfrom typing import (TYPE_CHECKING, Generic, NamedTuple, Optional, Protocol,\n                    TypeVar, Union, cast)\n\nimport regex as re\nimport torch\nfrom typing_extensions import assert_never\n\nfrom vllm.inputs import InputProcessingContext\nfrom vllm.jsontree import json_map_leaves, json_reduce_leaves\nfrom vllm.logger import init_logger\nfrom vllm.transformers_utils.tokenizer import (AnyTokenizer, decode_tokens,\n                                               encode_tokens)\nfrom vllm.utils import GiB_bytes, LRUCache, flatten_2d_lists, full_groupby\n\nfrom .hasher import MultiModalHasher\nfrom .inputs import (MultiModalDataDict, MultiModalEncDecInputs,\n                     MultiModalFieldConfig, MultiModalInputs, MultiModalKwargs,\n                     MultiModalKwargsItem, NestedTensors, PlaceholderRange)\nfrom .parse import (DictEmbeddingItems, EmbeddingItems, MultiModalDataItems,\n                    MultiModalDataParser)\n\nif TYPE_CHECKING:\n    from transformers.configuration_utils import PretrainedConfig\n    from transformers.feature_extraction_utils import BatchFeature\n    from transformers.processing_utils import ProcessorMixin\n\n    from .profiling import BaseDummyInputsBuilder\n\nlogger = init_logger(__name__)\n\n_S = TypeVar(\"_S\", str, list[int])\n\nPromptSeq = Union[str, list[int]]\n\"\"\"A token sequence (list of token IDs) or text.\"\"\"\n\n\n@dataclass\nclass PromptIndex:\n    \"\"\"Resolves to an index in the prompt.\"\"\"\n    get_match_index: Callable[[AnyTokenizer, PromptSeq], Optional[int]]\n\n\nclass PromptIndexTargets:\n\n    @staticmethod\n    def start() -> PromptIndex:\n        \"\"\"\n        Resolves to the start of the prompt (before the first token).\n\n        This results in a match even if the prompt is empty.\n        \"\"\"\n        return PromptIndex(lambda tok, prompt: 0)\n\n    @staticmethod\n    def prefix(seq: PromptSeq) -> PromptIndex:\n        \"\"\"\n        Resolves to a location in the prompt after the given prefix.\n        \"\"\"\n\n        def get_match_index(\n            tokenizer: AnyTokenizer,\n            prompt: PromptSeq,\n        ) -> Optional[int]:\n            prefix = seq\n\n            if isinstance(prompt, str):\n                if not isinstance(prefix, str):\n                    # Make both `str`\n                    prefix = decode_tokens(tokenizer, prefix)\n            else:\n                if isinstance(prefix, str):\n                    # Make both `list[int]`\n                    prefix = encode_tokens(tokenizer,\n                                           prefix,\n                                           add_special_tokens=False)\n\n            match_idx = len(prefix)\n            return match_idx if prompt[:match_idx] == prefix else None\n\n        return PromptIndex(get_match_index)\n\n    @staticmethod\n    def end() -> PromptIndex:\n        \"\"\"\n        Resolves to the end of the prompt (after the last token).\n\n        This results in a match even if the prompt is empty.\n        \"\"\"\n        return PromptIndex(lambda tok, prompt: len(prompt))\n\n\nPromptTarget = Union[PromptSeq, PromptIndex]\n\"\"\"\nThe token sequence or text to update.\n\"\"\"\n\n\n@dataclass\nclass PromptUpdateDetails(Generic[_S]):\n    \"\"\"Details about the token sequence or text that are part of the update.\"\"\"\n\n    full: _S\n    \"\"\"The full content.\"\"\"\n\n    is_embed: Optional[Callable[[\"_BoundPromptSequence\"], torch.Tensor]] = None\n    \"\"\"\n    Given [`full`][vllm.multimodal.processing.PromptUpdateDetails.full],\n    return a boolean mask of shape `(len(full),)` indicating which positions\n    of `full` to assign embeddings to.\n\n    `None` (default) means to assign embeddings to all positions of `full`.\n\n    The embeddings are obtained by calling\n    [`SupportsMultiModal.get_multimodal_embeddings`][vllm.model_executor.models.interfaces.SupportsMultiModal.get_multimodal_embeddings].\n    \"\"\"\n\n    @staticmethod\n    def from_seq(seq: _S) -> \"PromptUpdateDetails[_S]\":\n        return PromptUpdateDetails(full=seq)\n\n    @staticmethod\n    def select_text(\n        seq: _S,\n        embed_text: str,\n    ) -> \"PromptUpdateDetails[_S]\":\n\n        def is_embed(full: \"_BoundPromptSequence\") -> torch.Tensor:\n            embed_token_ids = encode_tokens(full.tokenizer, embed_text)\n\n            return torch.isin(\n                torch.tensor(full.token_ids),\n                torch.tensor(embed_token_ids),\n            )\n\n        return PromptUpdateDetails(full=seq, is_embed=is_embed)\n\n    @staticmethod\n    def select_token_id(\n        seq: _S,\n        embed_token_id: int,\n    ) -> \"PromptUpdateDetails[_S]\":\n        return PromptUpdateDetails(\n            full=seq,\n            is_embed=lambda f: torch.tensor(f.token_ids) == embed_token_id,\n        )\n\n\nPromptUpdateInfo = Union[PromptSeq, PromptUpdateDetails]\n\"\"\"\nThe token sequence or text that are part of the update.\n\nIf only part of the content corresponds to feature placeholders, you can\nuse [`PromptUpdateDetails`][vllm.multimodal.processing.PromptUpdateDetails] to\nspecify which part.\n\"\"\"\n\nPromptUpdateContent = Union[Callable[[int], PromptUpdateInfo],\n                            PromptUpdateInfo]\n\"\"\"\nGiven the index of the processed item within\n[`modality`][vllm.multimodal.processing.PromptUpdate.modality],\noutput the corresponding token sequence (or text).\n\nFor convenience, you can directly pass in the token sequence (or text)\ninstead of a function if it does not depend on the input.\n\"\"\"\n\n\nclass UpdateMode(str, Enum):\n    INSERT = \"insert\"\n    REPLACE = \"replace\"\n\n\n@dataclass\nclass PromptUpdate(ABC):\n    \"\"\"\n    Defines how to update a prompt with placeholder tokens.\n    \"\"\"\n\n    modality: str\n    \"\"\"The modality for which the update is made.\"\"\"\n\n    target: PromptTarget\n    \"\"\"The token sequence (or text) to update.\"\"\"\n\n    @property\n    @abstractmethod\n    def content(self) -> PromptUpdateContent:\n        \"\"\"The placeholder tokens that are part of the update.\"\"\"\n        raise NotImplementedError\n\n    @property\n    @abstractmethod\n    def mode(self) -> UpdateMode:\n        \"\"\"Defines how to update the prompt.\"\"\"\n        raise NotImplementedError\n\n    def bind(self, tokenizer: AnyTokenizer) -> \"BoundPromptUpdate\":\n        return BoundPromptUpdate(\n            _origin=self,\n            tokenizer=tokenizer,\n        )\n\n\n@dataclass\nclass PromptInsertion(PromptUpdate):\n    \"\"\"\n    Defines how to insert placeholder tokens into a prompt.\n\n\n--- structural neighbors ---\nsymbol:194236c744a7bb15:_resolve_matches (symbol, vllm/multimodal/processing.py); symbol:2ee94d9069793b23:PromptReplacement (symbol, vllm/multimodal/processing.py); symbol:cfd70ecba89b63ed:ProcessingCacheItem (symbol, vllm/multimodal/processing.py); symbol:795bd1314cadb4b1:BaseProcessingInfo (symbol, vllm/multimodal/processing.py); symbol:802e22fe50dc6cf6:PromptIndex (symbol, vllm/multimodal/processing.py); symbol:ce184431e37d5464:ProcessingCache (symbol, vllm/multimodal/processing.py); symbol:4e98a476387ee835:_apply_matches (symbol, vllm/multimodal/processing.py); symbol:6982b0b2a361b1cc:_BoundPromptSequence (symbol, vllm/multimodal/processing.py); symbol:ae7b0c7bff00c5ce:PromptIndexTargets (symbol, vllm/multimodal/processing.py); symbol:4a591fd5aa12e149:replace_token_matches (symbol, vllm/multimodal/processing.py); symbol:595b65fe619c09fe:_cached_encode (symbol, vllm/multimodal/processing.py); symbol:ac9d8c5b817ba040:_cached_decode (symbol, vllm/multimodal/processing.py)"
+      },
+      "search_hits": {
+        "get_max_tokens_per_item": [
+          {
+            "file_path": "vllm/model_executor/models/qwen2_vl.py",
+            "line_number": 826,
+            "content": "def get_max_tokens_per_item(",
+            "context_lines": [
+              "def get_max_tokens_per_item("
+            ]
+          },
+          {
+            "file_path": "vllm/multimodal/processing.py",
+            "line_number": 1103,
+            "content": "def get_max_tokens_per_item(",
+            "context_lines": [
+              "def get_max_tokens_per_item("
+            ]
+          }
+        ],
+        "edge cases": [],
+        "zero or negative mm_counts": []
+      },
+      "warnings": []
+    },
+    "general_1_1:auto-context:1": {
+      "request_id": "general_1_1:auto-context:1",
+      "candidate_id": "general_1_1",
+      "file_snippets": {
+        "vllm/multimodal/profiling.py": "# SPDX-License-Identifier: Apache-2.0\n# SPDX-FileCopyrightText: Copyright contributors to the vLLM project\nfrom abc import ABC, abstractmethod\nfrom collections.abc import Mapping\nfrom dataclasses import dataclass, field\nfrom typing import Generic, NamedTuple, Optional, TypeVar, Union, cast\n\nimport numpy as np\nimport numpy.typing as npt\nfrom PIL import Image\n\nimport vllm.envs as envs\nfrom vllm.logger import init_logger\n\nfrom .inputs import (MultiModalDataDict, MultiModalEncDecInputs,\n                     MultiModalInputs, MultiModalKwargs,\n                     MultiModalPlaceholderDict)\nfrom .processing import (BaseMultiModalProcessor, BaseProcessingInfo,\n                         EncDecMultiModalProcessor)\n\nlogger = init_logger(__name__)\n\n\n@dataclass\nclass ProcessorInputs:\n    \"\"\"\n    Represents the keyword arguments to\n    [`vllm.multimodal.processing.BaseMultiModalProcessor.apply`][].\n    \"\"\"\n    prompt: Union[str, list[int]]\n    mm_data: MultiModalDataDict\n    hf_processor_mm_kwargs: Mapping[str, object] = field(default_factory=dict)\n\n\nclass DummyEncoderData(NamedTuple):\n    \"\"\"Dummy data used for profiling.\"\"\"\n\n    prompt_token_ids: list[int]\n\n\nclass DummyDecoderData(NamedTuple):\n    \"\"\"Dummy data used for profiling.\"\"\"\n\n    prompt_token_ids: list[int]\n    multi_modal_data: MultiModalKwargs\n    multi_modal_placeholders: MultiModalPlaceholderDict\n\n\n_I = TypeVar(\"_I\", bound=BaseProcessingInfo)\n\n\nclass BaseDummyInputsBuilder(ABC, Generic[_I]):\n    \"\"\"\n    Abstract base class that constructs the dummy data to profile\n    multi-modal models.\n    \"\"\"\n\n    def __init__(self, info: _I) -> None:\n        super().__init__()\n\n        self.info = info\n\n    @abstractmethod\n    def get_dummy_text(self, mm_counts: Mapping[str, int]) -> str:\n        \"\"\"\n        Build the text input corresponding to `mm_counts`.\n        \"\"\"\n        raise NotImplementedError\n\n    @abstractmethod\n    def get_dummy_mm_data(\n        self,\n        seq_len: int,\n        mm_counts: Mapping[str, int],\n    ) -> MultiModalDataDict:\n        \"\"\"\n        Build the multimodal input which, after processing, results in\n        the maximum possible number of placeholder tokens.\n        \"\"\"\n        raise NotImplementedError\n\n    def get_dummy_processor_inputs(\n        self,\n        seq_len: int,\n        mm_counts: Mapping[str, int],\n    ) -> ProcessorInputs:\n        \"\"\"\n        Build the input which, after processing, results in\n        the maximum possible number of placeholder tokens.\n        \"\"\"\n        dummy_text = self.get_dummy_text(mm_counts)\n        dummy_mm_data = self.get_dummy_mm_data(seq_len, mm_counts)\n\n        return ProcessorInputs(prompt=dummy_text, mm_data=dummy_mm_data)\n\n    def _get_dummy_audios(\n        self,\n        *,\n        length: int,\n        num_audios: int,\n    ) -> list[npt.NDArray]:\n        if num_audios == 0:\n            return []\n        audio = np.zeros((length, ))\n        return [audio] * num_audios\n\n    def _get_dummy_images(\n        self,\n        *,\n        width: int,\n        height: int,\n        num_images: int,\n    ) -> list[Image.Image]:\n        if num_images == 0:\n            return []\n        image = Image.new(\"RGB\", (width, height), color=255)\n        return [image] * num_images\n\n    def _get_dummy_videos(\n        self,\n        *,\n        width: int,\n        height: int,\n        num_frames: int,\n        num_videos: int,\n    ) -> list[npt.NDArray]:\n        if num_videos == 0:\n            return []\n        video = np.full((num_frames, width, height, 3), 255)\n        return [video] * num_videos\n\n\nclass MultiModalProfiler(Generic[_I]):\n    \"\"\"\n    Contains code for running memory profiling for multi-modal models.\n    \"\"\"\n\n    def __init__(\n        self,\n        processor: BaseMultiModalProcessor[_I],\n    ) -> None:\n        super().__init__()\n\n        self.processor = processor\n\n    @property\n    def processing_info(self) -> BaseProcessingInfo:\n        return self.processor.info\n\n    @property\n    def dummy_inputs(self) -> BaseDummyInputsBuilder[_I]:\n        return self.processor.dummy_inputs\n\n    def get_mm_limits(self) -> Mapping[str, int]:\n        return self.processing_info.get_allowed_mm_limits()\n\n    def _get_dummy_mm_inputs(\n        self,\n        seq_len: int,\n        mm_counts: Optional[Mapping[str, int]] = None,\n    ) -> MultiModalInputs:\n        if mm_counts is None:\n            mm_counts = self.get_mm_limits()\n\n        factory = self.dummy_inputs\n        processor_inputs = factory.get_dummy_processor_inputs(\n            seq_len, mm_counts)\n\n        return self.processor.apply(\n            prompt=processor_inputs.prompt,\n            mm_data=processor_inputs.mm_data,\n            hf_processor_mm_kwargs=processor_inputs.hf_processor_mm_kwargs,\n        )\n\n    def _get_mm_num_tokens(\n        self,\n        mm_inputs: MultiModalInputs,\n    ) -> Mapping[str, int]:\n        placeholders_by_modality = mm_inputs[\"mm_placeholders\"]\n\n        return {\n            modality: sum(item.get_num_embeds() for item in placeholders)\n            for modality, placeholders in placeholders_by_modality.items()\n        }\n\n    def get_encoder_dummy_data(\n        self,\n        seq_len: int,\n        mm_counts: Optional[Mapping[str, int]] = None,\n    ) -> DummyEncoderData:\n        mm_inputs = self._get_dummy_mm_inputs(seq_len, mm_counts)\n        mm_inputs = cast(MultiModalEncDecInputs, mm_inputs)\n\n        # For encoder-decoder models, use encoder prompt token ids instead of\n        # decoder prompt to construct dummy seq_data for encoder profiling.\n        encoder_prompt_token_ids = mm_inputs[\"encoder_prompt_token_ids\"]\n\n        total_len = len(encoder_prompt_token_ids)\n\n        processor = cast(EncDecMultiModalProcessor, self.processor)\n        if processor.pad_dummy_encoder_prompt:\n            num_tokens_to_pad = max(total_len, seq_len) - total_len\n            encoder_prompt_token_ids.extend([0] * num_tokens_to_pad)\n        # NOTE: Whisper allows total_len > seq_len.\n        elif total_len > seq_len and not envs.VLLM_USE_V1:\n            # `max_num_batched_tokens` is defined by `SchedulerConfig`\n            logger.warning_once(\n                \"The encoder sequence length used for profiling (max_num_batched_tokens / max_num_seqs = %d) \"  # noqa: E501\n                \"is too short to hold the multi-modal embeddings in the worst case (%d tokens in total, out of which %s are reserved for multi-modal embeddings). \"  # noqa: E501\n                \"This may cause certain multi-modal inputs to fail during inference, even when the input text is short. \"  # noqa: E501\n                \"To avoid this, you should increase `max_model_len`, reduce `max_num_seqs`, and/or reduce `mm_counts`.\",  # noqa: E501\n                seq_len,\n                total_len,\n                str(self._get_mm_num_tokens(mm_inputs)),\n            )\n\n        return DummyEncoderData(encoder_prompt_token_ids)\n\n    def get_decoder_dummy_data(\n        self,\n\n--- structural neighbors ---\nsymbol:1425039618f9bccc:DummyDecoderData (symbol, vllm/multimodal/profiling.py); symbol:c6bc398ff5ad7e8b:MultiModalProfiler (symbol, vllm/multimodal/profiling.py); symbol:6e37e15175f65b94:ProcessorInputs (symbol, vllm/multimodal/profiling.py); symbol:253302bb15ad1164:DummyEncoderData (symbol, vllm/multimodal/profiling.py); symbol:588697be90572e99:BaseDummyInputsBuilder (symbol, vllm/multimodal/profiling.py)",
+        "vllm/model_executor/models/qwen2_vl.py": "# SPDX-License-Identifier: Apache-2.0\n# SPDX-FileCopyrightText: Copyright contributors to the vLLM project\n\n# Adapted from\n# https://github.com/huggingface/transformers/blob/19e6e80e10118f855137b90740936c0b11ac397f/src/transformers/models/qwen2_vl/modeling_qwen2_vl.py\n# Copyright 2024 The Qwen team.\n# Copyright 2023 The vLLM team.\n# Copyright 2022 EleutherAI and the HuggingFace Inc. team. All rights reserved.\n#\n# This code is based on EleutherAI's GPT-NeoX library and the GPT-NeoX\n# and OPT implementations in this library. It has been modified from its\n# original forms to accommodate minor architectural differences compared\n# to GPT-NeoX and OPT used by the Meta AI team that trained the model.\n#\n# Licensed under the Apache License, Version 2.0 (the \"License\");\n# you may not use this file except in compliance with the License.\n# You may obtain a copy of the License at\n#\n#     http://www.apache.org/licenses/LICENSE-2.0\n#\n# Unless required by applicable law or agreed to in writing, software\n# distributed under the License is distributed on an \"AS IS\" BASIS,\n# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\n# See the License for the specific language governing permissions and\n# limitations under the License.\n\"\"\"Inference-only Qwen2-VL model compatible with HuggingFace weights.\"\"\"\nfrom collections.abc import Iterable, Mapping, Sequence\nfrom functools import partial\nfrom typing import Any, Callable, Literal, Optional, TypedDict, Union\n\nimport torch\nimport torch.nn as nn\nimport torch.nn.functional as F\nfrom einops import rearrange, repeat\nfrom transformers import AutoConfig, BatchFeature\nfrom transformers.models.qwen2_vl import (Qwen2VLImageProcessor,\n                                          Qwen2VLProcessor)\nfrom transformers.models.qwen2_vl.configuration_qwen2_vl import (\n    Qwen2VLConfig, Qwen2VLVisionConfig)\nfrom transformers.models.qwen2_vl.image_processing_qwen2_vl import smart_resize\nfrom transformers.models.qwen2_vl.video_processing_qwen2_vl import (\n    Qwen2VLVideoProcessor)\n\nfrom vllm.config import VllmConfig\nfrom vllm.distributed import parallel_state, tensor_model_parallel_all_gather\nfrom vllm.distributed import utils as dist_utils\nfrom vllm.logger import init_logger\nfrom vllm.model_executor import SamplingMetadata\nfrom vllm.model_executor.layers.activation import QuickGELU\nfrom vllm.model_executor.layers.linear import (ColumnParallelLinear,\n                                               RowParallelLinear)\nfrom vllm.model_executor.layers.quantization import QuantizationConfig\nfrom vllm.model_executor.layers.quantization.gptq import GPTQConfig\nfrom vllm.model_executor.layers.quantization.gptq_marlin import (\n    GPTQMarlinConfig)\nfrom vllm.model_executor.model_loader.weight_utils import default_weight_loader\nfrom vllm.model_executor.models.module_mapping import MultiModelKeys\nfrom vllm.multimodal import MULTIMODAL_REGISTRY\nfrom vllm.multimodal.inputs import (ImageItem, ModalityData,\n                                    MultiModalDataDict, MultiModalFieldConfig,\n                                    MultiModalKwargs, VideoItem)\nfrom vllm.multimodal.parse import (DictEmbeddingItems, ImageSize,\n                                   ModalityDataItems, MultiModalDataItems,\n                                   MultiModalDataParser)\nfrom vllm.multimodal.processing import (BaseMultiModalProcessor,\n                                        BaseProcessingInfo, PromptReplacement,\n                                        PromptUpdate)\nfrom vllm.multimodal.profiling import BaseDummyInputsBuilder\nfrom vllm.platforms import _Backend, current_platform\nfrom vllm.sequence import IntermediateTensors\nfrom vllm.transformers_utils.config import uses_mrope\nfrom vllm.transformers_utils.processor import (\n    cached_image_processor_from_config)\nfrom vllm.transformers_utils.tokenizer import AnyTokenizer\n\nfrom .interfaces import (MultiModalEmbeddings, SupportsLoRA,\n                         SupportsMultiModal, SupportsPP)\nfrom .utils import (AutoWeightsLoader, WeightsMapper,\n                    init_vllm_registered_model, maybe_prefix,\n                    merge_multimodal_embeddings)\nfrom .vision import get_vit_attn_backend\n\nlogger = init_logger(__name__)\n\n# For profile run\n_MAX_FRAMES_PER_VIDEO = 16\n\n# === Vision Inputs === #\n\n\nclass Qwen2VLImagePixelInputs(TypedDict):\n    type: Literal[\"pixel_values\"]\n    pixel_values: torch.Tensor\n    \"\"\"Shape:\n    `(num_patches, num_channels * patch_size * patch_size)`\n    \"\"\"\n\n    image_grid_thw: torch.Tensor\n    \"\"\"Shape: `(num_images, 3)`\n    This should be in `(grid_t, grid_h, grid_w)` format.\n    \"\"\"\n\n\nclass Qwen2VLImageEmbeddingInputs(TypedDict):\n    type: Literal[\"image_embeds\"]\n    image_embeds: torch.Tensor\n    \"\"\"Supported types:\n    - list[`torch.Tensor`]: A list of tensors holding all images' features.\n        Each tensor holds an image's features.\n    - `torch.Tensor`: A tensor holding all images' features\n        (concatenation of all images' feature tensors).\n    \n    Tensor shape: `(num_image_features, hidden_size)`\n    - `num_image_features` varies based on\n        the number and resolution of the images.\n    - `hidden_size` must match the hidden size of language model backbone.\n    \"\"\"\n\n    image_grid_thw: torch.Tensor\n    \"\"\"Shape: `(num_images, 3)`\n    This should be in `(grid_t, grid_h, grid_w)` format.\n    \"\"\"\n\n\nQwen2VLImageInputs = Union[Qwen2VLImagePixelInputs,\n                           Qwen2VLImageEmbeddingInputs]\n\n\nclass Qwen2VLVideoPixelInputs(TypedDict):\n    type: Literal[\"pixel_values_videos\"]\n    pixel_values_videos: torch.Tensor\n    \"\"\"Shape:\n    `(num_patches,\n      num_channels * temporal_patch_size * patch_size * patch_size)`\n    \"\"\"\n\n    video_grid_thw: torch.Tensor\n    \"\"\"Shape: `(num_videos, 3)`\n\n    This should be in `(grid_t, grid_h, grid_w)` format.\n    \"\"\"\n\n\nclass Qwen2VLVideoEmbeddingInputs(TypedDict):\n    type: Literal[\"video_embeds\"]\n    video_embeds: torch.Tensor\n    \"\"\"Supported types:\n    - list[`torch.Tensor`]: A list of tensors holding all videos' features.\n        Each tensor holds an video's features.\n    - `torch.Tensor`: A tensor holding all videos' features\n        (concatenation of all videos' feature tensors).\n    \n    Tensor shape: `(num_image_features, hidden_size)`\n    - `num_image_features` varies based on \n        the number and resolution of the videos.\n    - `hidden_size` must match the hidden size of language model backbone.\n    \"\"\"\n\n    video_grid_thw: torch.Tensor\n    \"\"\"Shape: `(num_videos, 3)`\n    This should be in `(grid_t, grid_h, grid_w)` format.\n    \"\"\"\n\n\nQwen2VLVideoInputs = Union[Qwen2VLVideoPixelInputs,\n                           Qwen2VLVideoEmbeddingInputs]\n\n# === Vision Encoder === #\n\n\nclass Qwen2VisionMLP(nn.Module):\n\n    def __init__(\n        self,\n        in_features: int,\n        hidden_features: int,\n        act_layer: type[nn.Module] = QuickGELU,\n        quant_config: Optional[QuantizationConfig] = None,\n        prefix: str = \"\",\n    ):\n        super().__init__()\n        self.fc1 = ColumnParallelLinear(in_features,\n                                        hidden_features,\n                                        quant_config=quant_config,\n                                        prefix=f\"{prefix}.fc1\")\n        self.act = act_layer()\n        self.fc2 = RowParallelLinear(hidden_features,\n                                     in_features,\n                                     quant_config=quant_config,\n                                     prefix=f\"{prefix}.fc2\")\n\n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        x_parallel, _ = self.fc1(x)\n        x_parallel = self.act(x_parallel)\n        x, _ = self.fc2(x_parallel)\n        return x\n\n\ndef rotate_half(x: torch.Tensor, interleaved: bool = False) -> torch.Tensor:\n    if not interleaved:\n        x1, x2 = x.chunk(2, dim=-1)\n        return torch.cat((-x2, x1), dim=-1)\n    else:\n        x1, x2 = x[..., ::2], x[..., 1::2]\n        return rearrange(torch.stack((-x2, x1), dim=-1),\n         \n--- structural neighbors ---\nsymbol:ff81d1740fd981dd:Qwen2VLProcessingInfo (symbol, vllm/model_executor/models/qwen2_vl.py); symbol:d416fc71e28d737e:apply_rotary_emb_torch (symbol, vllm/model_executor/models/qwen2_vl.py); symbol:c06740be2d908ade:Qwen2VLVideoEmbeddingInputs (symbol, vllm/model_executor/models/qwen2_vl.py); symbol:34684a5a3cf382f4:Qwen2VLMultiModalDataParser (symbol, vllm/model_executor/models/qwen2_vl.py); symbol:90e29da28ed7c1fd:Qwen2VisionPatchMerger (symbol, vllm/model_executor/models/qwen2_vl.py); symbol:238bd40ba371e3b3:Qwen2VisionMLP (symbol, vllm/model_executor/models/qwen2_vl.py); symbol:ac7aacb591f94d5f:Tarsier2Processor (symbol, vllm/model_executor/models/qwen2_vl.py); symbol:c41f2957195be1d4:rotate_half (symbol, vllm/model_executor/models/qwen2_vl.py); symbol:9d4500be2f6713ad:Qwen2VisionBlock (symbol, vllm/model_executor/models/qwen2_vl.py); symbol:9d044c6038ef588d:Tarsier2ForConditionalGeneration (symbol, vllm/model_executor/models/qwen2_vl.py); symbol:f6ca7a54f51b6c2d:Qwen2VisionAttention (symbol, vllm/model_executor/models/qwen2_vl.py); symbol:3f869a98bd527df4:Tarsier2ImageProcessor (symbol, vllm/model_executor/models/qwen2_vl.py)",
+        "vllm/multimodal/processing.py": "# SPDX-License-Identifier: Apache-2.0\n# SPDX-FileCopyrightText: Copyright contributors to the vLLM project\nimport json\nimport sys\nfrom abc import ABC, abstractmethod\nfrom collections import defaultdict\nfrom collections.abc import (Callable, Generator, ItemsView, Iterable, Mapping,\n                             Sequence)\nfrom dataclasses import dataclass, field\nfrom enum import Enum\nfrom functools import lru_cache\nfrom typing import (TYPE_CHECKING, Generic, NamedTuple, Optional, Protocol,\n                    TypeVar, Union, cast)\n\nimport regex as re\nimport torch\nfrom typing_extensions import assert_never\n\nfrom vllm.inputs import InputProcessingContext\nfrom vllm.jsontree import json_map_leaves, json_reduce_leaves\nfrom vllm.logger import init_logger\nfrom vllm.transformers_utils.tokenizer import (AnyTokenizer, decode_tokens,\n                                               encode_tokens)\nfrom vllm.utils import GiB_bytes, LRUCache, flatten_2d_lists, full_groupby\n\nfrom .hasher import MultiModalHasher\nfrom .inputs import (MultiModalDataDict, MultiModalEncDecInputs,\n                     MultiModalFieldConfig, MultiModalInputs, MultiModalKwargs,\n                     MultiModalKwargsItem, NestedTensors, PlaceholderRange)\nfrom .parse import (DictEmbeddingItems, EmbeddingItems, MultiModalDataItems,\n                    MultiModalDataParser)\n\nif TYPE_CHECKING:\n    from transformers.configuration_utils import PretrainedConfig\n    from transformers.feature_extraction_utils import BatchFeature\n    from transformers.processing_utils import ProcessorMixin\n\n    from .profiling import BaseDummyInputsBuilder\n\nlogger = init_logger(__name__)\n\n_S = TypeVar(\"_S\", str, list[int])\n\nPromptSeq = Union[str, list[int]]\n\"\"\"A token sequence (list of token IDs) or text.\"\"\"\n\n\n@dataclass\nclass PromptIndex:\n    \"\"\"Resolves to an index in the prompt.\"\"\"\n    get_match_index: Callable[[AnyTokenizer, PromptSeq], Optional[int]]\n\n\nclass PromptIndexTargets:\n\n    @staticmethod\n    def start() -> PromptIndex:\n        \"\"\"\n        Resolves to the start of the prompt (before the first token).\n\n        This results in a match even if the prompt is empty.\n        \"\"\"\n        return PromptIndex(lambda tok, prompt: 0)\n\n    @staticmethod\n    def prefix(seq: PromptSeq) -> PromptIndex:\n        \"\"\"\n        Resolves to a location in the prompt after the given prefix.\n        \"\"\"\n\n        def get_match_index(\n            tokenizer: AnyTokenizer,\n            prompt: PromptSeq,\n        ) -> Optional[int]:\n            prefix = seq\n\n            if isinstance(prompt, str):\n                if not isinstance(prefix, str):\n                    # Make both `str`\n                    prefix = decode_tokens(tokenizer, prefix)\n            else:\n                if isinstance(prefix, str):\n                    # Make both `list[int]`\n                    prefix = encode_tokens(tokenizer,\n                                           prefix,\n                                           add_special_tokens=False)\n\n            match_idx = len(prefix)\n            return match_idx if prompt[:match_idx] == prefix else None\n\n        return PromptIndex(get_match_index)\n\n    @staticmethod\n    def end() -> PromptIndex:\n        \"\"\"\n        Resolves to the end of the prompt (after the last token).\n\n        This results in a match even if the prompt is empty.\n        \"\"\"\n        return PromptIndex(lambda tok, prompt: len(prompt))\n\n\nPromptTarget = Union[PromptSeq, PromptIndex]\n\"\"\"\nThe token sequence or text to update.\n\"\"\"\n\n\n@dataclass\nclass PromptUpdateDetails(Generic[_S]):\n    \"\"\"Details about the token sequence or text that are part of the update.\"\"\"\n\n    full: _S\n    \"\"\"The full content.\"\"\"\n\n    is_embed: Optional[Callable[[\"_BoundPromptSequence\"], torch.Tensor]] = None\n    \"\"\"\n    Given [`full`][vllm.multimodal.processing.PromptUpdateDetails.full],\n    return a boolean mask of shape `(len(full),)` indicating which positions\n    of `full` to assign embeddings to.\n\n    `None` (default) means to assign embeddings to all positions of `full`.\n\n    The embeddings are obtained by calling\n    [`SupportsMultiModal.get_multimodal_embeddings`][vllm.model_executor.models.interfaces.SupportsMultiModal.get_multimodal_embeddings].\n    \"\"\"\n\n    @staticmethod\n    def from_seq(seq: _S) -> \"PromptUpdateDetails[_S]\":\n        return PromptUpdateDetails(full=seq)\n\n    @staticmethod\n    def select_text(\n        seq: _S,\n        embed_text: str,\n    ) -> \"PromptUpdateDetails[_S]\":\n\n        def is_embed(full: \"_BoundPromptSequence\") -> torch.Tensor:\n            embed_token_ids = encode_tokens(full.tokenizer, embed_text)\n\n            return torch.isin(\n                torch.tensor(full.token_ids),\n                torch.tensor(embed_token_ids),\n            )\n\n        return PromptUpdateDetails(full=seq, is_embed=is_embed)\n\n    @staticmethod\n    def select_token_id(\n        seq: _S,\n        embed_token_id: int,\n    ) -> \"PromptUpdateDetails[_S]\":\n        return PromptUpdateDetails(\n            full=seq,\n            is_embed=lambda f: torch.tensor(f.token_ids) == embed_token_id,\n        )\n\n\nPromptUpdateInfo = Union[PromptSeq, PromptUpdateDetails]\n\"\"\"\nThe token sequence or text that are part of the update.\n\nIf only part of the content corresponds to feature placeholders, you can\nuse [`PromptUpdateDetails`][vllm.multimodal.processing.PromptUpdateDetails] to\nspecify which part.\n\"\"\"\n\nPromptUpdateContent = Union[Callable[[int], PromptUpdateInfo],\n                            PromptUpdateInfo]\n\"\"\"\nGiven the index of the processed item within\n[`modality`][vllm.multimodal.processing.PromptUpdate.modality],\noutput the corresponding token sequence (or text).\n\nFor convenience, you can directly pass in the token sequence (or text)\ninstead of a function if it does not depend on the input.\n\"\"\"\n\n\nclass UpdateMode(str, Enum):\n    INSERT = \"insert\"\n    REPLACE = \"replace\"\n\n\n@dataclass\nclass PromptUpdate(ABC):\n    \"\"\"\n    Defines how to update a prompt with placeholder tokens.\n    \"\"\"\n\n    modality: str\n    \"\"\"The modality for which the update is made.\"\"\"\n\n    target: PromptTarget\n    \"\"\"The token sequence (or text) to update.\"\"\"\n\n    @property\n    @abstractmethod\n    def content(self) -> PromptUpdateContent:\n        \"\"\"The placeholder tokens that are part of the update.\"\"\"\n        raise NotImplementedError\n\n    @property\n    @abstractmethod\n    def mode(self) -> UpdateMode:\n        \"\"\"Defines how to update the prompt.\"\"\"\n        raise NotImplementedError\n\n    def bind(self, tokenizer: AnyTokenizer) -> \"BoundPromptUpdate\":\n        return BoundPromptUpdate(\n            _origin=self,\n            tokenizer=tokenizer,\n        )\n\n\n@dataclass\nclass PromptInsertion(PromptUpdate):\n    \"\"\"\n    Defines how to insert placeholder tokens into a prompt.\n\n\n--- structural neighbors ---\nsymbol:194236c744a7bb15:_resolve_matches (symbol, vllm/multimodal/processing.py); symbol:2ee94d9069793b23:PromptReplacement (symbol, vllm/multimodal/processing.py); symbol:cfd70ecba89b63ed:ProcessingCacheItem (symbol, vllm/multimodal/processing.py); symbol:795bd1314cadb4b1:BaseProcessingInfo (symbol, vllm/multimodal/processing.py); symbol:802e22fe50dc6cf6:PromptIndex (symbol, vllm/multimodal/processing.py); symbol:ce184431e37d5464:ProcessingCache (symbol, vllm/multimodal/processing.py); symbol:4e98a476387ee835:_apply_matches (symbol, vllm/multimodal/processing.py); symbol:6982b0b2a361b1cc:_BoundPromptSequence (symbol, vllm/multimodal/processing.py); symbol:ae7b0c7bff00c5ce:PromptIndexTargets (symbol, vllm/multimodal/processing.py); symbol:4a591fd5aa12e149:replace_token_matches (symbol, vllm/multimodal/processing.py); symbol:595b65fe619c09fe:_cached_encode (symbol, vllm/multimodal/processing.py); symbol:ac9d8c5b817ba040:_cached_decode (symbol, vllm/multimodal/processing.py)"
+      },
+      "search_hits": {
+        "vllm/multimodal/profiling.py": []
+      },
+      "warnings": [
+        "truncated_total_chars"
+      ]
+    },
+    "logic_1_request_1": {
+      "request_id": "logic_1_request_1",
+      "candidate_id": "logic_1",
+      "file_snippets": {
+        "vllm/model_executor/models/qwen2_vl.py": "# SPDX-License-Identifier: Apache-2.0\n# SPDX-FileCopyrightText: Copyright contributors to the vLLM project\n\n# Adapted from\n# https://github.com/huggingface/transformers/blob/19e6e80e10118f855137b90740936c0b11ac397f/src/transformers/models/qwen2_vl/modeling_qwen2_vl.py\n# Copyright 2024 The Qwen team.\n# Copyright 2023 The vLLM team.\n# Copyright 2022 EleutherAI and the HuggingFace Inc. team. All rights reserved.\n#\n# This code is based on EleutherAI's GPT-NeoX library and the GPT-NeoX\n# and OPT implementations in this library. It has been modified from its\n# original forms to accommodate minor architectural differences compared\n# to GPT-NeoX and OPT used by the Meta AI team that trained the model.\n#\n# Licensed under the Apache License, Version 2.0 (the \"License\");\n# you may not use this file except in compliance with the License.\n# You may obtain a copy of the License at\n#\n#     http://www.apache.org/licenses/LICENSE-2.0\n#\n# Unless required by applicable law or agreed to in writing, software\n# distributed under the License is distributed on an \"AS IS\" BASIS,\n# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\n# See the License for the specific language governing permissions and\n# limitations under the License.\n\"\"\"Inference-only Qwen2-VL model compatible with HuggingFace weights.\"\"\"\nfrom collections.abc import Iterable, Mapping, Sequence\nfrom functools import partial\nfrom typing import Any, Callable, Literal, Optional, TypedDict, Union\n\nimport torch\nimport torch.nn as nn\nimport torch.nn.functional as F\nfrom einops import rearrange, repeat\nfrom transformers import AutoConfig, BatchFeature\nfrom transformers.models.qwen2_vl import (Qwen2VLImageProcessor,\n                                          Qwen2VLProcessor)\nfrom transformers.models.qwen2_vl.configuration_qwen2_vl import (\n    Qwen2VLConfig, Qwen2VLVisionConfig)\nfrom transformers.models.qwen2_vl.image_processing_qwen2_vl import smart_resize\nfrom transformers.models.qwen2_vl.video_processing_qwen2_vl import (\n    Qwen2VLVideoProcessor)\n\nfrom vllm.config import VllmConfig\nfrom vllm.distributed import parallel_state, tensor_model_parallel_all_gather\nfrom vllm.distributed import utils as dist_utils\nfrom vllm.logger import init_logger\nfrom vllm.model_executor import SamplingMetadata\nfrom vllm.model_executor.layers.activation import QuickGELU\nfrom vllm.model_executor.layers.linear import (ColumnParallelLinear,\n                                               RowParallelLinear)\nfrom vllm.model_executor.layers.quantization import QuantizationConfig\nfrom vllm.model_executor.layers.quantization.gptq import GPTQConfig\nfrom vllm.model_executor.layers.quantization.gptq_marlin import (\n    GPTQMarlinConfig)\nfrom vllm.model_executor.model_loader.weight_utils import default_weight_loader\nfrom vllm.model_executor.models.module_mapping import MultiModelKeys\nfrom vllm.multimodal import MULTIMODAL_REGISTRY\nfrom vllm.multimodal.inputs import (ImageItem, ModalityData,\n                                    MultiModalDataDict, MultiModalFieldConfig,\n                                    MultiModalKwargs, VideoItem)\nfrom vllm.multimodal.parse import (DictEmbeddingItems, ImageSize,\n                                   ModalityDataItems, MultiModalDataItems,\n                                   MultiModalDataParser)\nfrom vllm.multimodal.processing import (BaseMultiModalProcessor,\n                                        BaseProcessingInfo, PromptReplacement,\n                                        PromptUpdate)\nfrom vllm.multimodal.profiling import BaseDummyInputsBuilder\nfrom vllm.platforms import _Backend, current_platform\nfrom vllm.sequence import IntermediateTensors\nfrom vllm.transformers_utils.config import uses_mrope\nfrom vllm.transformers_utils.processor import (\n    cached_image_processor_from_config)\nfrom vllm.transformers_utils.tokenizer import AnyTokenizer\n\nfrom .interfaces import (MultiModalEmbeddings, SupportsLoRA,\n                         SupportsMultiModal, SupportsPP)\nfrom .utils import (AutoWeightsLoader, WeightsMapper,\n                    init_vllm_registered_model, maybe_prefix,\n                    merge_multimodal_embeddings)\nfrom .vision import get_vit_attn_backend\n\nlogger = init_logger(__name__)\n\n# For profile run\n_MAX_FRAMES_PER_VIDEO = 16\n\n# === Vision Inputs === #\n\n\nclass Qwen2VLImagePixelInputs(TypedDict):\n    type: Literal[\"pixel_values\"]\n    pixel_values: torch.Tensor\n    \"\"\"Shape:\n    `(num_patches, num_channels * patch_size * patch_size)`\n    \"\"\"\n\n    image_grid_thw: torch.Tensor\n    \"\"\"Shape: `(num_images, 3)`\n    This should be in `(grid_t, grid_h, grid_w)` format.\n    \"\"\"\n\n\nclass Qwen2VLImageEmbeddingInputs(TypedDict):\n    type: Literal[\"image_embeds\"]\n    image_embeds: torch.Tensor\n    \"\"\"Supported types:\n    - list[`torch.Tensor`]: A list of tensors holding all images' features.\n        Each tensor holds an image's features.\n    - `torch.Tensor`: A tensor holding all images' features\n        (concatenation of all images' feature tensors).\n    \n    Tensor shape: `(num_image_features, hidden_size)`\n    - `num_image_features` varies based on\n        the number and resolution of the images.\n    - `hidden_size` must match the hidden size of language model backbone.\n    \"\"\"\n\n    image_grid_thw: torch.Tensor\n    \"\"\"Shape: `(num_images, 3)`\n    This should be in `(grid_t, grid_h, grid_w)` format.\n    \"\"\"\n\n\nQwen2VLImageInputs = Union[Qwen2VLImagePixelInputs,\n                           Qwen2VLImageEmbeddingInputs]\n\n\nclass Qwen2VLVideoPixelInputs(TypedDict):\n    type: Literal[\"pixel_values_videos\"]\n    pixel_values_videos: torch.Tensor\n    \"\"\"Shape:\n    `(num_patches,\n      num_channels * temporal_patch_size * patch_size * patch_size)`\n    \"\"\"\n\n    video_grid_thw: torch.Tensor\n    \"\"\"Shape: `(num_videos, 3)`\n\n    This should be in `(grid_t, grid_h, grid_w)` format.\n    \"\"\"\n\n\nclass Qwen2VLVideoEmbeddingInputs(TypedDict):\n    type: Literal[\"video_embeds\"]\n    video_embeds: torch.Tensor\n    \"\"\"Supported types:\n    - list[`torch.Tensor`]: A list of tensors holding all videos' features.\n        Each tensor holds an video's features.\n    - `torch.Tensor`: A tensor holding all videos' features\n        (concatenation of all videos' feature tensors).\n    \n    Tensor shape: `(num_image_features, hidden_size)`\n    - `num_image_features` varies based on \n        the number and resolution of the videos.\n    - `hidden_size` must match the hidden size of language model backbone.\n    \"\"\"\n\n    video_grid_thw: torch.Tensor\n    \"\"\"Shape: `(num_videos, 3)`\n    This should be in `(grid_t, grid_h, grid_w)` format.\n    \"\"\"\n\n\nQwen2VLVideoInputs = Union[Qwen2VLVideoPixelInputs,\n                           Qwen2VLVideoEmbeddingInputs]\n\n# === Vision Encoder === #\n\n\nclass Qwen2VisionMLP(nn.Module):\n\n    def __init__(\n        self,\n        in_features: int,\n        hidden_features: int,\n        act_layer: type[nn.Module] = QuickGELU,\n        quant_config: Optional[QuantizationConfig] = None,\n        prefix: str = \"\",\n    ):\n        super().__init__()\n        self.fc1 = ColumnParallelLinear(in_features,\n                                        hidden_features,\n                                        quant_config=quant_config,\n                                        prefix=f\"{prefix}.fc1\")\n        self.act = act_layer()\n        self.fc2 = RowParallelLinear(hidden_features,\n                                     in_features,\n                                     quant_config=quant_config,\n                                     prefix=f\"{prefix}.fc2\")\n\n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        x_parallel, _ = self.fc1(x)\n        x_parallel = self.act(x_parallel)\n        x, _ = self.fc2(x_parallel)\n        return x\n\n\ndef rotate_half(x: torch.Tensor, interleaved: bool = False) -> torch.Tensor:\n    if not interleaved:\n        x1, x2 = x.chunk(2, dim=-1)\n        return torch.cat((-x2, x1), dim=-1)\n    else:\n        x1, x2 = x[..., ::2], x[..., 1::2]\n        return rearrange(torch.stack((-x2, x1), dim=-1),\n         \n--- structural neighbors ---\nsymbol:ff81d1740fd981dd:Qwen2VLProcessingInfo (symbol, vllm/model_executor/models/qwen2_vl.py); symbol:d416fc71e28d737e:apply_rotary_emb_torch (symbol, vllm/model_executor/models/qwen2_vl.py); symbol:c06740be2d908ade:Qwen2VLVideoEmbeddingInputs (symbol, vllm/model_executor/models/qwen2_vl.py); symbol:34684a5a3cf382f4:Qwen2VLMultiModalDataParser (symbol, vllm/model_executor/models/qwen2_vl.py); symbol:90e29da28ed7c1fd:Qwen2VisionPatchMerger (symbol, vllm/model_executor/models/qwen2_vl.py); symbol:238bd40ba371e3b3:Qwen2VisionMLP (symbol, vllm/model_executor/models/qwen2_vl.py); symbol:ac7aacb591f94d5f:Tarsier2Processor (symbol, vllm/model_executor/models/qwen2_vl.py); symbol:c41f2957195be1d4:rotate_half (symbol, vllm/model_executor/models/qwen2_vl.py); symbol:9d4500be2f6713ad:Qwen2VisionBlock (symbol, vllm/model_executor/models/qwen2_vl.py); symbol:9d044c6038ef588d:Tarsier2ForConditionalGeneration (symbol, vllm/model_executor/models/qwen2_vl.py); symbol:f6ca7a54f51b6c2d:Qwen2VisionAttention (symbol, vllm/model_executor/models/qwen2_vl.py); symbol:3f869a98bd527df4:Tarsier2ImageProcessor (symbol, vllm/model_executor/models/qwen2_vl.py)"
+      },
+      "search_hits": {
+        "get_max_image_tokens": [
+          {
+            "file_path": "vllm/model_executor/models/qwen2_vl.py",
+            "line_number": 830,
+            "content": "max_image_tokens = self.get_max_image_tokens()",
+            "context_lines": [
+              "max_image_tokens = self.get_max_image_tokens()"
+            ]
+          },
+          {
+            "file_path": "vllm/model_executor/models/qwen2_vl.py",
+            "line_number": 917,
+            "content": "def get_max_image_tokens(self) -> int:",
+            "context_lines": [
+              "def get_max_image_tokens(self) -> int:"
+            ]
+          },
+          {
+            "file_path": "vllm/model_executor/models/qwen2_vl.py",
+            "line_number": 955,
+            "content": "max_image_tokens = self.get_max_image_tokens() * max_images",
+            "context_lines": [
+              "max_image_tokens = self.get_max_image_tokens() * max_images"
+            ]
+          }
+        ],
+        "get_max_video_tokens": [
+          {
+            "file_path": "vllm/model_executor/models/qwen2_vl.py",
+            "line_number": 831,
+            "content": "max_video_tokens = self.get_max_video_tokens(seq_len, mm_counts)",
+            "context_lines": [
+              "max_video_tokens = self.get_max_video_tokens(seq_len, mm_counts)"
+            ]
+          },
+          {
+            "file_path": "vllm/model_executor/models/qwen2_vl.py",
+            "line_number": 963,
+            "content": "def get_max_video_tokens(",
+            "context_lines": [
+              "def get_max_video_tokens("
+            ]
+          }
+        ],
+        "edge cases": []
+      },
+      "warnings": []
+    },
+    "logic_1_request_2": {
+      "request_id": "logic_1_request_2",
+      "candidate_id": "logic_1",
+      "file_snippets": {
+        "vllm/multimodal/processing.py": "# SPDX-License-Identifier: Apache-2.0\n# SPDX-FileCopyrightText: Copyright contributors to the vLLM project\nimport json\nimport sys\nfrom abc import ABC, abstractmethod\nfrom collections import defaultdict\nfrom collections.abc import (Callable, Generator, ItemsView, Iterable, Mapping,\n                             Sequence)\nfrom dataclasses import dataclass, field\nfrom enum import Enum\nfrom functools import lru_cache\nfrom typing import (TYPE_CHECKING, Generic, NamedTuple, Optional, Protocol,\n                    TypeVar, Union, cast)\n\nimport regex as re\nimport torch\nfrom typing_extensions import assert_never\n\nfrom vllm.inputs import InputProcessingContext\nfrom vllm.jsontree import json_map_leaves, json_reduce_leaves\nfrom vllm.logger import init_logger\nfrom vllm.transformers_utils.tokenizer import (AnyTokenizer, decode_tokens,\n                                               encode_tokens)\nfrom vllm.utils import GiB_bytes, LRUCache, flatten_2d_lists, full_groupby\n\nfrom .hasher import MultiModalHasher\nfrom .inputs import (MultiModalDataDict, MultiModalEncDecInputs,\n                     MultiModalFieldConfig, MultiModalInputs, MultiModalKwargs,\n                     MultiModalKwargsItem, NestedTensors, PlaceholderRange)\nfrom .parse import (DictEmbeddingItems, EmbeddingItems, MultiModalDataItems,\n                    MultiModalDataParser)\n\nif TYPE_CHECKING:\n    from transformers.configuration_utils import PretrainedConfig\n    from transformers.feature_extraction_utils import BatchFeature\n    from transformers.processing_utils import ProcessorMixin\n\n    from .profiling import BaseDummyInputsBuilder\n\nlogger = init_logger(__name__)\n\n_S = TypeVar(\"_S\", str, list[int])\n\nPromptSeq = Union[str, list[int]]\n\"\"\"A token sequence (list of token IDs) or text.\"\"\"\n\n\n@dataclass\nclass PromptIndex:\n    \"\"\"Resolves to an index in the prompt.\"\"\"\n    get_match_index: Callable[[AnyTokenizer, PromptSeq], Optional[int]]\n\n\nclass PromptIndexTargets:\n\n    @staticmethod\n    def start() -> PromptIndex:\n        \"\"\"\n        Resolves to the start of the prompt (before the first token).\n\n        This results in a match even if the prompt is empty.\n        \"\"\"\n        return PromptIndex(lambda tok, prompt: 0)\n\n    @staticmethod\n    def prefix(seq: PromptSeq) -> PromptIndex:\n        \"\"\"\n        Resolves to a location in the prompt after the given prefix.\n        \"\"\"\n\n        def get_match_index(\n            tokenizer: AnyTokenizer,\n            prompt: PromptSeq,\n        ) -> Optional[int]:\n            prefix = seq\n\n            if isinstance(prompt, str):\n                if not isinstance(prefix, str):\n                    # Make both `str`\n                    prefix = decode_tokens(tokenizer, prefix)\n            else:\n                if isinstance(prefix, str):\n                    # Make both `list[int]`\n                    prefix = encode_tokens(tokenizer,\n                                           prefix,\n                                           add_special_tokens=False)\n\n            match_idx = len(prefix)\n            return match_idx if prompt[:match_idx] == prefix else None\n\n        return PromptIndex(get_match_index)\n\n    @staticmethod\n    def end() -> PromptIndex:\n        \"\"\"\n        Resolves to the end of the prompt (after the last token).\n\n        This results in a match even if the prompt is empty.\n        \"\"\"\n        return PromptIndex(lambda tok, prompt: len(prompt))\n\n\nPromptTarget = Union[PromptSeq, PromptIndex]\n\"\"\"\nThe token sequence or text to update.\n\"\"\"\n\n\n@dataclass\nclass PromptUpdateDetails(Generic[_S]):\n    \"\"\"Details about the token sequence or text that are part of the update.\"\"\"\n\n    full: _S\n    \"\"\"The full content.\"\"\"\n\n    is_embed: Optional[Callable[[\"_BoundPromptSequence\"], torch.Tensor]] = None\n    \"\"\"\n    Given [`full`][vllm.multimodal.processing.PromptUpdateDetails.full],\n    return a boolean mask of shape `(len(full),)` indicating which positions\n    of `full` to assign embeddings to.\n\n    `None` (default) means to assign embeddings to all positions of `full`.\n\n    The embeddings are obtained by calling\n    [`SupportsMultiModal.get_multimodal_embeddings`][vllm.model_executor.models.interfaces.SupportsMultiModal.get_multimodal_embeddings].\n    \"\"\"\n\n    @staticmethod\n    def from_seq(seq: _S) -> \"PromptUpdateDetails[_S]\":\n        return PromptUpdateDetails(full=seq)\n\n    @staticmethod\n    def select_text(\n        seq: _S,\n        embed_text: str,\n    ) -> \"PromptUpdateDetails[_S]\":\n\n        def is_embed(full: \"_BoundPromptSequence\") -> torch.Tensor:\n            embed_token_ids = encode_tokens(full.tokenizer, embed_text)\n\n            return torch.isin(\n                torch.tensor(full.token_ids),\n                torch.tensor(embed_token_ids),\n            )\n\n        return PromptUpdateDetails(full=seq, is_embed=is_embed)\n\n    @staticmethod\n    def select_token_id(\n        seq: _S,\n        embed_token_id: int,\n    ) -> \"PromptUpdateDetails[_S]\":\n        return PromptUpdateDetails(\n            full=seq,\n            is_embed=lambda f: torch.tensor(f.token_ids) == embed_token_id,\n        )\n\n\nPromptUpdateInfo = Union[PromptSeq, PromptUpdateDetails]\n\"\"\"\nThe token sequence or text that are part of the update.\n\nIf only part of the content corresponds to feature placeholders, you can\nuse [`PromptUpdateDetails`][vllm.multimodal.processing.PromptUpdateDetails] to\nspecify which part.\n\"\"\"\n\nPromptUpdateContent = Union[Callable[[int], PromptUpdateInfo],\n                            PromptUpdateInfo]\n\"\"\"\nGiven the index of the processed item within\n[`modality`][vllm.multimodal.processing.PromptUpdate.modality],\noutput the corresponding token sequence (or text).\n\nFor convenience, you can directly pass in the token sequence (or text)\ninstead of a function if it does not depend on the input.\n\"\"\"\n\n\nclass UpdateMode(str, Enum):\n    INSERT = \"insert\"\n    REPLACE = \"replace\"\n\n\n@dataclass\nclass PromptUpdate(ABC):\n    \"\"\"\n    Defines how to update a prompt with placeholder tokens.\n    \"\"\"\n\n    modality: str\n    \"\"\"The modality for which the update is made.\"\"\"\n\n    target: PromptTarget\n    \"\"\"The token sequence (or text) to update.\"\"\"\n\n    @property\n    @abstractmethod\n    def content(self) -> PromptUpdateContent:\n        \"\"\"The placeholder tokens that are part of the update.\"\"\"\n        raise NotImplementedError\n\n    @property\n    @abstractmethod\n    def mode(self) -> UpdateMode:\n        \"\"\"Defines how to update the prompt.\"\"\"\n        raise NotImplementedError\n\n    def bind(self, tokenizer: AnyTokenizer) -> \"BoundPromptUpdate\":\n        return BoundPromptUpdate(\n            _origin=self,\n            tokenizer=tokenizer,\n        )\n\n\n@dataclass\nclass PromptInsertion(PromptUpdate):\n    \"\"\"\n    Defines how to insert placeholder tokens into a prompt.\n\n\n--- structural neighbors ---\nsymbol:194236c744a7bb15:_resolve_matches (symbol, vllm/multimodal/processing.py); symbol:2ee94d9069793b23:PromptReplacement (symbol, vllm/multimodal/processing.py); symbol:cfd70ecba89b63ed:ProcessingCacheItem (symbol, vllm/multimodal/processing.py); symbol:795bd1314cadb4b1:BaseProcessingInfo (symbol, vllm/multimodal/processing.py); symbol:802e22fe50dc6cf6:PromptIndex (symbol, vllm/multimodal/processing.py); symbol:ce184431e37d5464:ProcessingCache (symbol, vllm/multimodal/processing.py); symbol:4e98a476387ee835:_apply_matches (symbol, vllm/multimodal/processing.py); symbol:6982b0b2a361b1cc:_BoundPromptSequence (symbol, vllm/multimodal/processing.py); symbol:ae7b0c7bff00c5ce:PromptIndexTargets (symbol, vllm/multimodal/processing.py); symbol:4a591fd5aa12e149:replace_token_matches (symbol, vllm/multimodal/processing.py); symbol:595b65fe619c09fe:_cached_encode (symbol, vllm/multimodal/processing.py); symbol:ac9d8c5b817ba040:_cached_decode (symbol, vllm/multimodal/processing.py)"
+      },
+      "search_hits": {
+        "get_max_tokens_per_item": [
+          {
+            "file_path": "vllm/multimodal/processing.py",
+            "line_number": 1103,
+            "content": "def get_max_tokens_per_item(",
+            "context_lines": [
+              "def get_max_tokens_per_item("
+            ]
+          }
+        ],
+        "override": [
+          {
+            "file_path": "vllm/multimodal/processing.py",
+            "line_number": 1072,
+            "content": "Subclasses can override this method to handle",
+            "context_lines": [
+              "Subclasses can override this method to handle"
+            ]
+          },
+          {
+            "file_path": "vllm/multimodal/processing.py",
+            "line_number": 1113,
+            "content": "each model can override this method to return pre-computed maximum token",
+            "context_lines": [
+              "each model can override this method to return pre-computed maximum token"
+            ]
+          },
+          {
+            "file_path": "vllm/multimodal/processing.py",
+            "line_number": 1359,
+            "content": "multi-modal data, you should override this method so it is consistent",
+            "context_lines": [
+              "multi-modal data, you should override this method so it is consistent"
+            ]
+          }
+        ],
+        "pre-computed maximum token counts": []
+      },
+      "warnings": []
+    },
+    "logic_1_request_3": {
+      "request_id": "logic_1_request_3",
+      "candidate_id": "logic_1",
+      "file_snippets": {
+        "vllm/multimodal/profiling.py": "# SPDX-License-Identifier: Apache-2.0\n# SPDX-FileCopyrightText: Copyright contributors to the vLLM project\nfrom abc import ABC, abstractmethod\nfrom collections.abc import Mapping\nfrom dataclasses import dataclass, field\nfrom typing import Generic, NamedTuple, Optional, TypeVar, Union, cast\n\nimport numpy as np\nimport numpy.typing as npt\nfrom PIL import Image\n\nimport vllm.envs as envs\nfrom vllm.logger import init_logger\n\nfrom .inputs import (MultiModalDataDict, MultiModalEncDecInputs,\n                     MultiModalInputs, MultiModalKwargs,\n                     MultiModalPlaceholderDict)\nfrom .processing import (BaseMultiModalProcessor, BaseProcessingInfo,\n                         EncDecMultiModalProcessor)\n\nlogger = init_logger(__name__)\n\n\n@dataclass\nclass ProcessorInputs:\n    \"\"\"\n    Represents the keyword arguments to\n    [`vllm.multimodal.processing.BaseMultiModalProcessor.apply`][].\n    \"\"\"\n    prompt: Union[str, list[int]]\n    mm_data: MultiModalDataDict\n    hf_processor_mm_kwargs: Mapping[str, object] = field(default_factory=dict)\n\n\nclass DummyEncoderData(NamedTuple):\n    \"\"\"Dummy data used for profiling.\"\"\"\n\n    prompt_token_ids: list[int]\n\n\nclass DummyDecoderData(NamedTuple):\n    \"\"\"Dummy data used for profiling.\"\"\"\n\n    prompt_token_ids: list[int]\n    multi_modal_data: MultiModalKwargs\n    multi_modal_placeholders: MultiModalPlaceholderDict\n\n\n_I = TypeVar(\"_I\", bound=BaseProcessingInfo)\n\n\nclass BaseDummyInputsBuilder(ABC, Generic[_I]):\n    \"\"\"\n    Abstract base class that constructs the dummy data to profile\n    multi-modal models.\n    \"\"\"\n\n    def __init__(self, info: _I) -> None:\n        super().__init__()\n\n        self.info = info\n\n    @abstractmethod\n    def get_dummy_text(self, mm_counts: Mapping[str, int]) -> str:\n        \"\"\"\n        Build the text input corresponding to `mm_counts`.\n        \"\"\"\n        raise NotImplementedError\n\n    @abstractmethod\n    def get_dummy_mm_data(\n        self,\n        seq_len: int,\n        mm_counts: Mapping[str, int],\n    ) -> MultiModalDataDict:\n        \"\"\"\n        Build the multimodal input which, after processing, results in\n        the maximum possible number of placeholder tokens.\n        \"\"\"\n        raise NotImplementedError\n\n    def get_dummy_processor_inputs(\n        self,\n        seq_len: int,\n        mm_counts: Mapping[str, int],\n    ) -> ProcessorInputs:\n        \"\"\"\n        Build the input which, after processing, results in\n        the maximum possible number of placeholder tokens.\n        \"\"\"\n        dummy_text = self.get_dummy_text(mm_counts)\n        dummy_mm_data = self.get_dummy_mm_data(seq_len, mm_counts)\n\n        return ProcessorInputs(prompt=dummy_text, mm_data=dummy_mm_data)\n\n    def _get_dummy_audios(\n        self,\n        *,\n        length: int,\n        num_audios: int,\n    ) -> list[npt.NDArray]:\n        if num_audios == 0:\n            return []\n        audio = np.zeros((length, ))\n        return [audio] * num_audios\n\n    def _get_dummy_images(\n        self,\n        *,\n        width: int,\n        height: int,\n        num_images: int,\n    ) -> list[Image.Image]:\n        if num_images == 0:\n            return []\n        image = Image.new(\"RGB\", (width, height), color=255)\n        return [image] * num_images\n\n    def _get_dummy_videos(\n        self,\n        *,\n        width: int,\n        height: int,\n        num_frames: int,\n        num_videos: int,\n    ) -> list[npt.NDArray]:\n        if num_videos == 0:\n            return []\n        video = np.full((num_frames, width, height, 3), 255)\n        return [video] * num_videos\n\n\nclass MultiModalProfiler(Generic[_I]):\n    \"\"\"\n    Contains code for running memory profiling for multi-modal models.\n    \"\"\"\n\n    def __init__(\n        self,\n        processor: BaseMultiModalProcessor[_I],\n    ) -> None:\n        super().__init__()\n\n        self.processor = processor\n\n    @property\n    def processing_info(self) -> BaseProcessingInfo:\n        return self.processor.info\n\n    @property\n    def dummy_inputs(self) -> BaseDummyInputsBuilder[_I]:\n        return self.processor.dummy_inputs\n\n    def get_mm_limits(self) -> Mapping[str, int]:\n        return self.processing_info.get_allowed_mm_limits()\n\n    def _get_dummy_mm_inputs(\n        self,\n        seq_len: int,\n        mm_counts: Optional[Mapping[str, int]] = None,\n    ) -> MultiModalInputs:\n        if mm_counts is None:\n            mm_counts = self.get_mm_limits()\n\n        factory = self.dummy_inputs\n        processor_inputs = factory.get_dummy_processor_inputs(\n            seq_len, mm_counts)\n\n        return self.processor.apply(\n            prompt=processor_inputs.prompt,\n            mm_data=processor_inputs.mm_data,\n            hf_processor_mm_kwargs=processor_inputs.hf_processor_mm_kwargs,\n        )\n\n    def _get_mm_num_tokens(\n        self,\n        mm_inputs: MultiModalInputs,\n    ) -> Mapping[str, int]:\n        placeholders_by_modality = mm_inputs[\"mm_placeholders\"]\n\n        return {\n            modality: sum(item.get_num_embeds() for item in placeholders)\n            for modality, placeholders in placeholders_by_modality.items()\n        }\n\n    def get_encoder_dummy_data(\n        self,\n        seq_len: int,\n        mm_counts: Optional[Mapping[str, int]] = None,\n    ) -> DummyEncoderData:\n        mm_inputs = self._get_dummy_mm_inputs(seq_len, mm_counts)\n        mm_inputs = cast(MultiModalEncDecInputs, mm_inputs)\n\n        # For encoder-decoder models, use encoder prompt token ids instead of\n        # decoder prompt to construct dummy seq_data for encoder profiling.\n        encoder_prompt_token_ids = mm_inputs[\"encoder_prompt_token_ids\"]\n\n        total_len = len(encoder_prompt_token_ids)\n\n        processor = cast(EncDecMultiModalProcessor, self.processor)\n        if processor.pad_dummy_encoder_prompt:\n            num_tokens_to_pad = max(total_len, seq_len) - total_len\n            encoder_prompt_token_ids.extend([0] * num_tokens_to_pad)\n        # NOTE: Whisper allows total_len > seq_len.\n        elif total_len > seq_len and not envs.VLLM_USE_V1:\n            # `max_num_batched_tokens` is defined by `SchedulerConfig`\n            logger.warning_once(\n                \"The encoder sequence length used for profiling (max_num_batched_tokens / max_num_seqs = %d) \"  # noqa: E501\n                \"is too short to hold the multi-modal embeddings in the worst case (%d tokens in total, out of which %s are reserved for multi-modal embeddings). \"  # noqa: E501\n                \"This may cause certain multi-modal inputs to fail during inference, even when the input text is short. \"  # noqa: E501\n                \"To avoid this, you should increase `max_model_len`, reduce `max_num_seqs`, and/or reduce `mm_counts`.\",  # noqa: E501\n                seq_len,\n                total_len,\n                str(self._get_mm_num_tokens(mm_inputs)),\n            )\n\n        return DummyEncoderData(encoder_prompt_token_ids)\n\n    def get_decoder_dummy_data(\n        self,\n\n--- structural neighbors ---\nsymbol:1425039618f9bccc:DummyDecoderData (symbol, vllm/multimodal/profiling.py); symbol:c6bc398ff5ad7e8b:MultiModalProfiler (symbol, vllm/multimodal/profiling.py); symbol:6e37e15175f65b94:ProcessorInputs (symbol, vllm/multimodal/profiling.py); symbol:253302bb15ad1164:DummyEncoderData (symbol, vllm/multimodal/profiling.py); symbol:588697be90572e99:BaseDummyInputsBuilder (symbol, vllm/multimodal/profiling.py)"
+      },
+      "search_hits": {
+        "get_mm_max_tokens": [
+          {
+            "file_path": "vllm/multimodal/profiling.py",
+            "line_number": 251,
+            "content": "def get_mm_max_tokens(",
+            "context_lines": [
+              "def get_mm_max_tokens("
+            ]
+          }
+        ],
+        "dummy inputs": [],
+        "maximum possible sizes": []
+      },
+      "warnings": []
+    },
+    "performance_1_1": {
+      "request_id": "performance_1_1",
+      "candidate_id": "performance_1_1",
+      "file_snippets": {
+        "vllm/multimodal/profiling.py": "# SPDX-License-Identifier: Apache-2.0\n# SPDX-FileCopyrightText: Copyright contributors to the vLLM project\nfrom abc import ABC, abstractmethod\nfrom collections.abc import Mapping\nfrom dataclasses import dataclass, field\nfrom typing import Generic, NamedTuple, Optional, TypeVar, Union, cast\n\nimport numpy as np\nimport numpy.typing as npt\nfrom PIL import Image\n\nimport vllm.envs as envs\nfrom vllm.logger import init_logger\n\nfrom .inputs import (MultiModalDataDict, MultiModalEncDecInputs,\n                     MultiModalInputs, MultiModalKwargs,\n                     MultiModalPlaceholderDict)\nfrom .processing import (BaseMultiModalProcessor, BaseProcessingInfo,\n                         EncDecMultiModalProcessor)\n\nlogger = init_logger(__name__)\n\n\n@dataclass\nclass ProcessorInputs:\n    \"\"\"\n    Represents the keyword arguments to\n    [`vllm.multimodal.processing.BaseMultiModalProcessor.apply`][].\n    \"\"\"\n    prompt: Union[str, list[int]]\n    mm_data: MultiModalDataDict\n    hf_processor_mm_kwargs: Mapping[str, object] = field(default_factory=dict)\n\n\nclass DummyEncoderData(NamedTuple):\n    \"\"\"Dummy data used for profiling.\"\"\"\n\n    prompt_token_ids: list[int]\n\n\nclass DummyDecoderData(NamedTuple):\n    \"\"\"Dummy data used for profiling.\"\"\"\n\n    prompt_token_ids: list[int]\n    multi_modal_data: MultiModalKwargs\n    multi_modal_placeholders: MultiModalPlaceholderDict\n\n\n_I = TypeVar(\"_I\", bound=BaseProcessingInfo)\n\n\nclass BaseDummyInputsBuilder(ABC, Generic[_I]):\n    \"\"\"\n    Abstract base class that constructs the dummy data to profile\n    multi-modal models.\n    \"\"\"\n\n    def __init__(self, info: _I) -> None:\n        super().__init__()\n\n        self.info = info\n\n    @abstractmethod\n    def get_dummy_text(self, mm_counts: Mapping[str, int]) -> str:\n        \"\"\"\n        Build the text input corresponding to `mm_counts`.\n        \"\"\"\n        raise NotImplementedError\n\n    @abstractmethod\n    def get_dummy_mm_data(\n        self,\n        seq_len: int,\n        mm_counts: Mapping[str, int],\n    ) -> MultiModalDataDict:\n        \"\"\"\n        Build the multimodal input which, after processing, results in\n        the maximum possible number of placeholder tokens.\n        \"\"\"\n        raise NotImplementedError\n\n    def get_dummy_processor_inputs(\n        self,\n        seq_len: int,\n        mm_counts: Mapping[str, int],\n    ) -> ProcessorInputs:\n        \"\"\"\n        Build the input which, after processing, results in\n        the maximum possible number of placeholder tokens.\n        \"\"\"\n        dummy_text = self.get_dummy_text(mm_counts)\n        dummy_mm_data = self.get_dummy_mm_data(seq_len, mm_counts)\n\n        return ProcessorInputs(prompt=dummy_text, mm_data=dummy_mm_data)\n\n    def _get_dummy_audios(\n        self,\n        *,\n        length: int,\n        num_audios: int,\n    ) -> list[npt.NDArray]:\n        if num_audios == 0:\n            return []\n        audio = np.zeros((length, ))\n        return [audio] * num_audios\n\n    def _get_dummy_images(\n        self,\n        *,\n        width: int,\n        height: int,\n        num_images: int,\n    ) -> list[Image.Image]:\n        if num_images == 0:\n            return []\n        image = Image.new(\"RGB\", (width, height), color=255)\n        return [image] * num_images\n\n    def _get_dummy_videos(\n        self,\n        *,\n        width: int,\n        height: int,\n        num_frames: int,\n        num_videos: int,\n    ) -> list[npt.NDArray]:\n        if num_videos == 0:\n            return []\n        video = np.full((num_frames, width, height, 3), 255)\n        return [video] * num_videos\n\n\nclass MultiModalProfiler(Generic[_I]):\n    \"\"\"\n    Contains code for running memory profiling for multi-modal models.\n    \"\"\"\n\n    def __init__(\n        self,\n        processor: BaseMultiModalProcessor[_I],\n    ) -> None:\n        super().__init__()\n\n        self.processor = processor\n\n    @property\n    def processing_info(self) -> BaseProcessingInfo:\n        return self.processor.info\n\n    @property\n    def dummy_inputs(self) -> BaseDummyInputsBuilder[_I]:\n        return self.processor.dummy_inputs\n\n    def get_mm_limits(self) -> Mapping[str, int]:\n        return self.processing_info.get_allowed_mm_limits()\n\n    def _get_dummy_mm_inputs(\n        self,\n        seq_len: int,\n        mm_counts: Optional[Mapping[str, int]] = None,\n    ) -> MultiModalInputs:\n        if mm_counts is None:\n            mm_counts = self.get_mm_limits()\n\n        factory = self.dummy_inputs\n        processor_inputs = factory.get_dummy_processor_inputs(\n            seq_len, mm_counts)\n\n        return self.processor.apply(\n            prompt=processor_inputs.prompt,\n            mm_data=processor_inputs.mm_data,\n            hf_processor_mm_kwargs=processor_inputs.hf_processor_mm_kwargs,\n        )\n\n    def _get_mm_num_tokens(\n        self,\n        mm_inputs: MultiModalInputs,\n    ) -> Mapping[str, int]:\n        placeholders_by_modality = mm_inputs[\"mm_placeholders\"]\n\n        return {\n            modality: sum(item.get_num_embeds() for item in placeholders)\n            for modality, placeholders in placeholders_by_modality.items()\n        }\n\n    def get_encoder_dummy_data(\n        self,\n        seq_len: int,\n        mm_counts: Optional[Mapping[str, int]] = None,\n    ) -> DummyEncoderData:\n        mm_inputs = self._get_dummy_mm_inputs(seq_len, mm_counts)\n        mm_inputs = cast(MultiModalEncDecInputs, mm_inputs)\n\n        # For encoder-decoder models, use encoder prompt token ids instead of\n        # decoder prompt to construct dummy seq_data for encoder profiling.\n        encoder_prompt_token_ids = mm_inputs[\"encoder_prompt_token_ids\"]\n\n        total_len = len(encoder_prompt_token_ids)\n\n        processor = cast(EncDecMultiModalProcessor, self.processor)\n        if processor.pad_dummy_encoder_prompt:\n            num_tokens_to_pad = max(total_len, seq_len) - total_len\n            encoder_prompt_token_ids.extend([0] * num_tokens_to_pad)\n        # NOTE: Whisper allows total_len > seq_len.\n        elif total_len > seq_len and not envs.VLLM_USE_V1:\n            # `max_num_batched_tokens` is defined by `SchedulerConfig`\n            logger.warning_once(\n                \"The encoder sequence length used for profiling (max_num_batched_tokens / max_num_seqs = %d) \"  # noqa: E501\n                \"is too short to hold the multi-modal embeddings in the worst case (%d tokens in total, out of which %s are reserved for multi-modal embeddings). \"  # noqa: E501\n                \"This may cause certain multi-modal inputs to fail during inference, even when the input text is short. \"  # noqa: E501\n                \"To avoid this, you should increase `max_model_len`, reduce `max_num_seqs`, and/or reduce `mm_counts`.\",  # noqa: E501\n                seq_len,\n                total_len,\n                str(self._get_mm_num_tokens(mm_inputs)),\n            )\n\n        return DummyEncoderData(encoder_prompt_token_ids)\n\n    def get_decoder_dummy_data(\n        self,\n\n--- structural neighbors ---\nsymbol:1425039618f9bccc:DummyDecoderData (symbol, vllm/multimodal/profiling.py); symbol:c6bc398ff5ad7e8b:MultiModalProfiler (symbol, vllm/multimodal/profiling.py); symbol:6e37e15175f65b94:ProcessorInputs (symbol, vllm/multimodal/profiling.py); symbol:253302bb15ad1164:DummyEncoderData (symbol, vllm/multimodal/profiling.py); symbol:588697be90572e99:BaseDummyInputsBuilder (symbol, vllm/multimodal/profiling.py)",
+        "vllm/multimodal/processing.py": "# SPDX-License-Identifier: Apache-2.0\n# SPDX-FileCopyrightText: Copyright contributors to the vLLM project\nimport json\nimport sys\nfrom abc import ABC, abstractmethod\nfrom collections import defaultdict\nfrom collections.abc import (Callable, Generator, ItemsView, Iterable, Mapping,\n                             Sequence)\nfrom dataclasses import dataclass, field\nfrom enum import Enum\nfrom functools import lru_cache\nfrom typing import (TYPE_CHECKING, Generic, NamedTuple, Optional, Protocol,\n                    TypeVar, Union, cast)\n\nimport regex as re\nimport torch\nfrom typing_extensions import assert_never\n\nfrom vllm.inputs import InputProcessingContext\nfrom vllm.jsontree import json_map_leaves, json_reduce_leaves\nfrom vllm.logger import init_logger\nfrom vllm.transformers_utils.tokenizer import (AnyTokenizer, decode_tokens,\n                                               encode_tokens)\nfrom vllm.utils import GiB_bytes, LRUCache, flatten_2d_lists, full_groupby\n\nfrom .hasher import MultiModalHasher\nfrom .inputs import (MultiModalDataDict, MultiModalEncDecInputs,\n                     MultiModalFieldConfig, MultiModalInputs, MultiModalKwargs,\n                     MultiModalKwargsItem, NestedTensors, PlaceholderRange)\nfrom .parse import (DictEmbeddingItems, EmbeddingItems, MultiModalDataItems,\n                    MultiModalDataParser)\n\nif TYPE_CHECKING:\n    from transformers.configuration_utils import PretrainedConfig\n    from transformers.feature_extraction_utils import BatchFeature\n    from transformers.processing_utils import ProcessorMixin\n\n    from .profiling import BaseDummyInputsBuilder\n\nlogger = init_logger(__name__)\n\n_S = TypeVar(\"_S\", str, list[int])\n\nPromptSeq = Union[str, list[int]]\n\"\"\"A token sequence (list of token IDs) or text.\"\"\"\n\n\n@dataclass\nclass PromptIndex:\n    \"\"\"Resolves to an index in the prompt.\"\"\"\n    get_match_index: Callable[[AnyTokenizer, PromptSeq], Optional[int]]\n\n\nclass PromptIndexTargets:\n\n    @staticmethod\n    def start() -> PromptIndex:\n        \"\"\"\n        Resolves to the start of the prompt (before the first token).\n\n        This results in a match even if the prompt is empty.\n        \"\"\"\n        return PromptIndex(lambda tok, prompt: 0)\n\n    @staticmethod\n    def prefix(seq: PromptSeq) -> PromptIndex:\n        \"\"\"\n        Resolves to a location in the prompt after the given prefix.\n        \"\"\"\n\n        def get_match_index(\n            tokenizer: AnyTokenizer,\n            prompt: PromptSeq,\n        ) -> Optional[int]:\n            prefix = seq\n\n            if isinstance(prompt, str):\n                if not isinstance(prefix, str):\n                    # Make both `str`\n                    prefix = decode_tokens(tokenizer, prefix)\n            else:\n                if isinstance(prefix, str):\n                    # Make both `list[int]`\n                    prefix = encode_tokens(tokenizer,\n                                           prefix,\n                                           add_special_tokens=False)\n\n            match_idx = len(prefix)\n            return match_idx if prompt[:match_idx] == prefix else None\n\n        return PromptIndex(get_match_index)\n\n    @staticmethod\n    def end() -> PromptIndex:\n        \"\"\"\n        Resolves to the end of the prompt (after the last token).\n\n        This results in a match even if the prompt is empty.\n        \"\"\"\n        return PromptIndex(lambda tok, prompt: len(prompt))\n\n\nPromptTarget = Union[PromptSeq, PromptIndex]\n\"\"\"\nThe token sequence or text to update.\n\"\"\"\n\n\n@dataclass\nclass PromptUpdateDetails(Generic[_S]):\n    \"\"\"Details about the token sequence or text that are part of the update.\"\"\"\n\n    full: _S\n    \"\"\"The full content.\"\"\"\n\n    is_embed: Optional[Callable[[\"_BoundPromptSequence\"], torch.Tensor]] = None\n    \"\"\"\n    Given [`full`][vllm.multimodal.processing.PromptUpdateDetails.full],\n    return a boolean mask of shape `(len(full),)` indicating which positions\n    of `full` to assign embeddings to.\n\n    `None` (default) means to assign embeddings to all positions of `full`.\n\n    The embeddings are obtained by calling\n    [`SupportsMultiModal.get_multimodal_embeddings`][vllm.model_executor.models.interfaces.SupportsMultiModal.get_multimodal_embeddings].\n    \"\"\"\n\n    @staticmethod\n    def from_seq(seq: _S) -> \"PromptUpdateDetails[_S]\":\n        return PromptUpdateDetails(full=seq)\n\n    @staticmethod\n    def select_text(\n        seq: _S,\n        embed_text: str,\n    ) -> \"PromptUpdateDetails[_S]\":\n\n        def is_embed(full: \"_BoundPromptSequence\") -> torch.Tensor:\n            embed_token_ids = encode_tokens(full.tokenizer, embed_text)\n\n            return torch.isin(\n                torch.tensor(full.token_ids),\n                torch.tensor(embed_token_ids),\n            )\n\n        return PromptUpdateDetails(full=seq, is_embed=is_embed)\n\n    @staticmethod\n    def select_token_id(\n        seq: _S,\n        embed_token_id: int,\n    ) -> \"PromptUpdateDetails[_S]\":\n        return PromptUpdateDetails(\n            full=seq,\n            is_embed=lambda f: torch.tensor(f.token_ids) == embed_token_id,\n        )\n\n\nPromptUpdateInfo = Union[PromptSeq, PromptUpdateDetails]\n\"\"\"\nThe token sequence or text that are part of the update.\n\nIf only part of the content corresponds to feature placeholders, you can\nuse [`PromptUpdateDetails`][vllm.multimodal.processing.PromptUpdateDetails] to\nspecify which part.\n\"\"\"\n\nPromptUpdateContent = Union[Callable[[int], PromptUpdateInfo],\n                            PromptUpdateInfo]\n\"\"\"\nGiven the index of the processed item within\n[`modality`][vllm.multimodal.processing.PromptUpdate.modality],\noutput the corresponding token sequence (or text).\n\nFor convenience, you can directly pass in the token sequence (or text)\ninstead of a function if it does not depend on the input.\n\"\"\"\n\n\nclass UpdateMode(str, Enum):\n    INSERT = \"insert\"\n    REPLACE = \"replace\"\n\n\n@dataclass\nclass PromptUpdate(ABC):\n    \"\"\"\n    Defines how to update a prompt with placeholder tokens.\n    \"\"\"\n\n    modality: str\n    \"\"\"The modality for which the update is made.\"\"\"\n\n    target: PromptTarget\n    \"\"\"The token sequence (or text) to update.\"\"\"\n\n    @property\n    @abstractmethod\n    def content(self) -> PromptUpdateContent:\n        \"\"\"The placeholder tokens that are part of the update.\"\"\"\n        raise NotImplementedError\n\n    @property\n    @abstractmethod\n    def mode(self) -> UpdateMode:\n        \"\"\"Defines how to update the prompt.\"\"\"\n        raise NotImplementedError\n\n    def bind(self, tokenizer: AnyTokenizer) -> \"BoundPromptUpdate\":\n        return BoundPromptUpdate(\n            _origin=self,\n            tokenizer=tokenizer,\n        )\n\n\n@dataclass\nclass PromptInsertion(PromptUpdate):\n    \"\"\"\n    Defines how to insert placeholder tokens into a prompt.\n\n\n--- structural neighbors ---\nsymbol:194236c744a7bb15:_resolve_matches (symbol, vllm/multimodal/processing.py); symbol:2ee94d9069793b23:PromptReplacement (symbol, vllm/multimodal/processing.py); symbol:cfd70ecba89b63ed:ProcessingCacheItem (symbol, vllm/multimodal/processing.py); symbol:795bd1314cadb4b1:BaseProcessingInfo (symbol, vllm/multimodal/processing.py); symbol:802e22fe50dc6cf6:PromptIndex (symbol, vllm/multimodal/processing.py); symbol:ce184431e37d5464:ProcessingCache (symbol, vllm/multimodal/processing.py); symbol:4e98a476387ee835:_apply_matches (symbol, vllm/multimodal/processing.py); symbol:6982b0b2a361b1cc:_BoundPromptSequence (symbol, vllm/multimodal/processing.py); symbol:ae7b0c7bff00c5ce:PromptIndexTargets (symbol, vllm/multimodal/processing.py); symbol:4a591fd5aa12e149:replace_token_matches (symbol, vllm/multimodal/processing.py); symbol:595b65fe619c09fe:_cached_encode (symbol, vllm/multimodal/processing.py); symbol:ac9d8c5b817ba040:_cached_decode (symbol, vllm/multimodal/processing.py)"
+      },
+      "search_hits": {
+        "get_max_tokens_per_item": [
+          {
+            "file_path": "vllm/multimodal/profiling.py",
+            "line_number": 256,
+            "content": "max_tokens_per_item = self.processing_info.get_max_tokens_per_item(",
+            "context_lines": [
+              "max_tokens_per_item = self.processing_info.get_max_tokens_per_item("
+            ]
+          },
+          {
+            "file_path": "vllm/multimodal/processing.py",
+            "line_number": 1103,
+            "content": "def get_max_tokens_per_item(",
+            "context_lines": [
+              "def get_max_tokens_per_item("
+            ]
+          }
+        ],
+        "_get_dummy_mm_inputs": [
+          {
+            "file_path": "vllm/multimodal/profiling.py",
+            "line_number": 157,
+            "content": "def _get_dummy_mm_inputs(",
+            "context_lines": [
+              "def _get_dummy_mm_inputs("
+            ]
+          },
+          {
+            "file_path": "vllm/multimodal/profiling.py",
+            "line_number": 191,
+            "content": "mm_inputs = self._get_dummy_mm_inputs(seq_len, mm_counts)",
+            "context_lines": [
+              "mm_inputs = self._get_dummy_mm_inputs(seq_len, mm_counts)"
+            ]
+          },
+          {
+            "file_path": "vllm/multimodal/profiling.py",
+            "line_number": 224,
+            "content": "mm_inputs = self._get_dummy_mm_inputs(seq_len, mm_counts)",
+            "context_lines": [
+              "mm_inputs = self._get_dummy_mm_inputs(seq_len, mm_counts)"
+            ]
+          },
+          {
+            "file_path": "vllm/multimodal/profiling.py",
+            "line_number": 277,
+            "content": "mm_inputs = self._get_dummy_mm_inputs(seq_len, mm_counts)",
+            "context_lines": [
+              "mm_inputs = self._get_dummy_mm_inputs(seq_len, mm_counts)"
+            ]
+          }
+        ],
+        "mm_counts": [
+          {
+            "file_path": "vllm/multimodal/profiling.py",
+            "line_number": 64,
+            "content": "def get_dummy_text(self, mm_counts: Mapping[str, int]) -> str:",
+            "context_lines": [
+              "def get_dummy_text(self, mm_counts: Mapping[str, int]) -> str:"
+            ]
+          },
+          {
+            "file_path": "vllm/multimodal/profiling.py",
+            "line_number": 66,
+            "content": "Build the text input corresponding to `mm_counts`.",
+            "context_lines": [
+              "Build the text input corresponding to `mm_counts`."
+            ]
+          },
+          {
+            "file_path": "vllm/multimodal/profiling.py",
+            "line_number": 74,
+            "content": "mm_counts: Mapping[str, int],",
+            "context_lines": [
+              "mm_counts: Mapping[str, int],"
+            ]
+          },
+          {
+            "file_path": "vllm/multimodal/profiling.py",
+            "line_number": 85,
+            "content": "mm_counts: Mapping[str, int],",
+            "context_lines": [
+              "mm_counts: Mapping[str, int],"
+            ]
+          },
+          {
+            "file_path": "vllm/multimodal/profiling.py",
+            "line_number": 91,
+            "content": "dummy_text = self.get_dummy_text(mm_counts)",
+            "context_lines": [
+              "dummy_text = self.get_dummy_text(mm_counts)"
+            ]
+          },
+          {
+            "file_path": "vllm/multimodal/profiling.py",
+            "line_number": 92,
+            "content": "dummy_mm_data = self.get_dummy_mm_data(seq_len, mm_counts)",
+            "context_lines": [
+              "dummy_mm_data = self.get_dummy_mm_data(seq_len, mm_counts)"
+            ]
+          },
+          {
+            "file_path": "vllm/multimodal/profiling.py",
+            "line_number": 160,
+            "content": "mm_counts: Optional[Mapping[str, int]] = None,",
+            "context_lines": [
+              "mm_counts: Optional[Mapping[str, int]] = None,"
+            ]
+          },
+          {
+            "file_path": "vllm/multimodal/profiling.py",
+            "line_number": 162,
+            "content": "if mm_counts is None:",
+            "context_lines": [
+              "if mm_counts is None:"
+            ]
+          },
+          {
+            "file_path": "vllm/multimodal/profiling.py",
+            "line_number": 163,
+            "content": "mm_counts = self.get_mm_limits()",
+            "context_lines": [
+              "mm_counts = self.get_mm_limits()"
+            ]
+          },
+          {
+            "file_path": "vllm/multimodal/profiling.py",
+            "line_number": 167,
+            "content": "seq_len, mm_counts)",
+            "context_lines": [
+              "seq_len, mm_counts)"
+            ]
+          },
+          {
+            "file_path": "vllm/multimodal/profiling.py",
+            "line_number": 189,
+            "content": "mm_counts: Optional[Mapping[str, int]] = None,",
+            "context_lines": [
+              "mm_counts: Optional[Mapping[str, int]] = None,"
+            ]
+          },
+          {
+            "file_path": "vllm/multimodal/profiling.py",
+            "line_number": 191,
+            "content": "mm_inputs = self._get_dummy_mm_inputs(seq_len, mm_counts)",
+            "context_lines": [
+              "mm_inputs = self._get_dummy_mm_inputs(seq_len, mm_counts)"
+            ]
+          },
+          {
+            "file_path": "vllm/multimodal/profiling.py",
+            "line_number": 211,
+            "content": "\"To avoid this, you should increase `max_model_len`, reduce `max_num_seqs`, and/or reduce `mm_counts`.\",  # noqa: E501",
+            "context_lines": [
+              "\"To avoid this, you should increase `max_model_len`, reduce `max_num_seqs`, and/or reduce `mm_counts`.\",  # noqa: E501"
+            ]
+          },
+          {
+            "file_path": "vllm/multimodal/profiling.py",
+            "line_number": 222,
+            "content": "mm_counts: Optional[Mapping[str, int]] = None,",
+            "context_lines": [
+              "mm_counts: Optional[Mapping[str, int]] = None,"
+            ]
+          },
+          {
+            "file_path": "vllm/multimodal/profiling.py",
+            "line_number": 224,
+            "content": "mm_inputs = self._get_dummy_mm_inputs(seq_len, mm_counts)",
+            "context_lines": [
+              "mm_inputs = self._get_dummy_mm_inputs(seq_len, mm_counts)"
+            ]
+          }
+        ],
+        "max_tokens_per_item": [
+          {
+            "file_path": "vllm/multimodal/profiling.py",
+            "line_number": 256,
+            "content": "max_tokens_per_item = self.processing_info.get_max_tokens_per_item(",
+            "context_lines": [
+              "max_tokens_per_item = self.processing_info.get_max_tokens_per_item("
+            ]
+          },
+          {
+            "file_path": "vllm/multimodal/profiling.py",
+            "line_number": 258,
+            "content": "if max_tokens_per_item is not None:",
+            "context_lines": [
+              "if max_tokens_per_item is not None:"
+            ]
+          },
+          {
+            "file_path": "vllm/multimodal/profiling.py",
+            "line_number": 260,
+            "content": "total_mm_tokens = sum(max_tokens_per_item.values())",
+            "context_lines": [
+              "total_mm_tokens = sum(max_tokens_per_item.values())"
+            ]
+          },
+          {
+            "file_path": "vllm/multimodal/profiling.py",
+            "line_number": 262,
+            "content": "total_mm_tokens = sum(max_tokens_per_item[k] * mm_counts[k]",
+            "context_lines": [
+              "total_mm_tokens = sum(max_tokens_per_item[k] * mm_counts[k]"
+            ]
+          },
+          {
+            "file_path": "vllm/multimodal/profiling.py",
+            "line_number": 263,
+            "content": "for k in max_tokens_per_item.keys()",
+            "context_lines": [
+              "for k in max_tokens_per_item.keys()"
+            ]
+          },
+          {
+            "file_path": "vllm/multimodal/profiling.py",
+            "line_number": 275,
+            "content": "return max_tokens_per_item",
+            "context_lines": [
+              "return max_tokens_per_item"
+            ]
+          },
+          {
+            "file_path": "vllm/multimodal/processing.py",
+            "line_number": 1103,
+            "content": "def get_max_tokens_per_item(",
+            "context_lines": [
+              "def get_max_tokens_per_item("
+            ]
+          }
+        ]
+      },
+      "warnings": []
+    },
+    "security_1_focus_1": {
+      "request_id": "security_1_focus_1",
+      "candidate_id": "security_1_1",
+      "file_snippets": {
+        "vllm/multimodal/profiling.py": "# SPDX-License-Identifier: Apache-2.0\n# SPDX-FileCopyrightText: Copyright contributors to the vLLM project\nfrom abc import ABC, abstractmethod\nfrom collections.abc import Mapping\nfrom dataclasses import dataclass, field\nfrom typing import Generic, NamedTuple, Optional, TypeVar, Union, cast\n\nimport numpy as np\nimport numpy.typing as npt\nfrom PIL import Image\n\nimport vllm.envs as envs\nfrom vllm.logger import init_logger\n\nfrom .inputs import (MultiModalDataDict, MultiModalEncDecInputs,\n                     MultiModalInputs, MultiModalKwargs,\n                     MultiModalPlaceholderDict)\nfrom .processing import (BaseMultiModalProcessor, BaseProcessingInfo,\n                         EncDecMultiModalProcessor)\n\nlogger = init_logger(__name__)\n\n\n@dataclass\nclass ProcessorInputs:\n    \"\"\"\n    Represents the keyword arguments to\n    [`vllm.multimodal.processing.BaseMultiModalProcessor.apply`][].\n    \"\"\"\n    prompt: Union[str, list[int]]\n    mm_data: MultiModalDataDict\n    hf_processor_mm_kwargs: Mapping[str, object] = field(default_factory=dict)\n\n\nclass DummyEncoderData(NamedTuple):\n    \"\"\"Dummy data used for profiling.\"\"\"\n\n    prompt_token_ids: list[int]\n\n\nclass DummyDecoderData(NamedTuple):\n    \"\"\"Dummy data used for profiling.\"\"\"\n\n    prompt_token_ids: list[int]\n    multi_modal_data: MultiModalKwargs\n    multi_modal_placeholders: MultiModalPlaceholderDict\n\n\n_I = TypeVar(\"_I\", bound=BaseProcessingInfo)\n\n\nclass BaseDummyInputsBuilder(ABC, Generic[_I]):\n    \"\"\"\n    Abstract base class that constructs the dummy data to profile\n    multi-modal models.\n    \"\"\"\n\n    def __init__(self, info: _I) -> None:\n        super().__init__()\n\n        self.info = info\n\n    @abstractmethod\n    def get_dummy_text(self, mm_counts: Mapping[str, int]) -> str:\n        \"\"\"\n        Build the text input corresponding to `mm_counts`.\n        \"\"\"\n        raise NotImplementedError\n\n    @abstractmethod\n    def get_dummy_mm_data(\n        self,\n        seq_len: int,\n        mm_counts: Mapping[str, int],\n    ) -> MultiModalDataDict:\n        \"\"\"\n        Build the multimodal input which, after processing, results in\n        the maximum possible number of placeholder tokens.\n        \"\"\"\n        raise NotImplementedError\n\n    def get_dummy_processor_inputs(\n        self,\n        seq_len: int,\n        mm_counts: Mapping[str, int],\n    ) -> ProcessorInputs:\n        \"\"\"\n        Build the input which, after processing, results in\n        the maximum possible number of placeholder tokens.\n        \"\"\"\n        dummy_text = self.get_dummy_text(mm_counts)\n        dummy_mm_data = self.get_dummy_mm_data(seq_len, mm_counts)\n\n        return ProcessorInputs(prompt=dummy_text, mm_data=dummy_mm_data)\n\n    def _get_dummy_audios(\n        self,\n        *,\n        length: int,\n        num_audios: int,\n    ) -> list[npt.NDArray]:\n        if num_audios == 0:\n            return []\n        audio = np.zeros((length, ))\n        return [audio] * num_audios\n\n    def _get_dummy_images(\n        self,\n        *,\n        width: int,\n        height: int,\n        num_images: int,\n    ) -> list[Image.Image]:\n        if num_images == 0:\n            return []\n        image = Image.new(\"RGB\", (width, height), color=255)\n        return [image] * num_images\n\n    def _get_dummy_videos(\n        self,\n        *,\n        width: int,\n        height: int,\n        num_frames: int,\n        num_videos: int,\n    ) -> list[npt.NDArray]:\n        if num_videos == 0:\n            return []\n        video = np.full((num_frames, width, height, 3), 255)\n        return [video] * num_videos\n\n\nclass MultiModalProfiler(Generic[_I]):\n    \"\"\"\n    Contains code for running memory profiling for multi-modal models.\n    \"\"\"\n\n    def __init__(\n        self,\n        processor: BaseMultiModalProcessor[_I],\n    ) -> None:\n        super().__init__()\n\n        self.processor = processor\n\n    @property\n    def processing_info(self) -> BaseProcessingInfo:\n        return self.processor.info\n\n    @property\n    def dummy_inputs(self) -> BaseDummyInputsBuilder[_I]:\n        return self.processor.dummy_inputs\n\n    def get_mm_limits(self) -> Mapping[str, int]:\n        return self.processing_info.get_allowed_mm_limits()\n\n    def _get_dummy_mm_inputs(\n        self,\n        seq_len: int,\n        mm_counts: Optional[Mapping[str, int]] = None,\n    ) -> MultiModalInputs:\n        if mm_counts is None:\n            mm_counts = self.get_mm_limits()\n\n        factory = self.dummy_inputs\n        processor_inputs = factory.get_dummy_processor_inputs(\n            seq_len, mm_counts)\n\n        return self.processor.apply(\n            prompt=processor_inputs.prompt,\n            mm_data=processor_inputs.mm_data,\n            hf_processor_mm_kwargs=processor_inputs.hf_processor_mm_kwargs,\n        )\n\n    def _get_mm_num_tokens(\n        self,\n        mm_inputs: MultiModalInputs,\n    ) -> Mapping[str, int]:\n        placeholders_by_modality = mm_inputs[\"mm_placeholders\"]\n\n        return {\n            modality: sum(item.get_num_embeds() for item in placeholders)\n            for modality, placeholders in placeholders_by_modality.items()\n        }\n\n    def get_encoder_dummy_data(\n        self,\n        seq_len: int,\n        mm_counts: Optional[Mapping[str, int]] = None,\n    ) -> DummyEncoderData:\n        mm_inputs = self._get_dummy_mm_inputs(seq_len, mm_counts)\n        mm_inputs = cast(MultiModalEncDecInputs, mm_inputs)\n\n        # For encoder-decoder models, use encoder prompt token ids instead of\n        # decoder prompt to construct dummy seq_data for encoder profiling.\n        encoder_prompt_token_ids = mm_inputs[\"encoder_prompt_token_ids\"]\n\n        total_len = len(encoder_prompt_token_ids)\n\n        processor = cast(EncDecMultiModalProcessor, self.processor)\n        if processor.pad_dummy_encoder_prompt:\n            num_tokens_to_pad = max(total_len, seq_len) - total_len\n            encoder_prompt_token_ids.extend([0] * num_tokens_to_pad)\n        # NOTE: Whisper allows total_len > seq_len.\n        elif total_len > seq_len and not envs.VLLM_USE_V1:\n            # `max_num_batched_tokens` is defined by `SchedulerConfig`\n            logger.warning_once(\n                \"The encoder sequence length used for profiling (max_num_batched_tokens / max_num_seqs = %d) \"  # noqa: E501\n                \"is too short to hold the multi-modal embeddings in the worst case (%d tokens in total, out of which %s are reserved for multi-modal embeddings). \"  # noqa: E501\n                \"This may cause certain multi-modal inputs to fail during inference, even when the input text is short. \"  # noqa: E501\n                \"To avoid this, you should increase `max_model_len`, reduce `max_num_seqs`, and/or reduce `mm_counts`.\",  # noqa: E501\n                seq_len,\n                total_len,\n                str(self._get_mm_num_tokens(mm_inputs)),\n            )\n\n        return DummyEncoderData(encoder_prompt_token_ids)\n\n    def get_decoder_dummy_data(\n        self,\n\n--- structural neighbors ---\nsymbol:1425039618f9bccc:DummyDecoderData (symbol, vllm/multimodal/profiling.py); symbol:c6bc398ff5ad7e8b:MultiModalProfiler (symbol, vllm/multimodal/profiling.py); symbol:6e37e15175f65b94:ProcessorInputs (symbol, vllm/multimodal/profiling.py); symbol:253302bb15ad1164:DummyEncoderData (symbol, vllm/multimodal/profiling.py); symbol:588697be90572e99:BaseDummyInputsBuilder (symbol, vllm/multimodal/profiling.py)"
+      },
+      "search_hits": {
+        "mm_counts": [
+          {
+            "file_path": "vllm/multimodal/profiling.py",
+            "line_number": 64,
+            "content": "def get_dummy_text(self, mm_counts: Mapping[str, int]) -> str:",
+            "context_lines": [
+              "def get_dummy_text(self, mm_counts: Mapping[str, int]) -> str:"
+            ]
+          },
+          {
+            "file_path": "vllm/multimodal/profiling.py",
+            "line_number": 66,
+            "content": "Build the text input corresponding to `mm_counts`.",
+            "context_lines": [
+              "Build the text input corresponding to `mm_counts`."
+            ]
+          },
+          {
+            "file_path": "vllm/multimodal/profiling.py",
+            "line_number": 74,
+            "content": "mm_counts: Mapping[str, int],",
+            "context_lines": [
+              "mm_counts: Mapping[str, int],"
+            ]
+          },
+          {
+            "file_path": "vllm/multimodal/profiling.py",
+            "line_number": 85,
+            "content": "mm_counts: Mapping[str, int],",
+            "context_lines": [
+              "mm_counts: Mapping[str, int],"
+            ]
+          },
+          {
+            "file_path": "vllm/multimodal/profiling.py",
+            "line_number": 91,
+            "content": "dummy_text = self.get_dummy_text(mm_counts)",
+            "context_lines": [
+              "dummy_text = self.get_dummy_text(mm_counts)"
+            ]
+          },
+          {
+            "file_path": "vllm/multimodal/profiling.py",
+            "line_number": 92,
+            "content": "dummy_mm_data = self.get_dummy_mm_data(seq_len, mm_counts)",
+            "context_lines": [
+              "dummy_mm_data = self.get_dummy_mm_data(seq_len, mm_counts)"
+            ]
+          },
+          {
+            "file_path": "vllm/multimodal/profiling.py",
+            "line_number": 160,
+            "content": "mm_counts: Optional[Mapping[str, int]] = None,",
+            "context_lines": [
+              "mm_counts: Optional[Mapping[str, int]] = None,"
+            ]
+          },
+          {
+            "file_path": "vllm/multimodal/profiling.py",
+            "line_number": 162,
+            "content": "if mm_counts is None:",
+            "context_lines": [
+              "if mm_counts is None:"
+            ]
+          },
+          {
+            "file_path": "vllm/multimodal/profiling.py",
+            "line_number": 163,
+            "content": "mm_counts = self.get_mm_limits()",
+            "context_lines": [
+              "mm_counts = self.get_mm_limits()"
+            ]
+          },
+          {
+            "file_path": "vllm/multimodal/profiling.py",
+            "line_number": 167,
+            "content": "seq_len, mm_counts)",
+            "context_lines": [
+              "seq_len, mm_counts)"
+            ]
+          },
+          {
+            "file_path": "vllm/multimodal/profiling.py",
+            "line_number": 189,
+            "content": "mm_counts: Optional[Mapping[str, int]] = None,",
+            "context_lines": [
+              "mm_counts: Optional[Mapping[str, int]] = None,"
+            ]
+          },
+          {
+            "file_path": "vllm/multimodal/profiling.py",
+            "line_number": 191,
+            "content": "mm_inputs = self._get_dummy_mm_inputs(seq_len, mm_counts)",
+            "context_lines": [
+              "mm_inputs = self._get_dummy_mm_inputs(seq_len, mm_counts)"
+            ]
+          },
+          {
+            "file_path": "vllm/multimodal/profiling.py",
+            "line_number": 211,
+            "content": "\"To avoid this, you should increase `max_model_len`, reduce `max_num_seqs`, and/or reduce `mm_counts`.\",  # noqa: E501",
+            "context_lines": [
+              "\"To avoid this, you should increase `max_model_len`, reduce `max_num_seqs`, and/or reduce `mm_counts`.\",  # noqa: E501"
+            ]
+          },
+          {
+            "file_path": "vllm/multimodal/profiling.py",
+            "line_number": 222,
+            "content": "mm_counts: Optional[Mapping[str, int]] = None,",
+            "context_lines": [
+              "mm_counts: Optional[Mapping[str, int]] = None,"
+            ]
+          },
+          {
+            "file_path": "vllm/multimodal/profiling.py",
+            "line_number": 224,
+            "content": "mm_inputs = self._get_dummy_mm_inputs(seq_len, mm_counts)",
+            "context_lines": [
+              "mm_inputs = self._get_dummy_mm_inputs(seq_len, mm_counts)"
+            ]
+          }
+        ],
+        "max_tokens_per_item": [
+          {
+            "file_path": "vllm/multimodal/profiling.py",
+            "line_number": 256,
+            "content": "max_tokens_per_item = self.processing_info.get_max_tokens_per_item(",
+            "context_lines": [
+              "max_tokens_per_item = self.processing_info.get_max_tokens_per_item("
+            ]
+          },
+          {
+            "file_path": "vllm/multimodal/profiling.py",
+            "line_number": 258,
+            "content": "if max_tokens_per_item is not None:",
+            "context_lines": [
+              "if max_tokens_per_item is not None:"
+            ]
+          },
+          {
+            "file_path": "vllm/multimodal/profiling.py",
+            "line_number": 260,
+            "content": "total_mm_tokens = sum(max_tokens_per_item.values())",
+            "context_lines": [
+              "total_mm_tokens = sum(max_tokens_per_item.values())"
+            ]
+          },
+          {
+            "file_path": "vllm/multimodal/profiling.py",
+            "line_number": 262,
+            "content": "total_mm_tokens = sum(max_tokens_per_item[k] * mm_counts[k]",
+            "context_lines": [
+              "total_mm_tokens = sum(max_tokens_per_item[k] * mm_counts[k]"
+            ]
+          },
+          {
+            "file_path": "vllm/multimodal/profiling.py",
+            "line_number": 263,
+            "content": "for k in max_tokens_per_item.keys()",
+            "context_lines": [
+              "for k in max_tokens_per_item.keys()"
+            ]
+          },
+          {
+            "file_path": "vllm/multimodal/profiling.py",
+            "line_number": 275,
+            "content": "return max_tokens_per_item",
+            "context_lines": [
+              "return max_tokens_per_item"
+            ]
+          }
+        ],
+        "validate mm_counts": [],
+        "handle missing keys": []
+      },
+      "warnings": []
+    }
+  },
+  "critique_revision_digests": {}
+}

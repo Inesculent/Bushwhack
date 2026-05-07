@@ -2,6 +2,7 @@ from typing import Any, Dict, List
 from pydantic import BaseModel, Field
 from src.domain.state import GraphState
 from src.infrastructure.llm.factory import Models
+from src.infrastructure.llm.token_usage import extract_total_tokens_from_llm_result, parse_structured_output
 
 
 class ExplorerOutput(BaseModel):
@@ -35,7 +36,9 @@ def explorer_node(state: GraphState) -> Dict[str, Any]:
 		f"{git_diff[:12000]}"
 	)
 
-	response = llm.invoke(prompt)
+	invoke_result = llm.invoke(prompt)
+	response = parse_structured_output(invoke_result, ExplorerOutput)
+	tokens = extract_total_tokens_from_llm_result(invoke_result)
 
 	metadata = dict(state.get("metadata", {}))
 	metadata["explorer_summary"] = response.summary
@@ -48,4 +51,5 @@ def explorer_node(state: GraphState) -> Dict[str, Any]:
 		"next_step": next_step,
 		"metadata": metadata,
 		"node_history": ["explorer"],
+		"token_usage": tokens,
 	}

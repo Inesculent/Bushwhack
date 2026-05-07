@@ -1,0 +1,2620 @@
+{
+  "metadata": {
+    "experiment": "reviewer_graph_parallel",
+    "run_id": "c75483e87a92",
+    "graph_run_id": "c75483e87a92:comfyanonymous__ComfyUI__pr6033",
+    "pr_started_at": "2026-05-07T03:32:32.006731+00:00",
+    "pr_url": "https://github.com/comfyanonymous/ComfyUI/pull/6033",
+    "pr_title": "Enforce all pyflake lint rules",
+    "pr_description": "Depend on https://github.com/comfyanonymous/ComfyUI/pull/6032",
+    "pr_repo": "comfyanonymous/ComfyUI",
+    "pr_number": 6033,
+    "review_repo_url": "https://github.com/comfyanonymous/ComfyUI",
+    "review_pr_number": 6033,
+    "review_trace_enabled": true,
+    "structural_extractor": {
+      "mode": "sandbox_entities",
+      "files_attempted": 262,
+      "files_parsed": 215,
+      "gap_count": 47,
+      "node_count": 3611,
+      "edge_count": 14267,
+      "topology_algorithm": "graspologic_leiden",
+      "community_count": 90,
+      "topology_splits_applied": 0
+    },
+    "review_planner": {
+      "summary": "The diff includes changes across multiple files, primarily renaming functions, modifying imports, and adjusting configurations.",
+      "task_count": 4,
+      "specialties": [
+        "general",
+        "logic",
+        "performance",
+        "security"
+      ],
+      "tasks": [
+        {
+          "id": "security-1",
+          "title": "Security Review",
+          "description": "Verify there are no security vulnerabilities introduced in the changes, especially in the modified API routes and server handling.",
+          "target_files": [
+            "api_server/routes/internal/internal_routes.py",
+            "server.py"
+          ],
+          "subtasks": [],
+          "specialty": "security",
+          "depth": 1,
+          "assigned_model": "security"
+        },
+        {
+          "id": "logic-1",
+          "title": "Logic Review",
+          "description": "Check for any logical errors in the changes, focusing on the function renames and modifications in the ControlNet and Execution modules.",
+          "target_files": [
+            "api_server/routes/internal/internal_routes.py",
+            "comfy/controlnet.py",
+            "execution.py",
+            "server.py"
+          ],
+          "subtasks": [],
+          "specialty": "logic",
+          "depth": 1,
+          "assigned_model": "logic"
+        },
+        {
+          "id": "performance-1",
+          "title": "Performance Review",
+          "description": "Evaluate if the changes could impact performance, particularly in the modified attention mechanism and patcher extension.",
+          "target_files": [
+            "comfy/ldm/modules/sub_quadratic_attention.py",
+            "comfy/patcher_extension.py"
+          ],
+          "subtasks": [],
+          "specialty": "performance",
+          "depth": 1,
+          "assigned_model": "performance"
+        },
+        {
+          "id": "general-1",
+          "title": "General Review",
+          "description": "Review the general quality of the changes, including code style, configuration updates, and documentation impacts.",
+          "target_files": [
+            "comfy_extras/nodes_clip_sdxl.py",
+            "notebooks/comfyui_colab.ipynb",
+            "ruff.toml"
+          ],
+          "subtasks": [],
+          "specialty": "general",
+          "depth": 1,
+          "assigned_model": "general"
+        }
+      ],
+      "warnings": []
+    },
+    "general_critiquer": {
+      "by_task": {
+        "general-1": {
+          "summary": "No high-severity issues found, but there are some minor improvements and potential areas for further review.",
+          "candidate_count": 3,
+          "warnings": [
+            "No high-severity issues found, but several areas require further investigation to ensure code quality and prevent potential issues."
+          ],
+          "initial_focus_requests": [
+            {
+              "request_id": "general-1-1",
+              "candidate_id": "general-1-1",
+              "requested_by_specialty": "general",
+              "file_paths": [
+                "comfy_extras/nodes_clip_sdxl.py"
+              ],
+              "symbol_queries": [
+                "CLIPTextEncodeSDXL.encode"
+              ],
+              "text_queries": [
+                "clip object",
+                "validation"
+              ],
+              "reason": "To verify how the 'clip' object is handled and validated in the 'encode' method and to identify any missing tests."
+            },
+            {
+              "request_id": "general-1-2",
+              "candidate_id": "general-1-2",
+              "requested_by_specialty": "general",
+              "file_paths": [
+                "notebooks/comfyui_colab.ipynb"
+              ],
+              "symbol_queries": [
+                "iframe_thread"
+              ],
+              "text_queries": [
+                "subprocess",
+                "threading",
+                "time",
+                "socket",
+                "urllib.request"
+              ],
+              "reason": "To check if the removed imports are used elsewhere in the notebook and to determine if they should be restored."
+            },
+            {
+              "request_id": "general-1-3",
+              "candidate_id": "general-1-3",
+              "requested_by_specialty": "general",
+              "file_paths": [
+                "ruff.toml"
+              ],
+              "symbol_queries": [],
+              "text_queries": [
+                "F401",
+                "F841",
+                "F821"
+              ],
+              "reason": "To understand the rationale behind disabling these specific Pyflakes rules and to assess if they are causing false positives."
+            }
+          ]
+        },
+        "logic-1": {
+          "summary": "No concrete issues were found in the provided changes based on the given context.",
+          "candidate_count": 0,
+          "warnings": [
+            "The function rename in `internal_routes.py` from `get_logs` to `get_raw_logs` could lead to confusion or breakage if external scripts depend on the original name. Ensure no external dependencies exist on the old function name."
+          ],
+          "initial_focus_requests": []
+        },
+        "performance-1": {
+          "summary": "No significant performance-related issues found in the provided diff and context. However, there are some minor issues that could be addressed for clarity and correctness.",
+          "candidate_count": 3,
+          "warnings": [],
+          "initial_focus_requests": []
+        },
+        "security-1": {
+          "summary": "No high-severity security vulnerabilities were found in the provided diff, but there are some areas that require further review to ensure security.",
+          "candidate_count": 3,
+          "warnings": [
+            "The `ruff.toml` file was modified to enable a broader set of Pyflakes rules, which may uncover additional issues in future reviews."
+          ],
+          "initial_focus_requests": [
+            {
+              "request_id": "security-1-001-context",
+              "candidate_id": "security-1-001",
+              "requested_by_specialty": "security",
+              "file_paths": [
+                "api_server/services/file_service.py"
+              ],
+              "symbol_queries": [
+                "list_files"
+              ],
+              "text_queries": [
+                "directory validation",
+                "sanitization"
+              ],
+              "reason": "To determine if there are any validation mechanisms in place for the `directory_key` parameter."
+            },
+            {
+              "request_id": "security-1-002-context",
+              "candidate_id": "security-1-002",
+              "requested_by_specialty": "security",
+              "file_paths": [
+                "server.py"
+              ],
+              "symbol_queries": [
+                "trigger_on_prompt",
+                "on_prompt_handler"
+              ],
+              "text_queries": [
+                "CSRF protection",
+                "tokens"
+              ],
+              "reason": "To verify if CSRF tokens or other protections are implemented to mitigate the risk."
+            },
+            {
+              "request_id": "security-1-003-context",
+              "candidate_id": "security-1-003",
+              "requested_by_specialty": "security",
+              "file_paths": [
+                "server.py"
+              ],
+              "symbol_queries": [
+                "client_session"
+              ],
+              "text_queries": [
+                "session management",
+                "closure"
+              ],
+              "reason": "To ensure that the `client_session` is properly managed and closed after use."
+            },
+            {
+              "request_id": "security-1-001:auto-context:1",
+              "candidate_id": "security-1-001",
+              "requested_by_specialty": "security",
+              "file_paths": [
+                "api_server/routes/internal/internal_routes.py",
+                "server.py"
+              ],
+              "symbol_queries": [],
+              "text_queries": [
+                "api_server/routes/internal/internal_routes.py",
+                "An attacker could potentially list files from unauthorized directories if input validation is not properly implemented e",
+                "An attacker could potentially list files from unauthorized directories if input validation is not properly implemented elsewhere in the codebase. directory_key "
+              ],
+              "reason": "Deterministic context requirement for a high-risk or externally dependent security_risk candidate."
+            },
+            {
+              "request_id": "security-1-002:auto-context:2",
+              "candidate_id": "security-1-002",
+              "requested_by_specialty": "security",
+              "file_paths": [
+                "server.py",
+                "api_server/routes/internal/internal_routes.py"
+              ],
+              "symbol_queries": [],
+              "text_queries": [
+                "server.py",
+                "The comment suggests that the current CORS middleware implementation is a temporary workaround and may not provide adequ",
+                "The comment suggests that the current CORS middleware implementation is a temporary workaround and may not provide adequate protection against CSRF attacks. #I "
+              ],
+              "reason": "Deterministic context requirement for a high-risk or externally dependent security_risk candidate."
+            },
+            {
+              "request_id": "security-1-003:auto-context:3",
+              "candidate_id": "security-1-003",
+              "requested_by_specialty": "security",
+              "file_paths": [
+                "server.py",
+                "api_server/routes/internal/internal_routes.py"
+              ],
+              "symbol_queries": [],
+              "text_queries": [
+                "server.py",
+                "Improper management of `aiohttp.ClientSession` could lead to resource leaks or other security issues.",
+                "Improper management of `aiohttp.ClientSession` could lead to resource leaks or other security issues. self.client_session:Optional[aiohttp.ClientSession] = None"
+              ],
+              "reason": "Deterministic context requirement for a high-risk or externally dependent security_risk candidate."
+            }
+          ]
+        }
+      }
+    },
+    "focused_context": {
+      "fulfilled_ids": [
+        "context-1-001",
+        "context-1-002",
+        "context-1-003",
+        "general-1-1",
+        "general-1-2",
+        "general-1-3",
+        "security-1-001-context",
+        "security-1-001:auto-context:1",
+        "security-1-002-context",
+        "security-1-002:auto-context:2",
+        "security-1-003-context",
+        "security-1-003:auto-context:3"
+      ],
+      "warnings": []
+    },
+    "adversarial_reflection": {
+      "report_count": 9,
+      "focused_request_count": 3,
+      "routed_candidate_counts": {
+        "security": 3,
+        "logic": 0,
+        "performance": 0,
+        "general": 6
+      },
+      "total_routed_candidate_reviews": 9,
+      "warnings": []
+    },
+    "critique_revision": {
+      "revisions": [
+        {
+          "candidate_id": "security-1-001",
+          "verdict": "reject",
+          "updated_evidence_summary": "The `directory_key` parameter is validated in the `FileService.list_files` method by checking against `allowed_directories`, and tests exist for both valid and invalid directory keys."
+        },
+        {
+          "candidate_id": "security-1-002",
+          "verdict": "reject",
+          "updated_evidence_summary": "No CSRF protection mechanisms are found in the provided context. The middleware checks if the Host and Origin headers match but does not implement CSRF tokens."
+        },
+        {
+          "candidate_id": "security-1-003",
+          "verdict": "reject",
+          "updated_evidence_summary": "No evidence of proper management or closure of `client_session` in the provided context. The `client_session` is initialized but not explicitly closed."
+        }
+      ],
+      "warnings": [],
+      "candidate_count": 3,
+      "shard_count_planned": 8,
+      "digest_count": 8,
+      "digest_shard_ids": [
+        "security-1-001:0",
+        "security-1-001:1",
+        "security-1-002:0",
+        "security-1-002:1",
+        "security-1-002:2",
+        "security-1-003:0",
+        "security-1-003:1",
+        "security-1-003:2"
+      ],
+      "missing_digest_shards": []
+    },
+    "adversarial_cleanup": {
+      "promoted_count": 1,
+      "dropped_candidate_ids": [
+        "general-1-2",
+        "general-1-3",
+        "performance-1-1",
+        "performance-1-2",
+        "performance-1-3",
+        "security-1-001",
+        "security-1-002",
+        "security-1-003"
+      ],
+      "ignored_off_domain_rejections": {},
+      "ignored_off_domain_context_requests": {},
+      "misrouted_candidate_ids": {},
+      "candidate_lifecycle": {
+        "general-1-1": {
+          "decision": "promoted",
+          "reason": "accepted_by_relevant_reflectors",
+          "claim_type": "missing_test",
+          "final_category": "general",
+          "relevant_reflectors": [
+            "general"
+          ],
+          "had_focused_context": true
+        },
+        "general-1-2": {
+          "decision": "dropped",
+          "reason": "non_promotable_claim_type",
+          "claim_type": "uncertain",
+          "suspected_category": "general"
+        },
+        "general-1-3": {
+          "decision": "dropped",
+          "reason": "non_promotable_claim_type",
+          "claim_type": "uncertain",
+          "suspected_category": "general"
+        },
+        "performance-1-1": {
+          "decision": "dropped",
+          "reason": "required_context_not_gathered",
+          "claim_type": "defect",
+          "suspected_category": "general"
+        },
+        "performance-1-2": {
+          "decision": "dropped",
+          "reason": "relevant_reflector_reject",
+          "claim_type": "uncertain",
+          "suspected_category": "general",
+          "rejecting_reflectors": [
+            "general"
+          ]
+        },
+        "performance-1-3": {
+          "decision": "dropped",
+          "reason": "required_context_not_gathered",
+          "claim_type": "defect",
+          "suspected_category": "general"
+        },
+        "security-1-001": {
+          "decision": "dropped",
+          "reason": "revision_reject",
+          "claim_type": "security_risk",
+          "suspected_category": "security"
+        },
+        "security-1-002": {
+          "decision": "dropped",
+          "reason": "revision_reject",
+          "claim_type": "security_risk",
+          "suspected_category": "security"
+        },
+        "security-1-003": {
+          "decision": "dropped",
+          "reason": "revision_reject",
+          "claim_type": "security_risk",
+          "suspected_category": "security"
+        }
+      }
+    },
+    "review_synthesizer": {
+      "worker_count": 0,
+      "reflection_report_count": 9,
+      "raw_finding_count": 1,
+      "final_finding_count": 1,
+      "dropped_duplicate_ids": [],
+      "worker_reports": [],
+      "reflection_reports": [
+        {
+          "candidate_id": "security-1-001",
+          "reflector_specialty": "security",
+          "verdict": "needs_context",
+          "rationale": "The `directory_key` parameter is retrieved from the query string without validation or sanitization. However, the evidence is not conclusive without checking if validation or sanitization occurs elsewhere in the codebase, such as in the `FileService.list_files` method or other parts of the application.",
+          "reclassified_category": null,
+          "focused_request": {
+            "request_id": "context-1-001",
+            "candidate_id": "security-1-001",
+            "requested_by_specialty": "security",
+            "file_paths": [
+              "api_server/routes/internal/internal_routes.py",
+              "path/to/FileService.py"
+            ],
+            "symbol_queries": [
+              "FileService.list_files"
+            ],
+            "text_queries": [
+              "validate directory_key",
+              "sanitize directory_key"
+            ],
+            "reason": "To determine if there are any validation or sanitization mechanisms in place for the `directory_key` parameter."
+          }
+        },
+        {
+          "candidate_id": "security-1-002",
+          "reflector_specialty": "security",
+          "verdict": "needs_context",
+          "rationale": "The comment suggests that the current CORS middleware implementation is a temporary workaround and may not provide adequate protection against CSRF attacks. However, the evidence is not conclusive without checking if CSRF tokens or other protections are implemented elsewhere in the application.",
+          "reclassified_category": null,
+          "focused_request": {
+            "request_id": "context-1-002",
+            "candidate_id": "security-1-002",
+            "requested_by_specialty": "security",
+            "file_paths": [
+              "server.py",
+              "path/to/cors_middleware.py",
+              "path/to/csrf_protection.py"
+            ],
+            "symbol_queries": [
+              "CORSMiddleware",
+              "CSRFProtection"
+            ],
+            "text_queries": [
+              "CSRF token",
+              "CSRF protection"
+            ],
+            "reason": "To verify if CSRF tokens or other protections are implemented elsewhere in the application to mitigate the risk."
+          }
+        },
+        {
+          "candidate_id": "security-1-003",
+          "reflector_specialty": "security",
+          "verdict": "needs_context",
+          "rationale": "The `client_session` attribute is initialized but there is no evidence of its proper management or closure in the provided context. However, the evidence is not conclusive without checking if the `client_session` is properly managed and closed after use elsewhere in the codebase.",
+          "reclassified_category": null,
+          "focused_request": {
+            "request_id": "context-1-003",
+            "candidate_id": "security-1-003",
+            "requested_by_specialty": "security",
+            "file_paths": [
+              "server.py",
+              "path/to/session_management.py"
+            ],
+            "symbol_queries": [
+              "client_session"
+            ],
+            "text_queries": [
+              "close client_session",
+              "manage client_session"
+            ],
+            "reason": "To determine if the `client_session` is properly managed and closed after use to avoid resource leaks and potential security issues."
+          }
+        },
+        {
+          "candidate_id": "general-1-1",
+          "reflector_specialty": "general",
+          "verdict": "accept",
+          "rationale": "The addition of the 'clip' parameter without proper handling or validation can lead to runtime errors. Existing tests and usage within the 'encode' method are required to confirm this.",
+          "reclassified_category": null,
+          "focused_request": null
+        },
+        {
+          "candidate_id": "general-1-2",
+          "reflector_specialty": "general",
+          "verdict": "accept",
+          "rationale": "Removing these imports without verifying their usage elsewhere in the notebook can lead to functionality issues. Checking their usage is essential to determine if they should be restored.",
+          "reclassified_category": null,
+          "focused_request": null
+        },
+        {
+          "candidate_id": "general-1-3",
+          "reflector_specialty": "general",
+          "verdict": "accept",
+          "rationale": "Disabling specific Pyflakes rules can lead to maintenance issues due to unnoticed unused imports, unused local variables, or undefined names. Reviewing the decision to disable these rules is necessary.",
+          "reclassified_category": null,
+          "focused_request": null
+        },
+        {
+          "candidate_id": "performance-1-1",
+          "reflector_specialty": "general",
+          "verdict": "accept",
+          "rationale": "The removal of the explicit import of `Tensor` might cause confusion or import errors if `Tensor` is used in the file. Checking for its usage is essential.",
+          "reclassified_category": null,
+          "focused_request": null
+        },
+        {
+          "candidate_id": "performance-1-2",
+          "reflector_specialty": "general",
+          "verdict": "reject",
+          "rationale": "The change from a formatted string to a regular string does not affect functionality or readability based on the provided evidence. It appears to be a stylistic change without a clear failure mode.",
+          "reclassified_category": null,
+          "focused_request": null
+        },
+        {
+          "candidate_id": "performance-1-3",
+          "reflector_specialty": "general",
+          "verdict": "accept",
+          "rationale": "The incorrect definition of the `clip` input type twice in the `INPUT_TYPES` dictionary can lead to runtime errors. Verifying the intended structure of the dictionary is necessary.",
+          "reclassified_category": null,
+          "focused_request": null
+        }
+      ]
+    },
+    "pr_finished_at": "2026-05-07T03:34:26.610319+00:00"
+  },
+  "node_history": [
+    "sandbox_structural_extractor",
+    "review_planner",
+    "general_critiquer",
+    "general_critiquer",
+    "general_critiquer",
+    "general_critiquer",
+    "focused_context",
+    "adversarial_reflection",
+    "focused_context",
+    "critique_revision_digest",
+    "critique_revision_digest",
+    "critique_revision_digest",
+    "critique_revision_digest",
+    "critique_revision_digest",
+    "critique_revision_digest",
+    "critique_revision_digest",
+    "critique_revision_digest",
+    "critique_revision_reduce",
+    "adversarial_cleanup",
+    "review_synthesizer"
+  ],
+  "worker_reports": [],
+  "candidate_findings": [
+    {
+      "candidate_id": "general-1-1",
+      "patch_task_id": "general-1",
+      "file_path": "comfy_extras/nodes_clip_sdxl.py",
+      "line_start": 25,
+      "line_end": 26,
+      "content": "            \"clip\": (\"CLIP\", ),",
+      "claim_type": "missing_test",
+      "failure_mode": "The addition of 'clip' parameter might introduce a scenario where the 'clip' object is not properly handled or validated, leading to potential runtime errors.",
+      "evidence_summary": "The 'clip' parameter was moved inside the dictionary, but its handling and validation are not evident from the provided code snippet.",
+      "required_context": [
+        "How the 'clip' object is used and validated in the 'encode' method.",
+        "Existing tests related to the 'CLIPTextEncodeSDXL' class."
+      ],
+      "confidence": 0.6,
+      "suspected_category": "general",
+      "reflection_specialties": [
+        "general"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "medium",
+      "recommendation": "Add tests to ensure that the 'clip' object is correctly passed and validated in the 'encode' method."
+    },
+    {
+      "candidate_id": "general-1-2",
+      "patch_task_id": "general-1",
+      "file_path": "notebooks/comfyui_colab.ipynb",
+      "line_start": 238,
+      "line_end": 242,
+      "content": "-    \"import subprocess\\n\",\n-    \"import threading\\n\",\n-    \"import time\\n\",\n-    \"import socket\\n\",\n-    \"import urllib.request\\n\",\n",
+      "claim_type": "uncertain",
+      "failure_mode": "Removing these imports might lead to functionality issues if they are used elsewhere in the notebook.",
+      "evidence_summary": "The imports were removed from the notebook cell without any indication of whether they are used elsewhere in the notebook.",
+      "required_context": [
+        "Usage of these imports in other parts of the notebook."
+      ],
+      "confidence": 0.7,
+      "suspected_category": "general",
+      "reflection_specialties": [
+        "general"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "low",
+      "recommendation": "Verify if these imports are used elsewhere in the notebook and restore them if necessary."
+    },
+    {
+      "candidate_id": "general-1-3",
+      "patch_task_id": "general-1",
+      "file_path": "ruff.toml",
+      "line_start": 7,
+      "line_end": 10,
+      "content": "-    \"F401\",  # unused-import\n-    \"F841\",  # unused-local-variable\n-    \"F821\",  # undefined-name\n",
+      "claim_type": "uncertain",
+      "failure_mode": "Disabling these specific rules might lead to unused imports, unused local variables, or undefined names going unnoticed, potentially causing maintenance issues.",
+      "evidence_summary": "Specific Pyflakes rules were commented out in the Ruff configuration.",
+      "required_context": [
+        "The rationale behind disabling these specific rules.",
+        "Existing code quality issues related to these rules."
+      ],
+      "confidence": 0.6,
+      "suspected_category": "general",
+      "reflection_specialties": [
+        "general"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "low",
+      "recommendation": "Review the decision to disable these rules and consider re-enabling them if they are not causing false positives."
+    },
+    {
+      "candidate_id": "performance-1-1",
+      "patch_task_id": "performance-1",
+      "file_path": "comfy/ldm/modules/sub_quadratic_attention.py",
+      "line_start": 22,
+      "line_end": 22,
+      "content": "from torch import Tensor",
+      "claim_type": "defect",
+      "failure_mode": "Potential import error or confusion due to removal of explicit import.",
+      "evidence_summary": "The import statement `from torch import Tensor` was removed.",
+      "required_context": [
+        "Check if `Tensor` is used elsewhere in the file without this import."
+      ],
+      "confidence": 0.8,
+      "suspected_category": "general",
+      "reflection_specialties": [
+        "general"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "low",
+      "recommendation": "Restore the import statement `from torch import Tensor` if `Tensor` is used in the file."
+    },
+    {
+      "candidate_id": "performance-1-2",
+      "patch_task_id": "performance-1",
+      "file_path": "comfy/patcher_extension.py",
+      "line_start": 113,
+      "line_end": 113,
+      "content": "-            raise Exception(f\"Wrapper idx exceeded available wrappers; something went very wrong.\")\n+            raise Exception(\"Wrapper idx exceeded available wrappers; something went very wrong.\")",
+      "claim_type": "uncertain",
+      "failure_mode": "Unclear if the change affects functionality or readability.",
+      "evidence_summary": "The formatted string was replaced with a regular string without any functional change.",
+      "required_context": [
+        "Check if the removal of the formatted string impacts any debugging or logging mechanisms."
+      ],
+      "confidence": 0.5,
+      "suspected_category": "general",
+      "reflection_specialties": [
+        "general"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "low",
+      "recommendation": "Evaluate if the removal of the formatted string is intentional and does not affect debugging or logging."
+    },
+    {
+      "candidate_id": "performance-1-3",
+      "patch_task_id": "performance-1",
+      "file_path": "comfy_extras/nodes_clip_sdxl.py",
+      "line_start": 23,
+      "line_end": 26,
+      "content": "+            \"clip\": (\"CLIP\", ),\n-            \"text_g\": (\"STRING\", {\"multiline\": True, \"dynamicPrompts\": True}), \"clip\": (\"CLIP\", ),\n-            \"text_l\": (\"STRING\", {\"multiline\": True, \"dynamicPrompts\": True}), \"clip\": (\"CLIP\", ),\n+            \"text_g\": (\"STRING\", {\"multiline\": True, \"dynamicPrompts\": True}),\n+            \"text_l\": (\"STRING\", {\"multiline\": True, \"dynamicPrompts\": True}),",
+      "claim_type": "defect",
+      "failure_mode": "Incorrect input type definition leading to potential runtime errors.",
+      "evidence_summary": "The `clip` input type is incorrectly defined twice in the `INPUT_TYPES` dictionary.",
+      "required_context": [
+        "Verify the intended structure of the `INPUT_TYPES` dictionary."
+      ],
+      "confidence": 0.9,
+      "suspected_category": "general",
+      "reflection_specialties": [
+        "general"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "medium",
+      "recommendation": "Correct the `INPUT_TYPES` dictionary to ensure each key is defined only once."
+    },
+    {
+      "candidate_id": "security-1-001",
+      "patch_task_id": "security-1",
+      "file_path": "api_server/routes/internal/internal_routes.py",
+      "line_start": 29,
+      "line_end": 29,
+      "content": "directory_key = request.query.get('directory', '')",
+      "claim_type": "security_risk",
+      "failure_mode": "An attacker could potentially list files from unauthorized directories if input validation is not properly implemented elsewhere in the codebase.",
+      "evidence_summary": "The `list_files` endpoint retrieves files from a directory specified by the `directory` query parameter without any validation or sanitization.",
+      "required_context": [
+        "Check if there are any validation mechanisms in place for the `directory_key` parameter in the `FileService.list_files` method or elsewhere in the codebase."
+      ],
+      "confidence": 0.7,
+      "suspected_category": "security",
+      "reflection_specialties": [
+        "security"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "medium",
+      "recommendation": "Validate and sanitize the `directory_key` parameter to ensure it points to authorized directories only."
+    },
+    {
+      "candidate_id": "security-1-002",
+      "patch_task_id": "security-1",
+      "file_path": "server.py",
+      "line_start": 116,
+      "line_end": 116,
+      "content": "#I know the proper fix would be to add a cookie but this should take care of the problem in the meantime",
+      "claim_type": "security_risk",
+      "failure_mode": "The comment suggests that the current CORS middleware implementation is a temporary workaround and may not provide adequate protection against CSRF attacks.",
+      "evidence_summary": "The comment indicates that the CORS middleware is a temporary solution and does not mention adding a CSRF token or other protections.",
+      "required_context": [
+        "Check if CSRF tokens or other protections are implemented elsewhere in the application to mitigate the risk."
+      ],
+      "confidence": 0.6,
+      "suspected_category": "security",
+      "reflection_specialties": [
+        "security"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "medium",
+      "recommendation": "Implement CSRF protection using tokens or other secure methods to mitigate the risk."
+    },
+    {
+      "candidate_id": "security-1-003",
+      "patch_task_id": "security-1",
+      "file_path": "server.py",
+      "line_start": 161,
+      "line_end": 161,
+      "content": "self.client_session:Optional[aiohttp.ClientSession] = None",
+      "claim_type": "security_risk",
+      "failure_mode": "Improper management of `aiohttp.ClientSession` could lead to resource leaks or other security issues.",
+      "evidence_summary": "The `client_session` attribute is initialized but there is no evidence of its proper management or closure in the provided context.",
+      "required_context": [
+        "Check if the `client_session` is properly managed and closed after use to avoid resource leaks."
+      ],
+      "confidence": 0.5,
+      "suspected_category": "security",
+      "reflection_specialties": [
+        "security"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "low",
+      "recommendation": "Ensure that the `client_session` is properly managed and closed after use to avoid resource leaks and potential security issues."
+    }
+  ],
+  "reflection_reports": [
+    {
+      "candidate_id": "security-1-001",
+      "reflector_specialty": "security",
+      "verdict": "needs_context",
+      "rationale": "The `directory_key` parameter is retrieved from the query string without validation or sanitization. However, the evidence is not conclusive without checking if validation or sanitization occurs elsewhere in the codebase, such as in the `FileService.list_files` method or other parts of the application.",
+      "reclassified_category": null,
+      "focused_request": {
+        "request_id": "context-1-001",
+        "candidate_id": "security-1-001",
+        "requested_by_specialty": "security",
+        "file_paths": [
+          "api_server/routes/internal/internal_routes.py",
+          "path/to/FileService.py"
+        ],
+        "symbol_queries": [
+          "FileService.list_files"
+        ],
+        "text_queries": [
+          "validate directory_key",
+          "sanitize directory_key"
+        ],
+        "reason": "To determine if there are any validation or sanitization mechanisms in place for the `directory_key` parameter."
+      }
+    },
+    {
+      "candidate_id": "security-1-002",
+      "reflector_specialty": "security",
+      "verdict": "needs_context",
+      "rationale": "The comment suggests that the current CORS middleware implementation is a temporary workaround and may not provide adequate protection against CSRF attacks. However, the evidence is not conclusive without checking if CSRF tokens or other protections are implemented elsewhere in the application.",
+      "reclassified_category": null,
+      "focused_request": {
+        "request_id": "context-1-002",
+        "candidate_id": "security-1-002",
+        "requested_by_specialty": "security",
+        "file_paths": [
+          "server.py",
+          "path/to/cors_middleware.py",
+          "path/to/csrf_protection.py"
+        ],
+        "symbol_queries": [
+          "CORSMiddleware",
+          "CSRFProtection"
+        ],
+        "text_queries": [
+          "CSRF token",
+          "CSRF protection"
+        ],
+        "reason": "To verify if CSRF tokens or other protections are implemented elsewhere in the application to mitigate the risk."
+      }
+    },
+    {
+      "candidate_id": "security-1-003",
+      "reflector_specialty": "security",
+      "verdict": "needs_context",
+      "rationale": "The `client_session` attribute is initialized but there is no evidence of its proper management or closure in the provided context. However, the evidence is not conclusive without checking if the `client_session` is properly managed and closed after use elsewhere in the codebase.",
+      "reclassified_category": null,
+      "focused_request": {
+        "request_id": "context-1-003",
+        "candidate_id": "security-1-003",
+        "requested_by_specialty": "security",
+        "file_paths": [
+          "server.py",
+          "path/to/session_management.py"
+        ],
+        "symbol_queries": [
+          "client_session"
+        ],
+        "text_queries": [
+          "close client_session",
+          "manage client_session"
+        ],
+        "reason": "To determine if the `client_session` is properly managed and closed after use to avoid resource leaks and potential security issues."
+      }
+    },
+    {
+      "candidate_id": "general-1-1",
+      "reflector_specialty": "general",
+      "verdict": "accept",
+      "rationale": "The addition of the 'clip' parameter without proper handling or validation can lead to runtime errors. Existing tests and usage within the 'encode' method are required to confirm this.",
+      "reclassified_category": null,
+      "focused_request": null
+    },
+    {
+      "candidate_id": "general-1-2",
+      "reflector_specialty": "general",
+      "verdict": "accept",
+      "rationale": "Removing these imports without verifying their usage elsewhere in the notebook can lead to functionality issues. Checking their usage is essential to determine if they should be restored.",
+      "reclassified_category": null,
+      "focused_request": null
+    },
+    {
+      "candidate_id": "general-1-3",
+      "reflector_specialty": "general",
+      "verdict": "accept",
+      "rationale": "Disabling specific Pyflakes rules can lead to maintenance issues due to unnoticed unused imports, unused local variables, or undefined names. Reviewing the decision to disable these rules is necessary.",
+      "reclassified_category": null,
+      "focused_request": null
+    },
+    {
+      "candidate_id": "performance-1-1",
+      "reflector_specialty": "general",
+      "verdict": "accept",
+      "rationale": "The removal of the explicit import of `Tensor` might cause confusion or import errors if `Tensor` is used in the file. Checking for its usage is essential.",
+      "reclassified_category": null,
+      "focused_request": null
+    },
+    {
+      "candidate_id": "performance-1-2",
+      "reflector_specialty": "general",
+      "verdict": "reject",
+      "rationale": "The change from a formatted string to a regular string does not affect functionality or readability based on the provided evidence. It appears to be a stylistic change without a clear failure mode.",
+      "reclassified_category": null,
+      "focused_request": null
+    },
+    {
+      "candidate_id": "performance-1-3",
+      "reflector_specialty": "general",
+      "verdict": "accept",
+      "rationale": "The incorrect definition of the `clip` input type twice in the `INPUT_TYPES` dictionary can lead to runtime errors. Verifying the intended structure of the dictionary is necessary.",
+      "reclassified_category": null,
+      "focused_request": null
+    }
+  ],
+  "focused_context_requests": [
+    {
+      "request_id": "general-1-1",
+      "candidate_id": "general-1-1",
+      "requested_by_specialty": "general",
+      "file_paths": [
+        "comfy_extras/nodes_clip_sdxl.py"
+      ],
+      "symbol_queries": [
+        "CLIPTextEncodeSDXL.encode"
+      ],
+      "text_queries": [
+        "clip object",
+        "validation"
+      ],
+      "reason": "To verify how the 'clip' object is handled and validated in the 'encode' method and to identify any missing tests."
+    },
+    {
+      "request_id": "general-1-2",
+      "candidate_id": "general-1-2",
+      "requested_by_specialty": "general",
+      "file_paths": [
+        "notebooks/comfyui_colab.ipynb"
+      ],
+      "symbol_queries": [
+        "iframe_thread"
+      ],
+      "text_queries": [
+        "subprocess",
+        "threading",
+        "time",
+        "socket",
+        "urllib.request"
+      ],
+      "reason": "To check if the removed imports are used elsewhere in the notebook and to determine if they should be restored."
+    },
+    {
+      "request_id": "general-1-3",
+      "candidate_id": "general-1-3",
+      "requested_by_specialty": "general",
+      "file_paths": [
+        "ruff.toml"
+      ],
+      "symbol_queries": [],
+      "text_queries": [
+        "F401",
+        "F841",
+        "F821"
+      ],
+      "reason": "To understand the rationale behind disabling these specific Pyflakes rules and to assess if they are causing false positives."
+    },
+    {
+      "request_id": "security-1-001-context",
+      "candidate_id": "security-1-001",
+      "requested_by_specialty": "security",
+      "file_paths": [
+        "api_server/services/file_service.py"
+      ],
+      "symbol_queries": [
+        "list_files"
+      ],
+      "text_queries": [
+        "directory validation",
+        "sanitization"
+      ],
+      "reason": "To determine if there are any validation mechanisms in place for the `directory_key` parameter."
+    },
+    {
+      "request_id": "security-1-002-context",
+      "candidate_id": "security-1-002",
+      "requested_by_specialty": "security",
+      "file_paths": [
+        "server.py"
+      ],
+      "symbol_queries": [
+        "trigger_on_prompt",
+        "on_prompt_handler"
+      ],
+      "text_queries": [
+        "CSRF protection",
+        "tokens"
+      ],
+      "reason": "To verify if CSRF tokens or other protections are implemented to mitigate the risk."
+    },
+    {
+      "request_id": "security-1-003-context",
+      "candidate_id": "security-1-003",
+      "requested_by_specialty": "security",
+      "file_paths": [
+        "server.py"
+      ],
+      "symbol_queries": [
+        "client_session"
+      ],
+      "text_queries": [
+        "session management",
+        "closure"
+      ],
+      "reason": "To ensure that the `client_session` is properly managed and closed after use."
+    },
+    {
+      "request_id": "security-1-001:auto-context:1",
+      "candidate_id": "security-1-001",
+      "requested_by_specialty": "security",
+      "file_paths": [
+        "api_server/routes/internal/internal_routes.py",
+        "server.py"
+      ],
+      "symbol_queries": [],
+      "text_queries": [
+        "api_server/routes/internal/internal_routes.py",
+        "An attacker could potentially list files from unauthorized directories if input validation is not properly implemented e",
+        "An attacker could potentially list files from unauthorized directories if input validation is not properly implemented elsewhere in the codebase. directory_key "
+      ],
+      "reason": "Deterministic context requirement for a high-risk or externally dependent security_risk candidate."
+    },
+    {
+      "request_id": "security-1-002:auto-context:2",
+      "candidate_id": "security-1-002",
+      "requested_by_specialty": "security",
+      "file_paths": [
+        "server.py",
+        "api_server/routes/internal/internal_routes.py"
+      ],
+      "symbol_queries": [],
+      "text_queries": [
+        "server.py",
+        "The comment suggests that the current CORS middleware implementation is a temporary workaround and may not provide adequ",
+        "The comment suggests that the current CORS middleware implementation is a temporary workaround and may not provide adequate protection against CSRF attacks. #I "
+      ],
+      "reason": "Deterministic context requirement for a high-risk or externally dependent security_risk candidate."
+    },
+    {
+      "request_id": "security-1-003:auto-context:3",
+      "candidate_id": "security-1-003",
+      "requested_by_specialty": "security",
+      "file_paths": [
+        "server.py",
+        "api_server/routes/internal/internal_routes.py"
+      ],
+      "symbol_queries": [],
+      "text_queries": [
+        "server.py",
+        "Improper management of `aiohttp.ClientSession` could lead to resource leaks or other security issues.",
+        "Improper management of `aiohttp.ClientSession` could lead to resource leaks or other security issues. self.client_session:Optional[aiohttp.ClientSession] = None"
+      ],
+      "reason": "Deterministic context requirement for a high-risk or externally dependent security_risk candidate."
+    },
+    {
+      "request_id": "context-1-001",
+      "candidate_id": "security-1-001",
+      "requested_by_specialty": "security",
+      "file_paths": [
+        "api_server/routes/internal/internal_routes.py",
+        "path/to/FileService.py"
+      ],
+      "symbol_queries": [
+        "FileService.list_files"
+      ],
+      "text_queries": [
+        "validate directory_key",
+        "sanitize directory_key"
+      ],
+      "reason": "To determine if there are any validation or sanitization mechanisms in place for the `directory_key` parameter."
+    },
+    {
+      "request_id": "context-1-002",
+      "candidate_id": "security-1-002",
+      "requested_by_specialty": "security",
+      "file_paths": [
+        "server.py",
+        "path/to/cors_middleware.py",
+        "path/to/csrf_protection.py"
+      ],
+      "symbol_queries": [
+        "CORSMiddleware",
+        "CSRFProtection"
+      ],
+      "text_queries": [
+        "CSRF token",
+        "CSRF protection"
+      ],
+      "reason": "To verify if CSRF tokens or other protections are implemented elsewhere in the application to mitigate the risk."
+    },
+    {
+      "request_id": "context-1-003",
+      "candidate_id": "security-1-003",
+      "requested_by_specialty": "security",
+      "file_paths": [
+        "server.py",
+        "path/to/session_management.py"
+      ],
+      "symbol_queries": [
+        "client_session"
+      ],
+      "text_queries": [
+        "close client_session",
+        "manage client_session"
+      ],
+      "reason": "To determine if the `client_session` is properly managed and closed after use to avoid resource leaks and potential security issues."
+    }
+  ],
+  "focused_context_results": {
+    "general-1-1": {
+      "request_id": "general-1-1",
+      "candidate_id": "general-1-1",
+      "file_snippets": {
+        "comfy_extras/nodes_clip_sdxl.py": "from nodes import MAX_RESOLUTION\n\nclass CLIPTextEncodeSDXLRefiner:\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\"required\": {\n            \"ascore\": (\"FLOAT\", {\"default\": 6.0, \"min\": 0.0, \"max\": 1000.0, \"step\": 0.01}),\n            \"width\": (\"INT\", {\"default\": 1024.0, \"min\": 0, \"max\": MAX_RESOLUTION}),\n            \"height\": (\"INT\", {\"default\": 1024.0, \"min\": 0, \"max\": MAX_RESOLUTION}),\n            \"text\": (\"STRING\", {\"multiline\": True, \"dynamicPrompts\": True}), \"clip\": (\"CLIP\", ),\n            }}\n    RETURN_TYPES = (\"CONDITIONING\",)\n    FUNCTION = \"encode\"\n\n    CATEGORY = \"advanced/conditioning\"\n\n    def encode(self, clip, ascore, width, height, text):\n        tokens = clip.tokenize(text)\n        return (clip.encode_from_tokens_scheduled(tokens, add_dict={\"aesthetic_score\": ascore, \"width\": width, \"height\": height}), )\n\nclass CLIPTextEncodeSDXL:\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\"required\": {\n            \"clip\": (\"CLIP\", ),\n            \"width\": (\"INT\", {\"default\": 1024.0, \"min\": 0, \"max\": MAX_RESOLUTION}),\n            \"height\": (\"INT\", {\"default\": 1024.0, \"min\": 0, \"max\": MAX_RESOLUTION}),\n            \"crop_w\": (\"INT\", {\"default\": 0, \"min\": 0, \"max\": MAX_RESOLUTION}),\n            \"crop_h\": (\"INT\", {\"default\": 0, \"min\": 0, \"max\": MAX_RESOLUTION}),\n            \"target_width\": (\"INT\", {\"default\": 1024.0, \"min\": 0, \"max\": MAX_RESOLUTION}),\n            \"target_height\": (\"INT\", {\"default\": 1024.0, \"min\": 0, \"max\": MAX_RESOLUTION}),\n            \"text_g\": (\"STRING\", {\"multiline\": True, \"dynamicPrompts\": True}),\n            \"text_l\": (\"STRING\", {\"multiline\": True, \"dynamicPrompts\": True}),\n            }}\n    RETURN_TYPES = (\"CONDITIONING\",)\n    FUNCTION = \"encode\"\n\n    CATEGORY = \"advanced/conditioning\"\n\n    def encode(self, clip, width, height, crop_w, crop_h, target_width, target_height, text_g, text_l):\n        tokens = clip.tokenize(text_g)\n        tokens[\"l\"] = clip.tokenize(text_l)[\"l\"]\n        if len(tokens[\"l\"]) != len(tokens[\"g\"]):\n            empty = clip.tokenize(\"\")\n            while len(tokens[\"l\"]) < len(tokens[\"g\"]):\n                tokens[\"l\"] += empty[\"l\"]\n            while len(tokens[\"l\"]) > len(tokens[\"g\"]):\n                tokens[\"g\"] += empty[\"g\"]\n        return (clip.encode_from_tokens_scheduled(tokens, add_dict={\"width\": width, \"height\": height, \"crop_w\": crop_w, \"crop_h\": crop_h, \"target_width\": target_width, \"target_height\": target_height}), )\n\nNODE_CLASS_MAPPINGS = {\n    \"CLIPTextEncodeSDXLRefiner\": CLIPTextEncodeSDXLRefiner,\n    \"CLIPTextEncodeSDXL\": CLIPTextEncodeSDXL,\n}\n\n--- structural neighbors ---\nsymbol:1c7db69ce1ddd541:CLIPTextEncodeSDXL (symbol, comfy_extras/nodes_clip_sdxl.py); symbol:61dc0685e91a9dc3:CLIPTextEncodeSDXLRefiner (symbol, comfy_extras/nodes_clip_sdxl.py)"
+      },
+      "search_hits": {
+        "CLIPTextEncodeSDXL.encode": [],
+        "clip object": [],
+        "validation": [
+          {
+            "file_path": "comfy_execution/graph.py",
+            "line_number": 173,
+            "content": "# Because cycles composed entirely of static nodes are caught during initial validation,",
+            "context_lines": [
+              "# Because cycles composed entirely of static nodes are caught during initial validation,"
+            ]
+          },
+          {
+            "file_path": "server.py",
+            "line_number": 344,
+            "content": "# validation for security: prevent accessing arbitrary path",
+            "context_lines": [
+              "# validation for security: prevent accessing arbitrary path"
+            ]
+          },
+          {
+            "file_path": "server.py",
+            "line_number": 385,
+            "content": "# validation for security: prevent accessing arbitrary path",
+            "context_lines": [
+              "# validation for security: prevent accessing arbitrary path"
+            ]
+          },
+          {
+            "file_path": "execution.py",
+            "line_number": 19,
+            "content": "from comfy_execution.validation import validate_node_input",
+            "context_lines": [
+              "from comfy_execution.validation import validate_node_input"
+            ]
+          },
+          {
+            "file_path": "execution.py",
+            "line_number": 617,
+            "content": "\"type\": \"exception_during_inner_validation\",",
+            "context_lines": [
+              "\"type\": \"exception_during_inner_validation\","
+            ]
+          },
+          {
+            "file_path": "execution.py",
+            "line_number": 733,
+            "content": "\"type\": \"custom_validation_failed\",",
+            "context_lines": [
+              "\"type\": \"custom_validation_failed\","
+            ]
+          },
+          {
+            "file_path": "execution.py",
+            "line_number": 734,
+            "content": "\"message\": \"Custom validation failed for node\",",
+            "context_lines": [
+              "\"message\": \"Custom validation failed for node\","
+            ]
+          },
+          {
+            "file_path": "execution.py",
+            "line_number": 808,
+            "content": "\"type\": \"exception_during_validation\",",
+            "context_lines": [
+              "\"type\": \"exception_during_validation\","
+            ]
+          },
+          {
+            "file_path": "execution.py",
+            "line_number": 855,
+            "content": "\"type\": \"prompt_outputs_failed_validation\",",
+            "context_lines": [
+              "\"type\": \"prompt_outputs_failed_validation\","
+            ]
+          },
+          {
+            "file_path": "execution.py",
+            "line_number": 856,
+            "content": "\"message\": \"Prompt outputs failed validation\",",
+            "context_lines": [
+              "\"message\": \"Prompt outputs failed validation\","
+            ]
+          },
+          {
+            "file_path": "web/assets/InstallView-C6UIhIu4.js",
+            "line_number": 577,
+            "content": "const validation = await electron.validateInstallPath(path);",
+            "context_lines": [
+              "const validation = await electron.validateInstallPath(path);"
+            ]
+          },
+          {
+            "file_path": "web/assets/InstallView-C6UIhIu4.js",
+            "line_number": 578,
+            "content": "if (!validation.isValid) {",
+            "context_lines": [
+              "if (!validation.isValid) {"
+            ]
+          },
+          {
+            "file_path": "web/assets/InstallView-C6UIhIu4.js",
+            "line_number": 579,
+            "content": "pathError.value = validation.error;",
+            "context_lines": [
+              "pathError.value = validation.error;"
+            ]
+          },
+          {
+            "file_path": "web/assets/InstallView-C6UIhIu4.js",
+            "line_number": 714,
+            "content": "const validation = await electron.validateComfyUISource(sourcePath2);",
+            "context_lines": [
+              "const validation = await electron.validateComfyUISource(sourcePath2);"
+            ]
+          },
+          {
+            "file_path": "web/assets/InstallView-C6UIhIu4.js",
+            "line_number": 715,
+            "content": "if (!validation.isValid) pathError.value = validation.error;",
+            "context_lines": [
+              "if (!validation.isValid) pathError.value = validation.error;"
+            ]
+          }
+        ]
+      },
+      "warnings": []
+    },
+    "general-1-2": {
+      "request_id": "general-1-2",
+      "candidate_id": "general-1-2",
+      "file_snippets": {
+        "notebooks/comfyui_colab.ipynb": "{\n \"cells\": [\n  {\n   \"cell_type\": \"markdown\",\n   \"metadata\": {\n    \"id\": \"aaaaaaaaaa\"\n   },\n   \"source\": [\n    \"Git clone the repo and install the requirements. (ignore the pip errors about protobuf)\"\n   ]\n  },\n  {\n   \"cell_type\": \"code\",\n   \"execution_count\": null,\n   \"metadata\": {\n    \"id\": \"bbbbbbbbbb\"\n   },\n   \"outputs\": [],\n   \"source\": [\n    \"#@title Environment Setup\\n\",\n    \"\\n\",\n    \"\\n\",\n    \"OPTIONS = {}\\n\",\n    \"\\n\",\n    \"USE_GOOGLE_DRIVE = False  #@param {type:\\\"boolean\\\"}\\n\",\n    \"UPDATE_COMFY_UI = True  #@param {type:\\\"boolean\\\"}\\n\",\n    \"WORKSPACE = 'ComfyUI'\\n\",\n    \"OPTIONS['USE_GOOGLE_DRIVE'] = USE_GOOGLE_DRIVE\\n\",\n    \"OPTIONS['UPDATE_COMFY_UI'] = UPDATE_COMFY_UI\\n\",\n    \"\\n\",\n    \"if OPTIONS['USE_GOOGLE_DRIVE']:\\n\",\n    \"    !echo \\\"Mounting Google Drive...\\\"\\n\",\n    \"    %cd /\\n\",\n    \"    \\n\",\n    \"    from google.colab import drive\\n\",\n    \"    drive.mount('/content/drive')\\n\",\n    \"\\n\",\n    \"    WORKSPACE = \\\"/content/drive/MyDrive/ComfyUI\\\"\\n\",\n    \"    %cd /content/drive/MyDrive\\n\",\n    \"\\n\",\n    \"![ ! -d $WORKSPACE ] && echo -= Initial setup ComfyUI =- && git clone https://github.com/comfyanonymous/ComfyUI\\n\",\n    \"%cd $WORKSPACE\\n\",\n    \"\\n\",\n    \"if OPTIONS['UPDATE_COMFY_UI']:\\n\",\n    \"  !echo -= Updating ComfyUI =-\\n\",\n    \"  !git pull\\n\",\n    \"\\n\",\n    \"!echo -= Install dependencies =-\\n\",\n    \"!pip install xformers!=0.0.18 -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cu121 --extra-index-url https://download.pytorch.org/whl/cu118 --extra-index-url https://download.pytorch.org/whl/cu117\"\n   ]\n  },\n  {\n   \"cell_type\": \"markdown\",\n   \"metadata\": {\n    \"id\": \"cccccccccc\"\n   },\n   \"source\": [\n    \"Download some models/checkpoints/vae or custom comfyui nodes (uncomment the commands for the ones you want)\"\n   ]\n  },\n  {\n   \"cell_type\": \"code\",\n   \"execution_count\": null,\n   \"metadata\": {\n    \"id\": \"dddddddddd\"\n   },\n   \"outputs\": [],\n   \"source\": [\n    \"# Checkpoints\\n\",\n    \"\\n\",\n    \"### SDXL\\n\",\n    \"### I recommend these workflow examples: https://comfyanonymous.github.io/ComfyUI_examples/sdxl/\\n\",\n    \"\\n\",\n    \"#!wget -c https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/resolve/main/sd_xl_base_1.0.safetensors -P ./models/checkpoints/\\n\",\n    \"#!wget -c https://huggingface.co/stabilityai/stable-diffusion-xl-refiner-1.0/resolve/main/sd_xl_refiner_1.0.safetensors -P ./models/checkpoints/\\n\",\n    \"\\n\",\n    \"# SDXL ReVision\\n\",\n    \"#!wget -c https://huggingface.co/comfyanonymous/clip_vision_g/resolve/main/clip_vision_g.safetensors -P ./models/clip_vision/\\n\",\n    \"\\n\",\n    \"# SD1.5\\n\",\n    \"!wget -c https://huggingface.co/Comfy-Org/stable-diffusion-v1-5-archive/resolve/main/v1-5-pruned-emaonly-fp16.safetensors -P ./models/checkpoints/\\n\",\n    \"\\n\",\n    \"# SD2\\n\",\n    \"#!wget -c https://huggingface.co/stabilityai/stable-diffusion-2-1-base/resolve/main/v2-1_512-ema-pruned.safetensors -P ./models/checkpoints/\\n\",\n    \"#!wget -c https://huggingface.co/stabilityai/stable-diffusion-2-1/resolve/main/v2-1_768-ema-pruned.safetensors -P ./models/checkpoints/\\n\",\n    \"\\n\",\n    \"# Some SD1.5 anime style\\n\",\n    \"#!wget -c https://huggingface.co/WarriorMama777/OrangeMixs/resolve/main/Models/AbyssOrangeMix2/AbyssOrangeMix2_hard.safetensors -P ./models/checkpoints/\\n\",\n    \"#!wget -c https://huggingface.co/WarriorMama777/OrangeMixs/resolve/main/Models/AbyssOrangeMix3/AOM3A1_orangemixs.safetensors -P ./models/checkpoints/\\n\",\n    \"#!wget -c https://huggingface.co/WarriorMama777/OrangeMixs/resolve/main/Models/AbyssOrangeMix3/AOM3A3_orangemixs.safetensors -P ./models/checkpoints/\\n\",\n    \"#!wget -c https://huggingface.co/Linaqruf/anything-v3.0/resolve/main/anything-v3-fp16-pruned.safetensors -P ./models/checkpoints/\\n\",\n    \"\\n\",\n    \"# Waifu Diffusion 1.5 (anime style SD2.x 768-v)\\n\",\n    \"#!wget -c https://huggingface.co/waifu-diffusion/wd-1-5-beta3/resolve/main/wd-illusion-fp16.safetensors -P ./models/checkpoints/\\n\",\n    \"\\n\",\n    \"\\n\",\n    \"# unCLIP models\\n\",\n    \"#!wget -c https://huggingface.co/comfyanonymous/illuminatiDiffusionV1_v11_unCLIP/resolve/main/illuminatiDiffusionV1_v11-unclip-h-fp16.safetensors -P ./models/checkpoints/\\n\",\n    \"#!wget -c https://huggingface.co/comfyanonymous/wd-1.5-beta2_unCLIP/resolve/main/wd-1-5-beta2-aesthetic-unclip-h-fp16.safetensors -P ./models/checkpoints/\\n\",\n    \"\\n\",\n    \"\\n\",\n    \"# VAE\\n\",\n    \"!wget -c https://huggingface.co/stabilityai/sd-vae-ft-mse-original/resolve/main/vae-ft-mse-840000-ema-pruned.safetensors -P ./models/vae/\\n\",\n    \"#!wget -c https://huggingface.co/WarriorMama777/OrangeMixs/resolve/main/VAEs/orangemix.vae.pt -P ./models/vae/\\n\",\n    \"#!wget -c https://huggingface.co/hakurei/waifu-diffusion-v1-4/resolve/main/vae/kl-f8-anime2.ckpt -P ./models/vae/\\n\",\n    \"\\n\",\n    \"\\n\",\n    \"# Loras\\n\",\n    \"#!wget -c https://civitai.com/api/download/models/10350 -O ./models/loras/theovercomer8sContrastFix_sd21768.safetensors #theovercomer8sContrastFix SD2.x 768-v\\n\",\n    \"#!wget -c https://civitai.com/api/download/models/10638 -O ./models/loras/theovercomer8sContrastFix_sd15.safetensors #theovercomer8sContrastFix SD1.x\\n\",\n    \"#!wget -c https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/resolve/main/sd_xl_offset_example-lora_1.0.safetensors -P ./models/loras/ #SDXL offset noise lora\\n\",\n    \"\\n\",\n    \"\\n\",\n    \"# T2I-Adapter\\n\",\n    \"#!wget -c https://huggingface.co/TencentARC/T2I-Adapter/resolve/main/models/t2iadapter_depth_sd14v1.pth -P ./models/controlnet/\\n\",\n    \"#!wget -c https://huggingface.co/TencentARC/T2I-Adapter/resolve/main/models/t2iadapter_seg_sd14v1.pth -P ./models/controlnet/\\n\",\n    \"#!wget -c https://huggingface.co/TencentARC/T2I-Adapter/resolve/main/models/t2iadapter_sketch_sd14v1.pth -P ./models/controlnet/\\n\",\n    \"#!wget -c https://huggingface.co/TencentARC/T2I-Adapter/resolve/main/models/t2iadapter_keypose_sd14v1.pth -P ./models/controlnet/\\n\",\n    \"#!wget -c https://huggingface.co/TencentARC/T2I-Adapter/resolve/main/models/t2iadapter_openpose_sd14v1.pth -P ./models/controlnet/\\n\",\n    \"#!wget -c https://huggingface.co/TencentARC/T2I-Adapter/resolve/main/models/t2iadapter_color_sd14v1.pth -P ./models/controlnet/\\n\",\n    \"#!wget -c https://huggingface.co/TencentARC/T2I-Adapter/resolve/main/models/t2iadapter_canny_sd14v1.pth -P ./models/controlnet/\\n\",\n    \"\\n\",\n    \"# T2I Styles Model\\n\",\n    \"#!wget -c https://huggingface.co/TencentARC/T2I-Adapter/resolve/main/models/t2iadapter_style_sd14v1.pth -P ./models/style_models/\\n\",\n    \"\\n\",\n    \"# CLIPVision model (needed for styles model)\\n\",\n    \"#!wget -c https://huggingface.co/openai/clip-vit-large-patch14/resolve/main/pytorch_model.bin -O ./models/clip_vision/clip_vit14.bin\\n\",\n    \"\\n\",\n    \"\\n\",\n    \"# ControlNet\\n\",\n    \"#!wget -c https://huggingface.co/comfyanonymous/ControlNet-v1-1_fp16_safetensors/resolve/main/control_v11e_sd15_ip2p_fp16.safetensors -P ./models/controlnet/\\n\",\n    \"#!wget -c https://huggingface.co/comfyanonymous/ControlNet-v1-1_fp16_safetensors/resolve/main/control_v11e_sd15_shuffle_fp16.safetensors -P ./models/controlnet/\\n\",\n    \"#!wget -c https://huggingface.co/comfyanonymous/ControlNet-v1-1_fp16_safetensors/resolve/main/control_v11p_sd15_canny_fp16.safetensors -P ./models/controlnet/\\n\",\n    \"#!wget -c https://huggingface.co/comfyanonymous/ControlNet-v1-1_fp16_safetensors/resolve/main/control_v11f1p_sd15_depth_fp16.safetensors -P ./models/controlnet/\\n\",\n    \"#!wget -c https://huggingface.co/comfyanonymous/ControlNet-v1-1_fp16_safetensors/resolve/main/control_v11p_sd15_inpaint_fp16.safetensors -P ./models/controlnet/\\n\",\n    \"#!wget -c https://huggingface.co/comfyanonymous/ControlNet-v1-1_fp16_safetensors/resolve/main/control_v11p_sd15_lineart_fp16.safetensors -P ./models/controlnet/\\n\",\n    \"#!wget -c https://huggingface.co/comfyanonymous/ControlNet-v1-1_fp16_safetensors/resolve/main/control_v11p_sd15_mlsd_fp16.safetensors -P ./models/controlnet/\\n\",\n    \"#!wget -c https://huggingface.co/comfyanonymous/ControlNet-v1-1_fp16_safetensors/"
+      },
+      "search_hits": {
+        "iframe_thread": [
+          {
+            "file_path": "notebooks/comfyui_colab.ipynb",
+            "line_number": 196,
+            "content": "\"def iframe_thread(port):\\n\",",
+            "context_lines": [
+              "\"def iframe_thread(port):\\n\","
+            ]
+          },
+          {
+            "file_path": "notebooks/comfyui_colab.ipynb",
+            "line_number": 214,
+            "content": "\"threading.Thread(target=iframe_thread, daemon=True, args=(8188,)).start()\\n\",",
+            "context_lines": [
+              "\"threading.Thread(target=iframe_thread, daemon=True, args=(8188,)).start()\\n\","
+            ]
+          },
+          {
+            "file_path": "notebooks/comfyui_colab.ipynb",
+            "line_number": 242,
+            "content": "\"def iframe_thread(port):\\n\",",
+            "context_lines": [
+              "\"def iframe_thread(port):\\n\","
+            ]
+          },
+          {
+            "file_path": "notebooks/comfyui_colab.ipynb",
+            "line_number": 258,
+            "content": "\"threading.Thread(target=iframe_thread, daemon=True, args=(8188,)).start()\\n\",",
+            "context_lines": [
+              "\"threading.Thread(target=iframe_thread, daemon=True, args=(8188,)).start()\\n\","
+            ]
+          },
+          {
+            "file_path": "notebooks/comfyui_colab.ipynb",
+            "line_number": 287,
+            "content": "\"def iframe_thread(port):\\n\",",
+            "context_lines": [
+              "\"def iframe_thread(port):\\n\","
+            ]
+          },
+          {
+            "file_path": "notebooks/comfyui_colab.ipynb",
+            "line_number": 300,
+            "content": "\"threading.Thread(target=iframe_thread, daemon=True, args=(8188,)).start()\\n\",",
+            "context_lines": [
+              "\"threading.Thread(target=iframe_thread, daemon=True, args=(8188,)).start()\\n\","
+            ]
+          }
+        ],
+        "subprocess": [
+          {
+            "file_path": "notebooks/comfyui_colab.ipynb",
+            "line_number": 190,
+            "content": "\"import subprocess\\n\",",
+            "context_lines": [
+              "\"import subprocess\\n\","
+            ]
+          },
+          {
+            "file_path": "notebooks/comfyui_colab.ipynb",
+            "line_number": 206,
+            "content": "\"  p = subprocess.Popen([\\\"cloudflared\\\", \\\"tunnel\\\", \\\"--url\\\", \\\"http://127.0.0.1:{}\\\".format(port)], stdout=subprocess.PIPE, stderr=subprocess.PIPE)\\n\",",
+            "context_lines": [
+              "\"  p = subprocess.Popen([\\\"cloudflared\\\", \\\"tunnel\\\", \\\"--url\\\", \\\"http://127.0.0.1:{}\\\".format(port)], stdout=subprocess.PIPE, stderr=subprocess.PIPE)\\n\","
+            ]
+          },
+          {
+            "file_path": "notebooks/comfyui_colab.ipynb",
+            "line_number": 253,
+            "content": "\"  p = subprocess.Popen([\\\"lt\\\", \\\"--port\\\", \\\"{}\\\".format(port)], stdout=subprocess.PIPE)\\n\",",
+            "context_lines": [
+              "\"  p = subprocess.Popen([\\\"lt\\\", \\\"--port\\\", \\\"{}\\\".format(port)], stdout=subprocess.PIPE)\\n\","
+            ]
+          },
+          {
+            "file_path": "server.py",
+            "line_number": 55,
+            "content": "import subprocess",
+            "context_lines": [
+              "import subprocess"
+            ]
+          },
+          {
+            "file_path": "server.py",
+            "line_number": 56,
+            "content": "comfyui_version = subprocess.check_output([\"git\", \"describe\", \"--tags\"], cwd=repo_path).decode('utf-8')",
+            "context_lines": [
+              "comfyui_version = subprocess.check_output([\"git\", \"describe\", \"--tags\"], cwd=repo_path).decode('utf-8')"
+            ]
+          },
+          {
+            "file_path": "cuda_malloc.py",
+            "line_number": 4,
+            "content": "import subprocess",
+            "context_lines": [
+              "import subprocess"
+            ]
+          },
+          {
+            "file_path": "cuda_malloc.py",
+            "line_number": 39,
+            "content": "out = subprocess.check_output(['nvidia-smi', '-L'])",
+            "context_lines": [
+              "out = subprocess.check_output(['nvidia-smi', '-L'])"
+            ]
+          },
+          {
+            "file_path": "tests/inference/test_inference.py",
+            "line_number": 12,
+            "content": "import subprocess",
+            "context_lines": [
+              "import subprocess"
+            ]
+          },
+          {
+            "file_path": "tests/inference/test_inference.py",
+            "line_number": 154,
+            "content": "p = subprocess.Popen([",
+            "context_lines": [
+              "p = subprocess.Popen(["
+            ]
+          },
+          {
+            "file_path": "tests/inference/test_execution.py",
+            "line_number": 10,
+            "content": "import subprocess",
+            "context_lines": [
+              "import subprocess"
+            ]
+          },
+          {
+            "file_path": "tests/inference/test_execution.py",
+            "line_number": 138,
+            "content": "p = subprocess.Popen(pargs)",
+            "context_lines": [
+              "p = subprocess.Popen(pargs)"
+            ]
+          }
+        ],
+        "threading": [
+          {
+            "file_path": "main.py",
+            "line_number": 67,
+            "content": "import threading",
+            "context_lines": [
+              "import threading"
+            ]
+          },
+          {
+            "file_path": "main.py",
+            "line_number": 227,
+            "content": "threading.Thread(target=prompt_worker, daemon=True, args=(q, server,)).start()",
+            "context_lines": [
+              "threading.Thread(target=prompt_worker, daemon=True, args=(q, server,)).start()"
+            ]
+          },
+          {
+            "file_path": "execution.py",
+            "line_number": 4,
+            "content": "import threading",
+            "context_lines": [
+              "import threading"
+            ]
+          },
+          {
+            "file_path": "execution.py",
+            "line_number": 870,
+            "content": "self.mutex = threading.RLock()",
+            "context_lines": [
+              "self.mutex = threading.RLock()"
+            ]
+          },
+          {
+            "file_path": "execution.py",
+            "line_number": 871,
+            "content": "self.not_empty = threading.Condition(self.mutex)",
+            "context_lines": [
+              "self.not_empty = threading.Condition(self.mutex)"
+            ]
+          },
+          {
+            "file_path": "notebooks/comfyui_colab.ipynb",
+            "line_number": 191,
+            "content": "\"import threading\\n\",",
+            "context_lines": [
+              "\"import threading\\n\","
+            ]
+          },
+          {
+            "file_path": "notebooks/comfyui_colab.ipynb",
+            "line_number": 214,
+            "content": "\"threading.Thread(target=iframe_thread, daemon=True, args=(8188,)).start()\\n\",",
+            "context_lines": [
+              "\"threading.Thread(target=iframe_thread, daemon=True, args=(8188,)).start()\\n\","
+            ]
+          },
+          {
+            "file_path": "notebooks/comfyui_colab.ipynb",
+            "line_number": 240,
+            "content": "\"import threading\\n\",",
+            "context_lines": [
+              "\"import threading\\n\","
+            ]
+          },
+          {
+            "file_path": "notebooks/comfyui_colab.ipynb",
+            "line_number": 258,
+            "content": "\"threading.Thread(target=iframe_thread, daemon=True, args=(8188,)).start()\\n\",",
+            "context_lines": [
+              "\"threading.Thread(target=iframe_thread, daemon=True, args=(8188,)).start()\\n\","
+            ]
+          },
+          {
+            "file_path": "notebooks/comfyui_colab.ipynb",
+            "line_number": 286,
+            "content": "\"import threading\\n\",",
+            "context_lines": [
+              "\"import threading\\n\","
+            ]
+          },
+          {
+            "file_path": "notebooks/comfyui_colab.ipynb",
+            "line_number": 300,
+            "content": "\"threading.Thread(target=iframe_thread, daemon=True, args=(8188,)).start()\\n\",",
+            "context_lines": [
+              "\"threading.Thread(target=iframe_thread, daemon=True, args=(8188,)).start()\\n\","
+            ]
+          },
+          {
+            "file_path": "app/logger.py",
+            "line_number": 6,
+            "content": "import threading",
+            "context_lines": [
+              "import threading"
+            ]
+          },
+          {
+            "file_path": "app/logger.py",
+            "line_number": 18,
+            "content": "self._lock = threading.Lock()",
+            "context_lines": [
+              "self._lock = threading.Lock()"
+            ]
+          },
+          {
+            "file_path": "comfy/model_management.py",
+            "line_number": 1084,
+            "content": "import threading",
+            "context_lines": [
+              "import threading"
+            ]
+          },
+          {
+            "file_path": "comfy/model_management.py",
+            "line_number": 1089,
+            "content": "interrupt_processing_mutex = threading.RLock()",
+            "context_lines": [
+              "interrupt_processing_mutex = threading.RLock()"
+            ]
+          }
+        ],
+        "time": [
+          {
+            "file_path": "main.py",
+            "line_number": 7,
+            "content": "import time",
+            "context_lines": [
+              "import time"
+            ]
+          },
+          {
+            "file_path": "main.py",
+            "line_number": 38,
+            "content": "node_prestartup_times = []",
+            "context_lines": [
+              "node_prestartup_times = []"
+            ]
+          },
+          {
+            "file_path": "main.py",
+            "line_number": 47,
+            "content": "time_before = time.perf_counter()",
+            "context_lines": [
+              "time_before = time.perf_counter()"
+            ]
+          },
+          {
+            "file_path": "main.py",
+            "line_number": 49,
+            "content": "node_prestartup_times.append((time.perf_counter() - time_before, module_path, success))",
+            "context_lines": [
+              "node_prestartup_times.append((time.perf_counter() - time_before, module_path, success))"
+            ]
+          },
+          {
+            "file_path": "main.py",
+            "line_number": 50,
+            "content": "if len(node_prestartup_times) > 0:",
+            "context_lines": [
+              "if len(node_prestartup_times) > 0:"
+            ]
+          },
+          {
+            "file_path": "main.py",
+            "line_number": 51,
+            "content": "print(\"\\nPrestartup times for custom nodes:\")",
+            "context_lines": [
+              "print(\"\\nPrestartup times for custom nodes:\")"
+            ]
+          },
+          {
+            "file_path": "main.py",
+            "line_number": 52,
+            "content": "for n in sorted(node_prestartup_times):",
+            "context_lines": [
+              "for n in sorted(node_prestartup_times):"
+            ]
+          },
+          {
+            "file_path": "main.py",
+            "line_number": 115,
+            "content": "current_time: float = 0.0",
+            "context_lines": [
+              "current_time: float = 0.0"
+            ]
+          },
+          {
+            "file_path": "main.py",
+            "line_number": 122,
+            "content": "timeout = 1000.0",
+            "context_lines": [
+              "timeout = 1000.0"
+            ]
+          },
+          {
+            "file_path": "main.py",
+            "line_number": 124,
+            "content": "timeout = max(gc_collect_interval - (current_time - last_gc_collect), 0.0)",
+            "context_lines": [
+              "timeout = max(gc_collect_interval - (current_time - last_gc_collect), 0.0)"
+            ]
+          },
+          {
+            "file_path": "main.py",
+            "line_number": 126,
+            "content": "queue_item = q.get(timeout=timeout)",
+            "context_lines": [
+              "queue_item = q.get(timeout=timeout)"
+            ]
+          },
+          {
+            "file_path": "main.py",
+            "line_number": 129,
+            "content": "execution_start_time = time.perf_counter()",
+            "context_lines": [
+              "execution_start_time = time.perf_counter()"
+            ]
+          },
+          {
+            "file_path": "main.py",
+            "line_number": 144,
+            "content": "current_time = time.perf_counter()",
+            "context_lines": [
+              "current_time = time.perf_counter()"
+            ]
+          },
+          {
+            "file_path": "main.py",
+            "line_number": 145,
+            "content": "execution_time = current_time - execution_start_time",
+            "context_lines": [
+              "execution_time = current_time - execution_start_time"
+            ]
+          },
+          {
+            "file_path": "main.py",
+            "line_number": 146,
+            "content": "logging.info(\"Prompt executed in {:.2f} seconds\".format(execution_time))",
+            "context_lines": [
+              "logging.info(\"Prompt executed in {:.2f} seconds\".format(execution_time))"
+            ]
+          }
+        ],
+        "socket": [
+          {
+            "file_path": "api_server/services/terminal_service.py",
+            "line_number": 55,
+            "content": "if client_id not in self.server.sockets:",
+            "context_lines": [
+              "if client_id not in self.server.sockets:"
+            ]
+          },
+          {
+            "file_path": "api_server/services/terminal_service.py",
+            "line_number": 56,
+            "content": "# Automatically unsub if the socket has disconnected",
+            "context_lines": [
+              "# Automatically unsub if the socket has disconnected"
+            ]
+          },
+          {
+            "file_path": "script_examples/websockets_api_example.py",
+            "line_number": 1,
+            "content": "#This is an example that uses the websockets api to know when a prompt execution is done",
+            "context_lines": [
+              "#This is an example that uses the websockets api to know when a prompt execution is done"
+            ]
+          },
+          {
+            "file_path": "script_examples/websockets_api_example.py",
+            "line_number": 4,
+            "content": "import websocket #NOTE: websocket-client (https://github.com/websocket-client/websocket-client)",
+            "context_lines": [
+              "import websocket #NOTE: websocket-client (https://github.com/websocket-client/websocket-client)"
+            ]
+          },
+          {
+            "file_path": "script_examples/websockets_api_example.py",
+            "line_number": 154,
+            "content": "ws = websocket.WebSocket()",
+            "context_lines": [
+              "ws = websocket.WebSocket()"
+            ]
+          },
+          {
+            "file_path": "tests/inference/test_inference.py",
+            "line_number": 13,
+            "content": "import websocket #NOTE: websocket-client (https://github.com/websocket-client/websocket-client)",
+            "context_lines": [
+              "import websocket #NOTE: websocket-client (https://github.com/websocket-client/websocket-client)"
+            ]
+          },
+          {
+            "file_path": "tests/inference/test_inference.py",
+            "line_number": 60,
+            "content": "# From examples/websockets_api_example.py",
+            "context_lines": [
+              "# From examples/websockets_api_example.py"
+            ]
+          },
+          {
+            "file_path": "tests/inference/test_inference.py",
+            "line_number": 69,
+            "content": "ws = websocket.WebSocket()",
+            "context_lines": [
+              "ws = websocket.WebSocket()"
+            ]
+          },
+          {
+            "file_path": "script_examples/websockets_api_example_ws_images.py",
+            "line_number": 1,
+            "content": "#This is an example that uses the websockets api and the SaveImageWebsocket node to get images directly without",
+            "context_lines": [
+              "#This is an example that uses the websockets api and the SaveImageWebsocket node to get images directly without"
+            ]
+          },
+          {
+            "file_path": "script_examples/websockets_api_example_ws_images.py",
+            "line_number": 4,
+            "content": "import websocket #NOTE: websocket-client (https://github.com/websocket-client/websocket-client)",
+            "context_lines": [
+              "import websocket #NOTE: websocket-client (https://github.com/websocket-client/websocket-client)"
+            ]
+          },
+          {
+            "file_path": "script_examples/websockets_api_example_ws_images.py",
+            "line_number": 45,
+            "content": "if current_node == 'save_image_websocket_node':",
+            "context_lines": [
+              "if current_node == 'save_image_websocket_node':"
+            ]
+          },
+          {
+            "file_path": "script_examples/websockets_api_example_ws_images.py",
+            "line_number": 128,
+            "content": "\"save_image_websocket_node\": {",
+            "context_lines": [
+              "\"save_image_websocket_node\": {"
+            ]
+          },
+          {
+            "file_path": "script_examples/websockets_api_example_ws_images.py",
+            "line_number": 129,
+            "content": "\"class_type\": \"SaveImageWebsocket\",",
+            "context_lines": [
+              "\"class_type\": \"SaveImageWebsocket\","
+            ]
+          },
+          {
+            "file_path": "script_examples/websockets_api_example_ws_images.py",
+            "line_number": 147,
+            "content": "ws = websocket.WebSocket()",
+            "context_lines": [
+              "ws = websocket.WebSocket()"
+            ]
+          },
+          {
+            "file_path": "tests/inference/test_execution.py",
+            "line_number": 11,
+            "content": "import websocket #NOTE: websocket-client (https://github.com/websocket-client/websocket-client)",
+            "context_lines": [
+              "import websocket #NOTE: websocket-client (https://github.com/websocket-client/websocket-client)"
+            ]
+          }
+        ],
+        "urllib.request": [
+          {
+            "file_path": "script_examples/websockets_api_example.py",
+            "line_number": 7,
+            "content": "import urllib.request",
+            "context_lines": [
+              "import urllib.request"
+            ]
+          },
+          {
+            "file_path": "script_examples/websockets_api_example.py",
+            "line_number": 16,
+            "content": "req =  urllib.request.Request(\"http://{}/prompt\".format(server_address), data=data)",
+            "context_lines": [
+              "req =  urllib.request.Request(\"http://{}/prompt\".format(server_address), data=data)"
+            ]
+          },
+          {
+            "file_path": "script_examples/websockets_api_example.py",
+            "line_number": 17,
+            "content": "return json.loads(urllib.request.urlopen(req).read())",
+            "context_lines": [
+              "return json.loads(urllib.request.urlopen(req).read())"
+            ]
+          },
+          {
+            "file_path": "script_examples/websockets_api_example.py",
+            "line_number": 22,
+            "content": "with urllib.request.urlopen(\"http://{}/view?{}\".format(server_address, url_values)) as response:",
+            "context_lines": [
+              "with urllib.request.urlopen(\"http://{}/view?{}\".format(server_address, url_values)) as response:"
+            ]
+          },
+          {
+            "file_path": "script_examples/websockets_api_example.py",
+            "line_number": 26,
+            "content": "with urllib.request.urlopen(\"http://{}/history/{}\".format(server_address, prompt_id)) as response:",
+            "context_lines": [
+              "with urllib.request.urlopen(\"http://{}/history/{}\".format(server_address, prompt_id)) as response:"
+            ]
+          },
+          {
+            "file_path": "script_examples/websockets_api_example_ws_images.py",
+            "line_number": 7,
+            "content": "import urllib.request",
+            "context_lines": [
+              "import urllib.request"
+            ]
+          },
+          {
+            "file_path": "script_examples/websockets_api_example_ws_images.py",
+            "line_number": 16,
+            "content": "req =  urllib.request.Request(\"http://{}/prompt\".format(server_address), data=data)",
+            "context_lines": [
+              "req =  urllib.request.Request(\"http://{}/prompt\".format(server_address), data=data)"
+            ]
+          },
+          {
+            "file_path": "script_examples/websockets_api_example_ws_images.py",
+            "line_number": 17,
+            "content": "return json.loads(urllib.request.urlopen(req).read())",
+            "context_lines": [
+              "return json.loads(urllib.request.urlopen(req).read())"
+            ]
+          },
+          {
+            "file_path": "script_examples/websockets_api_example_ws_images.py",
+            "line_number": 22,
+            "content": "with urllib.request.urlopen(\"http://{}/view?{}\".format(server_address, url_values)) as response:",
+            "context_lines": [
+              "with urllib.request.urlopen(\"http://{}/view?{}\".format(server_address, url_values)) as response:"
+            ]
+          },
+          {
+            "file_path": "script_examples/websockets_api_example_ws_images.py",
+            "line_number": 26,
+            "content": "with urllib.request.urlopen(\"http://{}/history/{}\".format(server_address, prompt_id)) as response:",
+            "context_lines": [
+              "with urllib.request.urlopen(\"http://{}/history/{}\".format(server_address, prompt_id)) as response:"
+            ]
+          },
+          {
+            "file_path": "notebooks/comfyui_colab.ipynb",
+            "line_number": 194,
+            "content": "\"import urllib.request\\n\",",
+            "context_lines": [
+              "\"import urllib.request\\n\","
+            ]
+          },
+          {
+            "file_path": "notebooks/comfyui_colab.ipynb",
+            "line_number": 252,
+            "content": "\"  print(\\\"The password/enpoint ip for localtunnel is:\\\", urllib.request.urlopen('https://ipv4.icanhazip.com').read().decode('utf8').strip(\\\"\\\\n\\\"))\\n\",",
+            "context_lines": [
+              "\"  print(\\\"The password/enpoint ip for localtunnel is:\\\", urllib.request.urlopen('https://ipv4.icanhazip.com').read().decode('utf8').strip(\\\"\\\\n\\\"))\\n\","
+            ]
+          },
+          {
+            "file_path": "tests/inference/test_inference.py",
+            "line_number": 15,
+            "content": "import urllib.request",
+            "context_lines": [
+              "import urllib.request"
+            ]
+          },
+          {
+            "file_path": "tests/inference/test_inference.py",
+            "line_number": 76,
+            "content": "req =  urllib.request.Request(\"http://{}/prompt\".format(self.server_address), data=data)",
+            "context_lines": [
+              "req =  urllib.request.Request(\"http://{}/prompt\".format(self.server_address), data=data)"
+            ]
+          },
+          {
+            "file_path": "tests/inference/test_inference.py",
+            "line_number": 77,
+            "content": "return json.loads(urllib.request.urlopen(req).read())",
+            "context_lines": [
+              "return json.loads(urllib.request.urlopen(req).read())"
+            ]
+          }
+        ]
+      },
+      "warnings": []
+    },
+    "general-1-3": {
+      "request_id": "general-1-3",
+      "candidate_id": "general-1-3",
+      "file_snippets": {
+        "ruff.toml": "# Disable all rules by default\nlint.ignore = [\"ALL\"]\n\n# Enable specific rules\nlint.select = [\n    \"S307\",  # suspicious-eval-usage\n    # The \"F\" series in Ruff stands for \"Pyflakes\" rules, which catch various Python syntax errors and undefined names.\n    # See all rules here: https://docs.astral.sh/ruff/rules/#pyflakes-f\n    \"F\",\n]"
+      },
+      "search_hits": {
+        "F401": [],
+        "F841": [],
+        "F821": [
+          {
+            "file_path": "comfy/ldm/audio/dit.py",
+            "line_number": 172,
+            "content": "power = (torch.arange(seq_len, device = device) - (seq_len // 2)) / self.scale_base  # noqa: F821 seq_len is not defined",
+            "context_lines": [
+              "power = (torch.arange(seq_len, device = device) - (seq_len // 2)) / self.scale_base  # noqa: F821 seq_len is not defined"
+            ]
+          },
+          {
+            "file_path": "comfy/ldm/audio/autoencoder.py",
+            "line_number": 100,
+            "content": "act = Activation1d(act)  # noqa: F821 Activation1d is not defined",
+            "context_lines": [
+              "act = Activation1d(act)  # noqa: F821 Activation1d is not defined"
+            ]
+          },
+          {
+            "file_path": "comfy/ldm/modules/sub_quadratic_attention.py",
+            "line_number": 174,
+            "content": "attn_scores -= attn_scores.max(dim=-1, keepdim=True).values # noqa: F821 attn_scores is not defined",
+            "context_lines": [
+              "attn_scores -= attn_scores.max(dim=-1, keepdim=True).values # noqa: F821 attn_scores is not defined"
+            ]
+          }
+        ]
+      },
+      "warnings": []
+    },
+    "security-1-001-context": {
+      "request_id": "security-1-001-context",
+      "candidate_id": "security-1-001",
+      "file_snippets": {
+        "api_server/services/file_service.py": "from typing import Dict, List, Optional\nfrom api_server.utils.file_operations import FileSystemOperations, FileSystemItem\n\nclass FileService:\n    def __init__(self, allowed_directories: Dict[str, str], file_system_ops: Optional[FileSystemOperations] = None):\n        self.allowed_directories: Dict[str, str] = allowed_directories\n        self.file_system_ops: FileSystemOperations = file_system_ops or FileSystemOperations()\n\n    def list_files(self, directory_key: str) -> List[FileSystemItem]:\n        if directory_key not in self.allowed_directories:\n            raise ValueError(\"Invalid directory key\")\n        directory_path: str = self.allowed_directories[directory_key]\n        return self.file_system_ops.walk_directory(directory_path)\n--- structural neighbors ---\nsymbol:4753b3fd54bd0ba3:FileService (symbol, api_server/services/file_service.py)"
+      },
+      "search_hits": {
+        "list_files": [
+          {
+            "file_path": "api_server/services/file_service.py",
+            "line_number": 9,
+            "content": "def list_files(self, directory_key: str) -> List[FileSystemItem]:",
+            "context_lines": [
+              "def list_files(self, directory_key: str) -> List[FileSystemItem]:"
+            ]
+          },
+          {
+            "file_path": "api_server/routes/internal/internal_routes.py",
+            "line_number": 28,
+            "content": "async def list_files(request):",
+            "context_lines": [
+              "async def list_files(request):"
+            ]
+          },
+          {
+            "file_path": "api_server/routes/internal/internal_routes.py",
+            "line_number": 31,
+            "content": "file_list = self.file_service.list_files(directory_key)",
+            "context_lines": [
+              "file_list = self.file_service.list_files(directory_key)"
+            ]
+          },
+          {
+            "file_path": "tests-unit/server/services/file_service_test.py",
+            "line_number": 18,
+            "content": "def test_list_files_valid_directory(file_service, mock_file_system_ops):",
+            "context_lines": [
+              "def test_list_files_valid_directory(file_service, mock_file_system_ops):"
+            ]
+          },
+          {
+            "file_path": "tests-unit/server/services/file_service_test.py",
+            "line_number": 24,
+            "content": "result = file_service.list_files(\"models\")",
+            "context_lines": [
+              "result = file_service.list_files(\"models\")"
+            ]
+          },
+          {
+            "file_path": "tests-unit/server/services/file_service_test.py",
+            "line_number": 31,
+            "content": "def test_list_files_invalid_directory(file_service):",
+            "context_lines": [
+              "def test_list_files_invalid_directory(file_service):"
+            ]
+          },
+          {
+            "file_path": "tests-unit/server/services/file_service_test.py",
+            "line_number": 34,
+            "content": "file_service.list_files(\"invalid_key\")",
+            "context_lines": [
+              "file_service.list_files(\"invalid_key\")"
+            ]
+          },
+          {
+            "file_path": "tests-unit/server/services/file_service_test.py",
+            "line_number": 36,
+            "content": "def test_list_files_empty_directory(file_service, mock_file_system_ops):",
+            "context_lines": [
+              "def test_list_files_empty_directory(file_service, mock_file_system_ops):"
+            ]
+          },
+          {
+            "file_path": "tests-unit/server/services/file_service_test.py",
+            "line_number": 39,
+            "content": "result = file_service.list_files(\"models\")",
+            "context_lines": [
+              "result = file_service.list_files(\"models\")"
+            ]
+          },
+          {
+            "file_path": "tests-unit/server/services/file_service_test.py",
+            "line_number": 45,
+            "content": "def test_list_files_all_allowed_directories(file_service, mock_file_system_ops, directory_key):",
+            "context_lines": [
+              "def test_list_files_all_allowed_directories(file_service, mock_file_system_ops, directory_key):"
+            ]
+          },
+          {
+            "file_path": "tests-unit/server/services/file_service_test.py",
+            "line_number": 50,
+            "content": "result = file_service.list_files(directory_key)",
+            "context_lines": [
+              "result = file_service.list_files(directory_key)"
+            ]
+          },
+          {
+            "file_path": "tests-unit/server/routes/internal_routes_test.py",
+            "line_number": 21,
+            "content": "async def test_list_files_valid_directory(aiohttp_client_factory, internal_routes):",
+            "context_lines": [
+              "async def test_list_files_valid_directory(aiohttp_client_factory, internal_routes):"
+            ]
+          },
+          {
+            "file_path": "tests-unit/server/routes/internal_routes_test.py",
+            "line_number": 26,
+            "content": "internal_routes.file_service.list_files = MagicMock(return_value=mock_file_list)",
+            "context_lines": [
+              "internal_routes.file_service.list_files = MagicMock(return_value=mock_file_list)"
+            ]
+          },
+          {
+            "file_path": "tests-unit/server/routes/internal_routes_test.py",
+            "line_number": 42,
+            "content": "async def test_list_files_invalid_directory(aiohttp_client_factory, internal_routes):",
+            "context_lines": [
+              "async def test_list_files_invalid_directory(aiohttp_client_factory, internal_routes):"
+            ]
+          },
+          {
+            "file_path": "tests-unit/server/routes/internal_routes_test.py",
+            "line_number": 43,
+            "content": "internal_routes.file_service.list_files = MagicMock(side_effect=ValueError(\"Invalid directory key\"))",
+            "context_lines": [
+              "internal_routes.file_service.list_files = MagicMock(side_effect=ValueError(\"Invalid directory key\"))"
+            ]
+          }
+        ],
+        "directory validation": [],
+        "sanitization": []
+      },
+      "warnings": []
+    },
+    "security-1-002-context": {
+      "request_id": "security-1-002-context",
+      "candidate_id": "security-1-002",
+      "file_snippets": {
+        "server.py": "import os\nimport sys\nimport asyncio\nimport traceback\n\nimport nodes\nimport folder_paths\nimport execution\nimport uuid\nimport urllib\nimport json\nimport glob\nimport struct\nimport ssl\nimport socket\nimport ipaddress\nfrom PIL import Image, ImageOps\nfrom PIL.PngImagePlugin import PngInfo\nfrom io import BytesIO\n\nimport aiohttp\nfrom aiohttp import web\nimport logging\n\nimport mimetypes\nfrom comfy.cli_args import args\nimport comfy.utils\nimport comfy.model_management\nimport node_helpers\nfrom app.frontend_management import FrontendManager\nfrom app.user_manager import UserManager\nfrom app.model_manager import ModelFileManager\nfrom typing import Optional\nfrom api_server.routes.internal.internal_routes import InternalRoutes\n\nclass BinaryEventTypes:\n    PREVIEW_IMAGE = 1\n    UNENCODED_PREVIEW_IMAGE = 2\n\nasync def send_socket_catch_exception(function, message):\n    try:\n        await function(message)\n    except (aiohttp.ClientError, aiohttp.ClientPayloadError, ConnectionResetError, BrokenPipeError, ConnectionError) as err:\n        logging.warning(\"send error: {}\".format(err))\n\ndef get_comfyui_version():\n    comfyui_version = \"unknown\"\n    repo_path = os.path.dirname(os.path.realpath(__file__))\n    try:\n        import pygit2\n        repo = pygit2.Repository(repo_path)\n        comfyui_version = repo.describe(describe_strategy=pygit2.GIT_DESCRIBE_TAGS)\n    except Exception:\n        try:\n            import subprocess\n            comfyui_version = subprocess.check_output([\"git\", \"describe\", \"--tags\"], cwd=repo_path).decode('utf-8')\n        except Exception as e:\n            logging.warning(f\"Failed to get ComfyUI version: {e}\")\n    return comfyui_version.strip()\n\n@web.middleware\nasync def cache_control(request: web.Request, handler):\n    response: web.Response = await handler(request)\n    if request.path.endswith('.js') or request.path.endswith('.css'):\n        response.headers.setdefault('Cache-Control', 'no-cache')\n    return response\n\ndef create_cors_middleware(allowed_origin: str):\n    @web.middleware\n    async def cors_middleware(request: web.Request, handler):\n        if request.method == \"OPTIONS\":\n            # Pre-flight request. Reply successfully:\n            response = web.Response()\n        else:\n            response = await handler(request)\n\n        response.headers['Access-Control-Allow-Origin'] = allowed_origin\n        response.headers['Access-Control-Allow-Methods'] = 'POST, GET, DELETE, PUT, OPTIONS'\n        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'\n        response.headers['Access-Control-Allow-Credentials'] = 'true'\n        return response\n\n    return cors_middleware\n\ndef is_loopback(host):\n    if host is None:\n        return False\n    try:\n        if ipaddress.ip_address(host).is_loopback:\n            return True\n        else:\n            return False\n    except:\n        pass\n\n    loopback = False\n    for family in (socket.AF_INET, socket.AF_INET6):\n        try:\n            r = socket.getaddrinfo(host, None, family, socket.SOCK_STREAM)\n            for family, _, _, _, sockaddr in r:\n                if not ipaddress.ip_address(sockaddr[0]).is_loopback:\n                    return loopback\n                else:\n                    loopback = True\n        except socket.gaierror:\n            pass\n\n    return loopback\n\n\ndef create_origin_only_middleware():\n    @web.middleware\n    async def origin_only_middleware(request: web.Request, handler):\n        #this code is used to prevent the case where a random website can queue comfy workflows by making a POST to 127.0.0.1 which browsers don't prevent for some dumb reason.\n        #in that case the Host and Origin hostnames won't match\n        #I know the proper fix would be to add a cookie but this should take care of the problem in the meantime\n        if 'Host' in request.headers and 'Origin' in request.headers:\n            host = request.headers['Host']\n            origin = request.headers['Origin']\n            host_domain = host.lower()\n            parsed = urllib.parse.urlparse(origin)\n            origin_domain = parsed.netloc.lower()\n            host_domain_parsed = urllib.parse.urlsplit('//' + host_domain)\n\n            #limit the check to when the host domain is localhost, this makes it slightly less safe but should still prevent the exploit\n            loopback = is_loopback(host_domain_parsed.hostname)\n\n            if parsed.port is None: #if origin doesn't have a port strip it from the host to handle weird browsers, same for host\n                host_domain = host_domain_parsed.hostname\n            if host_domain_parsed.port is None:\n                origin_domain = parsed.hostname\n\n            if loopback and host_domain is not None and origin_domain is not None and len(host_domain) > 0 and len(origin_domain) > 0:\n                if host_domain != origin_domain:\n                    logging.warning(\"WARNING: request with non matching host and origin {} != {}, returning 403\".format(host_domain, origin_domain))\n                    return web.Response(status=403)\n\n        if request.method == \"OPTIONS\":\n            response = web.Response()\n        else:\n            response = await handler(request)\n\n        return response\n\n    return origin_only_middleware\n\nclass PromptServer():\n    def __init__(self, loop):\n        PromptServer.instance = self\n\n        mimetypes.init()\n        mimetypes.types_map['.js'] = 'application/javascript; charset=utf-8'\n\n        self.user_manager = UserManager()\n        self.model_file_manager = ModelFileManager()\n        self.internal_routes = InternalRoutes(self)\n        self.supports = [\"custom_nodes_from_web\"]\n        self.prompt_queue = None\n        self.loop = loop\n        self.messages = asyncio.Queue()\n        self.client_session:Optional[aiohttp.ClientSession] = None\n        self.number = 0\n\n        middlewares = [cache_control]\n        if args.enable_cors_header:\n            middlewares.append(create_cors_middleware(args.enable_cors_header))\n        else:\n            middlewares.append(create_origin_only_middleware())\n\n        max_upload_size = round(args.max_upload_size * 1024 * 1024)\n        self.app = web.Application(client_max_size=max_upload_size, middlewares=middlewares)\n        self.sockets = dict()\n        self.web_root = (\n            FrontendManager.init_frontend(args.front_end_version)\n            if args.front_end_root is None\n            else args.front_end_root\n        )\n        logging.info(f\"[Prompt Server] web root: {self.web_root}\")\n        routes = web.RouteTableDef()\n        self.routes = routes\n        self.last_node_id = None\n        self.client_id = None\n\n        self.on_prompt_handlers = []\n\n        @routes.get('/ws')\n        async def websocket_handler(request):\n            ws = web.WebSocketResponse()\n            await ws.prepare(request)\n            sid = request.rel_url.query.get('clientId', '')\n            if sid:\n                # Reusing existing session, remove old\n                self.sockets.pop(sid, None)\n            else:\n                sid = uuid.uuid4().hex\n\n            self.sockets[sid] = ws\n\n            try:\n                # Send initial state to the new client\n                await self.send(\"status\", { \"status\": self.get_queue_info(), 'sid': sid }, sid)\n                # On reconnect if we are the currently executing client send the current node\n                if self.client_id == sid and self.last_node_id is not None:\n                    await self.send(\"executing\", { \"node\": self.last_node_id }, sid)\n\n                async for msg in ws:\n                    if msg.type == aiohttp.WSMsgType.ERROR:\n                        logging.warning('ws connection closed with exception %s' % ws.exception())\n            finally:\n                self.sockets.pop(sid, None)\n            return ws\n\n        @routes.get(\"/\")\n        async def get_root(request):\n            response = web.FileResponse(os.path.join(self.web_root, \"index.html\"))\n            response.headers['Cache-Control'] = 'no-cache'\n    \n--- structural neighbors ---\nsymbol:cdcf322c7f91ada2:cache_control (symbol, server.py); symbol:04bc30b200904859:get_comfyui_version (symbol, server.py); symbol:43a300b267716ae8:BinaryEventTypes (symbol, server.py); symbol:37d197c48bd8739c:create_origin_only_middleware (symbol, server.py); symbol:a93c0758ff29814d:create_cors_middleware (symbol, server.py); symbol:a5462c684d0f9c88:is_loopback (symbol, server.py); symbol:cacab859dfe83589:PromptServer (symbol, server.py); symbol:6368fd59cce719a2:send_socket_catch_exception (symbol, server.py)"
+      },
+      "search_hits": {
+        "trigger_on_prompt": [
+          {
+            "file_path": "server.py",
+            "line_number": 603,
+            "content": "json_data = self.trigger_on_prompt(json_data)",
+            "context_lines": [
+              "json_data = self.trigger_on_prompt(json_data)"
+            ]
+          },
+          {
+            "file_path": "server.py",
+            "line_number": 829,
+            "content": "def trigger_on_prompt(self, json_data):",
+            "context_lines": [
+              "def trigger_on_prompt(self, json_data):"
+            ]
+          }
+        ],
+        "on_prompt_handler": [
+          {
+            "file_path": "server.py",
+            "line_number": 184,
+            "content": "self.on_prompt_handlers = []",
+            "context_lines": [
+              "self.on_prompt_handlers = []"
+            ]
+          },
+          {
+            "file_path": "server.py",
+            "line_number": 826,
+            "content": "def add_on_prompt_handler(self, handler):",
+            "context_lines": [
+              "def add_on_prompt_handler(self, handler):"
+            ]
+          },
+          {
+            "file_path": "server.py",
+            "line_number": 827,
+            "content": "self.on_prompt_handlers.append(handler)",
+            "context_lines": [
+              "self.on_prompt_handlers.append(handler)"
+            ]
+          },
+          {
+            "file_path": "server.py",
+            "line_number": 830,
+            "content": "for handler in self.on_prompt_handlers:",
+            "context_lines": [
+              "for handler in self.on_prompt_handlers:"
+            ]
+          },
+          {
+            "file_path": "server.py",
+            "line_number": 834,
+            "content": "logging.warning(\"[ERROR] An error occurred during the on_prompt_handler processing\")",
+            "context_lines": [
+              "logging.warning(\"[ERROR] An error occurred during the on_prompt_handler processing\")"
+            ]
+          }
+        ],
+        "CSRF protection": [],
+        "tokens": [
+          {
+            "file_path": "comfy/model_base.py",
+            "line_number": 781,
+            "content": "out['num_tokens'] = comfy.conds.CONDConstant(max(1, torch.sum(attention_mask).item()))",
+            "context_lines": [
+              "out['num_tokens'] = comfy.conds.CONDConstant(max(1, torch.sum(attention_mask).item()))"
+            ]
+          },
+          {
+            "file_path": "nodes.py",
+            "line_number": 66,
+            "content": "tokens = clip.tokenize(text)",
+            "context_lines": [
+              "tokens = clip.tokenize(text)"
+            ]
+          },
+          {
+            "file_path": "nodes.py",
+            "line_number": 67,
+            "content": "return (clip.encode_from_tokens_scheduled(tokens), )",
+            "context_lines": [
+              "return (clip.encode_from_tokens_scheduled(tokens), )"
+            ]
+          },
+          {
+            "file_path": "nodes.py",
+            "line_number": 1092,
+            "content": "cond, cond_pooled = clip.encode_from_tokens(clip.tokenize(text), return_pooled=\"unprojected\")",
+            "context_lines": [
+              "cond, cond_pooled = clip.encode_from_tokens(clip.tokenize(text), return_pooled=\"unprojected\")"
+            ]
+          },
+          {
+            "file_path": "comfy/gligen.py",
+            "line_number": 160,
+            "content": "assert int(size_v) == size_v, \"Visual tokens must be square rootable\"",
+            "context_lines": [
+              "assert int(size_v) == size_v, \"Visual tokens must be square rootable\""
+            ]
+          },
+          {
+            "file_path": "comfy/gligen.py",
+            "line_number": 161,
+            "content": "assert int(size_g) == size_g, \"Grounding tokens must be square rootable\"",
+            "context_lines": [
+              "assert int(size_g) == size_g, \"Grounding tokens must be square rootable\""
+            ]
+          },
+          {
+            "file_path": "comfy/sd1_tokenizer/tokenizer_config.json",
+            "line_number": 24,
+            "content": "\"special_tokens_map_file\": \"./special_tokens_map.json\",",
+            "context_lines": [
+              "\"special_tokens_map_file\": \"./special_tokens_map.json\","
+            ]
+          },
+          {
+            "file_path": "comfy/clip_model.py",
+            "line_number": 81,
+            "content": "def forward(self, input_tokens, dtype=torch.float32):",
+            "context_lines": [
+              "def forward(self, input_tokens, dtype=torch.float32):"
+            ]
+          },
+          {
+            "file_path": "comfy/clip_model.py",
+            "line_number": 82,
+            "content": "return self.token_embedding(input_tokens, out_dtype=dtype) + comfy.ops.cast_to(self.position_embedding.weight, dtype=dtype, device=input_tokens.device)",
+            "context_lines": [
+              "return self.token_embedding(input_tokens, out_dtype=dtype) + comfy.ops.cast_to(self.position_embedding.weight, dtype=dtype, device=input_tokens.device)"
+            ]
+          },
+          {
+            "file_path": "comfy/clip_model.py",
+            "line_number": 100,
+            "content": "def forward(self, input_tokens, attention_mask=None, intermediate_output=None, final_layer_norm_intermediate=True, dtype=torch.float32):",
+            "context_lines": [
+              "def forward(self, input_tokens, attention_mask=None, intermediate_output=None, final_layer_norm_intermediate=True, dtype=torch.float32):"
+            ]
+          },
+          {
+            "file_path": "comfy/clip_model.py",
+            "line_number": 101,
+            "content": "x = self.embeddings(input_tokens, dtype=dtype)",
+            "context_lines": [
+              "x = self.embeddings(input_tokens, dtype=dtype)"
+            ]
+          },
+          {
+            "file_path": "comfy/clip_model.py",
+            "line_number": 118,
+            "content": "pooled_output = x[torch.arange(x.shape[0], device=x.device), (torch.round(input_tokens).to(dtype=torch.int, device=x.device) == self.eos_token_id).int().argmax(dim=-1),]",
+            "context_lines": [
+              "pooled_output = x[torch.arange(x.shape[0], device=x.device), (torch.round(input_tokens).to(dtype=torch.int, device=x.device) == self.eos_token_id).int().argmax(dim=-1),]"
+            ]
+          },
+          {
+            "file_path": "comfy/sdxl_clip.py",
+            "line_number": 13,
+            "content": "special_tokens={\"start\": 49406, \"end\": 49407, \"pad\": 0}, layer_norm_hidden_state=False, return_projected_pooled=True, model_options=model_options)",
+            "context_lines": [
+              "special_tokens={\"start\": 49406, \"end\": 49407, \"pad\": 0}, layer_norm_hidden_state=False, return_projected_pooled=True, model_options=model_options)"
+            ]
+          },
+          {
+            "file_path": "comfy/sdxl_clip.py",
+            "line_number": 88,
+            "content": "special_tokens={\"start\": 49406, \"end\": 49407, \"pad\": 49407}, layer_norm_hidden_state=False, enable_attention_masks=True, return_projected_pooled=True, model_options=model_options)",
+            "context_lines": [
+              "special_tokens={\"start\": 49406, \"end\": 49407, \"pad\": 49407}, layer_norm_hidden_state=False, enable_attention_masks=True, return_projected_pooled=True, model_options=model_options)"
+            ]
+          },
+          {
+            "file_path": "comfy/sd.py",
+            "line_number": 137,
+            "content": "def encode_from_tokens_scheduled(self, tokens, unprojected=False, add_dict: dict[str]={}, show_pbar=True):",
+            "context_lines": [
+              "def encode_from_tokens_scheduled(self, tokens, unprojected=False, add_dict: dict[str]={}, show_pbar=True):"
+            ]
+          }
+        ]
+      },
+      "warnings": []
+    },
+    "security-1-003-context": {
+      "request_id": "security-1-003-context",
+      "candidate_id": "security-1-003",
+      "file_snippets": {
+        "server.py": "import os\nimport sys\nimport asyncio\nimport traceback\n\nimport nodes\nimport folder_paths\nimport execution\nimport uuid\nimport urllib\nimport json\nimport glob\nimport struct\nimport ssl\nimport socket\nimport ipaddress\nfrom PIL import Image, ImageOps\nfrom PIL.PngImagePlugin import PngInfo\nfrom io import BytesIO\n\nimport aiohttp\nfrom aiohttp import web\nimport logging\n\nimport mimetypes\nfrom comfy.cli_args import args\nimport comfy.utils\nimport comfy.model_management\nimport node_helpers\nfrom app.frontend_management import FrontendManager\nfrom app.user_manager import UserManager\nfrom app.model_manager import ModelFileManager\nfrom typing import Optional\nfrom api_server.routes.internal.internal_routes import InternalRoutes\n\nclass BinaryEventTypes:\n    PREVIEW_IMAGE = 1\n    UNENCODED_PREVIEW_IMAGE = 2\n\nasync def send_socket_catch_exception(function, message):\n    try:\n        await function(message)\n    except (aiohttp.ClientError, aiohttp.ClientPayloadError, ConnectionResetError, BrokenPipeError, ConnectionError) as err:\n        logging.warning(\"send error: {}\".format(err))\n\ndef get_comfyui_version():\n    comfyui_version = \"unknown\"\n    repo_path = os.path.dirname(os.path.realpath(__file__))\n    try:\n        import pygit2\n        repo = pygit2.Repository(repo_path)\n        comfyui_version = repo.describe(describe_strategy=pygit2.GIT_DESCRIBE_TAGS)\n    except Exception:\n        try:\n            import subprocess\n            comfyui_version = subprocess.check_output([\"git\", \"describe\", \"--tags\"], cwd=repo_path).decode('utf-8')\n        except Exception as e:\n            logging.warning(f\"Failed to get ComfyUI version: {e}\")\n    return comfyui_version.strip()\n\n@web.middleware\nasync def cache_control(request: web.Request, handler):\n    response: web.Response = await handler(request)\n    if request.path.endswith('.js') or request.path.endswith('.css'):\n        response.headers.setdefault('Cache-Control', 'no-cache')\n    return response\n\ndef create_cors_middleware(allowed_origin: str):\n    @web.middleware\n    async def cors_middleware(request: web.Request, handler):\n        if request.method == \"OPTIONS\":\n            # Pre-flight request. Reply successfully:\n            response = web.Response()\n        else:\n            response = await handler(request)\n\n        response.headers['Access-Control-Allow-Origin'] = allowed_origin\n        response.headers['Access-Control-Allow-Methods'] = 'POST, GET, DELETE, PUT, OPTIONS'\n        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'\n        response.headers['Access-Control-Allow-Credentials'] = 'true'\n        return response\n\n    return cors_middleware\n\ndef is_loopback(host):\n    if host is None:\n        return False\n    try:\n        if ipaddress.ip_address(host).is_loopback:\n            return True\n        else:\n            return False\n    except:\n        pass\n\n    loopback = False\n    for family in (socket.AF_INET, socket.AF_INET6):\n        try:\n            r = socket.getaddrinfo(host, None, family, socket.SOCK_STREAM)\n            for family, _, _, _, sockaddr in r:\n                if not ipaddress.ip_address(sockaddr[0]).is_loopback:\n                    return loopback\n                else:\n                    loopback = True\n        except socket.gaierror:\n            pass\n\n    return loopback\n\n\ndef create_origin_only_middleware():\n    @web.middleware\n    async def origin_only_middleware(request: web.Request, handler):\n        #this code is used to prevent the case where a random website can queue comfy workflows by making a POST to 127.0.0.1 which browsers don't prevent for some dumb reason.\n        #in that case the Host and Origin hostnames won't match\n        #I know the proper fix would be to add a cookie but this should take care of the problem in the meantime\n        if 'Host' in request.headers and 'Origin' in request.headers:\n            host = request.headers['Host']\n            origin = request.headers['Origin']\n            host_domain = host.lower()\n            parsed = urllib.parse.urlparse(origin)\n            origin_domain = parsed.netloc.lower()\n            host_domain_parsed = urllib.parse.urlsplit('//' + host_domain)\n\n            #limit the check to when the host domain is localhost, this makes it slightly less safe but should still prevent the exploit\n            loopback = is_loopback(host_domain_parsed.hostname)\n\n            if parsed.port is None: #if origin doesn't have a port strip it from the host to handle weird browsers, same for host\n                host_domain = host_domain_parsed.hostname\n            if host_domain_parsed.port is None:\n                origin_domain = parsed.hostname\n\n            if loopback and host_domain is not None and origin_domain is not None and len(host_domain) > 0 and len(origin_domain) > 0:\n                if host_domain != origin_domain:\n                    logging.warning(\"WARNING: request with non matching host and origin {} != {}, returning 403\".format(host_domain, origin_domain))\n                    return web.Response(status=403)\n\n        if request.method == \"OPTIONS\":\n            response = web.Response()\n        else:\n            response = await handler(request)\n\n        return response\n\n    return origin_only_middleware\n\nclass PromptServer():\n    def __init__(self, loop):\n        PromptServer.instance = self\n\n        mimetypes.init()\n        mimetypes.types_map['.js'] = 'application/javascript; charset=utf-8'\n\n        self.user_manager = UserManager()\n        self.model_file_manager = ModelFileManager()\n        self.internal_routes = InternalRoutes(self)\n        self.supports = [\"custom_nodes_from_web\"]\n        self.prompt_queue = None\n        self.loop = loop\n        self.messages = asyncio.Queue()\n        self.client_session:Optional[aiohttp.ClientSession] = None\n        self.number = 0\n\n        middlewares = [cache_control]\n        if args.enable_cors_header:\n            middlewares.append(create_cors_middleware(args.enable_cors_header))\n        else:\n            middlewares.append(create_origin_only_middleware())\n\n        max_upload_size = round(args.max_upload_size * 1024 * 1024)\n        self.app = web.Application(client_max_size=max_upload_size, middlewares=middlewares)\n        self.sockets = dict()\n        self.web_root = (\n            FrontendManager.init_frontend(args.front_end_version)\n            if args.front_end_root is None\n            else args.front_end_root\n        )\n        logging.info(f\"[Prompt Server] web root: {self.web_root}\")\n        routes = web.RouteTableDef()\n        self.routes = routes\n        self.last_node_id = None\n        self.client_id = None\n\n        self.on_prompt_handlers = []\n\n        @routes.get('/ws')\n        async def websocket_handler(request):\n            ws = web.WebSocketResponse()\n            await ws.prepare(request)\n            sid = request.rel_url.query.get('clientId', '')\n            if sid:\n                # Reusing existing session, remove old\n                self.sockets.pop(sid, None)\n            else:\n                sid = uuid.uuid4().hex\n\n            self.sockets[sid] = ws\n\n            try:\n                # Send initial state to the new client\n                await self.send(\"status\", { \"status\": self.get_queue_info(), 'sid': sid }, sid)\n                # On reconnect if we are the currently executing client send the current node\n                if self.client_id == sid and self.last_node_id is not None:\n                    await self.send(\"executing\", { \"node\": self.last_node_id }, sid)\n\n                async for msg in ws:\n                    if msg.type == aiohttp.WSMsgType.ERROR:\n                        logging.warning('ws connection closed with exception %s' % ws.exception())\n            finally:\n                self.sockets.pop(sid, None)\n            return ws\n\n        @routes.get(\"/\")\n        async def get_root(request):\n            response = web.FileResponse(os.path.join(self.web_root, \"index.html\"))\n            response.headers['Cache-Control'] = 'no-cache'\n    \n--- structural neighbors ---\nsymbol:cdcf322c7f91ada2:cache_control (symbol, server.py); symbol:04bc30b200904859:get_comfyui_version (symbol, server.py); symbol:43a300b267716ae8:BinaryEventTypes (symbol, server.py); symbol:37d197c48bd8739c:create_origin_only_middleware (symbol, server.py); symbol:a93c0758ff29814d:create_cors_middleware (symbol, server.py); symbol:a5462c684d0f9c88:is_loopback (symbol, server.py); symbol:cacab859dfe83589:PromptServer (symbol, server.py); symbol:6368fd59cce719a2:send_socket_catch_exception (symbol, server.py)"
+      },
+      "search_hits": {
+        "client_session": [
+          {
+            "file_path": "server.py",
+            "line_number": 161,
+            "content": "self.client_session:Optional[aiohttp.ClientSession] = None",
+            "context_lines": [
+              "self.client_session:Optional[aiohttp.ClientSession] = None"
+            ]
+          },
+          {
+            "file_path": "server.py",
+            "line_number": 681,
+            "content": "self.client_session = aiohttp.ClientSession(timeout=timeout)",
+            "context_lines": [
+              "self.client_session = aiohttp.ClientSession(timeout=timeout)"
+            ]
+          }
+        ],
+        "session management": [],
+        "closure": [
+          {
+            "file_path": "comfy/sd1_tokenizer/vocab.json",
+            "line_number": 8883,
+            "content": "\"closure</w>\": 13249,",
+            "context_lines": [
+              "\"closure</w>\": 13249,"
+            ]
+          },
+          {
+            "file_path": "comfy/sd1_tokenizer/vocab.json",
+            "line_number": 8884,
+            "content": "\"closures</w>\": 22923,",
+            "context_lines": [
+              "\"closures</w>\": 22923,"
+            ]
+          },
+          {
+            "file_path": "comfy/sd1_tokenizer/vocab.json",
+            "line_number": 12177,
+            "content": "\"disclosure</w>\": 26502,",
+            "context_lines": [
+              "\"disclosure</w>\": 26502,"
+            ]
+          },
+          {
+            "file_path": "comfy/sd1_tokenizer/vocab.json",
+            "line_number": 13964,
+            "content": "\"enclosure</w>\": 37419,",
+            "context_lines": [
+              "\"enclosure</w>\": 37419,"
+            ]
+          },
+          {
+            "file_path": "comfy/ldm/util.py",
+            "line_number": 119,
+            "content": "def step(self, closure=None):",
+            "context_lines": [
+              "def step(self, closure=None):"
+            ]
+          },
+          {
+            "file_path": "comfy/ldm/util.py",
+            "line_number": 122,
+            "content": "closure (callable, optional): A closure that reevaluates the model",
+            "context_lines": [
+              "closure (callable, optional): A closure that reevaluates the model"
+            ]
+          },
+          {
+            "file_path": "comfy/ldm/util.py",
+            "line_number": 126,
+            "content": "if closure is not None:",
+            "context_lines": [
+              "if closure is not None:"
+            ]
+          },
+          {
+            "file_path": "comfy/ldm/util.py",
+            "line_number": 128,
+            "content": "loss = closure()",
+            "context_lines": [
+              "loss = closure()"
+            ]
+          },
+          {
+            "file_path": "comfy/sd1_tokenizer/merges.txt",
+            "line_number": 36909,
+            "content": "en closure</w>",
+            "context_lines": [
+              "en closure</w>"
+            ]
+          },
+          {
+            "file_path": "web/assets/index-Ba7IybyO.js",
+            "line_number": 338,
+            "content": "function findNearestEnclosure(text, cursorPos) {",
+            "context_lines": [
+              "function findNearestEnclosure(text, cursorPos) {"
+            ]
+          },
+          {
+            "file_path": "web/assets/index-Ba7IybyO.js",
+            "line_number": 359,
+            "content": "__name(findNearestEnclosure, \"findNearestEnclosure\");",
+            "context_lines": [
+              "__name(findNearestEnclosure, \"findNearestEnclosure\");"
+            ]
+          },
+          {
+            "file_path": "web/assets/index-Ba7IybyO.js",
+            "line_number": 383,
+            "content": "const nearestEnclosure = findNearestEnclosure(inputField.value, start);",
+            "context_lines": [
+              "const nearestEnclosure = findNearestEnclosure(inputField.value, start);"
+            ]
+          },
+          {
+            "file_path": "web/assets/index-Ba7IybyO.js",
+            "line_number": 384,
+            "content": "if (nearestEnclosure) {",
+            "context_lines": [
+              "if (nearestEnclosure) {"
+            ]
+          },
+          {
+            "file_path": "web/assets/index-Ba7IybyO.js",
+            "line_number": 385,
+            "content": "start = nearestEnclosure.start;",
+            "context_lines": [
+              "start = nearestEnclosure.start;"
+            ]
+          },
+          {
+            "file_path": "web/assets/index-Ba7IybyO.js",
+            "line_number": 386,
+            "content": "end = nearestEnclosure.end;",
+            "context_lines": [
+              "end = nearestEnclosure.end;"
+            ]
+          }
+        ]
+      },
+      "warnings": []
+    },
+    "security-1-001:auto-context:1": {
+      "request_id": "security-1-001:auto-context:1",
+      "candidate_id": "security-1-001",
+      "file_snippets": {
+        "api_server/routes/internal/internal_routes.py": "from aiohttp import web\nfrom typing import Optional\nfrom folder_paths import models_dir, user_directory, output_directory, folder_names_and_paths\nfrom api_server.services.file_service import FileService\nfrom api_server.services.terminal_service import TerminalService\nimport app.logger\n\nclass InternalRoutes:\n    '''\n    The top level web router for internal routes: /internal/*\n    The endpoints here should NOT be depended upon. It is for ComfyUI frontend use only.\n    Check README.md for more information.\n    '''\n\n    def __init__(self, prompt_server):\n        self.routes: web.RouteTableDef = web.RouteTableDef()\n        self._app: Optional[web.Application] = None\n        self.file_service = FileService({\n            \"models\": models_dir,\n            \"user\": user_directory,\n            \"output\": output_directory\n        })\n        self.prompt_server = prompt_server\n        self.terminal_service = TerminalService(prompt_server)\n\n    def setup_routes(self):\n        @self.routes.get('/files')\n        async def list_files(request):\n            directory_key = request.query.get('directory', '')\n            try:\n                file_list = self.file_service.list_files(directory_key)\n                return web.json_response({\"files\": file_list})\n            except ValueError as e:\n                return web.json_response({\"error\": str(e)}, status=400)\n            except Exception as e:\n                return web.json_response({\"error\": str(e)}, status=500)\n\n        @self.routes.get('/logs')\n        async def get_logs(request):\n            return web.json_response(\"\".join([(l[\"t\"] + \" - \" + l[\"m\"]) for l in app.logger.get_logs()]))\n\n        @self.routes.get('/logs/raw')\n        async def get_raw_logs(request):\n            self.terminal_service.update_size()\n            return web.json_response({\n                \"entries\": list(app.logger.get_logs()),\n                \"size\": {\"cols\": self.terminal_service.cols, \"rows\": self.terminal_service.rows}\n            })\n\n        @self.routes.patch('/logs/subscribe')\n        async def subscribe_logs(request):\n            json_data = await request.json()\n            client_id = json_data[\"clientId\"]\n            enabled = json_data[\"enabled\"]\n            if enabled:\n                self.terminal_service.subscribe(client_id)\n            else:\n                self.terminal_service.unsubscribe(client_id)\n\n            return web.Response(status=200)\n\n\n        @self.routes.get('/folder_paths')\n        async def get_folder_paths(request):\n            response = {}\n            for key in folder_names_and_paths:\n                response[key] = folder_names_and_paths[key][0]\n            return web.json_response(response)\n\n    def get_app(self):\n        if self._app is None:\n            self._app = web.Application()\n            self.setup_routes()\n            self._app.add_routes(self.routes)\n        return self._app\n\n--- structural neighbors ---\nsymbol:aae55ae9e7b1cad3:InternalRoutes (symbol, api_server/routes/internal/internal_routes.py)",
+        "server.py": "import os\nimport sys\nimport asyncio\nimport traceback\n\nimport nodes\nimport folder_paths\nimport execution\nimport uuid\nimport urllib\nimport json\nimport glob\nimport struct\nimport ssl\nimport socket\nimport ipaddress\nfrom PIL import Image, ImageOps\nfrom PIL.PngImagePlugin import PngInfo\nfrom io import BytesIO\n\nimport aiohttp\nfrom aiohttp import web\nimport logging\n\nimport mimetypes\nfrom comfy.cli_args import args\nimport comfy.utils\nimport comfy.model_management\nimport node_helpers\nfrom app.frontend_management import FrontendManager\nfrom app.user_manager import UserManager\nfrom app.model_manager import ModelFileManager\nfrom typing import Optional\nfrom api_server.routes.internal.internal_routes import InternalRoutes\n\nclass BinaryEventTypes:\n    PREVIEW_IMAGE = 1\n    UNENCODED_PREVIEW_IMAGE = 2\n\nasync def send_socket_catch_exception(function, message):\n    try:\n        await function(message)\n    except (aiohttp.ClientError, aiohttp.ClientPayloadError, ConnectionResetError, BrokenPipeError, ConnectionError) as err:\n        logging.warning(\"send error: {}\".format(err))\n\ndef get_comfyui_version():\n    comfyui_version = \"unknown\"\n    repo_path = os.path.dirname(os.path.realpath(__file__))\n    try:\n        import pygit2\n        repo = pygit2.Repository(repo_path)\n        comfyui_version = repo.describe(describe_strategy=pygit2.GIT_DESCRIBE_TAGS)\n    except Exception:\n        try:\n            import subprocess\n            comfyui_version = subprocess.check_output([\"git\", \"describe\", \"--tags\"], cwd=repo_path).decode('utf-8')\n        except Exception as e:\n            logging.warning(f\"Failed to get ComfyUI version: {e}\")\n    return comfyui_version.strip()\n\n@web.middleware\nasync def cache_control(request: web.Request, handler):\n    response: web.Response = await handler(request)\n    if request.path.endswith('.js') or request.path.endswith('.css'):\n        response.headers.setdefault('Cache-Control', 'no-cache')\n    return response\n\ndef create_cors_middleware(allowed_origin: str):\n    @web.middleware\n    async def cors_middleware(request: web.Request, handler):\n        if request.method == \"OPTIONS\":\n            # Pre-flight request. Reply successfully:\n            response = web.Response()\n        else:\n            response = await handler(request)\n\n        response.headers['Access-Control-Allow-Origin'] = allowed_origin\n        response.headers['Access-Control-Allow-Methods'] = 'POST, GET, DELETE, PUT, OPTIONS'\n        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'\n        response.headers['Access-Control-Allow-Credentials'] = 'true'\n        return response\n\n    return cors_middleware\n\ndef is_loopback(host):\n    if host is None:\n        return False\n    try:\n        if ipaddress.ip_address(host).is_loopback:\n            return True\n        else:\n            return False\n    except:\n        pass\n\n    loopback = False\n    for family in (socket.AF_INET, socket.AF_INET6):\n        try:\n            r = socket.getaddrinfo(host, None, family, socket.SOCK_STREAM)\n            for family, _, _, _, sockaddr in r:\n                if not ipaddress.ip_address(sockaddr[0]).is_loopback:\n                    return loopback\n                else:\n                    loopback = True\n        except socket.gaierror:\n            pass\n\n    return loopback\n\n\ndef create_origin_only_middleware():\n    @web.middleware\n    async def origin_only_middleware(request: web.Request, handler):\n        #this code is used to prevent the case where a random website can queue comfy workflows by making a POST to 127.0.0.1 which browsers don't prevent for some dumb reason.\n        #in that case the Host and Origin hostnames won't match\n        #I know the proper fix would be to add a cookie but this should take care of the problem in the meantime\n        if 'Host' in request.headers and 'Origin' in request.headers:\n            host = request.headers['Host']\n            origin = request.headers['Origin']\n            host_domain = host.lower()\n            parsed = urllib.parse.urlparse(origin)\n            origin_domain = parsed.netloc.lower()\n            host_domain_parsed = urllib.parse.urlsplit('//' + host_domain)\n\n            #limit the check to when the host domain is localhost, this makes it slightly less safe but should still prevent the exploit\n            loopback = is_loopback(host_domain_parsed.hostname)\n\n            if parsed.port is None: #if origin doesn't have a port strip it from the host to handle weird browsers, same for host\n                host_domain = host_domain_parsed.hostname\n            if host_domain_parsed.port is None:\n                origin_domain = parsed.hostname\n\n            if loopback and host_domain is not None and origin_domain is not None and len(host_domain) > 0 and len(origin_domain) > 0:\n                if host_domain != origin_domain:\n                    logging.warning(\"WARNING: request with non matching host and origin {} != {}, returning 403\".format(host_domain, origin_domain))\n                    return web.Response(status=403)\n\n        if request.method == \"OPTIONS\":\n            response = web.Response()\n        else:\n            response = await handler(request)\n\n        return response\n\n    return origin_only_middleware\n\nclass PromptServer():\n    def __init__(self, loop):\n        PromptServer.instance = self\n\n        mimetypes.init()\n        mimetypes.types_map['.js'] = 'application/javascript; charset=utf-8'\n\n        self.user_manager = UserManager()\n        self.model_file_manager = ModelFileManager()\n        self.internal_routes = InternalRoutes(self)\n        self.supports = [\"custom_nodes_from_web\"]\n        self.prompt_queue = None\n        self.loop = loop\n        self.messages = asyncio.Queue()\n        self.client_session:Optional[aiohttp.ClientSession] = None\n        self.number = 0\n\n        middlewares = [cache_control]\n        if args.enable_cors_header:\n            middlewares.append(create_cors_middleware(args.enable_cors_header))\n        else:\n            middlewares.append(create_origin_only_middleware())\n\n        max_upload_size = round(args.max_upload_size * 1024 * 1024)\n        self.app = web.Application(client_max_size=max_upload_size, middlewares=middlewares)\n        self.sockets = dict()\n        self.web_root = (\n            FrontendManager.init_frontend(args.front_end_version)\n            if args.front_end_root is None\n            else args.front_end_root\n        )\n        logging.info(f\"[Prompt Server] web root: {self.web_root}\")\n        routes = web.RouteTableDef()\n        self.routes = routes\n        self.last_node_id = None\n        self.client_id = None\n\n        self.on_prompt_handlers = []\n\n        @routes.get('/ws')\n        async def websocket_handler(request):\n            ws = web.WebSocketResponse()\n            await ws.prepare(request)\n            sid = request.rel_url.query.get('clientId', '')\n            if sid:\n                # Reusing existing session, remove old\n                self.sockets.pop(sid, None)\n            else:\n                sid = uuid.uuid4().hex\n\n            self.sockets[sid] = ws\n\n            try:\n                # Send initial state to the new client\n                await self.send(\"status\", { \"status\": self.get_queue_info(), 'sid': sid }, sid)\n                # On reconnect if we are the currently executing client send the current node\n                if self.client_id == sid and self.last_node_id is not None:\n                    await self.send(\"executing\", { \"node\": self.last_node_id }, sid)\n\n                async for msg in ws:\n                    if msg.type == aiohttp.WSMsgType.ERROR:\n                        logging.warning('ws connection closed with exception %s' % ws.exception())\n            finally:\n                self.sockets.pop(sid, None)\n            return ws\n\n        @routes.get(\"/\")\n        async def get_root(request):\n            response = web.FileResponse(os.path.join(self.web_root, \"index.html\"))\n            response.headers['Cache-Control'] = 'no-cache'\n    \n--- structural neighbors ---\nsymbol:cdcf322c7f91ada2:cache_control (symbol, server.py); symbol:04bc30b200904859:get_comfyui_version (symbol, server.py); symbol:43a300b267716ae8:BinaryEventTypes (symbol, server.py); symbol:37d197c48bd8739c:create_origin_only_middleware (symbol, server.py); symbol:a93c0758ff29814d:create_cors_middleware (symbol, server.py); symbol:a5462c684d0f9c88:is_loopback (symbol, server.py); symbol:cacab859dfe83589:PromptServer (symbol, server.py); symbol:6368fd59cce719a2:send_socket_catch_exception (symbol, server.py)"
+      },
+      "search_hits": {
+        "api_server/routes/internal/internal_routes.py": [],
+        "An attacker could potentially list files from unauthorized directories if input validation is not properly implemented e": [],
+        "An attacker could potentially list files from unauthorized directories if input validation is not properly implemented elsewhere in the codebase. directory_key ": []
+      },
+      "warnings": []
+    },
+    "security-1-002:auto-context:2": {
+      "request_id": "security-1-002:auto-context:2",
+      "candidate_id": "security-1-002",
+      "file_snippets": {
+        "server.py": "import os\nimport sys\nimport asyncio\nimport traceback\n\nimport nodes\nimport folder_paths\nimport execution\nimport uuid\nimport urllib\nimport json\nimport glob\nimport struct\nimport ssl\nimport socket\nimport ipaddress\nfrom PIL import Image, ImageOps\nfrom PIL.PngImagePlugin import PngInfo\nfrom io import BytesIO\n\nimport aiohttp\nfrom aiohttp import web\nimport logging\n\nimport mimetypes\nfrom comfy.cli_args import args\nimport comfy.utils\nimport comfy.model_management\nimport node_helpers\nfrom app.frontend_management import FrontendManager\nfrom app.user_manager import UserManager\nfrom app.model_manager import ModelFileManager\nfrom typing import Optional\nfrom api_server.routes.internal.internal_routes import InternalRoutes\n\nclass BinaryEventTypes:\n    PREVIEW_IMAGE = 1\n    UNENCODED_PREVIEW_IMAGE = 2\n\nasync def send_socket_catch_exception(function, message):\n    try:\n        await function(message)\n    except (aiohttp.ClientError, aiohttp.ClientPayloadError, ConnectionResetError, BrokenPipeError, ConnectionError) as err:\n        logging.warning(\"send error: {}\".format(err))\n\ndef get_comfyui_version():\n    comfyui_version = \"unknown\"\n    repo_path = os.path.dirname(os.path.realpath(__file__))\n    try:\n        import pygit2\n        repo = pygit2.Repository(repo_path)\n        comfyui_version = repo.describe(describe_strategy=pygit2.GIT_DESCRIBE_TAGS)\n    except Exception:\n        try:\n            import subprocess\n            comfyui_version = subprocess.check_output([\"git\", \"describe\", \"--tags\"], cwd=repo_path).decode('utf-8')\n        except Exception as e:\n            logging.warning(f\"Failed to get ComfyUI version: {e}\")\n    return comfyui_version.strip()\n\n@web.middleware\nasync def cache_control(request: web.Request, handler):\n    response: web.Response = await handler(request)\n    if request.path.endswith('.js') or request.path.endswith('.css'):\n        response.headers.setdefault('Cache-Control', 'no-cache')\n    return response\n\ndef create_cors_middleware(allowed_origin: str):\n    @web.middleware\n    async def cors_middleware(request: web.Request, handler):\n        if request.method == \"OPTIONS\":\n            # Pre-flight request. Reply successfully:\n            response = web.Response()\n        else:\n            response = await handler(request)\n\n        response.headers['Access-Control-Allow-Origin'] = allowed_origin\n        response.headers['Access-Control-Allow-Methods'] = 'POST, GET, DELETE, PUT, OPTIONS'\n        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'\n        response.headers['Access-Control-Allow-Credentials'] = 'true'\n        return response\n\n    return cors_middleware\n\ndef is_loopback(host):\n    if host is None:\n        return False\n    try:\n        if ipaddress.ip_address(host).is_loopback:\n            return True\n        else:\n            return False\n    except:\n        pass\n\n    loopback = False\n    for family in (socket.AF_INET, socket.AF_INET6):\n        try:\n            r = socket.getaddrinfo(host, None, family, socket.SOCK_STREAM)\n            for family, _, _, _, sockaddr in r:\n                if not ipaddress.ip_address(sockaddr[0]).is_loopback:\n                    return loopback\n                else:\n                    loopback = True\n        except socket.gaierror:\n            pass\n\n    return loopback\n\n\ndef create_origin_only_middleware():\n    @web.middleware\n    async def origin_only_middleware(request: web.Request, handler):\n        #this code is used to prevent the case where a random website can queue comfy workflows by making a POST to 127.0.0.1 which browsers don't prevent for some dumb reason.\n        #in that case the Host and Origin hostnames won't match\n        #I know the proper fix would be to add a cookie but this should take care of the problem in the meantime\n        if 'Host' in request.headers and 'Origin' in request.headers:\n            host = request.headers['Host']\n            origin = request.headers['Origin']\n            host_domain = host.lower()\n            parsed = urllib.parse.urlparse(origin)\n            origin_domain = parsed.netloc.lower()\n            host_domain_parsed = urllib.parse.urlsplit('//' + host_domain)\n\n            #limit the check to when the host domain is localhost, this makes it slightly less safe but should still prevent the exploit\n            loopback = is_loopback(host_domain_parsed.hostname)\n\n            if parsed.port is None: #if origin doesn't have a port strip it from the host to handle weird browsers, same for host\n                host_domain = host_domain_parsed.hostname\n            if host_domain_parsed.port is None:\n                origin_domain = parsed.hostname\n\n            if loopback and host_domain is not None and origin_domain is not None and len(host_domain) > 0 and len(origin_domain) > 0:\n                if host_domain != origin_domain:\n                    logging.warning(\"WARNING: request with non matching host and origin {} != {}, returning 403\".format(host_domain, origin_domain))\n                    return web.Response(status=403)\n\n        if request.method == \"OPTIONS\":\n            response = web.Response()\n        else:\n            response = await handler(request)\n\n        return response\n\n    return origin_only_middleware\n\nclass PromptServer():\n    def __init__(self, loop):\n        PromptServer.instance = self\n\n        mimetypes.init()\n        mimetypes.types_map['.js'] = 'application/javascript; charset=utf-8'\n\n        self.user_manager = UserManager()\n        self.model_file_manager = ModelFileManager()\n        self.internal_routes = InternalRoutes(self)\n        self.supports = [\"custom_nodes_from_web\"]\n        self.prompt_queue = None\n        self.loop = loop\n        self.messages = asyncio.Queue()\n        self.client_session:Optional[aiohttp.ClientSession] = None\n        self.number = 0\n\n        middlewares = [cache_control]\n        if args.enable_cors_header:\n            middlewares.append(create_cors_middleware(args.enable_cors_header))\n        else:\n            middlewares.append(create_origin_only_middleware())\n\n        max_upload_size = round(args.max_upload_size * 1024 * 1024)\n        self.app = web.Application(client_max_size=max_upload_size, middlewares=middlewares)\n        self.sockets = dict()\n        self.web_root = (\n            FrontendManager.init_frontend(args.front_end_version)\n            if args.front_end_root is None\n            else args.front_end_root\n        )\n        logging.info(f\"[Prompt Server] web root: {self.web_root}\")\n        routes = web.RouteTableDef()\n        self.routes = routes\n        self.last_node_id = None\n        self.client_id = None\n\n        self.on_prompt_handlers = []\n\n        @routes.get('/ws')\n        async def websocket_handler(request):\n            ws = web.WebSocketResponse()\n            await ws.prepare(request)\n            sid = request.rel_url.query.get('clientId', '')\n            if sid:\n                # Reusing existing session, remove old\n                self.sockets.pop(sid, None)\n            else:\n                sid = uuid.uuid4().hex\n\n            self.sockets[sid] = ws\n\n            try:\n                # Send initial state to the new client\n                await self.send(\"status\", { \"status\": self.get_queue_info(), 'sid': sid }, sid)\n                # On reconnect if we are the currently executing client send the current node\n                if self.client_id == sid and self.last_node_id is not None:\n                    await self.send(\"executing\", { \"node\": self.last_node_id }, sid)\n\n                async for msg in ws:\n                    if msg.type == aiohttp.WSMsgType.ERROR:\n                        logging.warning('ws connection closed with exception %s' % ws.exception())\n            finally:\n                self.sockets.pop(sid, None)\n            return ws\n\n        @routes.get(\"/\")\n        async def get_root(request):\n            response = web.FileResponse(os.path.join(self.web_root, \"index.html\"))\n            response.headers['Cache-Control'] = 'no-cache'\n    \n--- structural neighbors ---\nsymbol:cdcf322c7f91ada2:cache_control (symbol, server.py); symbol:04bc30b200904859:get_comfyui_version (symbol, server.py); symbol:43a300b267716ae8:BinaryEventTypes (symbol, server.py); symbol:37d197c48bd8739c:create_origin_only_middleware (symbol, server.py); symbol:a93c0758ff29814d:create_cors_middleware (symbol, server.py); symbol:a5462c684d0f9c88:is_loopback (symbol, server.py); symbol:cacab859dfe83589:PromptServer (symbol, server.py); symbol:6368fd59cce719a2:send_socket_catch_exception (symbol, server.py)",
+        "api_server/routes/internal/internal_routes.py": "from aiohttp import web\nfrom typing import Optional\nfrom folder_paths import models_dir, user_directory, output_directory, folder_names_and_paths\nfrom api_server.services.file_service import FileService\nfrom api_server.services.terminal_service import TerminalService\nimport app.logger\n\nclass InternalRoutes:\n    '''\n    The top level web router for internal routes: /internal/*\n    The endpoints here should NOT be depended upon. It is for ComfyUI frontend use only.\n    Check README.md for more information.\n    '''\n\n    def __init__(self, prompt_server):\n        self.routes: web.RouteTableDef = web.RouteTableDef()\n        self._app: Optional[web.Application] = None\n        self.file_service = FileService({\n            \"models\": models_dir,\n            \"user\": user_directory,\n            \"output\": output_directory\n        })\n        self.prompt_server = prompt_server\n        self.terminal_service = TerminalService(prompt_server)\n\n    def setup_routes(self):\n        @self.routes.get('/files')\n        async def list_files(request):\n            directory_key = request.query.get('directory', '')\n            try:\n                file_list = self.file_service.list_files(directory_key)\n                return web.json_response({\"files\": file_list})\n            except ValueError as e:\n                return web.json_response({\"error\": str(e)}, status=400)\n            except Exception as e:\n                return web.json_response({\"error\": str(e)}, status=500)\n\n        @self.routes.get('/logs')\n        async def get_logs(request):\n            return web.json_response(\"\".join([(l[\"t\"] + \" - \" + l[\"m\"]) for l in app.logger.get_logs()]))\n\n        @self.routes.get('/logs/raw')\n        async def get_raw_logs(request):\n            self.terminal_service.update_size()\n            return web.json_response({\n                \"entries\": list(app.logger.get_logs()),\n                \"size\": {\"cols\": self.terminal_service.cols, \"rows\": self.terminal_service.rows}\n            })\n\n        @self.routes.patch('/logs/subscribe')\n        async def subscribe_logs(request):\n            json_data = await request.json()\n            client_id = json_data[\"clientId\"]\n            enabled = json_data[\"enabled\"]\n            if enabled:\n                self.terminal_service.subscribe(client_id)\n            else:\n                self.terminal_service.unsubscribe(client_id)\n\n            return web.Response(status=200)\n\n\n        @self.routes.get('/folder_paths')\n        async def get_folder_paths(request):\n            response = {}\n            for key in folder_names_and_paths:\n                response[key] = folder_names_and_paths[key][0]\n            return web.json_response(response)\n\n    def get_app(self):\n        if self._app is None:\n            self._app = web.Application()\n            self.setup_routes()\n            self._app.add_routes(self.routes)\n        return self._app\n\n--- structural neighbors ---\nsymbol:aae55ae9e7b1cad3:InternalRoutes (symbol, api_server/routes/internal/internal_routes.py)"
+      },
+      "search_hits": {
+        "server.py": [],
+        "The comment suggests that the current CORS middleware implementation is a temporary workaround and may not provide adequ": [],
+        "The comment suggests that the current CORS middleware implementation is a temporary workaround and may not provide adequate protection against CSRF attacks. #I ": []
+      },
+      "warnings": []
+    },
+    "security-1-003:auto-context:3": {
+      "request_id": "security-1-003:auto-context:3",
+      "candidate_id": "security-1-003",
+      "file_snippets": {
+        "server.py": "import os\nimport sys\nimport asyncio\nimport traceback\n\nimport nodes\nimport folder_paths\nimport execution\nimport uuid\nimport urllib\nimport json\nimport glob\nimport struct\nimport ssl\nimport socket\nimport ipaddress\nfrom PIL import Image, ImageOps\nfrom PIL.PngImagePlugin import PngInfo\nfrom io import BytesIO\n\nimport aiohttp\nfrom aiohttp import web\nimport logging\n\nimport mimetypes\nfrom comfy.cli_args import args\nimport comfy.utils\nimport comfy.model_management\nimport node_helpers\nfrom app.frontend_management import FrontendManager\nfrom app.user_manager import UserManager\nfrom app.model_manager import ModelFileManager\nfrom typing import Optional\nfrom api_server.routes.internal.internal_routes import InternalRoutes\n\nclass BinaryEventTypes:\n    PREVIEW_IMAGE = 1\n    UNENCODED_PREVIEW_IMAGE = 2\n\nasync def send_socket_catch_exception(function, message):\n    try:\n        await function(message)\n    except (aiohttp.ClientError, aiohttp.ClientPayloadError, ConnectionResetError, BrokenPipeError, ConnectionError) as err:\n        logging.warning(\"send error: {}\".format(err))\n\ndef get_comfyui_version():\n    comfyui_version = \"unknown\"\n    repo_path = os.path.dirname(os.path.realpath(__file__))\n    try:\n        import pygit2\n        repo = pygit2.Repository(repo_path)\n        comfyui_version = repo.describe(describe_strategy=pygit2.GIT_DESCRIBE_TAGS)\n    except Exception:\n        try:\n            import subprocess\n            comfyui_version = subprocess.check_output([\"git\", \"describe\", \"--tags\"], cwd=repo_path).decode('utf-8')\n        except Exception as e:\n            logging.warning(f\"Failed to get ComfyUI version: {e}\")\n    return comfyui_version.strip()\n\n@web.middleware\nasync def cache_control(request: web.Request, handler):\n    response: web.Response = await handler(request)\n    if request.path.endswith('.js') or request.path.endswith('.css'):\n        response.headers.setdefault('Cache-Control', 'no-cache')\n    return response\n\ndef create_cors_middleware(allowed_origin: str):\n    @web.middleware\n    async def cors_middleware(request: web.Request, handler):\n        if request.method == \"OPTIONS\":\n            # Pre-flight request. Reply successfully:\n            response = web.Response()\n        else:\n            response = await handler(request)\n\n        response.headers['Access-Control-Allow-Origin'] = allowed_origin\n        response.headers['Access-Control-Allow-Methods'] = 'POST, GET, DELETE, PUT, OPTIONS'\n        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'\n        response.headers['Access-Control-Allow-Credentials'] = 'true'\n        return response\n\n    return cors_middleware\n\ndef is_loopback(host):\n    if host is None:\n        return False\n    try:\n        if ipaddress.ip_address(host).is_loopback:\n            return True\n        else:\n            return False\n    except:\n        pass\n\n    loopback = False\n    for family in (socket.AF_INET, socket.AF_INET6):\n        try:\n            r = socket.getaddrinfo(host, None, family, socket.SOCK_STREAM)\n            for family, _, _, _, sockaddr in r:\n                if not ipaddress.ip_address(sockaddr[0]).is_loopback:\n                    return loopback\n                else:\n                    loopback = True\n        except socket.gaierror:\n            pass\n\n    return loopback\n\n\ndef create_origin_only_middleware():\n    @web.middleware\n    async def origin_only_middleware(request: web.Request, handler):\n        #this code is used to prevent the case where a random website can queue comfy workflows by making a POST to 127.0.0.1 which browsers don't prevent for some dumb reason.\n        #in that case the Host and Origin hostnames won't match\n        #I know the proper fix would be to add a cookie but this should take care of the problem in the meantime\n        if 'Host' in request.headers and 'Origin' in request.headers:\n            host = request.headers['Host']\n            origin = request.headers['Origin']\n            host_domain = host.lower()\n            parsed = urllib.parse.urlparse(origin)\n            origin_domain = parsed.netloc.lower()\n            host_domain_parsed = urllib.parse.urlsplit('//' + host_domain)\n\n            #limit the check to when the host domain is localhost, this makes it slightly less safe but should still prevent the exploit\n            loopback = is_loopback(host_domain_parsed.hostname)\n\n            if parsed.port is None: #if origin doesn't have a port strip it from the host to handle weird browsers, same for host\n                host_domain = host_domain_parsed.hostname\n            if host_domain_parsed.port is None:\n                origin_domain = parsed.hostname\n\n            if loopback and host_domain is not None and origin_domain is not None and len(host_domain) > 0 and len(origin_domain) > 0:\n                if host_domain != origin_domain:\n                    logging.warning(\"WARNING: request with non matching host and origin {} != {}, returning 403\".format(host_domain, origin_domain))\n                    return web.Response(status=403)\n\n        if request.method == \"OPTIONS\":\n            response = web.Response()\n        else:\n            response = await handler(request)\n\n        return response\n\n    return origin_only_middleware\n\nclass PromptServer():\n    def __init__(self, loop):\n        PromptServer.instance = self\n\n        mimetypes.init()\n        mimetypes.types_map['.js'] = 'application/javascript; charset=utf-8'\n\n        self.user_manager = UserManager()\n        self.model_file_manager = ModelFileManager()\n        self.internal_routes = InternalRoutes(self)\n        self.supports = [\"custom_nodes_from_web\"]\n        self.prompt_queue = None\n        self.loop = loop\n        self.messages = asyncio.Queue()\n        self.client_session:Optional[aiohttp.ClientSession] = None\n        self.number = 0\n\n        middlewares = [cache_control]\n        if args.enable_cors_header:\n            middlewares.append(create_cors_middleware(args.enable_cors_header))\n        else:\n            middlewares.append(create_origin_only_middleware())\n\n        max_upload_size = round(args.max_upload_size * 1024 * 1024)\n        self.app = web.Application(client_max_size=max_upload_size, middlewares=middlewares)\n        self.sockets = dict()\n        self.web_root = (\n            FrontendManager.init_frontend(args.front_end_version)\n            if args.front_end_root is None\n            else args.front_end_root\n        )\n        logging.info(f\"[Prompt Server] web root: {self.web_root}\")\n        routes = web.RouteTableDef()\n        self.routes = routes\n        self.last_node_id = None\n        self.client_id = None\n\n        self.on_prompt_handlers = []\n\n        @routes.get('/ws')\n        async def websocket_handler(request):\n            ws = web.WebSocketResponse()\n            await ws.prepare(request)\n            sid = request.rel_url.query.get('clientId', '')\n            if sid:\n                # Reusing existing session, remove old\n                self.sockets.pop(sid, None)\n            else:\n                sid = uuid.uuid4().hex\n\n            self.sockets[sid] = ws\n\n            try:\n                # Send initial state to the new client\n                await self.send(\"status\", { \"status\": self.get_queue_info(), 'sid': sid }, sid)\n                # On reconnect if we are the currently executing client send the current node\n                if self.client_id == sid and self.last_node_id is not None:\n                    await self.send(\"executing\", { \"node\": self.last_node_id }, sid)\n\n                async for msg in ws:\n                    if msg.type == aiohttp.WSMsgType.ERROR:\n                        logging.warning('ws connection closed with exception %s' % ws.exception())\n            finally:\n                self.sockets.pop(sid, None)\n            return ws\n\n        @routes.get(\"/\")\n        async def get_root(request):\n            response = web.FileResponse(os.path.join(self.web_root, \"index.html\"))\n            response.headers['Cache-Control'] = 'no-cache'\n    \n--- structural neighbors ---\nsymbol:cdcf322c7f91ada2:cache_control (symbol, server.py); symbol:04bc30b200904859:get_comfyui_version (symbol, server.py); symbol:43a300b267716ae8:BinaryEventTypes (symbol, server.py); symbol:37d197c48bd8739c:create_origin_only_middleware (symbol, server.py); symbol:a93c0758ff29814d:create_cors_middleware (symbol, server.py); symbol:a5462c684d0f9c88:is_loopback (symbol, server.py); symbol:cacab859dfe83589:PromptServer (symbol, server.py); symbol:6368fd59cce719a2:send_socket_catch_exception (symbol, server.py)",
+        "api_server/routes/internal/internal_routes.py": "from aiohttp import web\nfrom typing import Optional\nfrom folder_paths import models_dir, user_directory, output_directory, folder_names_and_paths\nfrom api_server.services.file_service import FileService\nfrom api_server.services.terminal_service import TerminalService\nimport app.logger\n\nclass InternalRoutes:\n    '''\n    The top level web router for internal routes: /internal/*\n    The endpoints here should NOT be depended upon. It is for ComfyUI frontend use only.\n    Check README.md for more information.\n    '''\n\n    def __init__(self, prompt_server):\n        self.routes: web.RouteTableDef = web.RouteTableDef()\n        self._app: Optional[web.Application] = None\n        self.file_service = FileService({\n            \"models\": models_dir,\n            \"user\": user_directory,\n            \"output\": output_directory\n        })\n        self.prompt_server = prompt_server\n        self.terminal_service = TerminalService(prompt_server)\n\n    def setup_routes(self):\n        @self.routes.get('/files')\n        async def list_files(request):\n            directory_key = request.query.get('directory', '')\n            try:\n                file_list = self.file_service.list_files(directory_key)\n                return web.json_response({\"files\": file_list})\n            except ValueError as e:\n                return web.json_response({\"error\": str(e)}, status=400)\n            except Exception as e:\n                return web.json_response({\"error\": str(e)}, status=500)\n\n        @self.routes.get('/logs')\n        async def get_logs(request):\n            return web.json_response(\"\".join([(l[\"t\"] + \" - \" + l[\"m\"]) for l in app.logger.get_logs()]))\n\n        @self.routes.get('/logs/raw')\n        async def get_raw_logs(request):\n            self.terminal_service.update_size()\n            return web.json_response({\n                \"entries\": list(app.logger.get_logs()),\n                \"size\": {\"cols\": self.terminal_service.cols, \"rows\": self.terminal_service.rows}\n            })\n\n        @self.routes.patch('/logs/subscribe')\n        async def subscribe_logs(request):\n            json_data = await request.json()\n            client_id = json_data[\"clientId\"]\n            enabled = json_data[\"enabled\"]\n            if enabled:\n                self.terminal_service.subscribe(client_id)\n            else:\n                self.terminal_service.unsubscribe(client_id)\n\n            return web.Response(status=200)\n\n\n        @self.routes.get('/folder_paths')\n        async def get_folder_paths(request):\n            response = {}\n            for key in folder_names_and_paths:\n                response[key] = folder_names_and_paths[key][0]\n            return web.json_response(response)\n\n    def get_app(self):\n        if self._app is None:\n            self._app = web.Application()\n            self.setup_routes()\n            self._app.add_routes(self.routes)\n        return self._app\n\n--- structural neighbors ---\nsymbol:aae55ae9e7b1cad3:InternalRoutes (symbol, api_server/routes/internal/internal_routes.py)"
+      },
+      "search_hits": {
+        "server.py": [],
+        "Improper management of `aiohttp.ClientSession` could lead to resource leaks or other security issues.": [],
+        "Improper management of `aiohttp.ClientSession` could lead to resource leaks or other security issues. self.client_session:Optional[aiohttp.ClientSession] = None": []
+      },
+      "warnings": []
+    },
+    "context-1-001": {
+      "request_id": "context-1-001",
+      "candidate_id": "security-1-001",
+      "file_snippets": {
+        "api_server/routes/internal/internal_routes.py": "from aiohttp import web\nfrom typing import Optional\nfrom folder_paths import models_dir, user_directory, output_directory, folder_names_and_paths\nfrom api_server.services.file_service import FileService\nfrom api_server.services.terminal_service import TerminalService\nimport app.logger\n\nclass InternalRoutes:\n    '''\n    The top level web router for internal routes: /internal/*\n    The endpoints here should NOT be depended upon. It is for ComfyUI frontend use only.\n    Check README.md for more information.\n    '''\n\n    def __init__(self, prompt_server):\n        self.routes: web.RouteTableDef = web.RouteTableDef()\n        self._app: Optional[web.Application] = None\n        self.file_service = FileService({\n            \"models\": models_dir,\n            \"user\": user_directory,\n            \"output\": output_directory\n        })\n        self.prompt_server = prompt_server\n        self.terminal_service = TerminalService(prompt_server)\n\n    def setup_routes(self):\n        @self.routes.get('/files')\n        async def list_files(request):\n            directory_key = request.query.get('directory', '')\n            try:\n                file_list = self.file_service.list_files(directory_key)\n                return web.json_response({\"files\": file_list})\n            except ValueError as e:\n                return web.json_response({\"error\": str(e)}, status=400)\n            except Exception as e:\n                return web.json_response({\"error\": str(e)}, status=500)\n\n        @self.routes.get('/logs')\n        async def get_logs(request):\n            return web.json_response(\"\".join([(l[\"t\"] + \" - \" + l[\"m\"]) for l in app.logger.get_logs()]))\n\n        @self.routes.get('/logs/raw')\n        async def get_raw_logs(request):\n            self.terminal_service.update_size()\n            return web.json_response({\n                \"entries\": list(app.logger.get_logs()),\n                \"size\": {\"cols\": self.terminal_service.cols, \"rows\": self.terminal_service.rows}\n            })\n\n        @self.routes.patch('/logs/subscribe')\n        async def subscribe_logs(request):\n            json_data = await request.json()\n            client_id = json_data[\"clientId\"]\n            enabled = json_data[\"enabled\"]\n            if enabled:\n                self.terminal_service.subscribe(client_id)\n            else:\n                self.terminal_service.unsubscribe(client_id)\n\n            return web.Response(status=200)\n\n\n        @self.routes.get('/folder_paths')\n        async def get_folder_paths(request):\n            response = {}\n            for key in folder_names_and_paths:\n                response[key] = folder_names_and_paths[key][0]\n            return web.json_response(response)\n\n    def get_app(self):\n        if self._app is None:\n            self._app = web.Application()\n            self.setup_routes()\n            self._app.add_routes(self.routes)\n        return self._app\n\n--- structural neighbors ---\nsymbol:aae55ae9e7b1cad3:InternalRoutes (symbol, api_server/routes/internal/internal_routes.py)",
+        "path/to/FileService.py": "sed: can't read path/to/FileService.py: No such file or directory\n"
+      },
+      "search_hits": {
+        "FileService.list_files": [],
+        "validate directory_key": [],
+        "sanitize directory_key": []
+      },
+      "warnings": []
+    },
+    "context-1-002": {
+      "request_id": "context-1-002",
+      "candidate_id": "security-1-002",
+      "file_snippets": {
+        "server.py": "import os\nimport sys\nimport asyncio\nimport traceback\n\nimport nodes\nimport folder_paths\nimport execution\nimport uuid\nimport urllib\nimport json\nimport glob\nimport struct\nimport ssl\nimport socket\nimport ipaddress\nfrom PIL import Image, ImageOps\nfrom PIL.PngImagePlugin import PngInfo\nfrom io import BytesIO\n\nimport aiohttp\nfrom aiohttp import web\nimport logging\n\nimport mimetypes\nfrom comfy.cli_args import args\nimport comfy.utils\nimport comfy.model_management\nimport node_helpers\nfrom app.frontend_management import FrontendManager\nfrom app.user_manager import UserManager\nfrom app.model_manager import ModelFileManager\nfrom typing import Optional\nfrom api_server.routes.internal.internal_routes import InternalRoutes\n\nclass BinaryEventTypes:\n    PREVIEW_IMAGE = 1\n    UNENCODED_PREVIEW_IMAGE = 2\n\nasync def send_socket_catch_exception(function, message):\n    try:\n        await function(message)\n    except (aiohttp.ClientError, aiohttp.ClientPayloadError, ConnectionResetError, BrokenPipeError, ConnectionError) as err:\n        logging.warning(\"send error: {}\".format(err))\n\ndef get_comfyui_version():\n    comfyui_version = \"unknown\"\n    repo_path = os.path.dirname(os.path.realpath(__file__))\n    try:\n        import pygit2\n        repo = pygit2.Repository(repo_path)\n        comfyui_version = repo.describe(describe_strategy=pygit2.GIT_DESCRIBE_TAGS)\n    except Exception:\n        try:\n            import subprocess\n            comfyui_version = subprocess.check_output([\"git\", \"describe\", \"--tags\"], cwd=repo_path).decode('utf-8')\n        except Exception as e:\n            logging.warning(f\"Failed to get ComfyUI version: {e}\")\n    return comfyui_version.strip()\n\n@web.middleware\nasync def cache_control(request: web.Request, handler):\n    response: web.Response = await handler(request)\n    if request.path.endswith('.js') or request.path.endswith('.css'):\n        response.headers.setdefault('Cache-Control', 'no-cache')\n    return response\n\ndef create_cors_middleware(allowed_origin: str):\n    @web.middleware\n    async def cors_middleware(request: web.Request, handler):\n        if request.method == \"OPTIONS\":\n            # Pre-flight request. Reply successfully:\n            response = web.Response()\n        else:\n            response = await handler(request)\n\n        response.headers['Access-Control-Allow-Origin'] = allowed_origin\n        response.headers['Access-Control-Allow-Methods'] = 'POST, GET, DELETE, PUT, OPTIONS'\n        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'\n        response.headers['Access-Control-Allow-Credentials'] = 'true'\n        return response\n\n    return cors_middleware\n\ndef is_loopback(host):\n    if host is None:\n        return False\n    try:\n        if ipaddress.ip_address(host).is_loopback:\n            return True\n        else:\n            return False\n    except:\n        pass\n\n    loopback = False\n    for family in (socket.AF_INET, socket.AF_INET6):\n        try:\n            r = socket.getaddrinfo(host, None, family, socket.SOCK_STREAM)\n            for family, _, _, _, sockaddr in r:\n                if not ipaddress.ip_address(sockaddr[0]).is_loopback:\n                    return loopback\n                else:\n                    loopback = True\n        except socket.gaierror:\n            pass\n\n    return loopback\n\n\ndef create_origin_only_middleware():\n    @web.middleware\n    async def origin_only_middleware(request: web.Request, handler):\n        #this code is used to prevent the case where a random website can queue comfy workflows by making a POST to 127.0.0.1 which browsers don't prevent for some dumb reason.\n        #in that case the Host and Origin hostnames won't match\n        #I know the proper fix would be to add a cookie but this should take care of the problem in the meantime\n        if 'Host' in request.headers and 'Origin' in request.headers:\n            host = request.headers['Host']\n            origin = request.headers['Origin']\n            host_domain = host.lower()\n            parsed = urllib.parse.urlparse(origin)\n            origin_domain = parsed.netloc.lower()\n            host_domain_parsed = urllib.parse.urlsplit('//' + host_domain)\n\n            #limit the check to when the host domain is localhost, this makes it slightly less safe but should still prevent the exploit\n            loopback = is_loopback(host_domain_parsed.hostname)\n\n            if parsed.port is None: #if origin doesn't have a port strip it from the host to handle weird browsers, same for host\n                host_domain = host_domain_parsed.hostname\n            if host_domain_parsed.port is None:\n                origin_domain = parsed.hostname\n\n            if loopback and host_domain is not None and origin_domain is not None and len(host_domain) > 0 and len(origin_domain) > 0:\n                if host_domain != origin_domain:\n                    logging.warning(\"WARNING: request with non matching host and origin {} != {}, returning 403\".format(host_domain, origin_domain))\n                    return web.Response(status=403)\n\n        if request.method == \"OPTIONS\":\n            response = web.Response()\n        else:\n            response = await handler(request)\n\n        return response\n\n    return origin_only_middleware\n\nclass PromptServer():\n    def __init__(self, loop):\n        PromptServer.instance = self\n\n        mimetypes.init()\n        mimetypes.types_map['.js'] = 'application/javascript; charset=utf-8'\n\n        self.user_manager = UserManager()\n        self.model_file_manager = ModelFileManager()\n        self.internal_routes = InternalRoutes(self)\n        self.supports = [\"custom_nodes_from_web\"]\n        self.prompt_queue = None\n        self.loop = loop\n        self.messages = asyncio.Queue()\n        self.client_session:Optional[aiohttp.ClientSession] = None\n        self.number = 0\n\n        middlewares = [cache_control]\n        if args.enable_cors_header:\n            middlewares.append(create_cors_middleware(args.enable_cors_header))\n        else:\n            middlewares.append(create_origin_only_middleware())\n\n        max_upload_size = round(args.max_upload_size * 1024 * 1024)\n        self.app = web.Application(client_max_size=max_upload_size, middlewares=middlewares)\n        self.sockets = dict()\n        self.web_root = (\n            FrontendManager.init_frontend(args.front_end_version)\n            if args.front_end_root is None\n            else args.front_end_root\n        )\n        logging.info(f\"[Prompt Server] web root: {self.web_root}\")\n        routes = web.RouteTableDef()\n        self.routes = routes\n        self.last_node_id = None\n        self.client_id = None\n\n        self.on_prompt_handlers = []\n\n        @routes.get('/ws')\n        async def websocket_handler(request):\n            ws = web.WebSocketResponse()\n            await ws.prepare(request)\n            sid = request.rel_url.query.get('clientId', '')\n            if sid:\n                # Reusing existing session, remove old\n                self.sockets.pop(sid, None)\n            else:\n                sid = uuid.uuid4().hex\n\n            self.sockets[sid] = ws\n\n            try:\n                # Send initial state to the new client\n                await self.send(\"status\", { \"status\": self.get_queue_info(), 'sid': sid }, sid)\n                # On reconnect if we are the currently executing client send the current node\n                if self.client_id == sid and self.last_node_id is not None:\n                    await self.send(\"executing\", { \"node\": self.last_node_id }, sid)\n\n                async for msg in ws:\n                    if msg.type == aiohttp.WSMsgType.ERROR:\n                        logging.warning('ws connection closed with exception %s' % ws.exception())\n            finally:\n                self.sockets.pop(sid, None)\n            return ws\n\n        @routes.get(\"/\")\n        async def get_root(request):\n            response = web.FileResponse(os.path.join(self.web_root, \"index.html\"))\n            response.headers['Cache-Control'] = 'no-cache'\n    \n--- structural neighbors ---\nsymbol:cdcf322c7f91ada2:cache_control (symbol, server.py); symbol:04bc30b200904859:get_comfyui_version (symbol, server.py); symbol:43a300b267716ae8:BinaryEventTypes (symbol, server.py); symbol:37d197c48bd8739c:create_origin_only_middleware (symbol, server.py); symbol:a93c0758ff29814d:create_cors_middleware (symbol, server.py); symbol:a5462c684d0f9c88:is_loopback (symbol, server.py); symbol:cacab859dfe83589:PromptServer (symbol, server.py); symbol:6368fd59cce719a2:send_socket_catch_exception (symbol, server.py)",
+        "path/to/cors_middleware.py": "sed: can't read path/to/cors_middleware.py: No such file or directory\n",
+        "path/to/csrf_protection.py": "sed: can't read path/to/csrf_protection.py: No such file or directory\n"
+      },
+      "search_hits": {
+        "CORSMiddleware": [],
+        "CSRFProtection": [],
+        "CSRF token": [],
+        "CSRF protection": []
+      },
+      "warnings": []
+    },
+    "context-1-003": {
+      "request_id": "context-1-003",
+      "candidate_id": "security-1-003",
+      "file_snippets": {
+        "server.py": "import os\nimport sys\nimport asyncio\nimport traceback\n\nimport nodes\nimport folder_paths\nimport execution\nimport uuid\nimport urllib\nimport json\nimport glob\nimport struct\nimport ssl\nimport socket\nimport ipaddress\nfrom PIL import Image, ImageOps\nfrom PIL.PngImagePlugin import PngInfo\nfrom io import BytesIO\n\nimport aiohttp\nfrom aiohttp import web\nimport logging\n\nimport mimetypes\nfrom comfy.cli_args import args\nimport comfy.utils\nimport comfy.model_management\nimport node_helpers\nfrom app.frontend_management import FrontendManager\nfrom app.user_manager import UserManager\nfrom app.model_manager import ModelFileManager\nfrom typing import Optional\nfrom api_server.routes.internal.internal_routes import InternalRoutes\n\nclass BinaryEventTypes:\n    PREVIEW_IMAGE = 1\n    UNENCODED_PREVIEW_IMAGE = 2\n\nasync def send_socket_catch_exception(function, message):\n    try:\n        await function(message)\n    except (aiohttp.ClientError, aiohttp.ClientPayloadError, ConnectionResetError, BrokenPipeError, ConnectionError) as err:\n        logging.warning(\"send error: {}\".format(err))\n\ndef get_comfyui_version():\n    comfyui_version = \"unknown\"\n    repo_path = os.path.dirname(os.path.realpath(__file__))\n    try:\n        import pygit2\n        repo = pygit2.Repository(repo_path)\n        comfyui_version = repo.describe(describe_strategy=pygit2.GIT_DESCRIBE_TAGS)\n    except Exception:\n        try:\n            import subprocess\n            comfyui_version = subprocess.check_output([\"git\", \"describe\", \"--tags\"], cwd=repo_path).decode('utf-8')\n        except Exception as e:\n            logging.warning(f\"Failed to get ComfyUI version: {e}\")\n    return comfyui_version.strip()\n\n@web.middleware\nasync def cache_control(request: web.Request, handler):\n    response: web.Response = await handler(request)\n    if request.path.endswith('.js') or request.path.endswith('.css'):\n        response.headers.setdefault('Cache-Control', 'no-cache')\n    return response\n\ndef create_cors_middleware(allowed_origin: str):\n    @web.middleware\n    async def cors_middleware(request: web.Request, handler):\n        if request.method == \"OPTIONS\":\n            # Pre-flight request. Reply successfully:\n            response = web.Response()\n        else:\n            response = await handler(request)\n\n        response.headers['Access-Control-Allow-Origin'] = allowed_origin\n        response.headers['Access-Control-Allow-Methods'] = 'POST, GET, DELETE, PUT, OPTIONS'\n        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'\n        response.headers['Access-Control-Allow-Credentials'] = 'true'\n        return response\n\n    return cors_middleware\n\ndef is_loopback(host):\n    if host is None:\n        return False\n    try:\n        if ipaddress.ip_address(host).is_loopback:\n            return True\n        else:\n            return False\n    except:\n        pass\n\n    loopback = False\n    for family in (socket.AF_INET, socket.AF_INET6):\n        try:\n            r = socket.getaddrinfo(host, None, family, socket.SOCK_STREAM)\n            for family, _, _, _, sockaddr in r:\n                if not ipaddress.ip_address(sockaddr[0]).is_loopback:\n                    return loopback\n                else:\n                    loopback = True\n        except socket.gaierror:\n            pass\n\n    return loopback\n\n\ndef create_origin_only_middleware():\n    @web.middleware\n    async def origin_only_middleware(request: web.Request, handler):\n        #this code is used to prevent the case where a random website can queue comfy workflows by making a POST to 127.0.0.1 which browsers don't prevent for some dumb reason.\n        #in that case the Host and Origin hostnames won't match\n        #I know the proper fix would be to add a cookie but this should take care of the problem in the meantime\n        if 'Host' in request.headers and 'Origin' in request.headers:\n            host = request.headers['Host']\n            origin = request.headers['Origin']\n            host_domain = host.lower()\n            parsed = urllib.parse.urlparse(origin)\n            origin_domain = parsed.netloc.lower()\n            host_domain_parsed = urllib.parse.urlsplit('//' + host_domain)\n\n            #limit the check to when the host domain is localhost, this makes it slightly less safe but should still prevent the exploit\n            loopback = is_loopback(host_domain_parsed.hostname)\n\n            if parsed.port is None: #if origin doesn't have a port strip it from the host to handle weird browsers, same for host\n                host_domain = host_domain_parsed.hostname\n            if host_domain_parsed.port is None:\n                origin_domain = parsed.hostname\n\n            if loopback and host_domain is not None and origin_domain is not None and len(host_domain) > 0 and len(origin_domain) > 0:\n                if host_domain != origin_domain:\n                    logging.warning(\"WARNING: request with non matching host and origin {} != {}, returning 403\".format(host_domain, origin_domain))\n                    return web.Response(status=403)\n\n        if request.method == \"OPTIONS\":\n            response = web.Response()\n        else:\n            response = await handler(request)\n\n        return response\n\n    return origin_only_middleware\n\nclass PromptServer():\n    def __init__(self, loop):\n        PromptServer.instance = self\n\n        mimetypes.init()\n        mimetypes.types_map['.js'] = 'application/javascript; charset=utf-8'\n\n        self.user_manager = UserManager()\n        self.model_file_manager = ModelFileManager()\n        self.internal_routes = InternalRoutes(self)\n        self.supports = [\"custom_nodes_from_web\"]\n        self.prompt_queue = None\n        self.loop = loop\n        self.messages = asyncio.Queue()\n        self.client_session:Optional[aiohttp.ClientSession] = None\n        self.number = 0\n\n        middlewares = [cache_control]\n        if args.enable_cors_header:\n            middlewares.append(create_cors_middleware(args.enable_cors_header))\n        else:\n            middlewares.append(create_origin_only_middleware())\n\n        max_upload_size = round(args.max_upload_size * 1024 * 1024)\n        self.app = web.Application(client_max_size=max_upload_size, middlewares=middlewares)\n        self.sockets = dict()\n        self.web_root = (\n            FrontendManager.init_frontend(args.front_end_version)\n            if args.front_end_root is None\n            else args.front_end_root\n        )\n        logging.info(f\"[Prompt Server] web root: {self.web_root}\")\n        routes = web.RouteTableDef()\n        self.routes = routes\n        self.last_node_id = None\n        self.client_id = None\n\n        self.on_prompt_handlers = []\n\n        @routes.get('/ws')\n        async def websocket_handler(request):\n            ws = web.WebSocketResponse()\n            await ws.prepare(request)\n            sid = request.rel_url.query.get('clientId', '')\n            if sid:\n                # Reusing existing session, remove old\n                self.sockets.pop(sid, None)\n            else:\n                sid = uuid.uuid4().hex\n\n            self.sockets[sid] = ws\n\n            try:\n                # Send initial state to the new client\n                await self.send(\"status\", { \"status\": self.get_queue_info(), 'sid': sid }, sid)\n                # On reconnect if we are the currently executing client send the current node\n                if self.client_id == sid and self.last_node_id is not None:\n                    await self.send(\"executing\", { \"node\": self.last_node_id }, sid)\n\n                async for msg in ws:\n                    if msg.type == aiohttp.WSMsgType.ERROR:\n                        logging.warning('ws connection closed with exception %s' % ws.exception())\n            finally:\n                self.sockets.pop(sid, None)\n            return ws\n\n        @routes.get(\"/\")\n        async def get_root(request):\n            response = web.FileResponse(os.path.join(self.web_root, \"index.html\"))\n            response.headers['Cache-Control'] = 'no-cache'\n    \n--- structural neighbors ---\nsymbol:cdcf322c7f91ada2:cache_control (symbol, server.py); symbol:04bc30b200904859:get_comfyui_version (symbol, server.py); symbol:43a300b267716ae8:BinaryEventTypes (symbol, server.py); symbol:37d197c48bd8739c:create_origin_only_middleware (symbol, server.py); symbol:a93c0758ff29814d:create_cors_middleware (symbol, server.py); symbol:a5462c684d0f9c88:is_loopback (symbol, server.py); symbol:cacab859dfe83589:PromptServer (symbol, server.py); symbol:6368fd59cce719a2:send_socket_catch_exception (symbol, server.py)",
+        "path/to/session_management.py": "sed: can't read path/to/session_management.py: No such file or directory\n"
+      },
+      "search_hits": {
+        "client_session": [
+          {
+            "file_path": "server.py",
+            "line_number": 161,
+            "content": "self.client_session:Optional[aiohttp.ClientSession] = None",
+            "context_lines": [
+              "self.client_session:Optional[aiohttp.ClientSession] = None"
+            ]
+          },
+          {
+            "file_path": "server.py",
+            "line_number": 681,
+            "content": "self.client_session = aiohttp.ClientSession(timeout=timeout)",
+            "context_lines": [
+              "self.client_session = aiohttp.ClientSession(timeout=timeout)"
+            ]
+          }
+        ],
+        "close client_session": [],
+        "manage client_session": []
+      },
+      "warnings": []
+    }
+  },
+  "critique_revision_digests": {
+    "security-1-001:0": {
+      "shard_id": "security-1-001:0",
+      "candidate_id": "security-1-001",
+      "request_ids": [
+        "context-1-001",
+        "security-1-001-context"
+      ],
+      "evidence_bullets": [
+        "The `list_files` endpoint retrieves files from a directory specified by the `directory` query parameter without initial validation or sanitization in `internal_routes.py`.",
+        "The `directory_key` parameter is validated in the `FileService.list_files` method by checking against `allowed_directories`.",
+        "Tests exist for both valid and invalid directory keys in `file_service_test.py` and `internal_routes_test.py`."
+      ],
+      "impact": "weakens",
+      "warnings": [
+        "The initial retrieval of `directory_key` does not include validation, but subsequent checks in `FileService.list_files` mitigate this risk."
+      ]
+    },
+    "security-1-001:1": {
+      "shard_id": "security-1-001:1",
+      "candidate_id": "security-1-001",
+      "request_ids": [
+        "security-1-001:auto-context:1"
+      ],
+      "evidence_bullets": [
+        "The `list_files` endpoint retrieves files from a directory specified by the `directory` query parameter without any validation or sanitization.",
+        "No validation mechanisms are shown in the provided code snippet for the `directory_key` parameter in the `FileService.list_files` method or elsewhere in the codebase."
+      ],
+      "impact": "unclear",
+      "warnings": [
+        "No evidence of validation or sanitization for `directory_key` in the provided context."
+      ]
+    },
+    "security-1-002:0": {
+      "shard_id": "security-1-002:0",
+      "candidate_id": "security-1-002",
+      "request_ids": [
+        "context-1-002"
+      ],
+      "evidence_bullets": [
+        "The comment suggests the CORS middleware is a temporary workaround without proper CSRF protection.",
+        "No evidence of CSRF tokens or other protections being implemented in the provided code snippet.",
+        "The middleware checks for matching 'Host' and 'Origin' headers but does not implement CSRF tokens."
+      ],
+      "impact": "weakens",
+      "warnings": [
+        "The evidence is insufficient to determine if CSRF protection is implemented elsewhere in the application."
+      ]
+    },
+    "security-1-002:1": {
+      "shard_id": "security-1-002:1",
+      "candidate_id": "security-1-002",
+      "request_ids": [
+        "security-1-002-context"
+      ],
+      "evidence_bullets": [
+        "The comment indicates that the CORS middleware is a temporary solution and does not mention adding a CSRF token or other protections.",
+        "The middleware checks if the Host and Origin headers match for loopback addresses but does not implement CSRF protection.",
+        "No CSRF protection mechanisms are found in the provided search hits."
+      ],
+      "impact": "weakens",
+      "warnings": []
+    },
+    "security-1-002:2": {
+      "shard_id": "security-1-002:2",
+      "candidate_id": "security-1-002",
+      "request_ids": [
+        "security-1-002:auto-context:2"
+      ],
+      "evidence_bullets": [
+        "The comment in `create_origin_only_middleware` suggests a temporary workaround without full CSRF protection.",
+        "The middleware checks if the `Host` and `Origin` headers match but does not implement CSRF tokens.",
+        "No additional CSRF protection mechanisms are mentioned in the provided context."
+      ],
+      "impact": "weakens",
+      "warnings": []
+    },
+    "security-1-003:0": {
+      "shard_id": "security-1-003:0",
+      "candidate_id": "security-1-003",
+      "request_ids": [
+        "context-1-003"
+      ],
+      "evidence_bullets": [
+        "The `client_session` attribute is initialized but not explicitly closed.",
+        "No evidence of proper management or closure of `client_session` in the provided context.",
+        "The `client_session` is set in line 681 but there is no corresponding closure method or logic."
+      ],
+      "impact": "unclear",
+      "warnings": []
+    },
+    "security-1-003:1": {
+      "shard_id": "security-1-003:1",
+      "candidate_id": "security-1-003",
+      "request_ids": [
+        "security-1-003-context"
+      ],
+      "evidence_bullets": [
+        "`client_session` is initialized but not managed or closed in the provided context.",
+        "No explicit session closure or management seen in the `PromptServer` class.",
+        "There is a single initialization of `client_session` at line 161.",
+        "A session is created at line 681, but no corresponding closure is evident."
+      ],
+      "impact": "weakens",
+      "warnings": [
+        "Uncertainty about the overall management and closure of `client_session` outside the provided context."
+      ]
+    },
+    "security-1-003:2": {
+      "shard_id": "security-1-003:2",
+      "candidate_id": "security-1-003",
+      "request_ids": [
+        "security-1-003:auto-context:3"
+      ],
+      "evidence_bullets": [
+        "The `client_session` attribute is initialized but there is no evidence of its proper management or closure in the provided context.",
+        "No explicit creation or closing of `client_session` in the `PromptServer` class or related methods.",
+        "The `PromptServer` class handles websockets and routes but does not show any interaction with `client_session` lifecycle."
+      ],
+      "impact": "weakens",
+      "warnings": []
+    }
+  }
+}

@@ -17,6 +17,7 @@ from src.domain.schemas import (
 )
 from src.domain.state import GraphState
 from src.infrastructure.llm.factory import Models
+from src.infrastructure.llm.token_usage import extract_total_tokens_from_llm_result, parse_structured_output
 from src.orchestration.prompts.renderer import render_reviewer_prompt
 
 logger = logging.getLogger(__name__)
@@ -267,12 +268,15 @@ def make_critique_revision_digest_node(model_key: str | None = None, use_llm: bo
 
         warnings: List[str] = []
         digest: CritiqueRevisionDigest
+        llm_tokens = 0
 
         if use_llm:
             selected_model = model_key or getattr(settings, "reviewer_worker_model_key", None)
             try:
                 llm = Models.worker(CritiqueRevisionDigestOutput, model_key=selected_model)
-                response = llm.invoke(prompt)
+                invoke_result = llm.invoke(prompt)
+                response = parse_structured_output(invoke_result, CritiqueRevisionDigestOutput)
+                llm_tokens = extract_total_tokens_from_llm_result(invoke_result)
                 if response.candidate_id != shard.candidate_id:
                     warnings.append(
                         f"digest_candidate_mismatch:expected={shard.candidate_id} got={response.candidate_id}"
@@ -319,6 +323,7 @@ def make_critique_revision_digest_node(model_key: str | None = None, use_llm: bo
         return {
             "critique_revision_digests": {shard.shard_id: digest},
             "node_history": [node_name],
+            "token_usage": llm_tokens,
         }
 
     return critique_revision_digest_node
@@ -369,6 +374,7 @@ def make_critique_revision_reduce_node(model_key: str | None = None, use_llm: bo
 
         revisions: List[Dict[str, Any]] = []
         warnings: List[str] = []
+        llm_tokens = 0
 
         expected_ids = set(candidate_ids)
 
@@ -376,7 +382,9 @@ def make_critique_revision_reduce_node(model_key: str | None = None, use_llm: bo
             selected_model = model_key or getattr(settings, "reviewer_worker_model_key", None)
             try:
                 llm = Models.worker(CritiqueRevisionOutput, model_key=selected_model)
-                response = llm.invoke(prompt)
+                invoke_result = llm.invoke(prompt)
+                response = parse_structured_output(invoke_result, CritiqueRevisionOutput)
+                llm_tokens = extract_total_tokens_from_llm_result(invoke_result)
                 rows, norm_warnings = _normalize_revision_rows(response.revisions, expected_ids)
                 revisions = rows
                 warnings.extend(norm_warnings)
@@ -425,6 +433,7 @@ def make_critique_revision_reduce_node(model_key: str | None = None, use_llm: bo
         return {
             "metadata": metadata,
             "node_history": [node_name],
+            "token_usage": llm_tokens,
         }
 
     return critique_revision_reduce_node

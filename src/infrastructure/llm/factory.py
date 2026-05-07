@@ -95,7 +95,7 @@ class Models:
 
     @staticmethod
     def get_structured(model_key: str, schema: Type[BaseModel]):
-        return Models.get(model_key).with_structured_output(schema)
+        return Models.get(model_key).with_structured_output(schema, include_raw=True)
 
     @staticmethod
     def explorer(schema: Type[BaseModel], model_key: Optional[str] = None):

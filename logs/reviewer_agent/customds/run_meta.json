@@ -1,0 +1,43 @@
+{
+  "experiment": "reviewer_graph_parallel",
+  "run_id": "c75483e87a92",
+  "started_at": "2026-05-07T05:52:10.232031+00:00",
+  "finished_at": "2026-05-07T05:53:57.987981+00:00",
+  "dataset": "aacr_bench",
+  "dataset_path": "data\\processed\\aacr_bench_graph_ready.csv",
+  "planner_model_key": "qwen2.5-coder-32b",
+  "worker_model_key": "qwen2.5-coder-32b",
+  "reviewer_use_legacy_specialist_workers": false,
+  "pr_url_filter": "https://github.com/vllm-project/vllm/pull/19231",
+  "dataset_range": {
+    "start": 22,
+    "end": 22
+  },
+  "repo_root": "",
+  "trace": false,
+  "basic_graph": false,
+  "cli_flags": {
+    "dataset": "aacr",
+    "dataset_path": "data\\processed\\aacr_bench_graph_ready.csv",
+    "run_id": "c75483e87a92",
+    "limit": null,
+    "range": {
+      "start": 22,
+      "end": 22
+    },
+    "pr_url": null,
+    "output_root": null,
+    "repo_root": null,
+    "trace": false,
+    "basic_graph": false,
+    "llm_timeout": null,
+    "llm_max_retries": null,
+    "keep_redis_checkpoints": false
+  },
+  "redis_checkpoint_cleanup_enabled": false,
+  "total_prs": 1,
+  "manifest_total_rows": 1,
+  "succeeded": 1,
+  "failed": 0,
+  "elapsed_ms": 107749
+}

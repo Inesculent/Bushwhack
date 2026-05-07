@@ -264,6 +264,8 @@ def run_aacr_reviewer(
         pr_url=pr_url,
         dataset_range=dataset_range,
     )
+    # Preserve CLI filter before the loop shadows `pr_url` with each row's URL.
+    pr_url_filter_for_meta = pr_url.strip() if pr_url else ""
     logger.info("Reviewer-graph AACR run will process %s unique PR URLs", len(pr_urls))
 
     enricher = GitHubPullRequestEnricher(
@@ -275,6 +277,7 @@ def run_aacr_reviewer(
     succeeded = 0
     failed = 0
     run_started = time.perf_counter()
+    total_llm_tokens = 0
 
     for idx, pr_url in enumerate(pr_urls, start=1):
         slug = _slug_for_pr_url(pr_url)
@@ -292,6 +295,7 @@ def run_aacr_reviewer(
             "elapsed_ms": 0,
             "error": "",
             "redis_checkpoints_cleaned": False,
+            "token_usage": 0,
         }
 
         context = enricher.fetch_pr_context(pr_url)
@@ -334,8 +338,11 @@ def run_aacr_reviewer(
 
         elapsed_ms = int((time.perf_counter() - started) * 1000)
         pr_finished_at = _utc_now_iso()
+        pr_tokens = int(result.get("token_usage") or 0)
+        total_llm_tokens += pr_tokens
         metadata = dict(result.get("metadata", {}))
         metadata["pr_finished_at"] = pr_finished_at
+        metadata["llm_total_tokens"] = pr_tokens
         result["metadata"] = metadata
         findings = result.get("final_findings") or result.get("findings", []) or []
         raw_path = _write_raw(raw_dir, slug, result)
@@ -347,6 +354,7 @@ def run_aacr_reviewer(
         row["findings_path"] = str(findings_path.relative_to(run_dir))
         row["finding_count"] = len(findings)
         row["elapsed_ms"] = elapsed_ms
+        row["token_usage"] = pr_tokens
         row["redis_checkpoints_cleaned"] = _cleanup_pr_checkpoints(
             settings,
             graph_run_id,
@@ -356,11 +364,12 @@ def run_aacr_reviewer(
         succeeded += 1
 
         logger.info(
-            "[%s/%s] %s ok findings=%s elapsed_ms=%s",
+            "[%s/%s] %s ok findings=%s token_usage=%s elapsed_ms=%s",
             idx,
             len(pr_urls),
             slug,
             len(findings),
+            pr_tokens,
             elapsed_ms,
         )
 
@@ -379,7 +388,7 @@ def run_aacr_reviewer(
         "planner_model_key": settings.reviewer_planner_model_key,
         "worker_model_key": settings.reviewer_worker_model_key,
         "reviewer_use_legacy_specialist_workers": settings.reviewer_use_legacy_specialist_workers,
-        "pr_url_filter": pr_url or "",
+        "pr_url_filter": pr_url_filter_for_meta,
         "dataset_range": (
             {"start": dataset_range.start, "end": dataset_range.end}
             if dataset_range is not None
@@ -396,15 +405,17 @@ def run_aacr_reviewer(
         "manifest_total_rows": len(manifest_df),
         "succeeded": succeeded,
         "failed": failed,
+        "total_llm_tokens": total_llm_tokens,
         "elapsed_ms": int((time.perf_counter() - run_started) * 1000),
     }
     run_meta_path.write_text(json.dumps(run_meta, indent=2), encoding="utf-8")
 
     logger.info(
-        "Finished reviewer-graph AACR run run_id=%s succeeded=%s failed=%s elapsed_ms=%s",
+        "Finished reviewer-graph AACR run run_id=%s succeeded=%s failed=%s total_llm_tokens=%s elapsed_ms=%s",
         resolved_run_id,
         succeeded,
         failed,
+        total_llm_tokens,
         run_meta["elapsed_ms"],
     )
 

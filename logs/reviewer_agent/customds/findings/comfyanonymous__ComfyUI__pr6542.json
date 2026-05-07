@@ -1,0 +1,35 @@
+[
+  {
+    "id": "logic_1_1",
+    "file_path": "comfy/clip_model.py",
+    "line_start": 106,
+    "line_end": 110,
+    "content": "        if comfy.model_management.is_directml_enabled():\n            causal_mask = torch.full((x.shape[1], x.shape[1]), -torch.finfo(x.dtype).max, dtype=x.dtype, device=x.device).triu_(1)\n        else:\n            causal_mask = torch.empty(x.shape[1], x.shape[1], dtype=x.dtype, device=x.device).fill_(float(\"-inf\")).triu_(1)",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Verify that the change does not introduce any precision issues or unexpected behavior. Consider using `-torch.finfo(x.dtype).max` consistently across all conditions to maintain uniform behavior.",
+    "references": []
+  },
+  {
+    "id": "general_1_defect_causal_mask_initialization",
+    "file_path": "comfy/clip_model.py",
+    "line_start": 108,
+    "line_end": 114,
+    "content": "-        causal_mask = torch.empty(x.shape[1], x.shape[1], dtype=x.dtype, device=x.device).fill_(-torch.finfo(x.dtype).max).triu_(1)\n+        if comfy.model_management.is_directml_enabled():\n+            causal_mask = torch.full((x.shape[1], x.shape[1]), -torch.finfo(x.dtype).max, dtype=x.dtype, device=x.device).triu_(1)\n+        else:\n+            causal_mask = torch.empty(x.shape[1], x.shape[1], dtype=x.dtype, device=x.device).fill_(float(\"-inf\")).triu_(1)\n",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Ensure that the initialization of `causal_mask` produces the same result regardless of whether DirectML is enabled. Consider standardizing the initialization method across both branches or adding comments explaining the rationale behind the change.",
+    "references": []
+  },
+  {
+    "id": "general_1_missing_test_is_directml_enabled",
+    "file_path": "comfy/model_management.py",
+    "line_start": 997,
+    "line_end": 1003,
+    "content": "def is_directml_enabled():\n    global directml_enabled\n    if directml_enabled:\n        return True\n\n    return False\n",
+    "severity": "medium",
+    "feedback_type": "code_improvement",
+    "recommendation": "Add unit tests to verify the behavior of `is_directml_enabled()` when DirectML is enabled and disabled. Ensure that the tests cover different scenarios and edge cases.",
+    "references": []
+  }
+]

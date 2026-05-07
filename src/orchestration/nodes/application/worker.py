@@ -10,6 +10,7 @@ from src.config import get_settings
 from src.domain.schemas import CodeEntity, ReviewFinding, ReviewTask, ReviewerWorkerReport, SearchResult
 from src.domain.state import GraphState
 from src.infrastructure.llm.factory import Models
+from src.infrastructure.llm.token_usage import extract_total_tokens_from_llm_result, parse_structured_output
 from src.orchestration.prompts.renderer import render_reviewer_prompt
 
 logger = logging.getLogger(__name__)
@@ -128,6 +129,8 @@ def make_specialist_worker_node(
         if task is None:
             return {"node_history": [f"{node_name}:skipped"]}
 
+        llm_tokens = 0
+
         if _trace_enabled(state):
             trace_logger.info(
                 "TRACE worker_start run_id=%s node=%s task_id=%s specialty=%s files=%s",
@@ -147,7 +150,9 @@ def make_specialist_worker_node(
             selected_model = model_key or getattr(get_settings(), "reviewer_worker_model_key", None)
             try:
                 llm = Models.worker(WorkerReviewOutput, model_key=selected_model)
-                response = llm.invoke(_render_worker_prompt(state, task, context, specialty))
+                invoke_result = llm.invoke(_render_worker_prompt(state, task, context, specialty))
+                response = parse_structured_output(invoke_result, WorkerReviewOutput)
+                llm_tokens = extract_total_tokens_from_llm_result(invoke_result)
                 findings = _normalize_findings(task=task, findings=response.findings)
                 warnings.extend(response.warnings)
                 summary = response.summary
@@ -187,6 +192,7 @@ def make_specialist_worker_node(
             "reviewer_worker_reports": [report],
             "task_status_by_id": {task.id: "completed"},
             "node_history": [node_name],
+            "token_usage": llm_tokens,
         }
 
     return specialist_worker_node

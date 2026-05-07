@@ -1,0 +1,2042 @@
+{
+  "metadata": {
+    "experiment": "reviewer_graph_parallel",
+    "run_id": "c75483e87a92",
+    "graph_run_id": "c75483e87a92:infiniflow__ragflow__pr6691",
+    "pr_started_at": "2026-05-07T04:28:49.877526+00:00",
+    "pr_url": "https://github.com/infiniflow/ragflow/pull/6691",
+    "pr_title": "fix: Resolve KnowledgeGraph entity resolution errors (#6653)",
+    "pr_description": "### Related Issue: #6653\r\n### Environment:\r\n\r\nUsing nightly version\r\n\r\nElasticsearch database\r\n\r\n### Bug Description:\r\nWhen clicking the \"Entity Resolution\" button in KnowledgeGraph, encountered the following errors:\r\n\r\ngraphrag/entity_resolution.py\r\n\r\n```\r\nlist(sub_connect_graph.nodes) AttributeError\r\n```\r\n\r\ngraphrag/general/extractor.py\r\n```\r\nnode0_attrs[attr] = sorted(set(node0_attrs[attr].extend(node1_attrs[attr])))\r\nTypeError: 'NoneType' object is not iterable\r\n```\r\n```\r\nfor attr in [\"keywords\", \"source_id\"]:  \r\n KeyError I think attribute \"keywords\" is in edges not nodes\r\n```\r\ngraphrag/utils.py\r\n```\r\nsettings.docStoreConn.delete()  # Sync function called as async\r\n```\r\n### Changes Made:\r\n\r\nFixed AttributeError in entity_resolution.py by properly handling graph nodes\r\n\r\nFixed TypeError and KeyError in extractor.py by separate operations\r\n\r\nCorrected async/sync mismatch in document deletion call",
+    "pr_repo": "infiniflow/ragflow",
+    "pr_number": 6691,
+    "review_repo_url": "https://github.com/infiniflow/ragflow",
+    "review_pr_number": 6691,
+    "review_trace_enabled": false,
+    "structural_extractor": {
+      "mode": "sandbox_entities",
+      "files_attempted": 902,
+      "files_parsed": 255,
+      "gap_count": 647,
+      "node_count": 3536,
+      "edge_count": 12706,
+      "topology_algorithm": "graspologic_leiden",
+      "community_count": 708,
+      "topology_splits_applied": 0
+    },
+    "review_planner": {
+      "summary": "The changes involve modifications in `graphrag/entity_resolution.py`, `graphrag/general/extractor.py`, and `graphrag/utils.py`. The primary changes include fixing method calls, correcting list operations, and ensuring asynchronous execution.",
+      "task_count": 4,
+      "specialties": [
+        "general",
+        "logic",
+        "performance",
+        "security"
+      ],
+      "tasks": [
+        {
+          "id": "task_security",
+          "title": "Security Review",
+          "description": "Verify that the changes do not introduce any security vulnerabilities, especially in how data is handled and modified in `graphrag/entity_resolution.py`, `graphrag/general/extractor.py`, and `graphrag/utils.py`.",
+          "target_files": [
+            "graphrag/entity_resolution.py",
+            "graphrag/general/extractor.py",
+            "graphrag/utils.py"
+          ],
+          "subtasks": [],
+          "specialty": "security",
+          "depth": 1,
+          "assigned_model": null
+        },
+        {
+          "id": "task_logic",
+          "title": "Logic Review",
+          "description": "Verify the correctness of the logic in the changes, particularly focusing on the list operations and method calls in `graphrag/entity_resolution.py` and `graphrag/general/extractor.py`.",
+          "target_files": [
+            "graphrag/entity_resolution.py",
+            "graphrag/general/extractor.py"
+          ],
+          "subtasks": [],
+          "specialty": "logic",
+          "depth": 1,
+          "assigned_model": null
+        },
+        {
+          "id": "task_performance",
+          "title": "Performance Review",
+          "description": "Assess the performance impact of the changes, especially the use of `trio.to_thread.run_sync` in `graphrag/utils.py` and ensure that the changes do not introduce performance regressions.",
+          "target_files": [
+            "graphrag/utils.py"
+          ],
+          "subtasks": [],
+          "specialty": "performance",
+          "depth": 1,
+          "assigned_model": null
+        },
+        {
+          "id": "task_general",
+          "title": "General Review",
+          "description": "Conduct a general review of the changes to ensure there are no missed issues or improvements, particularly in `graphrag/utils.py` where the `set_graph` function has been modified.",
+          "target_files": [
+            "graphrag/utils.py"
+          ],
+          "subtasks": [],
+          "specialty": "general",
+          "depth": 1,
+          "assigned_model": null
+        }
+      ],
+      "warnings": []
+    },
+    "general_critiquer": {
+      "by_task": {
+        "task_general": {
+          "summary": "Review of changes in graphrag/utils.py focusing on the set_graph function.",
+          "candidate_count": 1,
+          "warnings": [
+            "Uncertainty exists regarding the handling of exceptions in the delete method and the impact of running the delete operation in a separate thread."
+          ],
+          "initial_focus_requests": [
+            {
+              "request_id": "task_general_request_1",
+              "candidate_id": "task_general_1",
+              "requested_by_specialty": "performance",
+              "file_paths": [
+                "graphrag/utils.py"
+              ],
+              "symbol_queries": [
+                "settings.docStoreConn.delete"
+              ],
+              "text_queries": [
+                "exception handling",
+                "thread pool size"
+              ],
+              "reason": "To understand how exceptions are handled in the delete method and whether the thread pool size is sufficient."
+            },
+            {
+              "request_id": "task_general_1:auto-context:1",
+              "candidate_id": "task_general_1",
+              "requested_by_specialty": "performance",
+              "file_paths": [
+                "graphrag/utils.py"
+              ],
+              "symbol_queries": [],
+              "text_queries": [
+                "graphrag/utils.py",
+                "The original code runs the delete operation in the main trio task, which could block the event loop. The new code uses t",
+                "The original code runs the delete operation in the main trio task, which could block the event loop. The new code uses trio.to_thread.run_sync to run the delete"
+              ],
+              "reason": "Deterministic context requirement for a high-risk or externally dependent defect candidate."
+            }
+          ]
+        },
+        "task_logic": {
+          "summary": "No high-severity findings were identified. There are some potential issues related to logic errors and missing tests.",
+          "candidate_count": 10,
+          "warnings": [
+            "The changes in `graphrag/utils.py` are not relevant to the target files and have been excluded from the review."
+          ],
+          "initial_focus_requests": [
+            {
+              "request_id": "task_logic_focus_1",
+              "candidate_id": "task_logic_1",
+              "requested_by_specialty": "general",
+              "file_paths": [
+                "graphrag/entity_resolution.py"
+              ],
+              "symbol_queries": [
+                "EntityResolution",
+                "__call__"
+              ],
+              "text_queries": [
+                "sub_connect_graph.nodes"
+              ],
+              "reason": "To verify the impact of the change on the overall functionality and ensure no other parts of the code depend on the incorrect usage of `sub_connect_graph.nodes`."
+            },
+            {
+              "request_id": "task_logic_focus_2",
+              "candidate_id": "task_logic_2",
+              "requested_by_specialty": "general",
+              "file_paths": [
+                "graphrag/general/extractor.py"
+              ],
+              "symbol_queries": [
+                "Extractor",
+                "_merge_graph_nodes"
+              ],
+              "text_queries": [
+                "node0_attrs[attr]",
+                "extend",
+                "sorted",
+                "set"
+              ],
+              "reason": "To verify the impact of the change on the overall functionality and ensure no other parts of the code depend on the incorrect usage of `extend`."
+            },
+            {
+              "request_id": "task_logic_focus_3",
+              "candidate_id": "task_logic_3",
+              "requested_by_specialty": "general",
+              "file_paths": [
+                "graphrag/general/extractor.py"
+              ],
+              "symbol_queries": [
+                "Extractor",
+                "_merge_graph_nodes"
+              ],
+              "text_queries": [
+                "edge0_attrs[attr]",
+                "extend",
+                "sorted",
+                "set"
+              ],
+              "reason": "To verify the impact of the change on the overall functionality and ensure no other parts of the code depend on the incorrect usage of `extend`."
+            }
+          ]
+        },
+        "task_performance": {
+          "summary": "Review of performance impact changes in graphrag/utils.py and related files.",
+          "candidate_count": 4,
+          "warnings": [],
+          "initial_focus_requests": [
+            {
+              "request_id": "task_performance_focus_1",
+              "candidate_id": "task_performance_4",
+              "requested_by_specialty": "performance",
+              "file_paths": [
+                "graphrag/utils.py"
+              ],
+              "symbol_queries": [
+                "settings.docStoreConn.delete"
+              ],
+              "text_queries": [
+                "blocking I/O",
+                "non-blocking alternatives",
+                "asynchronous alternatives"
+              ],
+              "reason": "To understand the nature of `settings.docStoreConn.delete` and its performance characteristics, and to identify potential non-blocking alternatives."
+            },
+            {
+              "request_id": "task_performance_4:auto-context:4",
+              "candidate_id": "task_performance_4",
+              "requested_by_specialty": "performance",
+              "file_paths": [
+                "graphrag/utils.py"
+              ],
+              "symbol_queries": [],
+              "text_queries": [
+                "graphrag/utils.py",
+                "Using `trio.to_thread.run_sync` could introduce performance overhead due to the context switch between the event loop an",
+                "Using `trio.to_thread.run_sync` could introduce performance overhead due to the context switch between the event loop and the thread pool. +                 nur"
+              ],
+              "reason": "Deterministic context requirement for a high-risk or externally dependent performance_regression candidate."
+            }
+          ]
+        },
+        "task_security": {
+          "summary": "No high-severity security vulnerabilities were found in the provided changes. However, there are a few potential issues related to logic errors and missing tests.",
+          "candidate_count": 4,
+          "warnings": [
+            "The provided diff does not show any obvious security vulnerabilities. However, further review of the broader context, especially around how data is handled and modified, is recommended to ensure there are no missed security issues."
+          ],
+          "initial_focus_requests": []
+        }
+      }
+    },
+    "focused_context": {
+      "fulfilled_ids": [
+        "task_general_1:auto-context:1",
+        "task_general_request_1",
+        "task_logic_focus_1",
+        "task_logic_focus_2",
+        "task_logic_focus_3",
+        "task_performance_4:auto-context:4",
+        "task_performance_focus_1"
+      ],
+      "warnings": []
+    },
+    "adversarial_reflection": {
+      "report_count": 20,
+      "focused_request_count": 0,
+      "routed_candidate_counts": {
+        "security": 0,
+        "logic": 0,
+        "performance": 2,
+        "general": 18
+      },
+      "total_routed_candidate_reviews": 20,
+      "warnings": []
+    },
+    "adversarial_cleanup": {
+      "promoted_count": 2,
+      "dropped_candidate_ids": [
+        "task_logic_1",
+        "task_logic_2",
+        "task_logic_3",
+        "task_logic_4",
+        "task_logic_5",
+        "task_logic_6",
+        "task_logic_7",
+        "task_logic_8",
+        "task_logic_9",
+        "task_logic_10",
+        "task_performance_1",
+        "task_performance_2",
+        "task_performance_3",
+        "task_security_1",
+        "task_security_2",
+        "task_security_3",
+        "task_security_4"
+      ],
+      "ignored_off_domain_rejections": {},
+      "ignored_off_domain_context_requests": {},
+      "misrouted_candidate_ids": {
+        "task_logic_1": [
+          {
+            "reflector_specialty": "general",
+            "rationale": "This candidate finding is about a logic error where `sub_connect_graph.nodes` is incorrectly assumed to be an attribute instead of a method. This is a logic issue, not a maintainability issue."
+          }
+        ],
+        "task_logic_2": [
+          {
+            "reflector_specialty": "general",
+            "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue."
+          }
+        ],
+        "task_logic_3": [
+          {
+            "reflector_specialty": "general",
+            "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue."
+          }
+        ],
+        "task_logic_4": [
+          {
+            "reflector_specialty": "general",
+            "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue."
+          }
+        ],
+        "task_logic_5": [
+          {
+            "reflector_specialty": "general",
+            "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue."
+          }
+        ],
+        "task_logic_6": [
+          {
+            "reflector_specialty": "general",
+            "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue."
+          }
+        ],
+        "task_logic_7": [
+          {
+            "reflector_specialty": "general",
+            "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue."
+          }
+        ],
+        "task_logic_8": [
+          {
+            "reflector_specialty": "general",
+            "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue."
+          }
+        ],
+        "task_logic_9": [
+          {
+            "reflector_specialty": "general",
+            "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue."
+          }
+        ],
+        "task_logic_10": [
+          {
+            "reflector_specialty": "general",
+            "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue."
+          }
+        ],
+        "task_performance_1": [
+          {
+            "reflector_specialty": "general",
+            "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue."
+          }
+        ],
+        "task_performance_2": [
+          {
+            "reflector_specialty": "general",
+            "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue."
+          }
+        ],
+        "task_performance_3": [
+          {
+            "reflector_specialty": "general",
+            "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue."
+          }
+        ],
+        "task_security_1": [
+          {
+            "reflector_specialty": "general",
+            "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue."
+          }
+        ],
+        "task_security_2": [
+          {
+            "reflector_specialty": "general",
+            "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue."
+          }
+        ],
+        "task_security_3": [
+          {
+            "reflector_specialty": "general",
+            "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue."
+          }
+        ],
+        "task_security_4": [
+          {
+            "reflector_specialty": "general",
+            "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue."
+          }
+        ]
+      },
+      "candidate_lifecycle": {
+        "task_general_1": {
+          "decision": "promoted",
+          "reason": "accepted_by_relevant_reflectors",
+          "claim_type": "defect",
+          "final_category": "performance",
+          "relevant_reflectors": [
+            "general",
+            "performance"
+          ],
+          "had_focused_context": true
+        },
+        "task_logic_1": {
+          "decision": "dropped",
+          "reason": "misrouted_not_applicable",
+          "claim_type": "defect",
+          "suspected_category": "logic",
+          "reports": [
+            {
+              "reflector_specialty": "general",
+              "rationale": "This candidate finding is about a logic error where `sub_connect_graph.nodes` is incorrectly assumed to be an attribute instead of a method. This is a logic issue, not a maintainability issue."
+            }
+          ]
+        },
+        "task_logic_2": {
+          "decision": "dropped",
+          "reason": "misrouted_not_applicable",
+          "claim_type": "defect",
+          "suspected_category": "logic",
+          "reports": [
+            {
+              "reflector_specialty": "general",
+              "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue."
+            }
+          ]
+        },
+        "task_logic_3": {
+          "decision": "dropped",
+          "reason": "misrouted_not_applicable",
+          "claim_type": "defect",
+          "suspected_category": "logic",
+          "reports": [
+            {
+              "reflector_specialty": "general",
+              "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue."
+            }
+          ]
+        },
+        "task_logic_4": {
+          "decision": "dropped",
+          "reason": "misrouted_not_applicable",
+          "claim_type": "defect",
+          "suspected_category": "logic",
+          "reports": [
+            {
+              "reflector_specialty": "general",
+              "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue."
+            }
+          ]
+        },
+        "task_logic_5": {
+          "decision": "dropped",
+          "reason": "misrouted_not_applicable",
+          "claim_type": "defect",
+          "suspected_category": "logic",
+          "reports": [
+            {
+              "reflector_specialty": "general",
+              "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue."
+            }
+          ]
+        },
+        "task_logic_6": {
+          "decision": "dropped",
+          "reason": "misrouted_not_applicable",
+          "claim_type": "defect",
+          "suspected_category": "logic",
+          "reports": [
+            {
+              "reflector_specialty": "general",
+              "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue."
+            }
+          ]
+        },
+        "task_logic_7": {
+          "decision": "dropped",
+          "reason": "misrouted_not_applicable",
+          "claim_type": "defect",
+          "suspected_category": "logic",
+          "reports": [
+            {
+              "reflector_specialty": "general",
+              "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue."
+            }
+          ]
+        },
+        "task_logic_8": {
+          "decision": "dropped",
+          "reason": "misrouted_not_applicable",
+          "claim_type": "defect",
+          "suspected_category": "logic",
+          "reports": [
+            {
+              "reflector_specialty": "general",
+              "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue."
+            }
+          ]
+        },
+        "task_logic_9": {
+          "decision": "dropped",
+          "reason": "misrouted_not_applicable",
+          "claim_type": "defect",
+          "suspected_category": "logic",
+          "reports": [
+            {
+              "reflector_specialty": "general",
+              "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue."
+            }
+          ]
+        },
+        "task_logic_10": {
+          "decision": "dropped",
+          "reason": "misrouted_not_applicable",
+          "claim_type": "defect",
+          "suspected_category": "logic",
+          "reports": [
+            {
+              "reflector_specialty": "general",
+              "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue."
+            }
+          ]
+        },
+        "task_performance_1": {
+          "decision": "dropped",
+          "reason": "misrouted_not_applicable",
+          "claim_type": "defect",
+          "suspected_category": "logic",
+          "reports": [
+            {
+              "reflector_specialty": "general",
+              "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue."
+            }
+          ]
+        },
+        "task_performance_2": {
+          "decision": "dropped",
+          "reason": "misrouted_not_applicable",
+          "claim_type": "defect",
+          "suspected_category": "logic",
+          "reports": [
+            {
+              "reflector_specialty": "general",
+              "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue."
+            }
+          ]
+        },
+        "task_performance_3": {
+          "decision": "dropped",
+          "reason": "misrouted_not_applicable",
+          "claim_type": "defect",
+          "suspected_category": "logic",
+          "reports": [
+            {
+              "reflector_specialty": "general",
+              "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue."
+            }
+          ]
+        },
+        "task_performance_4": {
+          "decision": "promoted",
+          "reason": "accepted_by_relevant_reflectors",
+          "claim_type": "performance_regression",
+          "final_category": "performance",
+          "relevant_reflectors": [
+            "performance"
+          ],
+          "had_focused_context": true
+        },
+        "task_security_1": {
+          "decision": "dropped",
+          "reason": "misrouted_not_applicable",
+          "claim_type": "defect",
+          "suspected_category": "logic",
+          "reports": [
+            {
+              "reflector_specialty": "general",
+              "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue."
+            }
+          ]
+        },
+        "task_security_2": {
+          "decision": "dropped",
+          "reason": "misrouted_not_applicable",
+          "claim_type": "defect",
+          "suspected_category": "logic",
+          "reports": [
+            {
+              "reflector_specialty": "general",
+              "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue."
+            }
+          ]
+        },
+        "task_security_3": {
+          "decision": "dropped",
+          "reason": "misrouted_not_applicable",
+          "claim_type": "defect",
+          "suspected_category": "logic",
+          "reports": [
+            {
+              "reflector_specialty": "general",
+              "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue."
+            }
+          ]
+        },
+        "task_security_4": {
+          "decision": "dropped",
+          "reason": "misrouted_not_applicable",
+          "claim_type": "defect",
+          "suspected_category": "logic",
+          "reports": [
+            {
+              "reflector_specialty": "general",
+              "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue."
+            }
+          ]
+        }
+      }
+    },
+    "review_synthesizer": {
+      "worker_count": 0,
+      "reflection_report_count": 20,
+      "raw_finding_count": 2,
+      "final_finding_count": 2,
+      "dropped_duplicate_ids": [],
+      "worker_reports": [],
+      "reflection_reports": [
+        {
+          "candidate_id": "task_general_1",
+          "reflector_specialty": "performance",
+          "verdict": "needs_context",
+          "rationale": "The candidate identifies a potential issue with exception handling and thread pool exhaustion but does not provide concrete evidence of a performance regression or scalability risk. Additional context is needed to understand the performance implications of using `trio.to_thread.run_sync`.",
+          "reclassified_category": null,
+          "focused_request": null
+        },
+        {
+          "candidate_id": "task_performance_4",
+          "reflector_specialty": "performance",
+          "verdict": "needs_context",
+          "rationale": "The candidate claims a performance regression due to the use of `trio.to_thread.run_sync`, but it lacks concrete evidence of increased latency or reduced throughput. Additional context is required to evaluate the performance impact of offloading the delete operation to a separate thread.",
+          "reclassified_category": null,
+          "focused_request": null
+        },
+        {
+          "candidate_id": "task_general_1",
+          "reflector_specialty": "general",
+          "verdict": "reclassify",
+          "rationale": "The candidate finding discusses performance and concurrency issues related to using `trio.to_thread.run_sync`. This is more appropriate for a performance or logic reflector.",
+          "reclassified_category": "performance",
+          "focused_request": null
+        },
+        {
+          "candidate_id": "task_logic_1",
+          "reflector_specialty": "general",
+          "verdict": "not_applicable",
+          "rationale": "This candidate finding is about a logic error where `sub_connect_graph.nodes` is incorrectly assumed to be an attribute instead of a method. This is a logic issue, not a maintainability issue.",
+          "reclassified_category": "logic",
+          "focused_request": null
+        },
+        {
+          "candidate_id": "task_logic_2",
+          "reflector_specialty": "general",
+          "verdict": "not_applicable",
+          "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue.",
+          "reclassified_category": "logic",
+          "focused_request": null
+        },
+        {
+          "candidate_id": "task_logic_3",
+          "reflector_specialty": "general",
+          "verdict": "not_applicable",
+          "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue.",
+          "reclassified_category": "logic",
+          "focused_request": null
+        },
+        {
+          "candidate_id": "task_logic_4",
+          "reflector_specialty": "general",
+          "verdict": "not_applicable",
+          "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue.",
+          "reclassified_category": "logic",
+          "focused_request": null
+        },
+        {
+          "candidate_id": "task_logic_5",
+          "reflector_specialty": "general",
+          "verdict": "not_applicable",
+          "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue.",
+          "reclassified_category": "logic",
+          "focused_request": null
+        },
+        {
+          "candidate_id": "task_logic_6",
+          "reflector_specialty": "general",
+          "verdict": "not_applicable",
+          "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue.",
+          "reclassified_category": "logic",
+          "focused_request": null
+        },
+        {
+          "candidate_id": "task_logic_7",
+          "reflector_specialty": "general",
+          "verdict": "not_applicable",
+          "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue.",
+          "reclassified_category": "logic",
+          "focused_request": null
+        },
+        {
+          "candidate_id": "task_logic_8",
+          "reflector_specialty": "general",
+          "verdict": "not_applicable",
+          "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue.",
+          "reclassified_category": "logic",
+          "focused_request": null
+        },
+        {
+          "candidate_id": "task_logic_9",
+          "reflector_specialty": "general",
+          "verdict": "not_applicable",
+          "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue.",
+          "reclassified_category": "logic",
+          "focused_request": null
+        },
+        {
+          "candidate_id": "task_logic_10",
+          "reflector_specialty": "general",
+          "verdict": "not_applicable",
+          "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue.",
+          "reclassified_category": "logic",
+          "focused_request": null
+        },
+        {
+          "candidate_id": "task_performance_1",
+          "reflector_specialty": "general",
+          "verdict": "not_applicable",
+          "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue.",
+          "reclassified_category": "logic",
+          "focused_request": null
+        },
+        {
+          "candidate_id": "task_performance_2",
+          "reflector_specialty": "general",
+          "verdict": "not_applicable",
+          "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue.",
+          "reclassified_category": "logic",
+          "focused_request": null
+        },
+        {
+          "candidate_id": "task_performance_3",
+          "reflector_specialty": "general",
+          "verdict": "not_applicable",
+          "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue.",
+          "reclassified_category": "logic",
+          "focused_request": null
+        },
+        {
+          "candidate_id": "task_security_1",
+          "reflector_specialty": "general",
+          "verdict": "not_applicable",
+          "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue.",
+          "reclassified_category": "logic",
+          "focused_request": null
+        },
+        {
+          "candidate_id": "task_security_2",
+          "reflector_specialty": "general",
+          "verdict": "not_applicable",
+          "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue.",
+          "reclassified_category": "logic",
+          "focused_request": null
+        },
+        {
+          "candidate_id": "task_security_3",
+          "reflector_specialty": "general",
+          "verdict": "not_applicable",
+          "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue.",
+          "reclassified_category": "logic",
+          "focused_request": null
+        },
+        {
+          "candidate_id": "task_security_4",
+          "reflector_specialty": "general",
+          "verdict": "not_applicable",
+          "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue.",
+          "reclassified_category": "logic",
+          "focused_request": null
+        }
+      ]
+    },
+    "pr_finished_at": "2026-05-07T04:31:43.772910+00:00"
+  },
+  "node_history": [
+    "sandbox_structural_extractor",
+    "review_planner",
+    "general_critiquer",
+    "general_critiquer",
+    "general_critiquer",
+    "general_critiquer",
+    "focused_context",
+    "adversarial_reflection",
+    "adversarial_cleanup",
+    "review_synthesizer"
+  ],
+  "worker_reports": [],
+  "candidate_findings": [
+    {
+      "candidate_id": "task_general_1",
+      "patch_task_id": "task_general",
+      "file_path": "graphrag/utils.py",
+      "line_start": 439,
+      "line_end": 441,
+      "content": "-                nursery.start_soon(lambda: settings.docStoreConn.delete({\"knowledge_graph_kwd\": [\"relation\"], \"from_entity_kwd\": from_node, \"to_entity_kwd\": to_node}, search.index_name(tenant_id), kb_id))\n+                 nursery.start_soon(lambda: trio.to_thread.run_sync(lambda: settings.docStoreConn.delete({\"knowledge_graph_kwd\": [\"relation\"], \"from_entity_kwd\": from_node, \"to_entity_kwd\": to_node}, search.index_name(tenant_id), kb_id)))",
+      "claim_type": "defect",
+      "failure_mode": "The original code runs the delete operation in the main trio task, which could block the event loop. The new code uses trio.to_thread.run_sync to run the delete operation in a separate thread, but this can lead to unexpected behavior if the delete operation raises an exception or if the thread pool is exhausted.",
+      "evidence_summary": "The change wraps the delete call in trio.to_thread.run_sync, which offloads the operation to a separate thread. However, this can introduce concurrency issues and exceptions are not handled.",
+      "required_context": [
+        "Check how exceptions are handled in the delete method and whether the thread pool size is sufficient.",
+        "Verify the impact of running the delete operation in a separate thread on the overall performance and responsiveness of the application."
+      ],
+      "confidence": 0.8,
+      "suspected_category": "performance",
+      "reflection_specialties": [
+        "performance",
+        "general"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "medium",
+      "recommendation": "Ensure that exceptions raised by the delete operation are properly handled and consider the implications of running the delete operation in a separate thread. Additionally, verify that the thread pool size is configured appropriately to handle the workload."
+    },
+    {
+      "candidate_id": "task_logic_1",
+      "patch_task_id": "task_logic",
+      "file_path": "graphrag/entity_resolution.py",
+      "line_start": 111,
+      "line_end": 111,
+      "content": "-                merging_nodes = list(sub_connect_graph.nodes)\n+                merging_nodes = list(sub_connect_graph.nodes())",
+      "claim_type": "defect",
+      "failure_mode": "The code may fail at runtime due to a TypeError because `sub_connect_graph.nodes` is a method, not an attribute.",
+      "evidence_summary": "The change attempts to call `list()` on `sub_connect_graph.nodes` which is a method, not an attribute. This will cause a TypeError.",
+      "required_context": [],
+      "confidence": 1.0,
+      "suspected_category": "logic",
+      "reflection_specialties": [
+        "general"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "high",
+      "recommendation": "Change `merging_nodes = list(sub_connect_graph.nodes)` to `merging_nodes = list(sub_connect_graph.nodes())` to correctly call the method."
+    },
+    {
+      "candidate_id": "task_logic_2",
+      "patch_task_id": "task_logic",
+      "file_path": "graphrag/general/extractor.py",
+      "line_start": 201,
+      "line_end": 201,
+      "content": "-            for attr in [\"keywords\", \"source_id\"]:\n-                node0_attrs[attr] = sorted(set(node0_attrs[attr].extend(node1_attrs[attr])))\n+            node0_attrs[\"source_id\"] = sorted(set(node0_attrs[\"source_id\"].extend(node1_attrs.get(\"source_id\", []))))",
+      "claim_type": "defect",
+      "failure_mode": "The code may fail at runtime due to a TypeError because `list.extend()` returns `None`.",
+      "evidence_summary": "The change attempts to assign the result of `node0_attrs[attr].extend(node1_attrs[attr])` to `node0_attrs[attr]`. Since `list.extend()` modifies the list in place and returns `None`, this will cause a TypeError.",
+      "required_context": [],
+      "confidence": 1.0,
+      "suspected_category": "logic",
+      "reflection_specialties": [
+        "general"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "high",
+      "recommendation": "Change `node0_attrs[attr] = sorted(set(node0_attrs[attr].extend(node1_attrs[attr])))` to `node0_attrs[attr].extend(node1_attrs.get(attr, [])); node0_attrs[attr] = sorted(set(node0_attrs[attr]))` to correctly extend the list and then sort the set."
+    },
+    {
+      "candidate_id": "task_logic_3",
+      "patch_task_id": "task_logic",
+      "file_path": "graphrag/general/extractor.py",
+      "line_start": 212,
+      "line_end": 213,
+      "content": "-            edge0_attrs[\"keywords\"] = list(set(edge0_attrs[\"keywords\"].extend(edge1_attrs[\"keywords\"])))\n-            edge0_attrs[\"source_id\"] = list(set(edge0_attrs[\"source_id\"].extend(edge1_attrs[\"source_id\"])))",
+      "claim_type": "defect",
+      "failure_mode": "The code may fail at runtime due to a TypeError because `list.extend()` returns `None`.",
+      "evidence_summary": "The change attempts to assign the result of `edge0_attrs[attr].extend(edge1_attrs[attr])` to `edge0_attrs[attr]`. Since `list.extend()` modifies the list in place and returns `None`, this will cause a TypeError.",
+      "required_context": [],
+      "confidence": 1.0,
+      "suspected_category": "logic",
+      "reflection_specialties": [
+        "general"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "high",
+      "recommendation": "Change `edge0_attrs[attr] = sorted(set(edge0_attrs[attr].extend(edge1_attrs[attr])))` to `edge0_attrs[attr].extend(edge1_attrs.get(attr, [])); edge0_attrs[attr] = sorted(set(edge0_attrs[attr]))` to correctly extend the list and then sort the set."
+    },
+    {
+      "candidate_id": "task_logic_4",
+      "patch_task_id": "task_logic",
+      "file_path": "graphrag/general/extractor.py",
+      "line_start": 212,
+      "line_end": 213,
+      "content": "-            edge0_attrs[\"keywords\"] = list(set(edge0_attrs[\"keywords\"].extend(edge1_attrs[\"keywords\"])))\n-            edge0_attrs[\"source_id\"] = list(set(edge0_attrs[\"source_id\"].extend(edge1_attrs[\"source_id\"])))",
+      "claim_type": "defect",
+      "failure_mode": "The code may fail at runtime due to a TypeError because `list.extend()` returns `None`.",
+      "evidence_summary": "The change attempts to assign the result of `edge0_attrs[attr].extend(edge1_attrs[attr])` to `edge0_attrs[attr]`. Since `list.extend()` modifies the list in place and returns `None`, this will cause a TypeError.",
+      "required_context": [],
+      "confidence": 1.0,
+      "suspected_category": "logic",
+      "reflection_specialties": [
+        "general"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "high",
+      "recommendation": "Change the block to:\n```\nfor attr in [\"keywords\", \"source_id\"]:\n    edge0_attrs[attr].extend(edge1_attrs.get(attr, []))\n    edge0_attrs[attr] = sorted(set(edge0_attrs[attr]))\n``` to correctly extend the lists and then sort the sets."
+    },
+    {
+      "candidate_id": "task_logic_5",
+      "patch_task_id": "task_logic",
+      "file_path": "graphrag/general/extractor.py",
+      "line_start": 201,
+      "line_end": 201,
+      "content": "-            for attr in [\"keywords\", \"source_id\"]:\n-                node0_attrs[attr] = sorted(set(node0_attrs[attr].extend(node1_attrs[attr])))\n+            node0_attrs[\"source_id\"] = sorted(set(node0_attrs[\"source_id\"].extend(node1_attrs.get(\"source_id\", []))))",
+      "claim_type": "defect",
+      "failure_mode": "The code may fail at runtime due to a TypeError because `list.extend()` returns `None`.",
+      "evidence_summary": "The change attempts to assign the result of `node0_attrs[attr].extend(node1_attrs[attr])` to `node0_attrs[attr]`. Since `list.extend()` modifies the list in place and returns `None`, this will cause a TypeError.",
+      "required_context": [],
+      "confidence": 1.0,
+      "suspected_category": "logic",
+      "reflection_specialties": [
+        "general"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "high",
+      "recommendation": "Change the block to:\n```\nfor attr in [\"keywords\", \"source_id\"]:\n    node0_attrs[attr].extend(node1_attrs.get(attr, []))\n    node0_attrs[attr] = sorted(set(node0_attrs[attr]))\n``` to correctly extend the lists and then sort the sets."
+    },
+    {
+      "candidate_id": "task_logic_6",
+      "patch_task_id": "task_logic",
+      "file_path": "graphrag/general/extractor.py",
+      "line_start": 212,
+      "line_end": 212,
+      "content": "-            edge0_attrs[\"keywords\"] = list(set(edge0_attrs[\"keywords\"].extend(edge1_attrs[\"keywords\"])))",
+      "claim_type": "defect",
+      "failure_mode": "The code may fail at runtime due to a TypeError because `list.extend()` returns `None`.",
+      "evidence_summary": "The change attempts to assign the result of `edge0_attrs[attr].extend(edge1_attrs[attr])` to `edge0_attrs[attr]`. Since `list.extend()` modifies the list in place and returns `None`, this will cause a TypeError.",
+      "required_context": [],
+      "confidence": 1.0,
+      "suspected_category": "logic",
+      "reflection_specialties": [
+        "general"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "high",
+      "recommendation": "Change `edge0_attrs[attr] = sorted(set(edge0_attrs[attr].extend(edge1_attrs[attr])))` to `edge0_attrs[attr].extend(edge1_attrs.get(attr, [])); edge0_attrs[attr] = sorted(set(edge0_attrs[attr]))` to correctly extend the list and then sort the set."
+    },
+    {
+      "candidate_id": "task_logic_7",
+      "patch_task_id": "task_logic",
+      "file_path": "graphrag/general/extractor.py",
+      "line_start": 213,
+      "line_end": 213,
+      "content": "-            edge0_attrs[\"source_id\"] = list(set(edge0_attrs[\"source_id\"].extend(edge1_attrs[\"source_id\"])))",
+      "claim_type": "defect",
+      "failure_mode": "The code may fail at runtime due to a TypeError because `list.extend()` returns `None`.",
+      "evidence_summary": "The change attempts to assign the result of `edge0_attrs[attr].extend(edge1_attrs[attr])` to `edge0_attrs[attr]`. Since `list.extend()` modifies the list in place and returns `None`, this will cause a TypeError.",
+      "required_context": [],
+      "confidence": 1.0,
+      "suspected_category": "logic",
+      "reflection_specialties": [
+        "general"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "high",
+      "recommendation": "Change `edge0_attrs[attr] = sorted(set(edge0_attrs[attr].extend(edge1_attrs[attr])))` to `edge0_attrs[attr].extend(edge1_attrs.get(attr, [])); edge0_attrs[attr] = sorted(set(edge0_attrs[attr]))` to correctly extend the list and then sort the set."
+    },
+    {
+      "candidate_id": "task_logic_8",
+      "patch_task_id": "task_logic",
+      "file_path": "graphrag/general/extractor.py",
+      "line_start": 201,
+      "line_end": 201,
+      "content": "-            for attr in [\"keywords\", \"source_id\"]:\n-                node0_attrs[attr] = sorted(set(node0_attrs[attr].extend(node1_attrs[attr])))\n+            node0_attrs[\"source_id\"] = sorted(set(node0_attrs[\"source_id\"].extend(node1_attrs.get(\"source_id\", []))))",
+      "claim_type": "defect",
+      "failure_mode": "The code may fail at runtime due to a TypeError because `list.extend()` returns `None`.",
+      "evidence_summary": "The change attempts to assign the result of `node0_attrs[attr].extend(node1_attrs[attr])` to `node0_attrs[attr]`. Since `list.extend()` modifies the list in place and returns `None`, this will cause a TypeError.",
+      "required_context": [],
+      "confidence": 1.0,
+      "suspected_category": "logic",
+      "reflection_specialties": [
+        "general"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "high",
+      "recommendation": "Change `node0_attrs[attr] = sorted(set(node0_attrs[attr].extend(node1_attrs[attr])))` to `node0_attrs[attr].extend(node1_attrs.get(attr, [])); node0_attrs[attr] = sorted(set(node0_attrs[attr]))` to correctly extend the list and then sort the set."
+    },
+    {
+      "candidate_id": "task_logic_9",
+      "patch_task_id": "task_logic",
+      "file_path": "graphrag/general/extractor.py",
+      "line_start": 212,
+      "line_end": 212,
+      "content": "-            edge0_attrs[\"keywords\"] = list(set(edge0_attrs[\"keywords\"].extend(edge1_attrs[\"keywords\"])))",
+      "claim_type": "defect",
+      "failure_mode": "The code may fail at runtime due to a TypeError because `list.extend()` returns `None`.",
+      "evidence_summary": "The change attempts to assign the result of `edge0_attrs[attr].extend(edge1_attrs[attr])` to `edge0_attrs[attr]`. Since `list.extend()` modifies the list in place and returns `None`, this will cause a TypeError.",
+      "required_context": [],
+      "confidence": 1.0,
+      "suspected_category": "logic",
+      "reflection_specialties": [
+        "general"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "high",
+      "recommendation": "Change `edge0_attrs[attr] = sorted(set(edge0_attrs[attr].extend(edge1_attrs[attr])))` to `edge0_attrs[attr].extend(edge1_attrs.get(attr, [])); edge0_attrs[attr] = sorted(set(edge0_attrs[attr]))` to correctly extend the list and then sort the set."
+    },
+    {
+      "candidate_id": "task_logic_10",
+      "patch_task_id": "task_logic",
+      "file_path": "graphrag/general/extractor.py",
+      "line_start": 213,
+      "line_end": 213,
+      "content": "-            edge0_attrs[\"source_id\"] = list(set(edge0_attrs[\"source_id\"].extend(edge1_attrs[\"source_id\"])))",
+      "claim_type": "defect",
+      "failure_mode": "The code may fail at runtime due to a TypeError because `list.extend()` returns `None`.",
+      "evidence_summary": "The change attempts to assign the result of `edge0_attrs[attr].extend(edge1_attrs[attr])` to `edge0_attrs[attr]`. Since `list.extend()` modifies the list in place and returns `None`, this will cause a TypeError.",
+      "required_context": [],
+      "confidence": 1.0,
+      "suspected_category": "logic",
+      "reflection_specialties": [
+        "general"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "high",
+      "recommendation": "Change `edge0_attrs[attr] = sorted(set(edge0_attrs[attr].extend(edge1_attrs[attr])))` to `edge0_attrs[attr].extend(edge1_attrs.get(attr, [])); edge0_attrs[attr] = sorted(set(edge0_attrs[attr]))` to correctly extend the list and then sort the set."
+    },
+    {
+      "candidate_id": "task_performance_1",
+      "patch_task_id": "task_performance",
+      "file_path": "graphrag/general/extractor.py",
+      "line_start": 201,
+      "line_end": 202,
+      "content": "-            for attr in [\"keywords\", \"source_id\"]:\n-                node0_attrs[attr] = sorted(set(node0_attrs[attr].extend(node1_attrs[attr])))",
+      "claim_type": "defect",
+      "failure_mode": "The code will raise an AttributeError because the `extend` method does not return anything and returns None, which cannot be passed to `sorted(set(...))`.",
+      "evidence_summary": "The `extend` method modifies the list in place and returns None. The current code attempts to sort and convert to a set the result of `extend`, which is None.",
+      "required_context": [],
+      "confidence": 1.0,
+      "suspected_category": "logic",
+      "reflection_specialties": [
+        "general"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "high",
+      "recommendation": "Modify the code to extend the list first and then sort and convert to a set. For example: `node0_attrs[attr].extend(node1_attrs[attr]); node0_attrs[attr] = sorted(set(node0_attrs[attr]))`."
+    },
+    {
+      "candidate_id": "task_performance_2",
+      "patch_task_id": "task_performance",
+      "file_path": "graphrag/general/extractor.py",
+      "line_start": 213,
+      "line_end": 214,
+      "content": "-                        edge0_attrs[attr] = list(set(edge0_attrs[attr].extend(edge1_attrs[attr])))",
+      "claim_type": "defect",
+      "failure_mode": "Similar to the previous defect, this will also raise an AttributeError because `extend` returns None.",
+      "evidence_summary": "The `extend` method modifies the list in place and returns None. The current code attempts to convert to a list and then sort and convert to a set the result of `extend`, which is None.",
+      "required_context": [],
+      "confidence": 1.0,
+      "suspected_category": "logic",
+      "reflection_specialties": [
+        "general"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "high",
+      "recommendation": "Modify the code to extend the list first and then sort and convert to a set. For example: `edge0_attrs[attr].extend(edge1_attrs[attr]); edge0_attrs[attr] = sorted(set(edge0_attrs[attr]))`."
+    },
+    {
+      "candidate_id": "task_performance_3",
+      "patch_task_id": "task_performance",
+      "file_path": "graphrag/general/extractor.py",
+      "line_start": 213,
+      "line_end": 214,
+      "content": "+                        for attr in [\"keywords\", \"source_id\"]:\n+                            edge0_attrs[attr] = sorted(set(edge0_attrs[attr].extend(edge1_attrs.get(attr, []))))",
+      "claim_type": "defect",
+      "failure_mode": "This will also raise an AttributeError because `extend` returns None.",
+      "evidence_summary": "The `extend` method modifies the list in place and returns None. The current code attempts to sort and convert to a set the result of `extend`, which is None.",
+      "required_context": [],
+      "confidence": 1.0,
+      "suspected_category": "logic",
+      "reflection_specialties": [
+        "general"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "high",
+      "recommendation": "Modify the code to extend the list first and then sort and convert to a set. For example: `edge0_attrs[attr].extend(edge1_attrs.get(attr, [])); edge0_attrs[attr] = sorted(set(edge0_attrs[attr]))`."
+    },
+    {
+      "candidate_id": "task_performance_4",
+      "patch_task_id": "task_performance",
+      "file_path": "graphrag/utils.py",
+      "line_start": 439,
+      "line_end": 440,
+      "content": "+                 nursery.start_soon(lambda: trio.to_thread.run_sync(lambda: settings.docStoreConn.delete({\"knowledge_graph_kwd\": [\"relation\"], \"from_entity_kwd\": from_node, \"to_entity_kwd\": to_node}, search.index_name(tenant_id), kb_id)))",
+      "claim_type": "performance_regression",
+      "failure_mode": "Using `trio.to_thread.run_sync` could introduce performance overhead due to the context switch between the event loop and the thread pool.",
+      "evidence_summary": "The introduction of `trio.to_thread.run_sync` suggests that blocking I/O operations are being performed in a separate thread. This can lead to increased latency and reduced throughput compared to non-blocking alternatives.",
+      "required_context": [
+        "Understand the nature of `settings.docStoreConn.delete` and its performance characteristics.",
+        "Check if there are non-blocking alternatives to `settings.docStoreConn.delete`."
+      ],
+      "confidence": 0.8,
+      "suspected_category": "performance",
+      "reflection_specialties": [
+        "performance"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "medium",
+      "recommendation": "Evaluate whether `settings.docStoreConn.delete` can be made non-blocking or if there are asynchronous alternatives. If blocking operations are necessary, ensure that the performance impact is acceptable and consider batching operations if possible."
+    },
+    {
+      "candidate_id": "task_security_1",
+      "patch_task_id": "task_security",
+      "file_path": "graphrag/general/extractor.py",
+      "line_start": 212,
+      "line_end": 212,
+      "content": "node0_attrs[attr] = sorted(set(node0_attrs[attr].extend(node1_attrs.get(attr, []))))",
+      "claim_type": "defect",
+      "failure_mode": "The `extend` method modifies the list in place and returns `None`. This results in `node0_attrs[attr]` being set to `None`, which can lead to unexpected behavior.",
+      "evidence_summary": "The `extend` method modifies the list in place and returns `None`. This results in `node0_attrs[attr]` being set to `None`, which can lead to unexpected behavior.",
+      "required_context": [],
+      "confidence": 1.0,
+      "suspected_category": "logic",
+      "reflection_specialties": [
+        "general"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "medium",
+      "recommendation": "Use the `+` operator to concatenate lists instead of `extend`. For example, `node0_attrs[attr] = sorted(set(node0_attrs[attr] + node1_attrs.get(attr, [])))`."
+    },
+    {
+      "candidate_id": "task_security_2",
+      "patch_task_id": "task_security",
+      "file_path": "graphrag/general/extractor.py",
+      "line_start": 216,
+      "line_end": 216,
+      "content": "edge0_attrs[attr] = sorted(set(edge0_attrs[attr].extend(edge1_attrs.get(attr, []))))",
+      "claim_type": "defect",
+      "failure_mode": "The `extend` method modifies the list in place and returns `None`. This results in `edge0_attrs[attr]` being set to `None`, which can lead to unexpected behavior.",
+      "evidence_summary": "The `extend` method modifies the list in place and returns `None`. This results in `edge0_attrs[attr]` being set to `None`, which can lead to unexpected behavior.",
+      "required_context": [],
+      "confidence": 1.0,
+      "suspected_category": "logic",
+      "reflection_specialties": [
+        "general"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "medium",
+      "recommendation": "Use the `+` operator to concatenate lists instead of `extend`. For example, `edge0_attrs[attr] = sorted(set(edge0_attrs[attr] + edge1_attrs.get(attr, [])))`."
+    },
+    {
+      "candidate_id": "task_security_3",
+      "patch_task_id": "task_security",
+      "file_path": "graphrag/general/extractor.py",
+      "line_start": 213,
+      "line_end": 213,
+      "content": "edge0_attrs[attr] = list(set(edge0_attrs[attr].extend(edge1_attrs[attr])))",
+      "claim_type": "defect",
+      "failure_mode": "The `extend` method modifies the list in place and returns `None`. This results in `edge0_attrs[attr]` being set to `None`, which can lead to unexpected behavior.",
+      "evidence_summary": "The `extend` method modifies the list in place and returns `None`. This results in `edge0_attrs[attr]` being set to `None`, which can lead to unexpected behavior.",
+      "required_context": [],
+      "confidence": 1.0,
+      "suspected_category": "logic",
+      "reflection_specialties": [
+        "general"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "medium",
+      "recommendation": "Use the `+` operator to concatenate lists instead of `extend`. For example, `edge0_attrs[attr] = list(set(edge0_attrs[attr] + edge1_attrs[attr]))`."
+    },
+    {
+      "candidate_id": "task_security_4",
+      "patch_task_id": "task_security",
+      "file_path": "graphrag/general/extractor.py",
+      "line_start": 214,
+      "line_end": 214,
+      "content": "edge0_attrs[attr] = list(set(edge0_attrs[attr].extend(edge1_attrs[attr])))",
+      "claim_type": "defect",
+      "failure_mode": "The `extend` method modifies the list in place and returns `None`. This results in `edge0_attrs[attr]` being set to `None`, which can lead to unexpected behavior.",
+      "evidence_summary": "The `extend` method modifies the list in place and returns `None`. This results in `edge0_attrs[attr]` being set to `None`, which can lead to unexpected behavior.",
+      "required_context": [],
+      "confidence": 1.0,
+      "suspected_category": "logic",
+      "reflection_specialties": [
+        "general"
+      ],
+      "feedback_type": "code_improvement",
+      "severity": "medium",
+      "recommendation": "Use the `+` operator to concatenate lists instead of `extend`. For example, `edge0_attrs[attr] = list(set(edge0_attrs[attr] + edge1_attrs[attr]))`."
+    }
+  ],
+  "reflection_reports": [
+    {
+      "candidate_id": "task_general_1",
+      "reflector_specialty": "performance",
+      "verdict": "needs_context",
+      "rationale": "The candidate identifies a potential issue with exception handling and thread pool exhaustion but does not provide concrete evidence of a performance regression or scalability risk. Additional context is needed to understand the performance implications of using `trio.to_thread.run_sync`.",
+      "reclassified_category": null,
+      "focused_request": null
+    },
+    {
+      "candidate_id": "task_performance_4",
+      "reflector_specialty": "performance",
+      "verdict": "needs_context",
+      "rationale": "The candidate claims a performance regression due to the use of `trio.to_thread.run_sync`, but it lacks concrete evidence of increased latency or reduced throughput. Additional context is required to evaluate the performance impact of offloading the delete operation to a separate thread.",
+      "reclassified_category": null,
+      "focused_request": null
+    },
+    {
+      "candidate_id": "task_general_1",
+      "reflector_specialty": "general",
+      "verdict": "reclassify",
+      "rationale": "The candidate finding discusses performance and concurrency issues related to using `trio.to_thread.run_sync`. This is more appropriate for a performance or logic reflector.",
+      "reclassified_category": "performance",
+      "focused_request": null
+    },
+    {
+      "candidate_id": "task_logic_1",
+      "reflector_specialty": "general",
+      "verdict": "not_applicable",
+      "rationale": "This candidate finding is about a logic error where `sub_connect_graph.nodes` is incorrectly assumed to be an attribute instead of a method. This is a logic issue, not a maintainability issue.",
+      "reclassified_category": "logic",
+      "focused_request": null
+    },
+    {
+      "candidate_id": "task_logic_2",
+      "reflector_specialty": "general",
+      "verdict": "not_applicable",
+      "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue.",
+      "reclassified_category": "logic",
+      "focused_request": null
+    },
+    {
+      "candidate_id": "task_logic_3",
+      "reflector_specialty": "general",
+      "verdict": "not_applicable",
+      "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue.",
+      "reclassified_category": "logic",
+      "focused_request": null
+    },
+    {
+      "candidate_id": "task_logic_4",
+      "reflector_specialty": "general",
+      "verdict": "not_applicable",
+      "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue.",
+      "reclassified_category": "logic",
+      "focused_request": null
+    },
+    {
+      "candidate_id": "task_logic_5",
+      "reflector_specialty": "general",
+      "verdict": "not_applicable",
+      "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue.",
+      "reclassified_category": "logic",
+      "focused_request": null
+    },
+    {
+      "candidate_id": "task_logic_6",
+      "reflector_specialty": "general",
+      "verdict": "not_applicable",
+      "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue.",
+      "reclassified_category": "logic",
+      "focused_request": null
+    },
+    {
+      "candidate_id": "task_logic_7",
+      "reflector_specialty": "general",
+      "verdict": "not_applicable",
+      "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue.",
+      "reclassified_category": "logic",
+      "focused_request": null
+    },
+    {
+      "candidate_id": "task_logic_8",
+      "reflector_specialty": "general",
+      "verdict": "not_applicable",
+      "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue.",
+      "reclassified_category": "logic",
+      "focused_request": null
+    },
+    {
+      "candidate_id": "task_logic_9",
+      "reflector_specialty": "general",
+      "verdict": "not_applicable",
+      "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue.",
+      "reclassified_category": "logic",
+      "focused_request": null
+    },
+    {
+      "candidate_id": "task_logic_10",
+      "reflector_specialty": "general",
+      "verdict": "not_applicable",
+      "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue.",
+      "reclassified_category": "logic",
+      "focused_request": null
+    },
+    {
+      "candidate_id": "task_performance_1",
+      "reflector_specialty": "general",
+      "verdict": "not_applicable",
+      "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue.",
+      "reclassified_category": "logic",
+      "focused_request": null
+    },
+    {
+      "candidate_id": "task_performance_2",
+      "reflector_specialty": "general",
+      "verdict": "not_applicable",
+      "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue.",
+      "reclassified_category": "logic",
+      "focused_request": null
+    },
+    {
+      "candidate_id": "task_performance_3",
+      "reflector_specialty": "general",
+      "verdict": "not_applicable",
+      "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue.",
+      "reclassified_category": "logic",
+      "focused_request": null
+    },
+    {
+      "candidate_id": "task_security_1",
+      "reflector_specialty": "general",
+      "verdict": "not_applicable",
+      "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue.",
+      "reclassified_category": "logic",
+      "focused_request": null
+    },
+    {
+      "candidate_id": "task_security_2",
+      "reflector_specialty": "general",
+      "verdict": "not_applicable",
+      "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue.",
+      "reclassified_category": "logic",
+      "focused_request": null
+    },
+    {
+      "candidate_id": "task_security_3",
+      "reflector_specialty": "general",
+      "verdict": "not_applicable",
+      "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue.",
+      "reclassified_category": "logic",
+      "focused_request": null
+    },
+    {
+      "candidate_id": "task_security_4",
+      "reflector_specialty": "general",
+      "verdict": "not_applicable",
+      "rationale": "This candidate finding is about a logic error where `list.extend()` returns `None`. This is a logic issue, not a maintainability issue.",
+      "reclassified_category": "logic",
+      "focused_request": null
+    }
+  ],
+  "focused_context_requests": [
+    {
+      "request_id": "task_general_request_1",
+      "candidate_id": "task_general_1",
+      "requested_by_specialty": "performance",
+      "file_paths": [
+        "graphrag/utils.py"
+      ],
+      "symbol_queries": [
+        "settings.docStoreConn.delete"
+      ],
+      "text_queries": [
+        "exception handling",
+        "thread pool size"
+      ],
+      "reason": "To understand how exceptions are handled in the delete method and whether the thread pool size is sufficient."
+    },
+    {
+      "request_id": "task_general_1:auto-context:1",
+      "candidate_id": "task_general_1",
+      "requested_by_specialty": "performance",
+      "file_paths": [
+        "graphrag/utils.py"
+      ],
+      "symbol_queries": [],
+      "text_queries": [
+        "graphrag/utils.py",
+        "The original code runs the delete operation in the main trio task, which could block the event loop. The new code uses t",
+        "The original code runs the delete operation in the main trio task, which could block the event loop. The new code uses trio.to_thread.run_sync to run the delete"
+      ],
+      "reason": "Deterministic context requirement for a high-risk or externally dependent defect candidate."
+    },
+    {
+      "request_id": "task_logic_focus_1",
+      "candidate_id": "task_logic_1",
+      "requested_by_specialty": "general",
+      "file_paths": [
+        "graphrag/entity_resolution.py"
+      ],
+      "symbol_queries": [
+        "EntityResolution",
+        "__call__"
+      ],
+      "text_queries": [
+        "sub_connect_graph.nodes"
+      ],
+      "reason": "To verify the impact of the change on the overall functionality and ensure no other parts of the code depend on the incorrect usage of `sub_connect_graph.nodes`."
+    },
+    {
+      "request_id": "task_logic_focus_2",
+      "candidate_id": "task_logic_2",
+      "requested_by_specialty": "general",
+      "file_paths": [
+        "graphrag/general/extractor.py"
+      ],
+      "symbol_queries": [
+        "Extractor",
+        "_merge_graph_nodes"
+      ],
+      "text_queries": [
+        "node0_attrs[attr]",
+        "extend",
+        "sorted",
+        "set"
+      ],
+      "reason": "To verify the impact of the change on the overall functionality and ensure no other parts of the code depend on the incorrect usage of `extend`."
+    },
+    {
+      "request_id": "task_logic_focus_3",
+      "candidate_id": "task_logic_3",
+      "requested_by_specialty": "general",
+      "file_paths": [
+        "graphrag/general/extractor.py"
+      ],
+      "symbol_queries": [
+        "Extractor",
+        "_merge_graph_nodes"
+      ],
+      "text_queries": [
+        "edge0_attrs[attr]",
+        "extend",
+        "sorted",
+        "set"
+      ],
+      "reason": "To verify the impact of the change on the overall functionality and ensure no other parts of the code depend on the incorrect usage of `extend`."
+    },
+    {
+      "request_id": "task_performance_focus_1",
+      "candidate_id": "task_performance_4",
+      "requested_by_specialty": "performance",
+      "file_paths": [
+        "graphrag/utils.py"
+      ],
+      "symbol_queries": [
+        "settings.docStoreConn.delete"
+      ],
+      "text_queries": [
+        "blocking I/O",
+        "non-blocking alternatives",
+        "asynchronous alternatives"
+      ],
+      "reason": "To understand the nature of `settings.docStoreConn.delete` and its performance characteristics, and to identify potential non-blocking alternatives."
+    },
+    {
+      "request_id": "task_performance_4:auto-context:4",
+      "candidate_id": "task_performance_4",
+      "requested_by_specialty": "performance",
+      "file_paths": [
+        "graphrag/utils.py"
+      ],
+      "symbol_queries": [],
+      "text_queries": [
+        "graphrag/utils.py",
+        "Using `trio.to_thread.run_sync` could introduce performance overhead due to the context switch between the event loop an",
+        "Using `trio.to_thread.run_sync` could introduce performance overhead due to the context switch between the event loop and the thread pool. +                 nur"
+      ],
+      "reason": "Deterministic context requirement for a high-risk or externally dependent performance_regression candidate."
+    }
+  ],
+  "focused_context_results": {
+    "task_general_request_1": {
+      "request_id": "task_general_request_1",
+      "candidate_id": "task_general_1",
+      "file_snippets": {
+        "graphrag/utils.py": "# Copyright (c) 2024 Microsoft Corporation.\n# Licensed under the MIT License\n\"\"\"\nReference:\n - [graphrag](https://github.com/microsoft/graphrag)\n - [LightRag](https://github.com/HKUDS/LightRAG)\n\"\"\"\n\nimport html\nimport json\nimport logging\nimport re\nimport time\nfrom collections import defaultdict\nfrom hashlib import md5\nfrom typing import Any, Callable\nimport os\nimport trio\nfrom typing import Set, Tuple\n\nimport networkx as nx\nimport numpy as np\nimport xxhash\nfrom networkx.readwrite import json_graph\nimport dataclasses\n\nfrom api import settings\nfrom api.utils import get_uuid\nfrom rag.nlp import search, rag_tokenizer\nfrom rag.utils.doc_store_conn import OrderByExpr\nfrom rag.utils.redis_conn import REDIS_CONN\n\nGRAPH_FIELD_SEP = \"<SEP>\"\n\nErrorHandlerFn = Callable[[BaseException | None, str | None, dict | None], None]\n\nchat_limiter = trio.CapacityLimiter(int(os.environ.get('MAX_CONCURRENT_CHATS', 10)))\n\n@dataclasses.dataclass\nclass GraphChange:\n    removed_nodes: Set[str] = dataclasses.field(default_factory=set)\n    added_updated_nodes: Set[str] = dataclasses.field(default_factory=set)\n    removed_edges: Set[Tuple[str, str]] = dataclasses.field(default_factory=set)\n    added_updated_edges: Set[Tuple[str, str]] = dataclasses.field(default_factory=set)\n\ndef perform_variable_replacements(\n    input: str, history: list[dict] | None = None, variables: dict | None = None\n) -> str:\n    \"\"\"Perform variable replacements on the input string and in a chat log.\"\"\"\n    if history is None:\n        history = []\n    if variables is None:\n        variables = {}\n    result = input\n\n    def replace_all(input: str) -> str:\n        result = input\n        for k, v in variables.items():\n            result = result.replace(f\"{{{k}}}\", v)\n        return result\n\n    result = replace_all(result)\n    for i, entry in enumerate(history):\n        if entry.get(\"role\") == \"system\":\n            entry[\"content\"] = replace_all(entry.get(\"content\") or \"\")\n\n    return result\n\n\ndef clean_str(input: Any) -> str:\n    \"\"\"Clean an input string by removing HTML escapes, control characters, and other unwanted characters.\"\"\"\n    # If we get non-string input, just give it back\n    if not isinstance(input, str):\n        return input\n\n    result = html.unescape(input.strip())\n    # https://stackoverflow.com/questions/4324790/removing-control-characters-from-a-string-in-python\n    return re.sub(r\"[\\\"\\x00-\\x1f\\x7f-\\x9f]\", \"\", result)\n\n\ndef dict_has_keys_with_types(\n    data: dict, expected_fields: list[tuple[str, type]]\n) -> bool:\n    \"\"\"Return True if the given dictionary has the given keys with the given types.\"\"\"\n    for field, field_type in expected_fields:\n        if field not in data:\n            return False\n\n        value = data[field]\n        if not isinstance(value, field_type):\n            return False\n    return True\n\n\ndef get_llm_cache(llmnm, txt, history, genconf):\n    hasher = xxhash.xxh64()\n    hasher.update(str(llmnm).encode(\"utf-8\"))\n    hasher.update(str(txt).encode(\"utf-8\"))\n    hasher.update(str(history).encode(\"utf-8\"))\n    hasher.update(str(genconf).encode(\"utf-8\"))\n\n    k = hasher.hexdigest()\n    bin = REDIS_CONN.get(k)\n    if not bin:\n        return\n    return bin\n\n\ndef set_llm_cache(llmnm, txt, v, history, genconf):\n    hasher = xxhash.xxh64()\n    hasher.update(str(llmnm).encode(\"utf-8\"))\n    hasher.update(str(txt).encode(\"utf-8\"))\n    hasher.update(str(history).encode(\"utf-8\"))\n    hasher.update(str(genconf).encode(\"utf-8\"))\n\n    k = hasher.hexdigest()\n    REDIS_CONN.set(k, v.encode(\"utf-8\"), 24*3600)\n\n\ndef get_embed_cache(llmnm, txt):\n    hasher = xxhash.xxh64()\n    hasher.update(str(llmnm).encode(\"utf-8\"))\n    hasher.update(str(txt).encode(\"utf-8\"))\n\n    k = hasher.hexdigest()\n    bin = REDIS_CONN.get(k)\n    if not bin:\n        return\n    return np.array(json.loads(bin))\n\n\ndef set_embed_cache(llmnm, txt, arr):\n    hasher = xxhash.xxh64()\n    hasher.update(str(llmnm).encode(\"utf-8\"))\n    hasher.update(str(txt).encode(\"utf-8\"))\n\n    k = hasher.hexdigest()\n    arr = json.dumps(arr.tolist() if isinstance(arr, np.ndarray) else arr)\n    REDIS_CONN.set(k, arr.encode(\"utf-8\"), 24*3600)\n\n\ndef get_tags_from_cache(kb_ids):\n    hasher = xxhash.xxh64()\n    hasher.update(str(kb_ids).encode(\"utf-8\"))\n\n    k = hasher.hexdigest()\n    bin = REDIS_CONN.get(k)\n    if not bin:\n        return\n    return bin\n\n\ndef set_tags_to_cache(kb_ids, tags):\n    hasher = xxhash.xxh64()\n    hasher.update(str(kb_ids).encode(\"utf-8\"))\n\n    k = hasher.hexdigest()\n    REDIS_CONN.set(k, json.dumps(tags).encode(\"utf-8\"), 600)\n\ndef tidy_graph(graph: nx.Graph, callback):\n    \"\"\"\n    Ensure all nodes and edges in the graph have some essential attribute.\n    \"\"\"\n    def is_valid_node(node_attrs: dict) -> bool:\n        valid_node = True\n        for attr in [\"description\", \"source_id\"]:\n            if attr not in node_attrs:\n                valid_node = False\n                break\n        return valid_node\n    purged_nodes = []\n    for node, node_attrs in graph.nodes(data=True):\n        if not is_valid_node(node_attrs):\n            purged_nodes.append(node)\n    for node in purged_nodes:\n        graph.remove_node(node)\n    if purged_nodes and callback:\n        callback(msg=f\"Purged {len(purged_nodes)} nodes from graph due to missing essential attributes.\")\n\n    purged_edges = []\n    for source, target, attr in graph.edges(data=True):\n        if not is_valid_node(attr):\n            purged_edges.append((source, target))\n        if \"keywords\" not in attr:\n            attr[\"keywords\"] = []\n    for source, target in purged_edges:\n        graph.remove_edge(source, target)\n    if purged_edges and callback:\n        callback(msg=f\"Purged {len(purged_edges)} edges from graph due to missing essential attributes.\")\n\ndef get_from_to(node1, node2):\n    if node1 < node2:\n        return (node1, node2)\n    else:\n        return (node2, node1)\n\ndef graph_merge(g1: nx.Graph, g2: nx.Graph, change: GraphChange):\n    \"\"\"Merge graph g2 into g1 in place.\"\"\"\n    for node_name, attr in g2.nodes(data=True):\n        change.added_updated_nodes.add(node_name)\n        if not g1.has_node(node_name):\n            g1.add_node(node_name, **attr)\n            continue\n        node = g1.nodes[node_name]\n        node[\"description\"] += GRAPH_FIELD_SEP + attr[\"description\"]\n        # A node's source_id indicates which chunks it came from.\n        node[\"source_id\"] += attr[\"source_id\"]\n\n    for source, target, attr in g2.edges(data=True):\n        change.added_updated_edges.add(get_from_to(source, target))\n        edge = g1.get_edge_data(source, target)\n        if edge is None:\n            g1.add_edge(source, target, **attr)\n            continue\n        edge[\"weight\"] += attr.get(\"weight\", 0)\n        edge[\"description\"] += GRAPH_FIELD_SEP + attr[\"description\"]\n        edge[\"keywords\"] += attr[\"keywords\"]\n        # A edge's source_id indicates which chunks it came from.\n        edge[\"source_id\"] += attr[\"source_id\"]\n\n\n--- structural neighbors ---\nsymbol:5d1a37378656af35:get_graph (symbol, graphrag/utils.py); symbol:efc9c0e1a041c601:perform_variable_replacements (symbol, graphrag/utils.py); symbol:e49e7f1e37cc89c2:graph_node_to_chunk (symbol, graphrag/utils.py); symbol:fa35efb47174b60e:get_entity_type2sampels (symbol, graphrag/utils.py); symbol:e27e017461f4cd13:does_graph_contains (symbol, graphrag/utils.py); symbol:15d352b2b7a3516d:get_llm_cache (symbol, graphrag/utils.py); symbol:e5c07da49d1858f7:get_graph_doc_ids (symbol, graphrag/utils.py); symbol:34c59f67dd59ca35:graph_edge_to_chunk (symbol, graphrag/utils.py); symbol:3fb3e384aeba896e:is_continuous_subsequence (symbol, graphrag/utils.py); symbol:8cd2963d4fcf3006:rebuild_graph (symbol, graphrag/utils.py); symbol:67a5c53ea3ef4511:dict_has_keys_with_types (symbol, graphrag/utils.py); symbol:979dfc64dcf82ab6:merge_tuples (symbol, graphrag/utils.py)"
+      },
+      "search_hits": {
+        "settings.docStoreConn.delete": [
+          {
+            "file_path": "graphrag/utils.py",
+            "line_number": 434,
+            "content": "await trio.to_thread.run_sync(lambda: settings.docStoreConn.delete({\"knowledge_graph_kwd\": [\"graph\"]}, search.index_name(tenant_id), kb_id))",
+            "context_lines": [
+              "await trio.to_thread.run_sync(lambda: settings.docStoreConn.delete({\"knowledge_graph_kwd\": [\"graph\"]}, search.index_name(tenant_id), kb_id))"
+            ]
+          },
+          {
+            "file_path": "graphrag/utils.py",
+            "line_number": 437,
+            "content": "await trio.to_thread.run_sync(lambda: settings.docStoreConn.delete({\"knowledge_graph_kwd\": [\"entity\"], \"entity_kwd\": sorted(change.removed_nodes)}, search.index_name(tenant_id), kb_id))",
+            "context_lines": [
+              "await trio.to_thread.run_sync(lambda: settings.docStoreConn.delete({\"knowledge_graph_kwd\": [\"entity\"], \"entity_kwd\": sorted(change.removed_nodes)}, search.index_name(tenant_id), kb_id))"
+            ]
+          },
+          {
+            "file_path": "graphrag/utils.py",
+            "line_number": 442,
+            "content": "nursery.start_soon(lambda: trio.to_thread.run_sync(lambda: settings.docStoreConn.delete({\"knowledge_graph_kwd\": [\"relation\"], \"from_entity_kwd\": from_node, \"to_entity_kwd\": to_node}, search.index_name(tenant_id), kb_id)))",
+            "context_lines": [
+              "nursery.start_soon(lambda: trio.to_thread.run_sync(lambda: settings.docStoreConn.delete({\"knowledge_graph_kwd\": [\"relation\"], \"from_entity_kwd\": from_node, \"to_entity_kwd\": to_node}, search.index_name(tenant_id), kb_id)))"
+            ]
+          }
+        ],
+        "exception handling": [],
+        "thread pool size": []
+      },
+      "warnings": []
+    },
+    "task_general_1:auto-context:1": {
+      "request_id": "task_general_1:auto-context:1",
+      "candidate_id": "task_general_1",
+      "file_snippets": {
+        "graphrag/utils.py": "# Copyright (c) 2024 Microsoft Corporation.\n# Licensed under the MIT License\n\"\"\"\nReference:\n - [graphrag](https://github.com/microsoft/graphrag)\n - [LightRag](https://github.com/HKUDS/LightRAG)\n\"\"\"\n\nimport html\nimport json\nimport logging\nimport re\nimport time\nfrom collections import defaultdict\nfrom hashlib import md5\nfrom typing import Any, Callable\nimport os\nimport trio\nfrom typing import Set, Tuple\n\nimport networkx as nx\nimport numpy as np\nimport xxhash\nfrom networkx.readwrite import json_graph\nimport dataclasses\n\nfrom api import settings\nfrom api.utils import get_uuid\nfrom rag.nlp import search, rag_tokenizer\nfrom rag.utils.doc_store_conn import OrderByExpr\nfrom rag.utils.redis_conn import REDIS_CONN\n\nGRAPH_FIELD_SEP = \"<SEP>\"\n\nErrorHandlerFn = Callable[[BaseException | None, str | None, dict | None], None]\n\nchat_limiter = trio.CapacityLimiter(int(os.environ.get('MAX_CONCURRENT_CHATS', 10)))\n\n@dataclasses.dataclass\nclass GraphChange:\n    removed_nodes: Set[str] = dataclasses.field(default_factory=set)\n    added_updated_nodes: Set[str] = dataclasses.field(default_factory=set)\n    removed_edges: Set[Tuple[str, str]] = dataclasses.field(default_factory=set)\n    added_updated_edges: Set[Tuple[str, str]] = dataclasses.field(default_factory=set)\n\ndef perform_variable_replacements(\n    input: str, history: list[dict] | None = None, variables: dict | None = None\n) -> str:\n    \"\"\"Perform variable replacements on the input string and in a chat log.\"\"\"\n    if history is None:\n        history = []\n    if variables is None:\n        variables = {}\n    result = input\n\n    def replace_all(input: str) -> str:\n        result = input\n        for k, v in variables.items():\n            result = result.replace(f\"{{{k}}}\", v)\n        return result\n\n    result = replace_all(result)\n    for i, entry in enumerate(history):\n        if entry.get(\"role\") == \"system\":\n            entry[\"content\"] = replace_all(entry.get(\"content\") or \"\")\n\n    return result\n\n\ndef clean_str(input: Any) -> str:\n    \"\"\"Clean an input string by removing HTML escapes, control characters, and other unwanted characters.\"\"\"\n    # If we get non-string input, just give it back\n    if not isinstance(input, str):\n        return input\n\n    result = html.unescape(input.strip())\n    # https://stackoverflow.com/questions/4324790/removing-control-characters-from-a-string-in-python\n    return re.sub(r\"[\\\"\\x00-\\x1f\\x7f-\\x9f]\", \"\", result)\n\n\ndef dict_has_keys_with_types(\n    data: dict, expected_fields: list[tuple[str, type]]\n) -> bool:\n    \"\"\"Return True if the given dictionary has the given keys with the given types.\"\"\"\n    for field, field_type in expected_fields:\n        if field not in data:\n            return False\n\n        value = data[field]\n        if not isinstance(value, field_type):\n            return False\n    return True\n\n\ndef get_llm_cache(llmnm, txt, history, genconf):\n    hasher = xxhash.xxh64()\n    hasher.update(str(llmnm).encode(\"utf-8\"))\n    hasher.update(str(txt).encode(\"utf-8\"))\n    hasher.update(str(history).encode(\"utf-8\"))\n    hasher.update(str(genconf).encode(\"utf-8\"))\n\n    k = hasher.hexdigest()\n    bin = REDIS_CONN.get(k)\n    if not bin:\n        return\n    return bin\n\n\ndef set_llm_cache(llmnm, txt, v, history, genconf):\n    hasher = xxhash.xxh64()\n    hasher.update(str(llmnm).encode(\"utf-8\"))\n    hasher.update(str(txt).encode(\"utf-8\"))\n    hasher.update(str(history).encode(\"utf-8\"))\n    hasher.update(str(genconf).encode(\"utf-8\"))\n\n    k = hasher.hexdigest()\n    REDIS_CONN.set(k, v.encode(\"utf-8\"), 24*3600)\n\n\ndef get_embed_cache(llmnm, txt):\n    hasher = xxhash.xxh64()\n    hasher.update(str(llmnm).encode(\"utf-8\"))\n    hasher.update(str(txt).encode(\"utf-8\"))\n\n    k = hasher.hexdigest()\n    bin = REDIS_CONN.get(k)\n    if not bin:\n        return\n    return np.array(json.loads(bin))\n\n\ndef set_embed_cache(llmnm, txt, arr):\n    hasher = xxhash.xxh64()\n    hasher.update(str(llmnm).encode(\"utf-8\"))\n    hasher.update(str(txt).encode(\"utf-8\"))\n\n    k = hasher.hexdigest()\n    arr = json.dumps(arr.tolist() if isinstance(arr, np.ndarray) else arr)\n    REDIS_CONN.set(k, arr.encode(\"utf-8\"), 24*3600)\n\n\ndef get_tags_from_cache(kb_ids):\n    hasher = xxhash.xxh64()\n    hasher.update(str(kb_ids).encode(\"utf-8\"))\n\n    k = hasher.hexdigest()\n    bin = REDIS_CONN.get(k)\n    if not bin:\n        return\n    return bin\n\n\ndef set_tags_to_cache(kb_ids, tags):\n    hasher = xxhash.xxh64()\n    hasher.update(str(kb_ids).encode(\"utf-8\"))\n\n    k = hasher.hexdigest()\n    REDIS_CONN.set(k, json.dumps(tags).encode(\"utf-8\"), 600)\n\ndef tidy_graph(graph: nx.Graph, callback):\n    \"\"\"\n    Ensure all nodes and edges in the graph have some essential attribute.\n    \"\"\"\n    def is_valid_node(node_attrs: dict) -> bool:\n        valid_node = True\n        for attr in [\"description\", \"source_id\"]:\n            if attr not in node_attrs:\n                valid_node = False\n                break\n        return valid_node\n    purged_nodes = []\n    for node, node_attrs in graph.nodes(data=True):\n        if not is_valid_node(node_attrs):\n            purged_nodes.append(node)\n    for node in purged_nodes:\n        graph.remove_node(node)\n    if purged_nodes and callback:\n        callback(msg=f\"Purged {len(purged_nodes)} nodes from graph due to missing essential attributes.\")\n\n    purged_edges = []\n    for source, target, attr in graph.edges(data=True):\n        if not is_valid_node(attr):\n            purged_edges.append((source, target))\n        if \"keywords\" not in attr:\n            attr[\"keywords\"] = []\n    for source, target in purged_edges:\n        graph.remove_edge(source, target)\n    if purged_edges and callback:\n        callback(msg=f\"Purged {len(purged_edges)} edges from graph due to missing essential attributes.\")\n\ndef get_from_to(node1, node2):\n    if node1 < node2:\n        return (node1, node2)\n    else:\n        return (node2, node1)\n\ndef graph_merge(g1: nx.Graph, g2: nx.Graph, change: GraphChange):\n    \"\"\"Merge graph g2 into g1 in place.\"\"\"\n    for node_name, attr in g2.nodes(data=True):\n        change.added_updated_nodes.add(node_name)\n        if not g1.has_node(node_name):\n            g1.add_node(node_name, **attr)\n            continue\n        node = g1.nodes[node_name]\n        node[\"description\"] += GRAPH_FIELD_SEP + attr[\"description\"]\n        # A node's source_id indicates which chunks it came from.\n        node[\"source_id\"] += attr[\"source_id\"]\n\n    for source, target, attr in g2.edges(data=True):\n        change.added_updated_edges.add(get_from_to(source, target))\n        edge = g1.get_edge_data(source, target)\n        if edge is None:\n            g1.add_edge(source, target, **attr)\n            continue\n        edge[\"weight\"] += attr.get(\"weight\", 0)\n        edge[\"description\"] += GRAPH_FIELD_SEP + attr[\"description\"]\n        edge[\"keywords\"] += attr[\"keywords\"]\n        # A edge's source_id indicates which chunks it came from.\n        edge[\"source_id\"] += attr[\"source_id\"]\n\n\n--- structural neighbors ---\nsymbol:5d1a37378656af35:get_graph (symbol, graphrag/utils.py); symbol:efc9c0e1a041c601:perform_variable_replacements (symbol, graphrag/utils.py); symbol:e49e7f1e37cc89c2:graph_node_to_chunk (symbol, graphrag/utils.py); symbol:fa35efb47174b60e:get_entity_type2sampels (symbol, graphrag/utils.py); symbol:e27e017461f4cd13:does_graph_contains (symbol, graphrag/utils.py); symbol:15d352b2b7a3516d:get_llm_cache (symbol, graphrag/utils.py); symbol:e5c07da49d1858f7:get_graph_doc_ids (symbol, graphrag/utils.py); symbol:34c59f67dd59ca35:graph_edge_to_chunk (symbol, graphrag/utils.py); symbol:3fb3e384aeba896e:is_continuous_subsequence (symbol, graphrag/utils.py); symbol:8cd2963d4fcf3006:rebuild_graph (symbol, graphrag/utils.py); symbol:67a5c53ea3ef4511:dict_has_keys_with_types (symbol, graphrag/utils.py); symbol:979dfc64dcf82ab6:merge_tuples (symbol, graphrag/utils.py)"
+      },
+      "search_hits": {
+        "graphrag/utils.py": [],
+        "The original code runs the delete operation in the main trio task, which could block the event loop. The new code uses t": [],
+        "The original code runs the delete operation in the main trio task, which could block the event loop. The new code uses trio.to_thread.run_sync to run the delete": []
+      },
+      "warnings": []
+    },
+    "task_logic_focus_1": {
+      "request_id": "task_logic_focus_1",
+      "candidate_id": "task_logic_1",
+      "file_snippets": {
+        "graphrag/entity_resolution.py": "#\n#  Copyright 2024 The InfiniFlow Authors. All Rights Reserved.\n#\n#  Licensed under the Apache License, Version 2.0 (the \"License\");\n#  you may not use this file except in compliance with the License.\n#  You may obtain a copy of the License at\n#\n#      http://www.apache.org/licenses/LICENSE-2.0\n#\n#  Unless required by applicable law or agreed to in writing, software\n#  distributed under the License is distributed on an \"AS IS\" BASIS,\n#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\n#  See the License for the specific language governing permissions and\n#  limitations under the License.\n#\nimport logging\nimport itertools\nimport re\nfrom dataclasses import dataclass\nfrom typing import Any, Callable\n\nimport networkx as nx\nimport trio\n\nfrom graphrag.general.extractor import Extractor\nfrom rag.nlp import is_english\nimport editdistance\nfrom graphrag.entity_resolution_prompt import ENTITY_RESOLUTION_PROMPT\nfrom rag.llm.chat_model import Base as CompletionLLM\nfrom graphrag.utils import perform_variable_replacements, chat_limiter, GraphChange\n\nDEFAULT_RECORD_DELIMITER = \"##\"\nDEFAULT_ENTITY_INDEX_DELIMITER = \"<|>\"\nDEFAULT_RESOLUTION_RESULT_DELIMITER = \"&&\"\n\n\n@dataclass\nclass EntityResolutionResult:\n    \"\"\"Entity resolution result class definition.\"\"\"\n    graph: nx.Graph\n    change: GraphChange\n\n\nclass EntityResolution(Extractor):\n    \"\"\"Entity resolution class definition.\"\"\"\n\n    _resolution_prompt: str\n    _output_formatter_prompt: str\n    _record_delimiter_key: str\n    _entity_index_delimiter_key: str\n    _resolution_result_delimiter_key: str\n\n    def __init__(\n            self,\n            llm_invoker: CompletionLLM,\n    ):\n        super().__init__(llm_invoker)\n        \"\"\"Init method definition.\"\"\"\n        self._llm = llm_invoker\n        self._resolution_prompt = ENTITY_RESOLUTION_PROMPT\n        self._record_delimiter_key = \"record_delimiter\"\n        self._entity_index_dilimiter_key = \"entity_index_delimiter\"\n        self._resolution_result_delimiter_key = \"resolution_result_delimiter\"\n        self._input_text_key = \"input_text\"\n\n    async def __call__(self, graph: nx.Graph,\n                       subgraph_nodes: set[str],\n                       prompt_variables: dict[str, Any] | None = None,\n                       callback: Callable | None = None) -> EntityResolutionResult:\n        \"\"\"Call method definition.\"\"\"\n        if prompt_variables is None:\n            prompt_variables = {}\n\n        # Wire defaults into the prompt variables\n        self.prompt_variables = {\n            **prompt_variables,\n            self._record_delimiter_key: prompt_variables.get(self._record_delimiter_key)\n                                        or DEFAULT_RECORD_DELIMITER,\n            self._entity_index_dilimiter_key: prompt_variables.get(self._entity_index_dilimiter_key)\n                                              or DEFAULT_ENTITY_INDEX_DELIMITER,\n            self._resolution_result_delimiter_key: prompt_variables.get(self._resolution_result_delimiter_key)\n                                                   or DEFAULT_RESOLUTION_RESULT_DELIMITER,\n        }\n\n        nodes = sorted(graph.nodes())\n        entity_types = sorted(set(graph.nodes[node].get('entity_type', '-') for node in nodes))\n        node_clusters = {entity_type: [] for entity_type in entity_types}\n\n        for node in nodes:\n            node_clusters[graph.nodes[node].get('entity_type', '-')].append(node)\n\n        candidate_resolution = {entity_type: [] for entity_type in entity_types}\n        for k, v in node_clusters.items():\n            candidate_resolution[k] = [(a, b) for a, b in itertools.combinations(v, 2) if (a in subgraph_nodes or b in subgraph_nodes) and self.is_similarity(a, b)]\n        num_candidates = sum([len(candidates) for _, candidates in candidate_resolution.items()])\n        callback(msg=f\"Identified {num_candidates} candidate pairs\")\n\n        resolution_result = set()\n        resolution_batch_size = 100\n        async with trio.open_nursery() as nursery:\n            for candidate_resolution_i in candidate_resolution.items():\n                if not candidate_resolution_i[1]:\n                    continue\n                for i in range(0, len(candidate_resolution_i[1]), resolution_batch_size):\n                    candidate_batch = candidate_resolution_i[0], candidate_resolution_i[1][i:i + resolution_batch_size]\n                    nursery.start_soon(lambda: self._resolve_candidate(candidate_batch, resolution_result))\n        callback(msg=f\"Resolved {num_candidates} candidate pairs, {len(resolution_result)} of them are selected to merge.\")\n\n        change = GraphChange()\n        connect_graph = nx.Graph()\n        connect_graph.add_edges_from(resolution_result)\n        async with trio.open_nursery() as nursery:\n            for sub_connect_graph in nx.connected_components(connect_graph):\n                merging_nodes = list(sub_connect_graph.nodes())\n                nursery.start_soon(lambda: self._merge_graph_nodes(graph, merging_nodes, change))\n\n        # Update pagerank\n        pr = nx.pagerank(graph)\n        for node_name, pagerank in pr.items():\n            graph.nodes[node_name][\"pagerank\"] = pagerank\n\n        return EntityResolutionResult(\n            graph=graph,\n            change=change,\n        )\n\n    async def _resolve_candidate(self, candidate_resolution_i: tuple[str, list[tuple[str, str]]], resolution_result: set[str]):\n        gen_conf = {\"temperature\": 0.5}\n        pair_txt = [\n            f'When determining whether two {candidate_resolution_i[0]}s are the same, you should only focus on critical properties and overlook noisy factors.\\n']\n        for index, candidate in enumerate(candidate_resolution_i[1]):\n            pair_txt.append(\n                f'Question {index + 1}: name of{candidate_resolution_i[0]} A is {candidate[0]} ,name of{candidate_resolution_i[0]} B is {candidate[1]}')\n        sent = 'question above' if len(pair_txt) == 1 else f'above {len(pair_txt)} questions'\n        pair_txt.append(\n            f'\\nUse domain knowledge of {candidate_resolution_i[0]}s to help understand the text and answer the {sent} in the format: For Question i, Yes, {candidate_resolution_i[0]} A and {candidate_resolution_i[0]} B are the same {candidate_resolution_i[0]}./No, {candidate_resolution_i[0]} A and {candidate_resolution_i[0]} B are different {candidate_resolution_i[0]}s. For Question i+1, (repeat the above procedures)')\n        pair_prompt = '\\n'.join(pair_txt)\n        variables = {\n            **self.prompt_variables,\n            self._input_text_key: pair_prompt\n        }\n        text = perform_variable_replacements(self._resolution_prompt, variables=variables)\n        logging.info(f\"Created resolution prompt {len(text)} bytes for {len(candidate_resolution_i[1])} entity pairs of type {candidate_resolution_i[0]}\")\n        async with chat_limiter:\n            response = await trio.to_thread.run_sync(lambda: self._chat(text, [{\"role\": \"user\", \"content\": \"Output:\"}], gen_conf))\n        logging.debug(f\"_resolve_candidate chat prompt: {text}\\nchat response: {response}\")\n        result = self._process_results(len(candidate_resolution_i[1]), response,\n                                       self.prompt_variables.get(self._record_delimiter_key,\n                                                            DEFAULT_RECORD_DELIMITER),\n                                       self.prompt_variables.get(self._entity_index_dilimiter_key,\n                                                            DEFAULT_ENTITY_INDEX_DELIMITER),\n                                       self.prompt_variables.get(self._resolution_result_delimiter_key,\n                                                            DEFAULT_RESOLUTION_RESULT_DELIMITER))\n        for result_i in result:\n            resolution_result.add(candidate_resolution_i[1][result_i[0] - 1])\n\n    def _process_results(\n            self,\n            records_length: int,\n            results: str,\n            record_delimiter: str,\n        \n--- structural neighbors ---\nsymbol:d46da60e32d9cd92:EntityResolution (symbol, graphrag/entity_resolution.py); symbol:d28fe4b0a1c7a45a:EntityResolutionResult (symbol, graphrag/entity_resolution.py)"
+      },
+      "search_hits": {
+        "EntityResolution": [
+          {
+            "file_path": "graphrag/entity_resolution.py",
+            "line_number": 38,
+            "content": "class EntityResolutionResult:",
+            "context_lines": [
+              "class EntityResolutionResult:"
+            ]
+          },
+          {
+            "file_path": "graphrag/entity_resolution.py",
+            "line_number": 44,
+            "content": "class EntityResolution(Extractor):",
+            "context_lines": [
+              "class EntityResolution(Extractor):"
+            ]
+          },
+          {
+            "file_path": "graphrag/entity_resolution.py",
+            "line_number": 69,
+            "content": "callback: Callable | None = None) -> EntityResolutionResult:",
+            "context_lines": [
+              "callback: Callable | None = None) -> EntityResolutionResult:"
+            ]
+          },
+          {
+            "file_path": "graphrag/entity_resolution.py",
+            "line_number": 122,
+            "content": "return EntityResolutionResult(",
+            "context_lines": [
+              "return EntityResolutionResult("
+            ]
+          }
+        ],
+        "__call__": [
+          {
+            "file_path": "graphrag/entity_resolution.py",
+            "line_number": 66,
+            "content": "async def __call__(self, graph: nx.Graph,",
+            "context_lines": [
+              "async def __call__(self, graph: nx.Graph,"
+            ]
+          }
+        ],
+        "sub_connect_graph.nodes": [
+          {
+            "file_path": "graphrag/entity_resolution.py",
+            "line_number": 114,
+            "content": "merging_nodes = list(sub_connect_graph.nodes())",
+            "context_lines": [
+              "merging_nodes = list(sub_connect_graph.nodes())"
+            ]
+          }
+        ]
+      },
+      "warnings": []
+    },
+    "task_logic_focus_2": {
+      "request_id": "task_logic_focus_2",
+      "candidate_id": "task_logic_2",
+      "file_snippets": {
+        "graphrag/general/extractor.py": "#\n#  Copyright 2024 The InfiniFlow Authors. All Rights Reserved.\n#\n#  Licensed under the Apache License, Version 2.0 (the \"License\");\n#  you may not use this file except in compliance with the License.\n#  You may obtain a copy of the License at\n#\n#      http://www.apache.org/licenses/LICENSE-2.0\n#\n#  Unless required by applicable law or agreed to in writing, software\n#  distributed under the License is distributed on an \"AS IS\" BASIS,\n#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\n#  See the License for the specific language governing permissions and\n#  limitations under the License.\n#\nimport logging\nimport re\nfrom collections import defaultdict, Counter\nfrom copy import deepcopy\nfrom typing import Callable\nimport trio\nimport networkx as nx\n\nfrom graphrag.general.graph_prompt import SUMMARIZE_DESCRIPTIONS_PROMPT\nfrom graphrag.utils import get_llm_cache, set_llm_cache, handle_single_entity_extraction, \\\n    handle_single_relationship_extraction, split_string_by_multi_markers, flat_uniq_list, chat_limiter, get_from_to, GraphChange\nfrom rag.llm.chat_model import Base as CompletionLLM\nfrom rag.prompts import message_fit_in\nfrom rag.utils import truncate\n\nGRAPH_FIELD_SEP = \"<SEP>\"\nDEFAULT_ENTITY_TYPES = [\"organization\", \"person\", \"geo\", \"event\", \"category\"]\nENTITY_EXTRACTION_MAX_GLEANINGS = 2\n\n\nclass Extractor:\n    _llm: CompletionLLM\n\n    def __init__(\n        self,\n        llm_invoker: CompletionLLM,\n        language: str | None = \"English\",\n        entity_types: list[str] | None = None,\n    ):\n        self._llm = llm_invoker\n        self._language = language\n        self._entity_types = entity_types or DEFAULT_ENTITY_TYPES\n\n    def _chat(self, system, history, gen_conf):\n        hist = deepcopy(history)\n        conf = deepcopy(gen_conf)\n        response = get_llm_cache(self._llm.llm_name, system, hist, conf)\n        if response:\n            return response\n        _, system_msg = message_fit_in([{\"role\": \"system\", \"content\": system}], int(self._llm.max_length * 0.92))\n        response = self._llm.chat(system_msg[0][\"content\"], hist, conf)\n        response = re.sub(r\"<think>.*</think>\", \"\", response, flags=re.DOTALL)\n        if response.find(\"**ERROR**\") >= 0:\n            raise Exception(response)\n        set_llm_cache(self._llm.llm_name, system, response, history, gen_conf)\n        return response\n\n    def _entities_and_relations(self, chunk_key: str, records: list, tuple_delimiter: str):\n        maybe_nodes = defaultdict(list)\n        maybe_edges = defaultdict(list)\n        ent_types = [t.lower() for t in self._entity_types]\n        for record in records:\n            record_attributes = split_string_by_multi_markers(\n                record, [tuple_delimiter]\n            )\n\n            if_entities = handle_single_entity_extraction(\n                record_attributes, chunk_key\n            )\n            if if_entities is not None and if_entities.get(\"entity_type\", \"unknown\").lower() in ent_types:\n                maybe_nodes[if_entities[\"entity_name\"]].append(if_entities)\n                continue\n\n            if_relation = handle_single_relationship_extraction(\n                record_attributes, chunk_key\n            )\n            if if_relation is not None:\n                maybe_edges[(if_relation[\"src_id\"], if_relation[\"tgt_id\"])].append(\n                    if_relation\n                )\n        return dict(maybe_nodes), dict(maybe_edges)\n\n    async def __call__(\n        self, doc_id: str, chunks: list[str],\n            callback: Callable | None = None\n    ):\n\n        self.callback = callback\n        start_ts = trio.current_time()\n        out_results = []\n        async with trio.open_nursery() as nursery:\n            for i, ck in enumerate(chunks):\n                ck = truncate(ck, int(self._llm.max_length*0.8))\n                nursery.start_soon(lambda: self._process_single_content((doc_id, ck), i, len(chunks), out_results))\n\n        maybe_nodes = defaultdict(list)\n        maybe_edges = defaultdict(list)\n        sum_token_count = 0\n        for m_nodes, m_edges, token_count in out_results:\n            for k, v in m_nodes.items():\n                maybe_nodes[k].extend(v)\n            for k, v in m_edges.items():\n                maybe_edges[tuple(sorted(k))].extend(v)\n            sum_token_count += token_count\n        now = trio.current_time()\n        if callback:\n            callback(msg = f\"Entities and relationships extraction done, {len(maybe_nodes)} nodes, {len(maybe_edges)} edges, {sum_token_count} tokens, {now-start_ts:.2f}s.\")\n        start_ts = now\n        logging.info(\"Entities merging...\")\n        all_entities_data = []\n        async with trio.open_nursery() as nursery:\n            for en_nm, ents in maybe_nodes.items():\n                nursery.start_soon(lambda: self._merge_nodes(en_nm, ents, all_entities_data))\n        now = trio.current_time()\n        if callback:\n            callback(msg = f\"Entities merging done, {now-start_ts:.2f}s.\")\n\n        start_ts = now\n        logging.info(\"Relationships merging...\")\n        all_relationships_data = []\n        async with trio.open_nursery() as nursery:\n            for (src, tgt), rels in maybe_edges.items():\n                nursery.start_soon(lambda: self._merge_edges(src, tgt, rels, all_relationships_data))\n        now = trio.current_time()\n        if callback:\n            callback(msg = f\"Relationships merging done, {now-start_ts:.2f}s.\")\n\n        if not len(all_entities_data) and not len(all_relationships_data):\n            logging.warning(\n                \"Didn't extract any entities and relationships, maybe your LLM is not working\"\n            )\n\n        if not len(all_entities_data):\n            logging.warning(\"Didn't extract any entities\")\n        if not len(all_relationships_data):\n            logging.warning(\"Didn't extract any relationships\")\n\n        return all_entities_data, all_relationships_data\n\n    async def _merge_nodes(self, entity_name: str, entities: list[dict], all_relationships_data):\n        if not entities:\n            return\n        entity_type = sorted(\n            Counter(\n                [dp[\"entity_type\"] for dp in entities]\n            ).items(),\n            key=lambda x: x[1],\n            reverse=True,\n        )[0][0]\n        description = GRAPH_FIELD_SEP.join(\n            sorted(set([dp[\"description\"] for dp in entities]))\n        )\n        already_source_ids = flat_uniq_list(entities, \"source_id\")\n        description = await self._handle_entity_relation_summary(entity_name, description)\n        node_data = dict(\n            entity_type=entity_type,\n            description=description,\n            source_id=already_source_ids,\n        )\n        node_data[\"entity_name\"] = entity_name\n        all_relationships_data.append(node_data)\n\n    async def _merge_edges(\n            self,\n            src_id: str,\n            tgt_id: str,\n            edges_data: list[dict],\n            all_relationships_data=None\n    ):\n        if not edges_data:\n            return\n        weight = sum([edge[\"weight\"] for edge in edges_data])\n        description = GRAPH_FIELD_SEP.join(sorted(set([edge[\"description\"] for edge in edges_data])))\n        description = await self._handle_entity_relation_summary(f\"{src_id} -> {tgt_id}\", description)\n        keywords = flat_uniq_list(edges_data, \"keywords\")\n        source_id = flat_uniq_list(edges_data, \"source_id\")\n        edge_data = dict(\n            src_id=src_id,\n            tgt_id=tgt_id,\n            description=description,\n            keywords=keywords,\n            weight=weight,\n            source_id=source_id\n        )\n        all_relationships_data.append(edge_data)\n\n    async def _merge_graph_nodes(self, graph: nx.Graph, nodes: list[str], change: GraphChange):\n        if len(nodes) <= 1:\n            return\n        change.added_updated_nodes.add(nodes[0])\n        change.removed_nodes.extend(nodes[1:])\n        nodes_set = set(nodes)\n        node0_attrs = graph.nodes[nodes[0]]\n        node0_neighbors = set(graph.ne\n--- structural neighbors ---\nsymbol:e7305fc7ff8af4d2:Extractor (symbol, graphrag/general/extractor.py)"
+      },
+      "search_hits": {
+        "Extractor": [
+          {
+            "file_path": "graphrag/general/extractor.py",
+            "line_number": 36,
+            "content": "class Extractor:",
+            "context_lines": [
+              "class Extractor:"
+            ]
+          }
+        ],
+        "_merge_graph_nodes": [
+          {
+            "file_path": "graphrag/general/extractor.py",
+            "line_number": 192,
+            "content": "async def _merge_graph_nodes(self, graph: nx.Graph, nodes: list[str], change: GraphChange):",
+            "context_lines": [
+              "async def _merge_graph_nodes(self, graph: nx.Graph, nodes: list[str], change: GraphChange):"
+            ]
+          }
+        ],
+        "node0_attrs[attr]": [],
+        "extend": [
+          {
+            "file_path": "graphrag/general/extractor.py",
+            "line_number": 106,
+            "content": "maybe_nodes[k].extend(v)",
+            "context_lines": [
+              "maybe_nodes[k].extend(v)"
+            ]
+          },
+          {
+            "file_path": "graphrag/general/extractor.py",
+            "line_number": 108,
+            "content": "maybe_edges[tuple(sorted(k))].extend(v)",
+            "context_lines": [
+              "maybe_edges[tuple(sorted(k))].extend(v)"
+            ]
+          },
+          {
+            "file_path": "graphrag/general/extractor.py",
+            "line_number": 196,
+            "content": "change.removed_nodes.extend(nodes[1:])",
+            "context_lines": [
+              "change.removed_nodes.extend(nodes[1:])"
+            ]
+          },
+          {
+            "file_path": "graphrag/general/extractor.py",
+            "line_number": 204,
+            "content": "node0_attrs[\"source_id\"] = sorted(set(node0_attrs[\"source_id\"].extend(node1_attrs.get(\"source_id\", []))))",
+            "context_lines": [
+              "node0_attrs[\"source_id\"] = sorted(set(node0_attrs[\"source_id\"].extend(node1_attrs.get(\"source_id\", []))))"
+            ]
+          },
+          {
+            "file_path": "graphrag/general/extractor.py",
+            "line_number": 216,
+            "content": "edge0_attrs[attr] = sorted(set(edge0_attrs[attr].extend(edge1_attrs.get(attr, []))))",
+            "context_lines": [
+              "edge0_attrs[attr] = sorted(set(edge0_attrs[attr].extend(edge1_attrs.get(attr, []))))"
+            ]
+          }
+        ],
+        "sorted": [
+          {
+            "file_path": "graphrag/general/extractor.py",
+            "line_number": 108,
+            "content": "maybe_edges[tuple(sorted(k))].extend(v)",
+            "context_lines": [
+              "maybe_edges[tuple(sorted(k))].extend(v)"
+            ]
+          },
+          {
+            "file_path": "graphrag/general/extractor.py",
+            "line_number": 148,
+            "content": "entity_type = sorted(",
+            "context_lines": [
+              "entity_type = sorted("
+            ]
+          },
+          {
+            "file_path": "graphrag/general/extractor.py",
+            "line_number": 156,
+            "content": "sorted(set([dp[\"description\"] for dp in entities]))",
+            "context_lines": [
+              "sorted(set([dp[\"description\"] for dp in entities]))"
+            ]
+          },
+          {
+            "file_path": "graphrag/general/extractor.py",
+            "line_number": 178,
+            "content": "description = GRAPH_FIELD_SEP.join(sorted(set([edge[\"description\"] for edge in edges_data])))",
+            "context_lines": [
+              "description = GRAPH_FIELD_SEP.join(sorted(set([edge[\"description\"] for edge in edges_data])))"
+            ]
+          },
+          {
+            "file_path": "graphrag/general/extractor.py",
+            "line_number": 204,
+            "content": "node0_attrs[\"source_id\"] = sorted(set(node0_attrs[\"source_id\"].extend(node1_attrs.get(\"source_id\", []))))",
+            "context_lines": [
+              "node0_attrs[\"source_id\"] = sorted(set(node0_attrs[\"source_id\"].extend(node1_attrs.get(\"source_id\", []))))"
+            ]
+          },
+          {
+            "file_path": "graphrag/general/extractor.py",
+            "line_number": 216,
+            "content": "edge0_attrs[attr] = sorted(set(edge0_attrs[attr].extend(edge1_attrs.get(attr, []))))",
+            "context_lines": [
+              "edge0_attrs[attr] = sorted(set(edge0_attrs[attr].extend(edge1_attrs.get(attr, []))))"
+            ]
+          }
+        ],
+        "set": [
+          {
+            "file_path": "graphrag/general/extractor.py",
+            "line_number": 25,
+            "content": "from graphrag.utils import get_llm_cache, set_llm_cache, handle_single_entity_extraction, \\",
+            "context_lines": [
+              "from graphrag.utils import get_llm_cache, set_llm_cache, handle_single_entity_extraction, \\"
+            ]
+          },
+          {
+            "file_path": "graphrag/general/extractor.py",
+            "line_number": 60,
+            "content": "set_llm_cache(self._llm.llm_name, system, response, history, gen_conf)",
+            "context_lines": [
+              "set_llm_cache(self._llm.llm_name, system, response, history, gen_conf)"
+            ]
+          },
+          {
+            "file_path": "graphrag/general/extractor.py",
+            "line_number": 156,
+            "content": "sorted(set([dp[\"description\"] for dp in entities]))",
+            "context_lines": [
+              "sorted(set([dp[\"description\"] for dp in entities]))"
+            ]
+          },
+          {
+            "file_path": "graphrag/general/extractor.py",
+            "line_number": 178,
+            "content": "description = GRAPH_FIELD_SEP.join(sorted(set([edge[\"description\"] for edge in edges_data])))",
+            "context_lines": [
+              "description = GRAPH_FIELD_SEP.join(sorted(set([edge[\"description\"] for edge in edges_data])))"
+            ]
+          },
+          {
+            "file_path": "graphrag/general/extractor.py",
+            "line_number": 197,
+            "content": "nodes_set = set(nodes)",
+            "context_lines": [
+              "nodes_set = set(nodes)"
+            ]
+          },
+          {
+            "file_path": "graphrag/general/extractor.py",
+            "line_number": 199,
+            "content": "node0_neighbors = set(graph.neighbors(nodes[0]))",
+            "context_lines": [
+              "node0_neighbors = set(graph.neighbors(nodes[0]))"
+            ]
+          },
+          {
+            "file_path": "graphrag/general/extractor.py",
+            "line_number": 204,
+            "content": "node0_attrs[\"source_id\"] = sorted(set(node0_attrs[\"source_id\"].extend(node1_attrs.get(\"source_id\", []))))",
+            "context_lines": [
+              "node0_attrs[\"source_id\"] = sorted(set(node0_attrs[\"source_id\"].extend(node1_attrs.get(\"source_id\", []))))"
+            ]
+          },
+          {
+            "file_path": "graphrag/general/extractor.py",
+            "line_number": 207,
+            "content": "if neighbor not in nodes_set:",
+            "context_lines": [
+              "if neighbor not in nodes_set:"
+            ]
+          },
+          {
+            "file_path": "graphrag/general/extractor.py",
+            "line_number": 216,
+            "content": "edge0_attrs[attr] = sorted(set(edge0_attrs[attr].extend(edge1_attrs.get(attr, []))))",
+            "context_lines": [
+              "edge0_attrs[attr] = sorted(set(edge0_attrs[attr].extend(edge1_attrs.get(attr, []))))"
+            ]
+          }
+        ]
+      },
+      "warnings": []
+    },
+    "task_logic_focus_3": {
+      "request_id": "task_logic_focus_3",
+      "candidate_id": "task_logic_3",
+      "file_snippets": {
+        "graphrag/general/extractor.py": "#\n#  Copyright 2024 The InfiniFlow Authors. All Rights Reserved.\n#\n#  Licensed under the Apache License, Version 2.0 (the \"License\");\n#  you may not use this file except in compliance with the License.\n#  You may obtain a copy of the License at\n#\n#      http://www.apache.org/licenses/LICENSE-2.0\n#\n#  Unless required by applicable law or agreed to in writing, software\n#  distributed under the License is distributed on an \"AS IS\" BASIS,\n#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\n#  See the License for the specific language governing permissions and\n#  limitations under the License.\n#\nimport logging\nimport re\nfrom collections import defaultdict, Counter\nfrom copy import deepcopy\nfrom typing import Callable\nimport trio\nimport networkx as nx\n\nfrom graphrag.general.graph_prompt import SUMMARIZE_DESCRIPTIONS_PROMPT\nfrom graphrag.utils import get_llm_cache, set_llm_cache, handle_single_entity_extraction, \\\n    handle_single_relationship_extraction, split_string_by_multi_markers, flat_uniq_list, chat_limiter, get_from_to, GraphChange\nfrom rag.llm.chat_model import Base as CompletionLLM\nfrom rag.prompts import message_fit_in\nfrom rag.utils import truncate\n\nGRAPH_FIELD_SEP = \"<SEP>\"\nDEFAULT_ENTITY_TYPES = [\"organization\", \"person\", \"geo\", \"event\", \"category\"]\nENTITY_EXTRACTION_MAX_GLEANINGS = 2\n\n\nclass Extractor:\n    _llm: CompletionLLM\n\n    def __init__(\n        self,\n        llm_invoker: CompletionLLM,\n        language: str | None = \"English\",\n        entity_types: list[str] | None = None,\n    ):\n        self._llm = llm_invoker\n        self._language = language\n        self._entity_types = entity_types or DEFAULT_ENTITY_TYPES\n\n    def _chat(self, system, history, gen_conf):\n        hist = deepcopy(history)\n        conf = deepcopy(gen_conf)\n        response = get_llm_cache(self._llm.llm_name, system, hist, conf)\n        if response:\n            return response\n        _, system_msg = message_fit_in([{\"role\": \"system\", \"content\": system}], int(self._llm.max_length * 0.92))\n        response = self._llm.chat(system_msg[0][\"content\"], hist, conf)\n        response = re.sub(r\"<think>.*</think>\", \"\", response, flags=re.DOTALL)\n        if response.find(\"**ERROR**\") >= 0:\n            raise Exception(response)\n        set_llm_cache(self._llm.llm_name, system, response, history, gen_conf)\n        return response\n\n    def _entities_and_relations(self, chunk_key: str, records: list, tuple_delimiter: str):\n        maybe_nodes = defaultdict(list)\n        maybe_edges = defaultdict(list)\n        ent_types = [t.lower() for t in self._entity_types]\n        for record in records:\n            record_attributes = split_string_by_multi_markers(\n                record, [tuple_delimiter]\n            )\n\n            if_entities = handle_single_entity_extraction(\n                record_attributes, chunk_key\n            )\n            if if_entities is not None and if_entities.get(\"entity_type\", \"unknown\").lower() in ent_types:\n                maybe_nodes[if_entities[\"entity_name\"]].append(if_entities)\n                continue\n\n            if_relation = handle_single_relationship_extraction(\n                record_attributes, chunk_key\n            )\n            if if_relation is not None:\n                maybe_edges[(if_relation[\"src_id\"], if_relation[\"tgt_id\"])].append(\n                    if_relation\n                )\n        return dict(maybe_nodes), dict(maybe_edges)\n\n    async def __call__(\n        self, doc_id: str, chunks: list[str],\n            callback: Callable | None = None\n    ):\n\n        self.callback = callback\n        start_ts = trio.current_time()\n        out_results = []\n        async with trio.open_nursery() as nursery:\n            for i, ck in enumerate(chunks):\n                ck = truncate(ck, int(self._llm.max_length*0.8))\n                nursery.start_soon(lambda: self._process_single_content((doc_id, ck), i, len(chunks), out_results))\n\n        maybe_nodes = defaultdict(list)\n        maybe_edges = defaultdict(list)\n        sum_token_count = 0\n        for m_nodes, m_edges, token_count in out_results:\n            for k, v in m_nodes.items():\n                maybe_nodes[k].extend(v)\n            for k, v in m_edges.items():\n                maybe_edges[tuple(sorted(k))].extend(v)\n            sum_token_count += token_count\n        now = trio.current_time()\n        if callback:\n            callback(msg = f\"Entities and relationships extraction done, {len(maybe_nodes)} nodes, {len(maybe_edges)} edges, {sum_token_count} tokens, {now-start_ts:.2f}s.\")\n        start_ts = now\n        logging.info(\"Entities merging...\")\n        all_entities_data = []\n        async with trio.open_nursery() as nursery:\n            for en_nm, ents in maybe_nodes.items():\n                nursery.start_soon(lambda: self._merge_nodes(en_nm, ents, all_entities_data))\n        now = trio.current_time()\n        if callback:\n            callback(msg = f\"Entities merging done, {now-start_ts:.2f}s.\")\n\n        start_ts = now\n        logging.info(\"Relationships merging...\")\n        all_relationships_data = []\n        async with trio.open_nursery() as nursery:\n            for (src, tgt), rels in maybe_edges.items():\n                nursery.start_soon(lambda: self._merge_edges(src, tgt, rels, all_relationships_data))\n        now = trio.current_time()\n        if callback:\n            callback(msg = f\"Relationships merging done, {now-start_ts:.2f}s.\")\n\n        if not len(all_entities_data) and not len(all_relationships_data):\n            logging.warning(\n                \"Didn't extract any entities and relationships, maybe your LLM is not working\"\n            )\n\n        if not len(all_entities_data):\n            logging.warning(\"Didn't extract any entities\")\n        if not len(all_relationships_data):\n            logging.warning(\"Didn't extract any relationships\")\n\n        return all_entities_data, all_relationships_data\n\n    async def _merge_nodes(self, entity_name: str, entities: list[dict], all_relationships_data):\n        if not entities:\n            return\n        entity_type = sorted(\n            Counter(\n                [dp[\"entity_type\"] for dp in entities]\n            ).items(),\n            key=lambda x: x[1],\n            reverse=True,\n        )[0][0]\n        description = GRAPH_FIELD_SEP.join(\n            sorted(set([dp[\"description\"] for dp in entities]))\n        )\n        already_source_ids = flat_uniq_list(entities, \"source_id\")\n        description = await self._handle_entity_relation_summary(entity_name, description)\n        node_data = dict(\n            entity_type=entity_type,\n            description=description,\n            source_id=already_source_ids,\n        )\n        node_data[\"entity_name\"] = entity_name\n        all_relationships_data.append(node_data)\n\n    async def _merge_edges(\n            self,\n            src_id: str,\n            tgt_id: str,\n            edges_data: list[dict],\n            all_relationships_data=None\n    ):\n        if not edges_data:\n            return\n        weight = sum([edge[\"weight\"] for edge in edges_data])\n        description = GRAPH_FIELD_SEP.join(sorted(set([edge[\"description\"] for edge in edges_data])))\n        description = await self._handle_entity_relation_summary(f\"{src_id} -> {tgt_id}\", description)\n        keywords = flat_uniq_list(edges_data, \"keywords\")\n        source_id = flat_uniq_list(edges_data, \"source_id\")\n        edge_data = dict(\n            src_id=src_id,\n            tgt_id=tgt_id,\n            description=description,\n            keywords=keywords,\n            weight=weight,\n            source_id=source_id\n        )\n        all_relationships_data.append(edge_data)\n\n    async def _merge_graph_nodes(self, graph: nx.Graph, nodes: list[str], change: GraphChange):\n        if len(nodes) <= 1:\n            return\n        change.added_updated_nodes.add(nodes[0])\n        change.removed_nodes.extend(nodes[1:])\n        nodes_set = set(nodes)\n        node0_attrs = graph.nodes[nodes[0]]\n        node0_neighbors = set(graph.ne\n--- structural neighbors ---\nsymbol:e7305fc7ff8af4d2:Extractor (symbol, graphrag/general/extractor.py)"
+      },
+      "search_hits": {
+        "Extractor": [
+          {
+            "file_path": "graphrag/general/extractor.py",
+            "line_number": 36,
+            "content": "class Extractor:",
+            "context_lines": [
+              "class Extractor:"
+            ]
+          }
+        ],
+        "_merge_graph_nodes": [
+          {
+            "file_path": "graphrag/general/extractor.py",
+            "line_number": 192,
+            "content": "async def _merge_graph_nodes(self, graph: nx.Graph, nodes: list[str], change: GraphChange):",
+            "context_lines": [
+              "async def _merge_graph_nodes(self, graph: nx.Graph, nodes: list[str], change: GraphChange):"
+            ]
+          }
+        ],
+        "edge0_attrs[attr]": [],
+        "extend": [
+          {
+            "file_path": "graphrag/general/extractor.py",
+            "line_number": 106,
+            "content": "maybe_nodes[k].extend(v)",
+            "context_lines": [
+              "maybe_nodes[k].extend(v)"
+            ]
+          },
+          {
+            "file_path": "graphrag/general/extractor.py",
+            "line_number": 108,
+            "content": "maybe_edges[tuple(sorted(k))].extend(v)",
+            "context_lines": [
+              "maybe_edges[tuple(sorted(k))].extend(v)"
+            ]
+          },
+          {
+            "file_path": "graphrag/general/extractor.py",
+            "line_number": 196,
+            "content": "change.removed_nodes.extend(nodes[1:])",
+            "context_lines": [
+              "change.removed_nodes.extend(nodes[1:])"
+            ]
+          },
+          {
+            "file_path": "graphrag/general/extractor.py",
+            "line_number": 204,
+            "content": "node0_attrs[\"source_id\"] = sorted(set(node0_attrs[\"source_id\"].extend(node1_attrs.get(\"source_id\", []))))",
+            "context_lines": [
+              "node0_attrs[\"source_id\"] = sorted(set(node0_attrs[\"source_id\"].extend(node1_attrs.get(\"source_id\", []))))"
+            ]
+          },
+          {
+            "file_path": "graphrag/general/extractor.py",
+            "line_number": 216,
+            "content": "edge0_attrs[attr] = sorted(set(edge0_attrs[attr].extend(edge1_attrs.get(attr, []))))",
+            "context_lines": [
+              "edge0_attrs[attr] = sorted(set(edge0_attrs[attr].extend(edge1_attrs.get(attr, []))))"
+            ]
+          }
+        ],
+        "sorted": [
+          {
+            "file_path": "graphrag/general/extractor.py",
+            "line_number": 108,
+            "content": "maybe_edges[tuple(sorted(k))].extend(v)",
+            "context_lines": [
+              "maybe_edges[tuple(sorted(k))].extend(v)"
+            ]
+          },
+          {
+            "file_path": "graphrag/general/extractor.py",
+            "line_number": 148,
+            "content": "entity_type = sorted(",
+            "context_lines": [
+              "entity_type = sorted("
+            ]
+          },
+          {
+            "file_path": "graphrag/general/extractor.py",
+            "line_number": 156,
+            "content": "sorted(set([dp[\"description\"] for dp in entities]))",
+            "context_lines": [
+              "sorted(set([dp[\"description\"] for dp in entities]))"
+            ]
+          },
+          {
+            "file_path": "graphrag/general/extractor.py",
+            "line_number": 178,
+            "content": "description = GRAPH_FIELD_SEP.join(sorted(set([edge[\"description\"] for edge in edges_data])))",
+            "context_lines": [
+              "description = GRAPH_FIELD_SEP.join(sorted(set([edge[\"description\"] for edge in edges_data])))"
+            ]
+          },
+          {
+            "file_path": "graphrag/general/extractor.py",
+            "line_number": 204,
+            "content": "node0_attrs[\"source_id\"] = sorted(set(node0_attrs[\"source_id\"].extend(node1_attrs.get(\"source_id\", []))))",
+            "context_lines": [
+              "node0_attrs[\"source_id\"] = sorted(set(node0_attrs[\"source_id\"].extend(node1_attrs.get(\"source_id\", []))))"
+            ]
+          },
+          {
+            "file_path": "graphrag/general/extractor.py",
+            "line_number": 216,
+            "content": "edge0_attrs[attr] = sorted(set(edge0_attrs[attr].extend(edge1_attrs.get(attr, []))))",
+            "context_lines": [
+              "edge0_attrs[attr] = sorted(set(edge0_attrs[attr].extend(edge1_attrs.get(attr, []))))"
+            ]
+          }
+        ],
+        "set": [
+          {
+            "file_path": "graphrag/general/extractor.py",
+            "line_number": 25,
+            "content": "from graphrag.utils import get_llm_cache, set_llm_cache, handle_single_entity_extraction, \\",
+            "context_lines": [
+              "from graphrag.utils import get_llm_cache, set_llm_cache, handle_single_entity_extraction, \\"
+            ]
+          },
+          {
+            "file_path": "graphrag/general/extractor.py",
+            "line_number": 60,
+            "content": "set_llm_cache(self._llm.llm_name, system, response, history, gen_conf)",
+            "context_lines": [
+              "set_llm_cache(self._llm.llm_name, system, response, history, gen_conf)"
+            ]
+          },
+          {
+            "file_path": "graphrag/general/extractor.py",
+            "line_number": 156,
+            "content": "sorted(set([dp[\"description\"] for dp in entities]))",
+            "context_lines": [
+              "sorted(set([dp[\"description\"] for dp in entities]))"
+            ]
+          },
+          {
+            "file_path": "graphrag/general/extractor.py",
+            "line_number": 178,
+            "content": "description = GRAPH_FIELD_SEP.join(sorted(set([edge[\"description\"] for edge in edges_data])))",
+            "context_lines": [
+              "description = GRAPH_FIELD_SEP.join(sorted(set([edge[\"description\"] for edge in edges_data])))"
+            ]
+          },
+          {
+            "file_path": "graphrag/general/extractor.py",
+            "line_number": 197,
+            "content": "nodes_set = set(nodes)",
+            "context_lines": [
+              "nodes_set = set(nodes)"
+            ]
+          },
+          {
+            "file_path": "graphrag/general/extractor.py",
+            "line_number": 199,
+            "content": "node0_neighbors = set(graph.neighbors(nodes[0]))",
+            "context_lines": [
+              "node0_neighbors = set(graph.neighbors(nodes[0]))"
+            ]
+          },
+          {
+            "file_path": "graphrag/general/extractor.py",
+            "line_number": 204,
+            "content": "node0_attrs[\"source_id\"] = sorted(set(node0_attrs[\"source_id\"].extend(node1_attrs.get(\"source_id\", []))))",
+            "context_lines": [
+              "node0_attrs[\"source_id\"] = sorted(set(node0_attrs[\"source_id\"].extend(node1_attrs.get(\"source_id\", []))))"
+            ]
+          },
+          {
+            "file_path": "graphrag/general/extractor.py",
+            "line_number": 207,
+            "content": "if neighbor not in nodes_set:",
+            "context_lines": [
+              "if neighbor not in nodes_set:"
+            ]
+          },
+          {
+            "file_path": "graphrag/general/extractor.py",
+            "line_number": 216,
+            "content": "edge0_attrs[attr] = sorted(set(edge0_attrs[attr].extend(edge1_attrs.get(attr, []))))",
+            "context_lines": [
+              "edge0_attrs[attr] = sorted(set(edge0_attrs[attr].extend(edge1_attrs.get(attr, []))))"
+            ]
+          }
+        ]
+      },
+      "warnings": []
+    },
+    "task_performance_focus_1": {
+      "request_id": "task_performance_focus_1",
+      "candidate_id": "task_performance_4",
+      "file_snippets": {
+        "graphrag/utils.py": "# Copyright (c) 2024 Microsoft Corporation.\n# Licensed under the MIT License\n\"\"\"\nReference:\n - [graphrag](https://github.com/microsoft/graphrag)\n - [LightRag](https://github.com/HKUDS/LightRAG)\n\"\"\"\n\nimport html\nimport json\nimport logging\nimport re\nimport time\nfrom collections import defaultdict\nfrom hashlib import md5\nfrom typing import Any, Callable\nimport os\nimport trio\nfrom typing import Set, Tuple\n\nimport networkx as nx\nimport numpy as np\nimport xxhash\nfrom networkx.readwrite import json_graph\nimport dataclasses\n\nfrom api import settings\nfrom api.utils import get_uuid\nfrom rag.nlp import search, rag_tokenizer\nfrom rag.utils.doc_store_conn import OrderByExpr\nfrom rag.utils.redis_conn import REDIS_CONN\n\nGRAPH_FIELD_SEP = \"<SEP>\"\n\nErrorHandlerFn = Callable[[BaseException | None, str | None, dict | None], None]\n\nchat_limiter = trio.CapacityLimiter(int(os.environ.get('MAX_CONCURRENT_CHATS', 10)))\n\n@dataclasses.dataclass\nclass GraphChange:\n    removed_nodes: Set[str] = dataclasses.field(default_factory=set)\n    added_updated_nodes: Set[str] = dataclasses.field(default_factory=set)\n    removed_edges: Set[Tuple[str, str]] = dataclasses.field(default_factory=set)\n    added_updated_edges: Set[Tuple[str, str]] = dataclasses.field(default_factory=set)\n\ndef perform_variable_replacements(\n    input: str, history: list[dict] | None = None, variables: dict | None = None\n) -> str:\n    \"\"\"Perform variable replacements on the input string and in a chat log.\"\"\"\n    if history is None:\n        history = []\n    if variables is None:\n        variables = {}\n    result = input\n\n    def replace_all(input: str) -> str:\n        result = input\n        for k, v in variables.items():\n            result = result.replace(f\"{{{k}}}\", v)\n        return result\n\n    result = replace_all(result)\n    for i, entry in enumerate(history):\n        if entry.get(\"role\") == \"system\":\n            entry[\"content\"] = replace_all(entry.get(\"content\") or \"\")\n\n    return result\n\n\ndef clean_str(input: Any) -> str:\n    \"\"\"Clean an input string by removing HTML escapes, control characters, and other unwanted characters.\"\"\"\n    # If we get non-string input, just give it back\n    if not isinstance(input, str):\n        return input\n\n    result = html.unescape(input.strip())\n    # https://stackoverflow.com/questions/4324790/removing-control-characters-from-a-string-in-python\n    return re.sub(r\"[\\\"\\x00-\\x1f\\x7f-\\x9f]\", \"\", result)\n\n\ndef dict_has_keys_with_types(\n    data: dict, expected_fields: list[tuple[str, type]]\n) -> bool:\n    \"\"\"Return True if the given dictionary has the given keys with the given types.\"\"\"\n    for field, field_type in expected_fields:\n        if field not in data:\n            return False\n\n        value = data[field]\n        if not isinstance(value, field_type):\n            return False\n    return True\n\n\ndef get_llm_cache(llmnm, txt, history, genconf):\n    hasher = xxhash.xxh64()\n    hasher.update(str(llmnm).encode(\"utf-8\"))\n    hasher.update(str(txt).encode(\"utf-8\"))\n    hasher.update(str(history).encode(\"utf-8\"))\n    hasher.update(str(genconf).encode(\"utf-8\"))\n\n    k = hasher.hexdigest()\n    bin = REDIS_CONN.get(k)\n    if not bin:\n        return\n    return bin\n\n\ndef set_llm_cache(llmnm, txt, v, history, genconf):\n    hasher = xxhash.xxh64()\n    hasher.update(str(llmnm).encode(\"utf-8\"))\n    hasher.update(str(txt).encode(\"utf-8\"))\n    hasher.update(str(history).encode(\"utf-8\"))\n    hasher.update(str(genconf).encode(\"utf-8\"))\n\n    k = hasher.hexdigest()\n    REDIS_CONN.set(k, v.encode(\"utf-8\"), 24*3600)\n\n\ndef get_embed_cache(llmnm, txt):\n    hasher = xxhash.xxh64()\n    hasher.update(str(llmnm).encode(\"utf-8\"))\n    hasher.update(str(txt).encode(\"utf-8\"))\n\n    k = hasher.hexdigest()\n    bin = REDIS_CONN.get(k)\n    if not bin:\n        return\n    return np.array(json.loads(bin))\n\n\ndef set_embed_cache(llmnm, txt, arr):\n    hasher = xxhash.xxh64()\n    hasher.update(str(llmnm).encode(\"utf-8\"))\n    hasher.update(str(txt).encode(\"utf-8\"))\n\n    k = hasher.hexdigest()\n    arr = json.dumps(arr.tolist() if isinstance(arr, np.ndarray) else arr)\n    REDIS_CONN.set(k, arr.encode(\"utf-8\"), 24*3600)\n\n\ndef get_tags_from_cache(kb_ids):\n    hasher = xxhash.xxh64()\n    hasher.update(str(kb_ids).encode(\"utf-8\"))\n\n    k = hasher.hexdigest()\n    bin = REDIS_CONN.get(k)\n    if not bin:\n        return\n    return bin\n\n\ndef set_tags_to_cache(kb_ids, tags):\n    hasher = xxhash.xxh64()\n    hasher.update(str(kb_ids).encode(\"utf-8\"))\n\n    k = hasher.hexdigest()\n    REDIS_CONN.set(k, json.dumps(tags).encode(\"utf-8\"), 600)\n\ndef tidy_graph(graph: nx.Graph, callback):\n    \"\"\"\n    Ensure all nodes and edges in the graph have some essential attribute.\n    \"\"\"\n    def is_valid_node(node_attrs: dict) -> bool:\n        valid_node = True\n        for attr in [\"description\", \"source_id\"]:\n            if attr not in node_attrs:\n                valid_node = False\n                break\n        return valid_node\n    purged_nodes = []\n    for node, node_attrs in graph.nodes(data=True):\n        if not is_valid_node(node_attrs):\n            purged_nodes.append(node)\n    for node in purged_nodes:\n        graph.remove_node(node)\n    if purged_nodes and callback:\n        callback(msg=f\"Purged {len(purged_nodes)} nodes from graph due to missing essential attributes.\")\n\n    purged_edges = []\n    for source, target, attr in graph.edges(data=True):\n        if not is_valid_node(attr):\n            purged_edges.append((source, target))\n        if \"keywords\" not in attr:\n            attr[\"keywords\"] = []\n    for source, target in purged_edges:\n        graph.remove_edge(source, target)\n    if purged_edges and callback:\n        callback(msg=f\"Purged {len(purged_edges)} edges from graph due to missing essential attributes.\")\n\ndef get_from_to(node1, node2):\n    if node1 < node2:\n        return (node1, node2)\n    else:\n        return (node2, node1)\n\ndef graph_merge(g1: nx.Graph, g2: nx.Graph, change: GraphChange):\n    \"\"\"Merge graph g2 into g1 in place.\"\"\"\n    for node_name, attr in g2.nodes(data=True):\n        change.added_updated_nodes.add(node_name)\n        if not g1.has_node(node_name):\n            g1.add_node(node_name, **attr)\n            continue\n        node = g1.nodes[node_name]\n        node[\"description\"] += GRAPH_FIELD_SEP + attr[\"description\"]\n        # A node's source_id indicates which chunks it came from.\n        node[\"source_id\"] += attr[\"source_id\"]\n\n    for source, target, attr in g2.edges(data=True):\n        change.added_updated_edges.add(get_from_to(source, target))\n        edge = g1.get_edge_data(source, target)\n        if edge is None:\n            g1.add_edge(source, target, **attr)\n            continue\n        edge[\"weight\"] += attr.get(\"weight\", 0)\n        edge[\"description\"] += GRAPH_FIELD_SEP + attr[\"description\"]\n        edge[\"keywords\"] += attr[\"keywords\"]\n        # A edge's source_id indicates which chunks it came from.\n        edge[\"source_id\"] += attr[\"source_id\"]\n\n\n--- structural neighbors ---\nsymbol:5d1a37378656af35:get_graph (symbol, graphrag/utils.py); symbol:efc9c0e1a041c601:perform_variable_replacements (symbol, graphrag/utils.py); symbol:e49e7f1e37cc89c2:graph_node_to_chunk (symbol, graphrag/utils.py); symbol:fa35efb47174b60e:get_entity_type2sampels (symbol, graphrag/utils.py); symbol:e27e017461f4cd13:does_graph_contains (symbol, graphrag/utils.py); symbol:15d352b2b7a3516d:get_llm_cache (symbol, graphrag/utils.py); symbol:e5c07da49d1858f7:get_graph_doc_ids (symbol, graphrag/utils.py); symbol:34c59f67dd59ca35:graph_edge_to_chunk (symbol, graphrag/utils.py); symbol:3fb3e384aeba896e:is_continuous_subsequence (symbol, graphrag/utils.py); symbol:8cd2963d4fcf3006:rebuild_graph (symbol, graphrag/utils.py); symbol:67a5c53ea3ef4511:dict_has_keys_with_types (symbol, graphrag/utils.py); symbol:979dfc64dcf82ab6:merge_tuples (symbol, graphrag/utils.py)"
+      },
+      "search_hits": {
+        "settings.docStoreConn.delete": [
+          {
+            "file_path": "graphrag/utils.py",
+            "line_number": 434,
+            "content": "await trio.to_thread.run_sync(lambda: settings.docStoreConn.delete({\"knowledge_graph_kwd\": [\"graph\"]}, search.index_name(tenant_id), kb_id))",
+            "context_lines": [
+              "await trio.to_thread.run_sync(lambda: settings.docStoreConn.delete({\"knowledge_graph_kwd\": [\"graph\"]}, search.index_name(tenant_id), kb_id))"
+            ]
+          },
+          {
+            "file_path": "graphrag/utils.py",
+            "line_number": 437,
+            "content": "await trio.to_thread.run_sync(lambda: settings.docStoreConn.delete({\"knowledge_graph_kwd\": [\"entity\"], \"entity_kwd\": sorted(change.removed_nodes)}, search.index_name(tenant_id), kb_id))",
+            "context_lines": [
+              "await trio.to_thread.run_sync(lambda: settings.docStoreConn.delete({\"knowledge_graph_kwd\": [\"entity\"], \"entity_kwd\": sorted(change.removed_nodes)}, search.index_name(tenant_id), kb_id))"
+            ]
+          },
+          {
+            "file_path": "graphrag/utils.py",
+            "line_number": 442,
+            "content": "nursery.start_soon(lambda: trio.to_thread.run_sync(lambda: settings.docStoreConn.delete({\"knowledge_graph_kwd\": [\"relation\"], \"from_entity_kwd\": from_node, \"to_entity_kwd\": to_node}, search.index_name(tenant_id), kb_id)))",
+            "context_lines": [
+              "nursery.start_soon(lambda: trio.to_thread.run_sync(lambda: settings.docStoreConn.delete({\"knowledge_graph_kwd\": [\"relation\"], \"from_entity_kwd\": from_node, \"to_entity_kwd\": to_node}, search.index_name(tenant_id), kb_id)))"
+            ]
+          }
+        ],
+        "blocking I/O": [],
+        "non-blocking alternatives": [],
+        "asynchronous alternatives": []
+      },
+      "warnings": []
+    },
+    "task_performance_4:auto-context:4": {
+      "request_id": "task_performance_4:auto-context:4",
+      "candidate_id": "task_performance_4",
+      "file_snippets": {
+        "graphrag/utils.py": "# Copyright (c) 2024 Microsoft Corporation.\n# Licensed under the MIT License\n\"\"\"\nReference:\n - [graphrag](https://github.com/microsoft/graphrag)\n - [LightRag](https://github.com/HKUDS/LightRAG)\n\"\"\"\n\nimport html\nimport json\nimport logging\nimport re\nimport time\nfrom collections import defaultdict\nfrom hashlib import md5\nfrom typing import Any, Callable\nimport os\nimport trio\nfrom typing import Set, Tuple\n\nimport networkx as nx\nimport numpy as np\nimport xxhash\nfrom networkx.readwrite import json_graph\nimport dataclasses\n\nfrom api import settings\nfrom api.utils import get_uuid\nfrom rag.nlp import search, rag_tokenizer\nfrom rag.utils.doc_store_conn import OrderByExpr\nfrom rag.utils.redis_conn import REDIS_CONN\n\nGRAPH_FIELD_SEP = \"<SEP>\"\n\nErrorHandlerFn = Callable[[BaseException | None, str | None, dict | None], None]\n\nchat_limiter = trio.CapacityLimiter(int(os.environ.get('MAX_CONCURRENT_CHATS', 10)))\n\n@dataclasses.dataclass\nclass GraphChange:\n    removed_nodes: Set[str] = dataclasses.field(default_factory=set)\n    added_updated_nodes: Set[str] = dataclasses.field(default_factory=set)\n    removed_edges: Set[Tuple[str, str]] = dataclasses.field(default_factory=set)\n    added_updated_edges: Set[Tuple[str, str]] = dataclasses.field(default_factory=set)\n\ndef perform_variable_replacements(\n    input: str, history: list[dict] | None = None, variables: dict | None = None\n) -> str:\n    \"\"\"Perform variable replacements on the input string and in a chat log.\"\"\"\n    if history is None:\n        history = []\n    if variables is None:\n        variables = {}\n    result = input\n\n    def replace_all(input: str) -> str:\n        result = input\n        for k, v in variables.items():\n            result = result.replace(f\"{{{k}}}\", v)\n        return result\n\n    result = replace_all(result)\n    for i, entry in enumerate(history):\n        if entry.get(\"role\") == \"system\":\n            entry[\"content\"] = replace_all(entry.get(\"content\") or \"\")\n\n    return result\n\n\ndef clean_str(input: Any) -> str:\n    \"\"\"Clean an input string by removing HTML escapes, control characters, and other unwanted characters.\"\"\"\n    # If we get non-string input, just give it back\n    if not isinstance(input, str):\n        return input\n\n    result = html.unescape(input.strip())\n    # https://stackoverflow.com/questions/4324790/removing-control-characters-from-a-string-in-python\n    return re.sub(r\"[\\\"\\x00-\\x1f\\x7f-\\x9f]\", \"\", result)\n\n\ndef dict_has_keys_with_types(\n    data: dict, expected_fields: list[tuple[str, type]]\n) -> bool:\n    \"\"\"Return True if the given dictionary has the given keys with the given types.\"\"\"\n    for field, field_type in expected_fields:\n        if field not in data:\n            return False\n\n        value = data[field]\n        if not isinstance(value, field_type):\n            return False\n    return True\n\n\ndef get_llm_cache(llmnm, txt, history, genconf):\n    hasher = xxhash.xxh64()\n    hasher.update(str(llmnm).encode(\"utf-8\"))\n    hasher.update(str(txt).encode(\"utf-8\"))\n    hasher.update(str(history).encode(\"utf-8\"))\n    hasher.update(str(genconf).encode(\"utf-8\"))\n\n    k = hasher.hexdigest()\n    bin = REDIS_CONN.get(k)\n    if not bin:\n        return\n    return bin\n\n\ndef set_llm_cache(llmnm, txt, v, history, genconf):\n    hasher = xxhash.xxh64()\n    hasher.update(str(llmnm).encode(\"utf-8\"))\n    hasher.update(str(txt).encode(\"utf-8\"))\n    hasher.update(str(history).encode(\"utf-8\"))\n    hasher.update(str(genconf).encode(\"utf-8\"))\n\n    k = hasher.hexdigest()\n    REDIS_CONN.set(k, v.encode(\"utf-8\"), 24*3600)\n\n\ndef get_embed_cache(llmnm, txt):\n    hasher = xxhash.xxh64()\n    hasher.update(str(llmnm).encode(\"utf-8\"))\n    hasher.update(str(txt).encode(\"utf-8\"))\n\n    k = hasher.hexdigest()\n    bin = REDIS_CONN.get(k)\n    if not bin:\n        return\n    return np.array(json.loads(bin))\n\n\ndef set_embed_cache(llmnm, txt, arr):\n    hasher = xxhash.xxh64()\n    hasher.update(str(llmnm).encode(\"utf-8\"))\n    hasher.update(str(txt).encode(\"utf-8\"))\n\n    k = hasher.hexdigest()\n    arr = json.dumps(arr.tolist() if isinstance(arr, np.ndarray) else arr)\n    REDIS_CONN.set(k, arr.encode(\"utf-8\"), 24*3600)\n\n\ndef get_tags_from_cache(kb_ids):\n    hasher = xxhash.xxh64()\n    hasher.update(str(kb_ids).encode(\"utf-8\"))\n\n    k = hasher.hexdigest()\n    bin = REDIS_CONN.get(k)\n    if not bin:\n        return\n    return bin\n\n\ndef set_tags_to_cache(kb_ids, tags):\n    hasher = xxhash.xxh64()\n    hasher.update(str(kb_ids).encode(\"utf-8\"))\n\n    k = hasher.hexdigest()\n    REDIS_CONN.set(k, json.dumps(tags).encode(\"utf-8\"), 600)\n\ndef tidy_graph(graph: nx.Graph, callback):\n    \"\"\"\n    Ensure all nodes and edges in the graph have some essential attribute.\n    \"\"\"\n    def is_valid_node(node_attrs: dict) -> bool:\n        valid_node = True\n        for attr in [\"description\", \"source_id\"]:\n            if attr not in node_attrs:\n                valid_node = False\n                break\n        return valid_node\n    purged_nodes = []\n    for node, node_attrs in graph.nodes(data=True):\n        if not is_valid_node(node_attrs):\n            purged_nodes.append(node)\n    for node in purged_nodes:\n        graph.remove_node(node)\n    if purged_nodes and callback:\n        callback(msg=f\"Purged {len(purged_nodes)} nodes from graph due to missing essential attributes.\")\n\n    purged_edges = []\n    for source, target, attr in graph.edges(data=True):\n        if not is_valid_node(attr):\n            purged_edges.append((source, target))\n        if \"keywords\" not in attr:\n            attr[\"keywords\"] = []\n    for source, target in purged_edges:\n        graph.remove_edge(source, target)\n    if purged_edges and callback:\n        callback(msg=f\"Purged {len(purged_edges)} edges from graph due to missing essential attributes.\")\n\ndef get_from_to(node1, node2):\n    if node1 < node2:\n        return (node1, node2)\n    else:\n        return (node2, node1)\n\ndef graph_merge(g1: nx.Graph, g2: nx.Graph, change: GraphChange):\n    \"\"\"Merge graph g2 into g1 in place.\"\"\"\n    for node_name, attr in g2.nodes(data=True):\n        change.added_updated_nodes.add(node_name)\n        if not g1.has_node(node_name):\n            g1.add_node(node_name, **attr)\n            continue\n        node = g1.nodes[node_name]\n        node[\"description\"] += GRAPH_FIELD_SEP + attr[\"description\"]\n        # A node's source_id indicates which chunks it came from.\n        node[\"source_id\"] += attr[\"source_id\"]\n\n    for source, target, attr in g2.edges(data=True):\n        change.added_updated_edges.add(get_from_to(source, target))\n        edge = g1.get_edge_data(source, target)\n        if edge is None:\n            g1.add_edge(source, target, **attr)\n            continue\n        edge[\"weight\"] += attr.get(\"weight\", 0)\n        edge[\"description\"] += GRAPH_FIELD_SEP + attr[\"description\"]\n        edge[\"keywords\"] += attr[\"keywords\"]\n        # A edge's source_id indicates which chunks it came from.\n        edge[\"source_id\"] += attr[\"source_id\"]\n\n\n--- structural neighbors ---\nsymbol:5d1a37378656af35:get_graph (symbol, graphrag/utils.py); symbol:efc9c0e1a041c601:perform_variable_replacements (symbol, graphrag/utils.py); symbol:e49e7f1e37cc89c2:graph_node_to_chunk (symbol, graphrag/utils.py); symbol:fa35efb47174b60e:get_entity_type2sampels (symbol, graphrag/utils.py); symbol:e27e017461f4cd13:does_graph_contains (symbol, graphrag/utils.py); symbol:15d352b2b7a3516d:get_llm_cache (symbol, graphrag/utils.py); symbol:e5c07da49d1858f7:get_graph_doc_ids (symbol, graphrag/utils.py); symbol:34c59f67dd59ca35:graph_edge_to_chunk (symbol, graphrag/utils.py); symbol:3fb3e384aeba896e:is_continuous_subsequence (symbol, graphrag/utils.py); symbol:8cd2963d4fcf3006:rebuild_graph (symbol, graphrag/utils.py); symbol:67a5c53ea3ef4511:dict_has_keys_with_types (symbol, graphrag/utils.py); symbol:979dfc64dcf82ab6:merge_tuples (symbol, graphrag/utils.py)"
+      },
+      "search_hits": {
+        "graphrag/utils.py": [],
+        "Using `trio.to_thread.run_sync` could introduce performance overhead due to the context switch between the event loop an": [],
+        "Using `trio.to_thread.run_sync` could introduce performance overhead due to the context switch between the event loop and the thread pool. +                 nur": []
+      },
+      "warnings": []
+    }
+  },
+  "critique_revision_digests": {}
+}

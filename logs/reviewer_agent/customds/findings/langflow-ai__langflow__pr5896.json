@@ -1,0 +1,35 @@
+[
+  {
+    "id": "logic-1",
+    "file_path": "src/backend/base/langflow/api/v1/chat.py",
+    "line_start": 350,
+    "line_end": 351,
+    "content": "vertex_build_response: VertexBuildResponse = build_task.result()\n-        vertex_build_response: VertexBuildResponse = build_task.result()",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Ensure that the task result is only accessed after confirming the task's completion. Consider moving the assignment of `vertex_build_response` inside the try block to avoid potential race conditions.",
+    "references": []
+  },
+  {
+    "id": "logic-3",
+    "file_path": "src/backend/base/langflow/graph/vertex/vertex_types.py",
+    "line_start": 109,
+    "line_end": 110,
+    "content": "-                self._log_transaction_async(source=self, target=requester, flow_id=str(flow_id), status=\"error\")\n+                await self._log_transaction_async(source=self, target=requester, flow_id=str(flow_id), status=\"error\")",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Ensure that the method `_log_transaction_async` is safe to call with `await` and that it does not block the event loop. Consider refactoring the method to avoid blocking calls if necessary.",
+    "references": []
+  },
+  {
+    "id": "logic-4",
+    "file_path": "src/backend/base/langflow/graph/vertex/vertex_types.py",
+    "line_start": 147,
+    "line_end": 148,
+    "content": "-            self._log_transaction_async(source=self, target=requester, flow_id=str(flow_id), status=\"success\")\n+            await self._log_transaction_async(source=self, target=requester, flow_id=str(flow_id), status=\"success\")",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Ensure that the method `_log_transaction_async` is safe to call with `await` and that it does not block the event loop. Consider refactoring the method to avoid blocking calls if necessary.",
+    "references": []
+  }
+]
