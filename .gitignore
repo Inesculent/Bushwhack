@@ -4,7 +4,7 @@
 .vscode/
 __pycache__/
 opencode.json
-
+whiteboard.txt
 # Keep template env files if added.
 !.env.example
 

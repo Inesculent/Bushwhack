@@ -17,6 +17,7 @@ from src.infrastructure.mcp.ast_parser import MCPASTParser
 from src.infrastructure.mcp.client import MCPClient
 from src.infrastructure.mcp.github_context import GitHubMCPContextProvider
 from src.infrastructure.preflight.service import PreflightManifestService
+from src.infrastructure.snapshot_loader import SnapshotLoader
 from src.infrastructure.snapshot_pointer_store import (
     InMemorySnapshotPointerStore,
     RedisSnapshotPointerStore,
@@ -134,3 +135,8 @@ def build_snapshot_pointer_store(settings: Settings) -> SnapshotPointerStore:
     if not settings.redis_enabled:
         return InMemorySnapshotPointerStore()
     return RedisSnapshotPointerStore(settings)
+
+
+def build_snapshot_loader(settings: Settings) -> SnapshotLoader:
+    """Build a SnapshotLoader for loading exploration snapshots from disk."""
+    return SnapshotLoader(settings)

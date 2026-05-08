@@ -79,6 +79,7 @@ class GraphState(TypedDict, total=False):
     global_summary: NotRequired[str]
     snapshot_root: NotRequired[str]
     snapshot_id: NotRequired[str]
+    snapshot_source: NotRequired[Literal["explore", "loaded"]]
     semantic_community_work_item: NotRequired[Dict[str, Any]]
     semantic_community_work_queue: Annotated[List[Dict[str, Any]], replace_list_reducer]
     semantic_dispatch_cursor: NotRequired[int]
