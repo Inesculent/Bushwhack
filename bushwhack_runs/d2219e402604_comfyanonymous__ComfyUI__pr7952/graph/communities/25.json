@@ -1,0 +1,52 @@
+{
+  "community_id": 25,
+  "edges": [
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:comfy/options.py",
+      "source_file": "comfy/options.py",
+      "source_location": "L?",
+      "source_ref": "comfy/options.py",
+      "target": "symbol:496c54f7c038dee2:enable_args_parsing",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:496c54f7c038dee2:enable_args_parsing",
+      "source_file": "comfy/options.py",
+      "source_location": "L?",
+      "source_ref": "comfy/options.py",
+      "target": "symbol:496c54f7c038dee2:enable_args_parsing",
+      "weight": 1.0
+    }
+  ],
+  "nodes": [
+    {
+      "community_id": 25,
+      "file_path": "comfy/options.py",
+      "id": "file:comfy/options.py",
+      "language": "Python",
+      "node_type": "file"
+    },
+    {
+      "community_id": 25,
+      "file_path": "comfy/options.py",
+      "id": "symbol:496c54f7c038dee2:enable_args_parsing",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "comfy/options.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "def enable_args_parsing(enable=True):",
+      "symbol_name": "enable_args_parsing",
+      "symbol_type": "function"
+    }
+  ]
+}

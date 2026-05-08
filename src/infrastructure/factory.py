@@ -9,6 +9,12 @@ from src.infrastructure.cache.memory_cache import InMemoryCache
 from src.infrastructure.mcp.ast_parser import MCPASTParser
 from src.infrastructure.mcp.client import MCPClient
 from src.infrastructure.preflight.service import PreflightManifestService
+from src.infrastructure.snapshot_pointer_store import (
+    InMemorySnapshotPointerStore,
+    RedisSnapshotPointerStore,
+    SnapshotPointerStore,
+)
+from src.infrastructure.snapshot_writer import SnapshotWriter
 from src.infrastructure.sandbox import RepoSandbox
 from src.infrastructure.search.ripgrep import RipgrepSearcher
 
@@ -88,3 +94,13 @@ def build_repository_understanding_adapters(
         ast_parser=ast_parser,
         ast_enabled=ast_parser is not None,
     )
+
+
+def build_snapshot_writer(settings: Settings) -> SnapshotWriter:
+    return SnapshotWriter(settings)
+
+
+def build_snapshot_pointer_store(settings: Settings) -> SnapshotPointerStore:
+    if not settings.redis_enabled:
+        return InMemorySnapshotPointerStore()
+    return RedisSnapshotPointerStore(settings)

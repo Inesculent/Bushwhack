@@ -1,0 +1,130 @@
+{
+  "community_id": 15,
+  "edges": [
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:script_examples/websockets_api_example.py",
+      "source_file": "script_examples/websockets_api_example.py",
+      "source_location": "L?",
+      "source_ref": "script_examples/websockets_api_example.py",
+      "target": "symbol:2a1e235802956bac:get_image",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:script_examples/websockets_api_example.py",
+      "source_file": "script_examples/websockets_api_example.py",
+      "source_location": "L?",
+      "source_ref": "script_examples/websockets_api_example.py",
+      "target": "symbol:8249c7ec8fc6b8f7:get_images",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:script_examples/websockets_api_example.py",
+      "source_file": "script_examples/websockets_api_example.py",
+      "source_location": "L?",
+      "source_ref": "script_examples/websockets_api_example.py",
+      "target": "symbol:977bb20ab0f7627f:queue_prompt",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:script_examples/websockets_api_example.py",
+      "source_file": "script_examples/websockets_api_example.py",
+      "source_location": "L?",
+      "source_ref": "script_examples/websockets_api_example.py",
+      "target": "symbol:b81790956d42aa62:get_history",
+      "weight": 1.0
+    }
+  ],
+  "nodes": [
+    {
+      "community_id": 15,
+      "file_path": "script_examples/websockets_api_example.py",
+      "id": "symbol:977bb20ab0f7627f:queue_prompt",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "script_examples/websockets_api_example.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "semantic_confidence": 1.0,
+      "semantic_purpose": "Queues a new prompt for processing by the system.",
+      "semantic_rationale": "Function name suggests adding a prompt to a queue for further handling.",
+      "signature": "def queue_prompt(prompt):",
+      "symbol_name": "queue_prompt",
+      "symbol_type": "function"
+    },
+    {
+      "community_id": 15,
+      "file_path": "script_examples/websockets_api_example.py",
+      "id": "symbol:8249c7ec8fc6b8f7:get_images",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "script_examples/websockets_api_example.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "semantic_confidence": 1.0,
+      "semantic_purpose": "Fetches multiple images based on a given prompt via WebSocket connection.",
+      "semantic_rationale": "Function name and parameters indicate retrieval of images related to a specific prompt over a WebSocket.",
+      "signature": "def get_images(ws, prompt):",
+      "symbol_name": "get_images",
+      "symbol_type": "function"
+    },
+    {
+      "community_id": 15,
+      "file_path": "script_examples/websockets_api_example.py",
+      "id": "symbol:2a1e235802956bac:get_image",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "script_examples/websockets_api_example.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "semantic_confidence": 1.0,
+      "semantic_purpose": "Retrieves an image from a specified subfolder and folder type using the filename.",
+      "semantic_rationale": "Function name and parameters suggest fetching an image based on filename and location details.",
+      "signature": "def get_image(filename, subfolder, folder_type):",
+      "symbol_name": "get_image",
+      "symbol_type": "function"
+    },
+    {
+      "community_id": 15,
+      "file_path": "script_examples/websockets_api_example.py",
+      "id": "symbol:b81790956d42aa62:get_history",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "script_examples/websockets_api_example.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "semantic_confidence": 1.0,
+      "semantic_purpose": "Retrieves history or details related to a specific prompt identified by prompt_id.",
+      "semantic_rationale": "Function name implies fetching historical data or details about a particular prompt.",
+      "signature": "def get_history(prompt_id):",
+      "symbol_name": "get_history",
+      "symbol_type": "function"
+    },
+    {
+      "community_id": 15,
+      "file_path": "script_examples/websockets_api_example.py",
+      "id": "file:script_examples/websockets_api_example.py",
+      "language": "Python",
+      "node_type": "file"
+    }
+  ]
+}

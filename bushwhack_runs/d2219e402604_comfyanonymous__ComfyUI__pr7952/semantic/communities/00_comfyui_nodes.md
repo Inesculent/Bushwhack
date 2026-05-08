@@ -1,0 +1,139 @@
+# Community 0: ComfyUI Nodes
+
+**Purpose:** Define and initialize various nodes and functionalities within the ComfyUI framework.
+
+## Files
+- `comfy/checkpoint_pickle.py`: Handle checkpoint operations, likely including saving and loading model states. (confidence 1.00)
+- `comfy/diffusers_convert.py`: Convert models from the Hugging Face Diffusers library into a format compatible with ComfyUI. (confidence 1.00)
+- `comfy/extra_samplers/uni_pc.py`: Implement sampling methods, specifically UniPC samplers, which are used in generating images or videos. (confidence 1.00)
+- `comfy/ldm/lightricks/symmetric_patchifier.py`: Provide functionality for patchifying images symmetrically, possibly for tasks like inpainting or outpainting. (confidence 0.50)
+- `comfy/ldm/models/autoencoder.py`: Define autoencoder models, which are essential for compressing and decompressing data, often used in variational autoencoders (VAEs). (confidence 1.00)
+- `comfy/ldm/modules/distributions/distributions.py`: Define distribution classes used in probabilistic modeling within the ComfyUI framework. (confidence 1.00)
+- `comfy/ldm/modules/ema.py`: Implement exponential moving average (EMA) techniques, often used for stabilizing training. (confidence 0.50)
+- `comfy/sample.py`: Provide sampling utilities, including functions to generate samples based on given models and parameters. (confidence 1.00)
+- `comfy_execution/graph_utils.py`: Utility functions for managing and manipulating computation graphs within ComfyUI. (confidence 1.00)
+- `comfy_extras/nodes_ace.py`: Define additional custom nodes that extend the capabilities of the ComfyUI framework. (confidence 1.00)
+- `comfy_extras/nodes_advanced_samplers.py`: Implement advanced sampling techniques, which are used to generate more sophisticated outputs. (confidence 1.00)
+- `comfy_extras/nodes_align_your_steps.py`: Nodes related to aligning and controlling the steps in the generation process, possibly for fine-tuning outputs. (confidence 1.00)
+- `comfy_extras/nodes_attention_multiply.py`: Nodes implementing attention mechanisms, which are crucial for focusing on specific parts of the input data during generation. (confidence 1.00)
+- `comfy_extras/nodes_audio.py`: Nodes handling audio-related tasks, possibly including audio-to-image generation or vice versa. (confidence 0.50)
+- `comfy_extras/nodes_compositing.py`: Nodes for compositing images, which involve combining multiple images to create new ones. (confidence 1.00)
+- `comfy_extras/nodes_controlnet.py`: Nodes integrating ControlNet functionalities, which allow for more controlled and guided image generation. (confidence 1.00)
+- `comfy_extras/nodes_cosmos.py`: Nodes related to cosmos or space-themed functionalities, possibly including generating cosmic imagery. (confidence 0.50)
+- `comfy_extras/nodes_custom_sampler.py`: Nodes for custom sampling techniques, which can be tailored to specific needs or preferences. (confidence 0.50)
+- `comfy_extras/nodes_flux.py`: Nodes implementing Flux functionalities, which could involve dynamic or flowing effects in generated content. (confidence 0.50)
+- `comfy_extras/nodes_freelunch.py`: Nodes providing 'free lunch' functionalities, which might include optimizations or shortcuts in the generation process. (confidence 0.50)
+
+## Symbols
+- `00c4bfe9e8c6277c`: Disable noise in a specific part of the model or process. (confidence 1.00)
+  - _Rationale:_ The class name 'DisableNoise' suggests it's used to disable noise, likely in a generative model context.
+- `010222ac6f99e674`: Initialize extra nodes in the ComfyUI framework. (confidence 1.00)
+  - _Rationale:_ The function name 'init_extra_nodes' indicates its role in initializing additional node types.
+- `01b577c91f4423a0`: A dual configuration guidance mechanism for controlling the generation process. (confidence 1.00)
+  - _Rationale:_ The class name 'DualCFGGuider' suggests it provides dual configuration guidance.
+- `02cab7f3bd387cdf`: A test node for execution blocking, likely used in testing scenarios. (confidence 1.00)
+  - _Rationale:_ The class name 'TestExecutionBlockerNode' indicates it's a test node designed to block execution.
+- `02d8a12fddf7470b`: A solid mask for image processing, possibly used in masking or segmentation tasks. (confidence 1.00)
+  - _Rationale:_ The class name 'SolidMask' suggests it creates a solid mask for image processing.
+- `0343c41f2ca4bb59`: A simple merge operation for CLIP embeddings, likely used in combining text embeddings. (confidence 1.00)
+  - _Rationale:_ The class name 'CLIPMergeSimple' indicates it merges CLIP embeddings in a simple manner.
+- `043bb2b733583b60`: Cleanup additional models, possibly removing unused or redundant models. (confidence 1.00)
+  - _Rationale:_ The function name 'cleanup_additional_models' suggests its role in cleaning up unused models.
+- `043de6b952f45c2d`: Represent the result of a run, possibly storing output data or metadata. (confidence 1.00)
+  - _Rationale:_ The class name 'RunResult' suggests it encapsulates the result of a run.
+- `04bc14dc4ed29a78`: Add a prefix to graph outputs, likely for organizing or identifying outputs. (confidence 1.00)
+  - _Rationale:_ The function name 'add_graph_prefix' indicates its role in adding prefixes to graph outputs.
+- `04fa9d333ef65242`: Conditioning mechanism for Hunyuan3Dv2, possibly used in 3D generation tasks. (confidence 1.00)
+  - _Rationale:_ The class name 'Hunyuan3Dv2Conditioning' suggests it provides conditioning for Hunyuan3Dv2.
+- `0678e0c5fb41b0bd`: An exponential scheduler, possibly used in controlling the rate of change during generation. (confidence 1.00)
+  - _Rationale:_ The class name 'ExponentialScheduler' indicates it schedules changes exponentially.
+- `06a376086d310d1c`: A test node for checking if a custom node has changed, likely used in testing scenarios. (confidence 1.00)
+  - _Rationale:_ The class name 'TestCustomIsChanged' suggests it's a test node for checking changes in custom nodes.
+- `06e42149d13b2d46`: A denoising mechanism that splits sigmas, possibly used in denoising processes. (confidence 1.00)
+  - _Rationale:_ The class name 'SplitSigmasDenoise' suggests it splits sigmas for denoising.
+- `07022b9d7bf0c5e1`: A blur operation for images, likely used in preprocessing or postprocessing steps. (confidence 1.00)
+  - _Rationale:_ The class name 'Blur' suggests it applies a blur effect to images.
+- `077aa205c6b14281`: An autoencoding engine based on legacy methods, possibly used for encoding and decoding data. (confidence 1.00)
+  - _Rationale:_ The class name 'AutoencodingEngineLegacy' suggests it uses legacy methods for autoencoding.
+- `07d86e09a36d58f1`: Encoding text using CLIP and HunyuanDiT, possibly for multimodal tasks. (confidence 1.00)
+  - _Rationale:_ The class name 'CLIPTextEncodeHunyuanDiT' suggests it encodes text using CLIP and HunyuanDiT.
+- `08aed1d2839b26a7`: Split an image with alpha channels, likely used in image processing tasks. (confidence 1.00)
+  - _Rationale:_ The class name 'SplitImageWithAlpha' suggests it splits images with alpha channels.
+- `08b1935daa2a8555`: Check if an object is a link, possibly used in graph traversal or data validation. (confidence 1.00)
+  - _Rationale:_ The function name 'is_link' suggests it checks if an object is a link.
+- `08bf7810ee623f36`: Retrieve history associated with a prompt ID, likely used in tracking or logging. (confidence 1.00)
+  - _Rationale:_ The function name 'get_history' suggests it retrieves history for a given prompt ID.
+- `09a428aaf17d0e7f`: Apply ControlNet functionalities for SD3, possibly used in controlling image generation. (confidence 1.00)
+  - _Rationale:_ The class name 'ControlNetApplySD3' suggests it applies ControlNet for SD3.
+- `09e251f8e5a43baa`: Queue a prompt for processing, likely used in batch processing or task scheduling. (confidence 1.00)
+  - _Rationale:_ The function name 'queue_prompt' suggests it queues prompts for processing.
+- `09fe98040f116faa`: Blend latents, possibly used in combining different latent representations. (confidence 1.00)
+  - _Rationale:_ The class name 'LatentBlend' suggests it blends latent representations.
+- `0aa630bffc38608c`: An Euler ancestral sampler, possibly used in generating sequences or paths. (confidence 1.00)
+  - _Rationale:_ The class name 'SamplerEulerAncestral' suggests it uses the Euler ancestral method for sampling.
+- `0ac83a5d550f98c3`: A test node for verifying mixed expansion returns, likely used in testing scenarios. (confidence 1.00)
+  - _Rationale:_ The class name 'TestMixedExpansionReturns' suggests it's a test node for verifying mixed expansions.
+- `0af43d79639897b8`: A test node for lazy mixing images, likely used in testing scenarios. (confidence 1.00)
+  - _Rationale:_ The class name 'TestLazyMixImages' suggests it's a test node for lazy image mixing.
+- `105bee53f096506a`: Composite masks, possibly used in image processing or segmentation tasks. (confidence 1.00)
+  - _Rationale:_ The class name 'MaskComposite' suggests it composites masks.
+- `105ee0799bc23a64`: Convert text encoder state dictionaries, possibly for compatibility or migration purposes. (confidence 1.00)
+  - _Rationale:_ The function name 'convert_text_enc_state_dict' suggests it converts text encoder state dictionaries.
+- `10914b3ffeb0bc80`: A DPM++ SDE sampler, possibly used in generating sequences or paths. (confidence 1.00)
+  - _Rationale:_ The class name 'SamplerDPMPP_SDE' suggests it uses the DPM++ SDE method for sampling.
+- `11a0bdfa782c85ba`: Conditioning mechanism for LTXV, possibly used in specific generation tasks. (confidence 1.00)
+  - _Rationale:_ The class name 'LTXVConditioning' suggests it provides conditioning for LTXV.
+- `130525c28aba5024`: A test node for accumulation length, likely used in testing scenarios. (confidence 1.00)
+  - _Rationale:_ The class name 'TestAccumulationGetLengthNode' suggests it's a test node for accumulation length.
+- `1355fc76d2aef801`: Perform log-linear interpolation, possibly used in generating sequences or paths. (confidence 1.00)
+  - _Rationale:_ The function name 'loglinear_interp' suggests it performs log-linear interpolation.
+- `142541ac4eeaef06`: A dirac distribution, possibly used in probabilistic modeling. (confidence 1.00)
+  - _Rationale:_ The class name 'DiracDistribution' suggests it represents a dirac distribution.
+- `17643d7c0933bb90`: Crop masks, possibly used in image processing or segmentation tasks. (confidence 1.00)
+  - _Rationale:_ The class name 'CropMask' suggests it crops masks.
+- `1b90f260209b4e3b`: A test node for dynamic dependency cycles, likely used in testing scenarios. (confidence 1.00)
+  - _Rationale:_ The class name 'TestDynamicDependencyCycle' suggests it's a test node for dynamic dependency cycles.
+- `1bf9cf4cbfd977d8`: Save models, possibly for persistence or sharing purposes. (confidence 1.00)
+  - _Rationale:_ The class name 'ModelSave' suggests it saves models.
+- `1d539af4e678e070`: A test node for closing while loops, likely used in testing scenarios. (confidence 1.00)
+  - _Rationale:_ The class name 'TestWhileLoopClose' suggests it's a test node for closing while loops.
+- `1ee84b5c4e9ddc86`: Initialize built-in extra nodes, likely for extending the framework's capabilities. (confidence 1.00)
+  - _Rationale:_ The function name 'init_builtin_extra_nodes' suggests its role in initializing built-in extra nodes.
+- `219e12701a65cdfd`: Convert masks to images, possibly used in image processing tasks. (confidence 1.00)
+  - _Rationale:_ The class name 'MaskToImage' suggests it converts masks to images.
+- `21da3e5298748b37`: Pad images for outpainting, possibly used in extending or modifying images. (confidence 1.00)
+  - _Rationale:_ The class name 'ImagePadForOutpaint' suggests it pads images for outpainting.
+- `21efd4a6b797fe50`: Fix empty latent channels, possibly used in ensuring proper latent representations. (confidence 1.00)
+  - _Rationale:_ The function name 'fix_empty_latent_channels' suggests it fixes empty latent channels.
+- `238184d99822f0fa`: Set latent noise masks, possibly used in controlling noise during generation. (confidence 1.00)
+  - _Rationale:_ The class name 'SetLatentNoiseMask' suggests it sets latent noise masks.
+- `241302f1194bf5eb`: A test node for converting lists to accumulations, likely used in testing scenarios. (confidence 1.00)
+  - _Rationale:_ The class name 'TestListToAccumulationNode' suggests it's a test node for list to accumulation conversion.
+- `24596ddceda92c95`: Retrieve images, possibly used in fetching or displaying images. (confidence 1.00)
+  - _Rationale:_ The function name 'get_images' suggests it retrieves images.
+- `251790381e3a0924`: Scale images to a total number of pixels, possibly used in resizing or adjusting image dimensions. (confidence 1.00)
+  - _Rationale:_ The class name 'ImageScaleToTotalPixels' suggests it scales images to a total number of pixels.
+- `252eb9387baf294f`: Expand dimensions, possibly used in preparing data for processing. (confidence 1.00)
+  - _Rationale:_ The function name 'expand_dims' suggests it expands dimensions.
+- `2591e91f91930566`: Fix image alpha channels, possibly used in ensuring proper transparency. (confidence 1.00)
+  - _Rationale:_ The function name 'image_alpha_fix' suggests it fixes image alpha channels.
+- `26a2432198dbd299`: Rescale configuration factors, possibly used in adjusting model configurations. (confidence 1.00)
+  - _Rationale:_ The class name 'RescaleCFG' suggests it rescales configuration factors.
+- `272f0d310ad4fccb`: Sample from a model, possibly used in generating outputs based on input parameters. (confidence 1.00)
+  - _Rationale:_ The function name 'sample' suggests it samples from a model.
+- `2959c7f859f222e6`: Create threshold masks, possibly used in image processing or segmentation tasks. (confidence 1.00)
+  - _Rationale:_ The class name 'ThresholdMask' suggests it creates threshold masks.
+- `299edc9859024d05`: Concatenate conditionings, possibly used in combining multiple conditioning inputs. (confidence 1.00)
+  - _Rationale:_ The class name 'ConditioningConcat' suggests it concatenates conditionings.
+
+## Cross-community dependencies
+1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 15, 17
+
+## Unverified / resolved calls
+- unresolved: `init_api_nodes` from `010222ac6f99e674` — Called within init_extra_nodes function
+- unresolved: `init_custom_nodes` from `010222ac6f99e674` — Called within init_extra_nodes function
+- unresolved: `models` from `043bb2b733583b60` — Parameter in cleanup_additional_models function
+- unresolved: `prompt` from `09e251f8e5a43baa` — Parameter in queue_prompt function
+- unresolved: `prompt` from `24596ddceda92c95` — Parameter in get_images function
+- unresolved: `prompt_id` from `08bf7810ee623f36` — Parameter in get_history function
+- unresolved: `ws` from `24596ddceda92c95` — Parameter in get_images function

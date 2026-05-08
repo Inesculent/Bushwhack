@@ -1,0 +1,13 @@
+{
+  "community_id": 42,
+  "edges": [],
+  "nodes": [
+    {
+      "community_id": 42,
+      "file_path": "tests-unit/folder_paths_test/__init__.py",
+      "id": "file:tests-unit/folder_paths_test/__init__.py",
+      "language": "Python",
+      "node_type": "file"
+    }
+  ]
+}

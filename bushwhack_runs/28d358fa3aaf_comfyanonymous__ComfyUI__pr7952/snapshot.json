@@ -1,0 +1,28 @@
+{
+  "run_id": "28d358fa3aaf:comfyanonymous__ComfyUI__pr7952",
+  "run_dir_name": "28d358fa3aaf_comfyanonymous__ComfyUI__pr7952",
+  "repo_path": "https://github.com/comfyanonymous/ComfyUI",
+  "status": "exploration_complete",
+  "community_count": 49,
+  "total_nodes": 5342,
+  "total_edges": 24249,
+  "unresolved_call_count": 0,
+  "extraction_gap_count": 0,
+  "snapshot_id": "55d7a9ed77469da0",
+  "snapshot_root": "C:\\Users\\inesc\\Bushwhack\\bushwhack_runs\\28d358fa3aaf_comfyanonymous__ComfyUI__pr7952",
+  "exploration_snapshot": {
+    "snapshot_id": "55d7a9ed77469da0",
+    "run_id": "28d358fa3aaf:comfyanonymous__ComfyUI__pr7952",
+    "snapshot_root": "C:\\Users\\inesc\\Bushwhack\\bushwhack_runs\\28d358fa3aaf_comfyanonymous__ComfyUI__pr7952",
+    "status": "exploration_complete",
+    "community_count": 49,
+    "total_nodes": 5342,
+    "total_edges": 24249,
+    "unresolved_call_count": 0,
+    "extraction_gap_count": 0,
+    "metadata": {
+      "repo_path": "https://github.com/comfyanonymous/ComfyUI",
+      "run_dir_name": "28d358fa3aaf_comfyanonymous__ComfyUI__pr7952"
+    }
+  }
+}

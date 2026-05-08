@@ -1,0 +1,287 @@
+# Community 6: Neural Network Modules
+
+**Purpose:** Define various neural network modules and components used in different parts of the ComfyUI project.
+
+## Files
+- `app/custom_node_manager.py`: Manages custom nodes in the application. (confidence 0.95)
+- `comfy/cldm/cldm.py`: Core components for Conditional Latent Diffusion Models. (confidence 0.95)
+- `comfy/ldm/ace/vae/autoencoder_dc.py`: Defines an autoencoder model for variational autoencoders. (confidence 0.95)
+- `comfy/ldm/ace/vae/music_dcae_pipeline.py`: Pipeline for music-related variational autoencoder operations. (confidence 0.95)
+- `comfy/ldm/cascade/common.py`: Common utilities and functions for cascade models. (confidence 0.95)
+- `comfy/ldm/cascade/stage_a.py`: Stage A specific components for cascade models. (confidence 0.95)
+- `comfy/ldm/cascade/stage_b.py`: Stage B specific components for cascade models. (confidence 0.95)
+- `comfy/ldm/cascade/stage_c.py`: Stage C specific components for cascade models. (confidence 0.95)
+- `comfy/ldm/cosmos/cosmos_tokenizer/layers3d.py`: 3D layers for Cosmos tokenizer. (confidence 0.95)
+- `comfy/ldm/cosmos/cosmos_tokenizer/patching.py`: Patching utilities for Cosmos tokenizer. (confidence 0.95)
+- `comfy/ldm/cosmos/cosmos_tokenizer/utils.py`: Utility functions for Cosmos tokenizer. (confidence 0.95)
+- `comfy/ldm/cosmos/vae.py`: Variational Autoencoder (VAE) components for Cosmos. (confidence 0.95)
+- `comfy/ldm/genmo/joint_model/asymm_models_joint.py`: Asymmetric joint models for generative models. (confidence 0.95)
+- `comfy/ldm/genmo/joint_model/temporal_rope.py`: Temporal RoPE (Rotary Position Embedding) components. (confidence 0.95)
+- `comfy/ldm/genmo/vae/model.py`: VAE model components for generative models. (confidence 0.95)
+- `comfy/ldm/lightricks/vae/causal_video_autoencoder.py`: Causal video autoencoder components. (confidence 0.95)
+- `comfy/ldm/lightricks/vae/conv_nd_factory.py`: Factory for creating N-dimensional convolutional layers. (confidence 0.95)
+- `comfy/ldm/lightricks/vae/dual_conv3d.py`: Dual 3D convolutional layers. (confidence 0.95)
+- `comfy/ldm/lightricks/vae/pixel_norm.py`: Pixel normalization layer. (confidence 0.95)
+- `comfy/ldm/modules/diffusionmodules/model.py`: Diffusion model components. (confidence 0.95)
+
+## Symbols
+- `symbol:00518cb75b29e6a8:ResBlock`: A residual block module. (confidence 0.95)
+  - _Rationale:_ Defined as a subclass of nn.Module with typical residual block characteristics.
+- `symbol:018ad13015121f70:Model`: A generic model class. (confidence 0.95)
+  - _Rationale:_ Defined as a subclass of nn.Module, likely serving as a base class for other models.
+- `symbol:035bf110fc834f08:make_linear_nd`: Creates an N-dimensional linear layer. (confidence 0.95)
+  - _Rationale:_ Function definition suggests creation of a linear layer with specified dimensions.
+- `symbol:03e64157cb7b125c:norm_fn`: Normalization function. (confidence 0.95)
+  - _Rationale:_ Function definition indicates some form of normalization operation.
+- `symbol:05d81891a9f74566:partialclass`: Creates a partially initialized class. (confidence 0.95)
+  - _Rationale:_ Function definition suggests creating a class with pre-initialized arguments.
+- `symbol:0689710ee3437e36:ResnetBlock`: A resnet block module. (confidence 0.95)
+  - _Rationale:_ Defined as a subclass of nn.Module with typical resnet block characteristics.
+- `symbol:0aca204443e3aaac:get_block`: Retrieves a block from a model. (confidence 0.95)
+  - _Rationale:_ Function definition suggests fetching a block, possibly for model assembly or modification.
+- `symbol:0d4ea160b1b8a2a8:GlobalResponseNorm`: Global response normalization layer. (confidence 0.95)
+  - _Rationale:_ Defined as a subclass of nn.Module, performing global response normalization.
+- `symbol:0e2deedfaff49e68:exists`: Checks if a variable exists. (confidence 0.95)
+  - _Rationale:_ Function definition checks for existence of a variable, possibly used for validation.
+- `symbol:0eeca1b6742a42c8:VideoResBlock`: A video-specific residual block. (confidence 0.95)
+  - _Rationale:_ Defined as a subclass of ResnetBlock, specialized for video data.
+- `symbol:118aeef034a509c4:Decoder`: A decoder module. (confidence 0.95)
+  - _Rationale:_ Defined as a subclass of nn.Module, used for decoding operations.
+- `symbol:14c4aefd19d82365:FourierFeatures`: Fourier feature transformation layer. (confidence 0.95)
+  - _Rationale:_ Defined as a subclass of nn.Module, transforming input features using Fourier methods.
+- `symbol:15af024775583051:Downsample`: Downsampling layer. (confidence 0.95)
+  - _Rationale:_ Defined as a subclass of nn.Module, reducing spatial dimensions of input data.
+- `symbol:1a316f4c547eb578:conv_nd`: N-dimensional convolutional layer factory. (confidence 0.95)
+  - _Rationale:_ Function definition creates an N-dimensional convolutional layer based on input dimensions.
+- `symbol:1c00491b88a3ae49:ContinuousFormulation`: Enum for continuous formulation types. (confidence 0.95)
+  - _Rationale:_ Defined as an Enum, representing different types of continuous formulations.
+- `symbol:1d536d1e5780e4f2:vae_attention`: VAE attention mechanism. (confidence 0.95)
+  - _Rationale:_ Function definition implements an attention mechanism specific to VAEs.
+- `symbol:1f6cd9eb79d8d327:TimestepBlock`: Timestep block module. (confidence 0.95)
+  - _Rationale:_ Defined as a subclass of nn.Module, handling timestep information in models.
+- `symbol:2171ba61c130af8d:LayerNorm2d_op`: 2D layer normalization operation. (confidence 0.95)
+  - _Rationale:_ Function definition applies layer normalization to 2D inputs.
+- `symbol:221a8dcab0934e29:OptimizedAttention`: Optimized attention mechanism. (confidence 0.95)
+  - _Rationale:_ Defined as a subclass of nn.Module, implementing an optimized attention mechanism.
+- `symbol:22ac2332d22cacc3:Decoder`: Another decoder module. (confidence 0.95)
+  - _Rationale:_ Defined as a subclass of nn.Module, used for decoding operations.
+- `symbol:22bb95b078b3a270:modulated_rmsnorm`: Modulated RMS normalization. (confidence 0.95)
+  - _Rationale:_ Function definition applies RMS normalization with modulation.
+- `symbol:22d0de9420baac23:CausalConv3d`: Causal 3D convolutional layer. (confidence 0.95)
+  - _Rationale:_ Defined as a subclass of ops.Conv3d, implementing causal 3D convolutions.
+- `symbol:24c1ffba79a218aa:space2batch`: Converts spatial dimensions to batch dimensions. (confidence 0.95)
+  - _Rationale:_ Function definition transforms spatial dimensions into batch dimensions for processing.
+- `symbol:259bbc660e65bcf3:AutoencoderDC`: Autoencoder DC model. (confidence 0.95)
+  - _Rationale:_ Defined as a subclass of nn.Module, implementing an autoencoder model.
+- `symbol:25de23735ce01c51:AsymmetricJointBlock`: Asymmetric joint block. (confidence 0.95)
+  - _Rationale:_ Defined as a subclass of nn.Module, implementing an asymmetric joint block for models.
+- `symbol:26c708459de65199:UnPatcher`: Unpatcher module. (confidence 0.95)
+  - _Rationale:_ Defined as a subclass of torch.nn.Module, likely used for reversing patching operations.
+- `symbol:27198b3f01f978a6:UpDownBlock2d`: 2D up-down block. (confidence 0.95)
+  - _Rationale:_ Defined as a subclass of nn.Module, implementing up and down operations in 2D.
+- `symbol:2959d5d70adfedcb:Patcher3D`: 3D patcher module. (confidence 0.95)
+  - _Rationale:_ Defined as a subclass of Patcher, used for patching 3D data.
+- `symbol:2ae5a8e7f5f1ee3d:CausalContinuousVideoTokenizer`: Causal continuous video tokenizer. (confidence 0.95)
+  - _Rationale:_ Defined as a subclass of nn.Module, tokenizing video data causally.
+- `symbol:2b49c49180eb7e31:RMSNorm`: RMS normalization layer. (confidence 0.95)
+  - _Rationale:_ Defined as a subclass of ops.RMSNorm, implementing RMS normalization.
+- `symbol:2b5017021702bd67:AttentionBlock`: Attention block module. (confidence 0.95)
+  - _Rationale:_ Defined as a subclass of nn.Module, implementing an attention block.
+- `symbol:2ca5549554dee1e7:SanaMultiscaleAttentionProjection`: Sana multiscale attention projection. (confidence 0.95)
+  - _Rationale:_ Defined as a subclass of nn.Module, projecting attention across multiple scales.
+- `symbol:2d6e1a2b66f4a41a:TimestepEmbedSequential`: Timestep embedding sequential container. (confidence 0.95)
+  - _Rationale:_ Defined as a subclass of nn.Sequential and TimestepBlock, handling timestep embeddings sequentially.
+- `symbol:2e4b0e52e3f8fb2d:exists`: Checks if a variable exists. (confidence 0.95)
+  - _Rationale:_ Function definition checks for existence of a variable, possibly used for validation.
+- `symbol:2e90e56bb22b6b9a:ResBlock`: Another residual block module. (confidence 0.95)
+  - _Rationale:_ Defined as a subclass of nn.Module with typical residual block characteristics.
+- `symbol:2f557f86ea3b3c0c:AlphaBlender`: Alpha blending module. (confidence 0.95)
+  - _Rationale:_ Defined as a subclass of nn.Module, used for alpha blending operations.
+- `symbol:2f73163dc4c3c8fc:normal_attention`: Normal attention mechanism. (confidence 0.95)
+  - _Rationale:_ Function definition implements a standard attention mechanism.
+- `symbol:3298e724aff9ff27:divisible_by`: Checks divisibility of numbers. (confidence 0.95)
+  - _Rationale:_ Function definition checks if one number is divisible by another.
+- `symbol:345a524224617c71:replication_pad`: Replication padding. (confidence 0.95)
+  - _Rationale:_ Function definition applies replication padding to input tensors.
+- `symbol:3684475609434427:ResnetBlock3D`: 3D resnet block module. (confidence 0.95)
+  - _Rationale:_ Defined as a subclass of nn.Module, implementing a resnet block for 3D data.
+- `symbol:37d59424bd9073dc:CausalDownsample3d`: Causal downsampling in 3D. (confidence 0.95)
+  - _Rationale:_ Defined as a subclass of nn.Module, performing causal downsampling on 3D data.
+- `symbol:38ab02e47aec7f37:CausalUpsample3d`: Causal upsampling in 3D. (confidence 0.95)
+  - _Rationale:_ Defined as a subclass of nn.Module, performing causal upsampling on 3D data.
+- `symbol:39ac92fe188b4ec0:nonlinearity`: Applies nonlinearity to input. (confidence 0.95)
+  - _Rationale:_ Function definition applies a nonlinearity function to input tensors.
+- `symbol:3aadbf1a78048f39:DepthToSpaceTime`: Converts depth to space-time. (confidence 0.95)
+  - _Rationale:_ Defined as a subclass of nn.Module, converting depth information to space-time representation.
+- `symbol:3cb9cd33724679df:CustomNodeManager`: Custom node manager. (confidence 0.95)
+  - _Rationale:_ Class definition manages custom nodes within the application.
+- `symbol:3e55a05572e6b762:residual_tanh_gated_rmsnorm`: Residual tanh-gated RMS normalization. (confidence 0.95)
+  - _Rationale:_ Function definition applies RMS normalization with residual and tanh gating.
+- `symbol:404276fe7abae796:Decoder`: Yet another decoder module. (confidence 0.95)
+  - _Rationale:_ Defined as a subclass of nn.Module, used for decoding operations.
+- `symbol:40889622fc6fd4b1:forward_timestep_embed`: Forwards timestep embeddings. (confidence 0.95)
+  - _Rationale:_ Function definition forwards timestep embeddings through a model.
+- `symbol:40c4d3524586065d:Decoder3d`: 3D decoder module. (confidence 0.95)
+  - _Rationale:_ Defined as a subclass of nn.Module, implementing a decoder for 3D data.
+- `symbol:416869349b27d764:Encoder`: Encoder module. (confidence 0.95)
+  - _Rationale:_ Defined as a subclass of nn.Module, used for encoding operations.
+
+## Cross-community dependencies
+0, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 14
+
+## Unverified / resolved calls
+- resolved: `ADaMoSHiFiGANV1` from `symbol:2b49c49180eb7e31:RMSNorm` — Unverified call to ADaMoSHiFiGANV1 within RMSNorm
+  - ADaMoSHiFiGANV1 model implementation. (Class definition for the ADaMoSHiFiGANV1 model, a generative model for audio.)
+- resolved: `Approximator` from `symbol:259bbc660e65bcf3:AutoencoderDC` — Unverified call to Approximator within AutoencoderDC
+  - A model named Approximator, inheriting from nn.Module, possibly used for approximating certain functions or data. (Inherits from nn.Module, suggesting it's a specialized model within the system.)
+- unresolved: `AsymmDiTJoint` from `symbol:40c4d3524586065d:Decoder3d` — Unverified call to AsymmDiTJoint within Decoder3d
+- resolved: `attention` from `symbol:1d536d1e5780e4f2:vae_attention` — Unverified call to attention within vae_attention
+  - Attention mechanism. (Class definition for an attention mechanism, possibly multi-head self-attention.)
+- resolved: `Attention` from `symbol:221a8dcab0934e29:OptimizedAttention` — Unverified call to Attention within OptimizedAttention
+  - Attention mechanism. (Class definition for an attention mechanism, possibly multi-head self-attention.)
+- unresolved: `attention_basic` from `symbol:118aeef034a509c4:Decoder` — Unverified call to attention_basic within Decoder
+- unresolved: `AttentionKVCompress` from `symbol:39ac92fe188b4ec0:nonlinearity` — Unverified call to AttentionKVCompress within nonlinearity
+- unresolved: `AudioDiffusionTransformer` from `symbol:1f6cd9eb79d8d327:TimestepBlock` — Unverified call to AudioDiffusionTransformer within TimestepBlock
+- unresolved: `AutoencodingEngineLegacy` from `symbol:018ad13015121f70:Model` — Unverified call to AutoencodingEngineLegacy within Model
+- unresolved: `BASE` from `symbol:2959d5d70adfedcb:Patcher3D` — Unverified call to BASE within Patcher3D
+- unresolved: `BaseModel` from `symbol:1d536d1e5780e4f2:vae_attention` — Unverified call to BaseModel within vae_attention
+- unresolved: `block_mixing` from `symbol:0d4ea160b1b8a2a8:GlobalResponseNorm` — Unverified call to block_mixing within GlobalResponseNorm
+- unresolved: `cast_to` from `symbol:40889622fc6fd4b1:forward_timestep_embed` — Unverified call to cast_to within forward_timestep_embed
+- resolved: `cast_to_input` from `symbol:03e64157cb7b125c:norm_fn` — Unverified call to cast_to_input within norm_fn
+  - Cast weight to input type. (Function to cast a weight tensor to the type of the input tensor, ensuring compatibility.)
+- unresolved: `CheckpointFunction` from `symbol:27198b3f01f978a6:UpDownBlock2d` — Unverified call to CheckpointFunction within UpDownBlock2d
+- unresolved: `CheckpointLoaderSimple` from `symbol:3684475609434427:ResnetBlock3D` — Unverified call to CheckpointLoaderSimple within ResnetBlock3D
+- resolved: `cleanup_temp` from `symbol:0aca204443e3aaac:get_block` — Unverified call to cleanup_temp within get_block
+  - Function to clean up temporary files. (The function name suggests it removes or cleans up temporary files.)
+- unresolved: `CLIPTextEncode` from `symbol:38ab02e47aec7f37:CausalUpsample3d` — Unverified call to CLIPTextEncode within CausalUpsample3d
+- unresolved: `CLIPTextEncodeLumina2` from `symbol:1a316f4c547eb578:conv_nd` — Unverified call to CLIPTextEncodeLumina2 within conv_nd
+- unresolved: `CNetResBlock` from `symbol:2e90e56bb22b6b9a:ResBlock` — Unverified call to CNetResBlock within ResBlock
+- unresolved: `ConformerEncoder` from `symbol:1c00491b88a3ae49:ContinuousFormulation` — Unverified call to ConformerEncoder within ContinuousFormulation
+- unresolved: `ConformerEncoderLayer` from `symbol:3aadbf1a78048f39:DepthToSpaceTime` — Unverified call to ConformerEncoderLayer within DepthToSpaceTime
+- unresolved: `ContinuousTransformer` from `symbol:3298e724aff9ff27:divisible_by` — Unverified call to ContinuousTransformer within divisible_by
+- unresolved: `ControlNet` from `symbol:2f557f86ea3b3c0c:AlphaBlender` — Unverified call to ControlNet within AlphaBlender
+- unresolved: `convert_vae_state_dict` from `symbol:2171ba61c130af8d:LayerNorm2d_op` — Unverified call to convert_vae_state_dict within LayerNorm2d_op
+- unresolved: `ConvNeXtBlock` from `symbol:05d81891a9f74566:partialclass` — Unverified call to ConvNeXtBlock within partialclass
+- unresolved: `ConvNeXtEncoder` from `symbol:03e64157cb7b125c:norm_fn` — Unverified call to ConvNeXtEncoder within norm_fn
+- unresolved: `ConvolutionModule` from `symbol:22d0de9420baac23:CausalConv3d` — Unverified call to ConvolutionModule within CausalConv3d
+- unresolved: `create_blur_map` from `symbol:118aeef034a509c4:Decoder` — Unverified call to create_blur_map within Decoder
+- unresolved: `CrossAttention` from `symbol:259bbc660e65bcf3:AutoencoderDC` — Unverified call to CrossAttention within AutoencoderDC
+- unresolved: `CSVLogger` from `symbol:2e4b0e52e3f8fb2d:exists` — Unverified call to CSVLogger within exists
+- resolved: `custom_node_manager` from `symbol:2ae5a8e7f5f1ee3d:CausalContinuousVideoTokenizer` — Unverified call to custom_node_manager within CausalContinuousVideoTokenizer
+  - Function to manage custom nodes. (The function name suggests it manages custom nodes, likely for integration or extension purposes.)
+- resolved: `DecoderBlock` from `symbol:2b49c49180eb7e31:RMSNorm` — Unverified call to DecoderBlock within RMSNorm
+  - Define a decoder block for neural networks. (Extends nn.Module to create a reusable decoder block component.)
+- unresolved: `default` from `symbol:0689710ee3437e36:ResnetBlock` — Unverified call to default within ResnetBlock
+- unresolved: `DependencyAwareCache` from `symbol:00518cb75b29e6a8:ResBlock` — Unverified call to DependencyAwareCache within ResBlock
+- unresolved: `DiagonalGaussianDistribution` from `symbol:0e2deedfaff49e68:exists` — Unverified call to DiagonalGaussianDistribution within exists
+- resolved: `DiffusersLoader` from `symbol:05d81891a9f74566:partialclass` — Unverified call to DiffusersLoader within partialclass
+  - Class for loading diffusion models. (Based on the name, this class is likely responsible for loading diffusion models.)
+- unresolved: `disable_weight_init` from `symbol:345a524224617c71:replication_pad` — Unverified call to disable_weight_init within replication_pad
+- unresolved: `DismantledBlock` from `symbol:25de23735ce01c51:AsymmetricJointBlock` — Unverified call to DismantledBlock within AsymmetricJointBlock
+- resolved: `download_file` from `symbol:035bf110fc834f08:make_linear_nd` — Unverified call to download_file within make_linear_nd
+  - Download a file from a URL with optional integrity check. (Handles downloading files and verifying their integrity using a digest.)
+- resolved: `efficient_dot_product_attention` from `symbol:118aeef034a509c4:Decoder` — Unverified call to efficient_dot_product_attention within Decoder
+  - Function to compute efficient dot product attention. (Function definition indicates it performs a specific computational task.)
+- unresolved: `Error` from `symbol:1d536d1e5780e4f2:vae_attention` — Unverified call to Error within vae_attention
+- unresolved: `execute` from `symbol:0eeca1b6742a42c8:VideoResBlock` — Unverified call to execute within VideoResBlock
+- unresolved: `exists_annotated_filepath` from `symbol:416869349b27d764:Encoder` — Unverified call to exists_annotated_filepath within Encoder
+- unresolved: `FeedForward` from `symbol:26c708459de65199:UnPatcher` — Unverified call to FeedForward within UnPatcher
+- resolved: `first_file` from `symbol:15af024775583051:Downsample` — Unverified call to first_file within Downsample
+  - Function to get the first file from a list. (The function name suggests it returns the first file from a given list of filenames.)
+- resolved: `FrontendManager` from `symbol:1f6cd9eb79d8d327:TimestepBlock` — Unverified call to FrontendManager within TimestepBlock
+  - Class representing a frontend manager, possibly responsible for managing frontend operations. (No body provided, but the name suggests it is related to frontend management.)
+- resolved: `FrontEndProvider` from `symbol:39ac92fe188b4ec0:nonlinearity` — Unverified call to FrontEndProvider within nonlinearity
+  - Class representing a frontend provider, possibly responsible for providing frontend assets and configurations. (No body provided, but the name suggests it is related to frontend provisioning.)
+- unresolved: `GeneralDIT` from `symbol:22bb95b078b3a270:modulated_rmsnorm` — Unverified call to GeneralDIT within modulated_rmsnorm
+- unresolved: `get_activation` from `symbol:035bf110fc834f08:make_linear_nd` — Unverified call to get_activation within make_linear_nd
+- unresolved: `get_all_wrappers` from `symbol:22d0de9420baac23:CausalConv3d` — Unverified call to get_all_wrappers within CausalConv3d
+- resolved: `get_attr` from `symbol:2171ba61c130af8d:LayerNorm2d_op` — Unverified call to get_attr within LayerNorm2d_op
+  - Retrieves an attribute from an object. (A simple utility function that returns the value of the specified attribute from the given object.)
+- unresolved: `get_folder_paths` from `symbol:2e90e56bb22b6b9a:ResBlock` — Unverified call to get_folder_paths within ResBlock
+- unresolved: `get_free_memory` from `symbol:221a8dcab0934e29:OptimizedAttention` — Unverified call to get_free_memory within OptimizedAttention
+- unresolved: `get_full_path` from `symbol:3e55a05572e6b762:residual_tanh_gated_rmsnorm` — Unverified call to get_full_path within residual_tanh_gated_rmsnorm
+- resolved: `get_previewer` from `symbol:2d6e1a2b66f4a41a:TimestepEmbedSequential` — Unverified call to get_previewer within TimestepEmbedSequential
+  - Function to get a previewer. (The function name suggests it retrieves a previewer object, likely for rendering previews.)
+- resolved: `get_same_padding` from `symbol:018ad13015121f70:Model` — Unverified call to get_same_padding within Model
+  - Compute same padding. (Function to compute padding values to ensure the output size is the same as the input size.)
+- unresolved: `HiDreamAttention` from `symbol:3e55a05572e6b762:residual_tanh_gated_rmsnorm` — Unverified call to HiDreamAttention within residual_tanh_gated_rmsnorm
+- unresolved: `HunYuanDiTBlock` from `symbol:22ac2332d22cacc3:Decoder` — Unverified call to HunYuanDiTBlock within Decoder
+- unresolved: `InputTypeOptions` from `symbol:2f73163dc4c3c8fc:normal_attention` — Unverified call to InputTypeOptions within normal_attention
+- unresolved: `IO` from `symbol:3298e724aff9ff27:divisible_by` — Unverified call to IO within divisible_by
+- unresolved: `is_valid_directory` from `symbol:25de23735ce01c51:AsymmetricJointBlock` — Unverified call to is_valid_directory within AsymmetricJointBlock
+- unresolved: `JointAttention` from `symbol:404276fe7abae796:Decoder` — Unverified call to JointAttention within Decoder
+- unresolved: `JointTransformerBlock` from `symbol:0689710ee3437e36:ResnetBlock` — Unverified call to JointTransformerBlock within ResnetBlock
+- unresolved: `LatentPreviewMethod` from `symbol:24c1ffba79a218aa:space2batch` — Unverified call to LatentPreviewMethod within space2batch
+- unresolved: `LayerNorm` from `symbol:22bb95b078b3a270:modulated_rmsnorm` — Unverified call to LayerNorm within modulated_rmsnorm
+- unresolved: `LinearTransformerBlock` from `symbol:2b5017021702bd67:AttentionBlock` — Unverified call to LinearTransformerBlock within AttentionBlock
+- unresolved: `Llama2_` from `symbol:38ab02e47aec7f37:CausalUpsample3d` — Unverified call to Llama2_ within CausalUpsample3d
+- resolved: `load` from `symbol:1c00491b88a3ae49:ContinuousFormulation` — Unverified call to load within ContinuousFormulation
+  - Function to load a checkpoint. (The function name suggests it loads a checkpoint, likely from a file.)
+- resolved: `load_checkpoint` from `symbol:27198b3f01f978a6:UpDownBlock2d` — Unverified call to load_checkpoint within UpDownBlock2d
+  - Function to load checkpoints. (The function name suggests it loads checkpoints, likely from a configuration or file.)
+- unresolved: `load_controlnet` from `symbol:1a316f4c547eb578:conv_nd` — Unverified call to load_controlnet within conv_nd
+- unresolved: `load_diffusion_model_state_dict` from `symbol:40889622fc6fd4b1:forward_timestep_embed` — Unverified call to load_diffusion_model_state_dict within forward_timestep_embed
+- unresolved: `load_state_dict` from `symbol:00518cb75b29e6a8:ResBlock` — Unverified call to load_state_dict within ResBlock
+- unresolved: `load_state_dict_guess_config` from `symbol:14c4aefd19d82365:FourierFeatures` — Unverified call to load_state_dict_guess_config within FourierFeatures
+- unresolved: `load_t2i_adapter` from `symbol:05d81891a9f74566:partialclass` — Unverified call to load_t2i_adapter within partialclass
+- unresolved: `load_torch_file` from `symbol:018ad13015121f70:Model` — Unverified call to load_torch_file within Model
+- unresolved: `log` from `symbol:0eeca1b6742a42c8:VideoResBlock` — Unverified call to log within VideoResBlock
+- unresolved: `LTXVModel` from `symbol:2959d5d70adfedcb:Patcher3D` — Unverified call to LTXVModel within Patcher3D
+- unresolved: `manual_cast` from `symbol:0e2deedfaff49e68:exists` — Unverified call to manual_cast within exists
+- unresolved: `merge_json_recursive` from `symbol:2e4b0e52e3f8fb2d:exists` — Unverified call to merge_json_recursive within exists
+- resolved: `MLP` from `symbol:25de23735ce01c51:AsymmetricJointBlock` — Unverified call to MLP within AsymmetricJointBlock
+  - Multi-layer perceptron. (Class definition for a multi-layer perceptron, a simple feedforward neural network.)
+- resolved: `Model` from `symbol:2d6e1a2b66f4a41a:TimestepEmbedSequential` — Unverified call to Model within TimestepEmbedSequential
+  - A generic model class. (Defined as a subclass of nn.Module, likely serving as a base class for other models.)
+- unresolved: `ModelFileManager` from `symbol:2171ba61c130af8d:LayerNorm2d_op` — Unverified call to ModelFileManager within LayerNorm2d_op
+- unresolved: `ModelPatcher` from `symbol:221a8dcab0934e29:OptimizedAttention` — Unverified call to ModelPatcher within OptimizedAttention
+- resolved: `modulate` from `symbol:22d0de9420baac23:CausalConv3d` — Unverified call to modulate within CausalConv3d
+  - Modulate tensor. (Function to modulate a tensor using shift and scale, often used in transformer models.)
+- unresolved: `MultiheadAttention` from `symbol:26c708459de65199:UnPatcher` — Unverified call to MultiheadAttention within UnPatcher
+- unresolved: `NextDiT` from `symbol:03e64157cb7b125c:norm_fn` — Unverified call to NextDiT within norm_fn
+- unresolved: `normalize` from `symbol:0eeca1b6742a42c8:VideoResBlock` — Unverified call to normalize within VideoResBlock
+- resolved: `Output` from `symbol:0d4ea160b1b8a2a8:GlobalResponseNorm` — Unverified call to Output within GlobalResponseNorm
+  - Generic output data model, likely used across different APIs. (Class definition is simple, suggesting it's a generic container for output data.)
+- unresolved: `Parameters` from `symbol:0e2deedfaff49e68:exists` — Unverified call to Parameters within exists
+- unresolved: `patchify` from `symbol:0d4ea160b1b8a2a8:GlobalResponseNorm` — Unverified call to patchify within GlobalResponseNorm
+- unresolved: `PixArtAlphaCombinedTimestepSizeEmbeddings` from `symbol:37d59424bd9073dc:CausalDownsample3d` — Unverified call to PixArtAlphaCombinedTimestepSizeEmbeddings within CausalDownsample3d
+- resolved: `PollingOperation` from `symbol:00518cb75b29e6a8:ResBlock` — Unverified call to PollingOperation within ResBlock
+  - Generic polling operation class. (Defined as a generic class with type parameters T and R, suggesting it's used for polling operations that can handle different types of requests and responses.)
+- unresolved: `processor` from `symbol:3cb9cd33724679df:CustomNodeManager` — Unverified call to processor within CustomNodeManager
+- unresolved: `PromptServer` from `symbol:0aca204443e3aaac:get_block` — Unverified call to PromptServer within get_block
+- unresolved: `pytorch_attention_enabled_vae` from `symbol:1c00491b88a3ae49:ContinuousFormulation` — Unverified call to pytorch_attention_enabled_vae within ContinuousFormulation
+- unresolved: `QKNorm` from `symbol:345a524224617c71:replication_pad` — Unverified call to QKNorm within replication_pad
+- unresolved: `recraft_multipart_parser` from `symbol:035bf110fc834f08:make_linear_nd` — Unverified call to recraft_multipart_parser within make_linear_nd
+- unresolved: `ResBlock1` from `symbol:259bbc660e65bcf3:AutoencoderDC` — Unverified call to ResBlock1 within AutoencoderDC
+- resolved: `ResidualUnit` from `symbol:37d59424bd9073dc:CausalDownsample3d` — Unverified call to ResidualUnit within CausalDownsample3d
+  - Define a residual unit for neural networks. (Extends nn.Module to create a reusable residual unit component.)
+- unresolved: `ResidualUnitUnionControlnet` from `symbol:2ae5a8e7f5f1ee3d:CausalContinuousVideoTokenizer` — Unverified call to ResidualUnitUnionControlnet within CausalContinuousVideoTokenizer
+- unresolved: `sample` from `symbol:0aca204443e3aaac:get_block` — Unverified call to sample within get_block
+- unresolved: `SelfAttention` from `symbol:24c1ffba79a218aa:space2batch` — Unverified call to SelfAttention within space2batch
+- unresolved: `soft_empty_cache` from `symbol:22ac2332d22cacc3:Decoder` — Unverified call to soft_empty_cache within Decoder
+- unresolved: `StableCascade_B` from `symbol:3684475609434427:ResnetBlock3D` — Unverified call to StableCascade_B within ResnetBlock3D
+- unresolved: `StableCascade_C` from `symbol:2ca5549554dee1e7:SanaMultiscaleAttentionProjection` — Unverified call to StableCascade_C within SanaMultiscaleAttentionProjection
+- unresolved: `T2IFinalLayer` from `symbol:2f73163dc4c3c8fc:normal_attention` — Unverified call to T2IFinalLayer within normal_attention
+- unresolved: `test_load_extra_model_paths_expands_userpath` from `symbol:0689710ee3437e36:ResnetBlock` — Unverified call to test_load_extra_model_paths_expands_userpath within ResnetBlock
+- resolved: `test_move_userdata` from `symbol:2ca5549554dee1e7:SanaMultiscaleAttentionProjection` — Unverified call to test_move_userdata within SanaMultiscaleAttentionProjection
+  - Unit test to verify moving userdata. (Uses aiohttp_client to simulate HTTP requests and asserts expected responses.)
+- resolved: `test_move_userdata_full_info` from `symbol:22ac2332d22cacc3:Decoder` — Unverified call to test_move_userdata_full_info within Decoder
+  - Unit test to verify moving userdata with full information. (Uses aiohttp_client to simulate HTTP requests and asserts expected responses.)
+- unresolved: `TestExecution` from `symbol:2f557f86ea3b3c0c:AlphaBlender` — Unverified call to TestExecution within AlphaBlender
+- resolved: `timestep_embedding` from `symbol:3cb9cd33724679df:CustomNodeManager` — Unverified call to timestep_embedding within CustomNodeManager
+  - Generate timestep embeddings. (Function to generate embeddings for timesteps, commonly used in diffusion models.)
+- unresolved: `Transformer` from `symbol:404276fe7abae796:Decoder` — Unverified call to Transformer within Decoder
+- unresolved: `TransformerBlockGemma2` from `symbol:2b5017021702bd67:AttentionBlock` — Unverified call to TransformerBlockGemma2 within AttentionBlock
+- unresolved: `unet_to_diffusers` from `symbol:40c4d3524586065d:Decoder3d` — Unverified call to unet_to_diffusers within Decoder3d
+- unresolved: `unpatchify` from `symbol:14c4aefd19d82365:FourierFeatures` — Unverified call to unpatchify within FourierFeatures
+- unresolved: `UserManager` from `symbol:416869349b27d764:Encoder` — Unverified call to UserManager within Encoder
+- unresolved: `VAE` from `symbol:14c4aefd19d82365:FourierFeatures` — Unverified call to VAE within FourierFeatures
+- unresolved: `val2tuple` from `symbol:15af024775583051:Downsample` — Unverified call to val2tuple within Downsample
+- unresolved: `VeoVideoGenerationNode` from `symbol:15af024775583051:Downsample` — Unverified call to VeoVideoGenerationNode within Downsample
+- resolved: `WanI2VCrossAttention` from `symbol:1a316f4c547eb578:conv_nd` — Unverified call to WanI2VCrossAttention within conv_nd
+  - WAN I2V cross-attention. (Class definition for WAN I2V cross-attention, a type of attention mechanism.)
+- resolved: `WanSelfAttention` from `symbol:24c1ffba79a218aa:space2batch` — Unverified call to WanSelfAttention within space2batch
+  - WAN self-attention. (Class definition for WAN self-attention, a type of attention mechanism.)
+- unresolved: `WrapperExecutor` from `symbol:3aadbf1a78048f39:DepthToSpaceTime` — Unverified call to WrapperExecutor within DepthToSpaceTime
+- unresolved: `WrappersMP` from `symbol:22bb95b078b3a270:modulated_rmsnorm` — Unverified call to WrappersMP within modulated_rmsnorm
+- unresolved: `xformers_enabled_vae` from `symbol:1f6cd9eb79d8d327:TimestepBlock` — Unverified call to xformers_enabled_vae within TimestepBlock

@@ -1,0 +1,297 @@
+# Community 7: Model Management
+
+**Purpose:** Handles model loading, configuration, and device management.
+
+## Files
+- `comfy/clip_vision.py`: Provides utilities for CLIP vision model operations. (confidence 1.00)
+- `comfy/controlnet.py`: Implements ControlNet models and functionalities. (confidence 1.00)
+- `comfy/gligen.py`: Handles GLIGEN related functionalities. (confidence 1.00)
+- `comfy/ldm/cascade/controlnet.py`: Cascade specific ControlNet implementations. (confidence 0.50)
+- `comfy/ldm/flux/controlnet.py`: Flux specific ControlNet implementations. (confidence 0.50)
+- `comfy/model_management.py`: Manages model loading, memory allocation, and device checks. (confidence 1.00)
+- `comfy/ops.py`: Defines various operations and utilities used across models. (confidence 1.00)
+- `comfy/sd.py`: Handles stable diffusion model functionalities. (confidence 1.00)
+- `comfy_extras/chainner_models/model_loading.py`: Additional model loading utilities. (confidence 1.00)
+- `comfy_extras/nodes_clip_sdxl.py`: Nodes for SDXL CLIP model. (confidence 1.00)
+- `comfy_extras/nodes_cond.py`: Conditional nodes for models. (confidence 1.00)
+- `comfy_extras/nodes_lotus.py`: Lotus specific nodes. (confidence 0.50)
+- `comfy_extras/nodes_photomaker.py`: Photomaker specific nodes. (confidence 1.00)
+- `comfy_extras/nodes_pixart.py`: PixArt specific nodes. (confidence 0.50)
+
+## Symbols
+- `symbol:008d768d2ecf4e48`: Checks if the given device is CUDA. (confidence 1.00)
+  - _Rationale:_ Function name and implementation suggest it checks for CUDA device.
+- `symbol:066d6aa1adbfdeaa`: Throws an exception if processing is interrupted. (confidence 1.00)
+  - _Rationale:_ Function name suggests it throws an exception based on processing state.
+- `symbol:0707103f4c9b34cc`: Determines if FP16 should be used based on device and model parameters. (confidence 1.00)
+  - _Rationale:_ Function name and parameters suggest it decides FP16 usage.
+- `symbol:0992c48b42cf12e4`: Calculates tiled scale steps for image processing. (confidence 1.00)
+  - _Rationale:_ Function name and parameters suggest it calculates scaling steps for tiling.
+- `symbol:09d0f18b34db2593`: Checks if FP8 compute is supported on the device. (confidence 1.00)
+  - _Rationale:_ Function name suggests it checks for FP8 support.
+- `symbol:0b3be87cff1f70e1`: Checks if processing has been interrupted. (confidence 1.00)
+  - _Rationale:_ Function name suggests it checks processing interruption state.
+- `symbol:0f67fe1b4eb56a7a`: Casts bias and weight to specified data type and device. (confidence 1.00)
+  - _Rationale:_ Function name and parameters suggest it handles casting operations.
+- `symbol:107f808b65acf3de`: Converts state dictionary to transformers format. (confidence 1.00)
+  - _Rationale:_ Function name and parameters suggest it converts state dictionaries.
+- `symbol:1217451e785ce532`: Adapter class for T2IAdapter. (confidence 1.00)
+  - _Rationale:_ Class name suggests it's an adapter for T2IAdapter.
+- `symbol:12e472f035495bce`: Returns extra reserved memory. (confidence 1.00)
+  - _Rationale:_ Function name suggests it returns extra reserved memory.
+- `symbol:131c7a72f8ed1e77`: CLIP class definition. (confidence 1.00)
+  - _Rationale:_ Class name suggests it's a CLIP class.
+- `symbol:133eeff66746b1c2`: Checks if the device is NVIDIA. (confidence 1.00)
+  - _Rationale:_ Function name suggests it checks for NVIDIA device.
+- `symbol:14a98fcfce41973c`: GLIGENLoader class definition. (confidence 1.00)
+  - _Rationale:_ Class name suggests it's a loader for GLIGEN.
+- `symbol:1552c6a4ffef0071`: ImageUpscaleWithModel class definition. (confidence 1.00)
+  - _Rationale:_ Class name suggests it's a class for image upscaling with a model.
+- `symbol:1771459a2c222ff6`: Calculates maximum VRAM available for weights. (confidence 1.00)
+  - _Rationale:_ Function name suggests it calculates VRAM for weights.
+- `symbol:17bd98e607f01999`: Gets supported float8 types. (confidence 1.00)
+  - _Rationale:_ Function name suggests it lists supported float8 types.
+- `symbol:1a17f78f00c929e7`: Loads state dictionary. (confidence 1.00)
+  - _Rationale:_ Function name suggests it loads a state dictionary.
+- `symbol:1c6bf52ddf80cea9`: Gligen class definition. (confidence 1.00)
+  - _Rationale:_ Class name suggests it's a Gligen class.
+- `symbol:1c7db69ce1ddd541`: CLIPTextEncodeSDXL class definition. (confidence 1.00)
+  - _Rationale:_ Class name suggests it's a CLIPTextEncodeSDXL class.
+- `symbol:1fa0e99345d44339`: VRAMState enum definition. (confidence 1.00)
+  - _Rationale:_ Enum name suggests it's an enum for VRAM states.
+- `symbol:21ea795c7924f3cd`: Loads GLIGEN model from checkpoint path. (confidence 1.00)
+  - _Rationale:_ Function name suggests it loads a GLIGEN model.
+- `symbol:25d87fd18053409b`: Preprocesses image for CLIP. (confidence 1.00)
+  - _Rationale:_ Function name and parameters suggest it preprocesses images.
+- `symbol:274f6080322eb8f2`: Lists loaded models. (confidence 1.00)
+  - _Rationale:_ Function name suggests it lists loaded models.
+- `symbol:29339094180ab16e`: Gets free memory on the device. (confidence 1.00)
+  - _Rationale:_ Function name suggests it gets free memory.
+- `symbol:2a173cb09044a6b5`: Checks if the device is MPS. (confidence 1.00)
+  - _Rationale:_ Function name suggests it checks for MPS device.
+- `symbol:2c4fe2e4e8873943`: Checks if the device supports a specific dtype. (confidence 1.00)
+  - _Rationale:_ Function name and parameters suggest it checks dtype support.
+- `symbol:2c7431cbc86285d7`: ControlNet class definition. (confidence 1.00)
+  - _Rationale:_ Class name suggests it's a ControlNet class.
+- `symbol:2cce5097b6cec630`: Loads CLIP vision model from state dictionary. (confidence 1.00)
+  - _Rationale:_ Function name suggests it loads a CLIP vision model.
+- `symbol:325e8b6e9f509ff9`: Worker function for prompts. (confidence 1.00)
+  - _Rationale:_ Function name suggests it processes prompts.
+- `symbol:34016fde75e736e0`: Gets offload stream for a device. (confidence 1.00)
+  - _Rationale:_ Function name suggests it gets an offload stream.
+- `symbol:3896cef8bc5dfd6f`: ControlNetSD35 class definition. (confidence 1.00)
+  - _Rationale:_ Class name suggests it's a ControlNetSD35 class.
+- `symbol:3939a8c75ee60239`: Gets VAE device. (confidence 1.00)
+  - _Rationale:_ Function name suggests it gets the VAE device.
+- `symbol:3bbd16eb322aa325`: Checks if PyTorch attention is enabled for VAE. (confidence 1.00)
+  - _Rationale:_ Function name suggests it checks for PyTorch attention in VAE.
+- `symbol:3f01cf4c980324f7`: ControlNet class definition. (confidence 1.00)
+  - _Rationale:_ Class name suggests it's a ControlNet class.
+- `symbol:3f28789d84738d99`: fp8_ops class definition. (confidence 1.00)
+  - _Rationale:_ Class name suggests it's an fp8_ops class.
+- `symbol:41e18e82c7f45957`: StrengthType enum definition. (confidence 1.00)
+  - _Rationale:_ Enum name suggests it's an enum for strength types.
+- `symbol:453ef3c2e83c61a2`: Checks if the device is MLU. (confidence 1.00)
+  - _Rationale:_ Function name suggests it checks for MLU device.
+- `symbol:46a1e734306951af`: Determines initial load device for UNet. (confidence 1.00)
+  - _Rationale:_ Function name suggests it determines the initial load device for UNet.
+- `symbol:486f6d9d89aeddef`: Disables weight initialization. (confidence 1.00)
+  - _Rationale:_ Class name suggests it disables weight initialization.
+- `symbol:4a4d49a0ac8c77d0`: Checks if Sage attention is enabled. (confidence 1.00)
+  - _Rationale:_ Function name suggests it checks for Sage attention.
+- `symbol:4b4f637d576c3ecd`: Determines UNet data type based on device and model parameters. (confidence 1.00)
+  - _Rationale:_ Function name and parameters suggest it determines UNet data type.
+- `symbol:5472e1d3435d0bd5`: LotusConditioning class definition. (confidence 1.00)
+  - _Rationale:_ Class name suggests it's a LotusConditioning class.
+- `symbol:5575db27786a5716`: Configures ControlNet based on state dictionary and model options. (confidence 1.00)
+  - _Rationale:_ Function name and parameters suggest it configures ControlNet.
+- `symbol:563983640d16c873`: Determines minimum inference memory required. (confidence 1.00)
+  - _Rationale:_ Function name suggests it calculates minimum inference memory.
+- `symbol:57faf66a84900614`: ControlBase class definition. (confidence 1.00)
+  - _Rationale:_ Class name suggests it's a base class for controls.
+- `symbol:5832637c4ca25c3d`: FuseModule class definition. (confidence 1.00)
+  - _Rationale:_ Class name suggests it's a FuseModule class.
+- `symbol:5891217e96b1435a`: Loads HunYuanDiT ControlNet based on data and model options. (confidence 1.00)
+  - _Rationale:_ Function name and parameters suggest it loads a ControlNet.
+- `symbol:5a8c1e60f024775c`: Broadcasts image tensor to target batch size. (confidence 1.00)
+  - _Rationale:_ Function name and parameters suggest it broadcasts tensors.
+- `symbol:5b0d8b7efcf188e2`: FeedForward class definition. (confidence 1.00)
+  - _Rationale:_ Class name suggests it's a FeedForward class.
+- `symbol:5b327a00759bbdfe`: Gets torch device name based on device. (confidence 1.00)
+  - _Rationale:_ Function name and parameters suggest it gets the device name.
+
+## Cross-community dependencies
+0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 16
+
+## Unverified / resolved calls
+- unresolved: `_calc_cond_batch` from `UnverifiedCallSource` — Used for calculating condition batches.
+- unresolved: `_map_node_over_list` from `UnverifiedCallSource` — Used for mapping nodes over lists.
+- resolved: `_prepare_sampling` from `UnverifiedCallSource` — Used for preparing sampling processes.
+  - Prepares the sampling process by setting up necessary parameters. (Initializes the sampling process by preparing the noise shape, conditioning, and other parameters required for sampling.)
+- unresolved: `Adapter` from `UnverifiedCallSource` — Used for adapters.
+- unresolved: `Adapter_light` from `UnverifiedCallSource` — Used for lightweight adapters.
+- resolved: `attention` from `UnverifiedCallSource` — Used for attention mechanisms.
+  - Attention mechanism. (Class definition for an attention mechanism, possibly multi-head self-attention.)
+- unresolved: `attention_split` from `UnverifiedCallSource` — Used for splitting attention mechanisms.
+- unresolved: `attention_sub_quad` from `UnverifiedCallSource` — Used for quad attention sub-mechanisms.
+- unresolved: `AutoencodingEngineLegacy` from `UnverifiedCallSource` — Referenced for legacy autoencoding operations.
+- unresolved: `BaseModel` from `UnverifiedCallSource` — Used for base models.
+- unresolved: `Block` from `UnverifiedCallSource` — Used for block structures.
+- unresolved: `Blur` from `UnverifiedCallSource` — Used for blurring operations in nodes.
+- unresolved: `CacheType` from `UnverifiedCallSource` — Used for defining cache types.
+- unresolved: `calc_lora_model` from `UnverifiedCallSource` — Used for calculating LoRA models.
+- unresolved: `Canny` from `UnverifiedCallSource` — Used for Canny edge detection.
+- unresolved: `cast_to_device` from `UnverifiedCallSource` — Used for casting to device.
+- resolved: `CFGGuider` from `UnverifiedCallSource` — Used for guidance in CFG processes.
+  - Guidance mechanism for classifier-free guidance. (Subclass of Hook, implementing classifier-free guidance techniques to improve sampling quality.)
+- unresolved: `checkpoint` from `UnverifiedCallSource` — Used for checkpointing operations.
+- unresolved: `CheckpointLoader` from `UnverifiedCallSource` — Used for loading checkpoints.
+- unresolved: `CheckpointLoaderSimple` from `UnverifiedCallSource` — Used for simple checkpoint loading.
+- unresolved: `CheckpointSave` from `UnverifiedCallSource` — Used for saving checkpoints.
+- unresolved: `cleanup_models` from `UnverifiedCallSource` — Used for cleaning up models.
+- unresolved: `CLIPAdd` from `UnverifiedCallSource` — Used for adding in CLIP models.
+- unresolved: `CLIPAttentionMultiply` from `UnverifiedCallSource` — Used for multiplying attention in CLIP models.
+- unresolved: `CLIPLoader` from `UnverifiedCallSource` — Used for loading CLIP models.
+- unresolved: `CLIPMergeSimple` from `UnverifiedCallSource` — Used for merging CLIP outputs in certain nodes.
+- unresolved: `CLIPSave` from `UnverifiedCallSource` — Used for saving CLIP models.
+- unresolved: `CLIPSetLastLayer` from `UnverifiedCallSource` — Used for setting the last layer in CLIP models.
+- unresolved: `CLIPSubtract` from `UnverifiedCallSource` — Used for subtracting in CLIP models.
+- unresolved: `CLIPTextEncode` from `UnverifiedCallSource` — Used for general text encoding in CLIP models.
+- unresolved: `CLIPTextEncodeFlux` from `UnverifiedCallSource` — Used for text encoding in Flux models.
+- unresolved: `CLIPTextEncodeHiDream` from `UnverifiedCallSource` — Used for text encoding in HiDream models.
+- unresolved: `CLIPTextEncodeHunyuanDiT` from `UnverifiedCallSource` — Used for text encoding specific to HunYuanDiT.
+- unresolved: `CLIPTextEncodeLumina2` from `UnverifiedCallSource` — Used for text encoding in Lumina2 models.
+- unresolved: `CLIPTextEncodeSD3` from `UnverifiedCallSource` — Used for text encoding in SD3 models.
+- unresolved: `common_upscale` from `UnverifiedCallSource` — Used for common upscaling operations.
+- unresolved: `ControlNetApply` from `UnverifiedCallSource` — Used for applying ControlNets.
+- unresolved: `ControlNetEmbedder` from `UnverifiedCallSource` — Used for ControlNet embedders.
+- unresolved: `conv` from `UnverifiedCallSource` — Used for convolution operations.
+- resolved: `conv_nd` from `UnverifiedCallSource` — Used for n-dimensional convolution operations.
+  - N-dimensional convolutional layer factory. (Function definition creates an N-dimensional convolutional layer based on input dimensions.)
+- unresolved: `convert_diffusers_mmdit` from `UnverifiedCallSource` — Used for converting diffusers to MMDIT format.
+- unresolved: `count_blocks` from `UnverifiedCallSource` — Used for counting blocks.
+- unresolved: `CrossAttention` from `UnverifiedCallSource` — Used for cross-attention mechanisms.
+- resolved: `cuda_malloc_warning` from `UnverifiedCallSource` — Used for warnings related to CUDA memory allocation.
+  - Function to log CUDA memory allocation warnings. (The function name suggests it logs warnings related to CUDA memory allocation.)
+- unresolved: `default` from `UnverifiedCallSource` — Used for providing default values.
+- resolved: `DiffusersLoader` from `UnverifiedCallSource` — Used for loading diffusers models.
+  - Class for loading diffusion models. (Based on the name, this class is likely responsible for loading diffusion models.)
+- resolved: `Downsample` from `UnverifiedCallSource` — Used for downsampling operations.
+  - Downsampling layer. (Defined as a subclass of nn.Module, reducing spatial dimensions of input data.)
+- unresolved: `DualCLIPLoader` from `UnverifiedCallSource` — Used for loading dual CLIP models.
+- unresolved: `EMAWarmup` from `UnverifiedCallSource` — Used for Exponential Moving Average warmup.
+- resolved: `EnumHookMode` from `UnverifiedCallSource` — Used for defining hook modes.
+  - Enumerates different modes for hooks. (An enumeration class that defines various modes or states that hooks can operate in.)
+- unresolved: `execute` from `UnverifiedCallSource` — Used for executing various operations.
+- resolved: `exists` from `UnverifiedCallSource` — Used for checking existence of objects.
+  - Checks if a variable exists. (Function definition checks for existence of a variable, possibly used for validation.)
+- unresolved: `FeedForward` from `UnverifiedCallSource` — Used for feedforward neural networks.
+- unresolved: `Flux` from `UnverifiedCallSource` — Used for Flux models.
+- resolved: `FourierEmbedder` from `UnverifiedCallSource` — Used for Fourier embeddings.
+  - Fourier embedding layer. (Class definition for a Fourier embedding layer, generating embeddings using Fourier transforms.)
+- resolved: `get_additional_models` from `UnverifiedCallSource` — Used for getting additional models.
+  - Retrieves additional models based on conditioning data. (Identifies and retrieves additional models that are relevant to the provided conditioning data and data type.)
+- unresolved: `get_filename_list` from `UnverifiedCallSource` — Used for getting lists of filenames.
+- unresolved: `get_full_path_or_raise` from `UnverifiedCallSource` — Used for getting full paths or raising exceptions.
+- resolved: `get_hooks_from_cond` from `UnverifiedCallSource` — Used for getting hooks from conditions.
+  - Retrieves hooks from conditioning data. (Extracts hooks from the provided conditioning data, allowing for dynamic hook application based on the conditioning.)
+- unresolved: `GLIGENTextBoxApply` from `UnverifiedCallSource` — Used for applying GLIGEN text boxes.
+- unresolved: `hijack_progress` from `UnverifiedCallSource` — Used for hijacking progress updates.
+- unresolved: `HookGroup` from `UnverifiedCallSource` — Used for managing hook groups.
+- unresolved: `HunYuanControlNet` from `UnverifiedCallSource` — Used for HunYuan ControlNets.
+- resolved: `HunYuanDiT` from `UnverifiedCallSource` — Referenced for specific model configurations.
+  - HunYuan DiT model implementation. (Class definition for the HunYuan DiT model, a type of diffusion-based generative model.)
+- unresolved: `intermediate_device` from `UnverifiedCallSource` — Used for intermediate devices.
+- unresolved: `IO` from `UnverifiedCallSource` — Used for input/output operations.
+- unresolved: `LayerNorm` from `UnverifiedCallSource` — Used for layer normalization.
+- resolved: `LayerNorm2d_op` from `UnverifiedCallSource` — Used for 2D layer normalization operations.
+  - 2D layer normalization operation. (Function definition applies layer normalization to 2D inputs.)
+- resolved: `load` from `UnverifiedCallSource` — Used for loading various models and data.
+  - Function to load a checkpoint. (The function name suggests it loads a checkpoint, likely from a file.)
+- unresolved: `load_checkpoint_guess_config` from `UnverifiedCallSource` — Used for loading checkpoints with guessed configurations.
+- unresolved: `load_controlnet` from `UnverifiedCallSource` — Used for loading ControlNets.
+- unresolved: `load_diffusers` from `UnverifiedCallSource` — Used for loading diffusers models.
+- unresolved: `load_hook_lora_for_models` from `UnverifiedCallSource` — Used for loading LoRA hooks for models.
+- unresolved: `load_hypernetwork_patch` from `UnverifiedCallSource` — Used for loading hypernetwork patches.
+- resolved: `load_style_model` from `UnverifiedCallSource` — Used for loading style models.
+  - Function to load style models. (The function name suggests it loads style models, likely from a file.)
+- unresolved: `load_text_encoder_state_dicts` from `UnverifiedCallSource` — Used for loading text encoder state dictionaries.
+- unresolved: `load_torch_file` from `UnverifiedCallSource` — Used for loading Torch files.
+- unresolved: `LoraLoader` from `UnverifiedCallSource` — Used for loading LoRA models.
+- unresolved: `LoraSave` from `UnverifiedCallSource` — Used for saving LoRA models.
+- resolved: `MLP` from `UnverifiedCallSource` — Used for Multi-Layer Perceptrons.
+  - Multi-layer perceptron. (Class definition for a multi-layer perceptron, a simple feedforward neural network.)
+- unresolved: `model_config_from_diffusers_unet` from `UnverifiedCallSource` — Used for deriving model configurations from diffusers UNet.
+- unresolved: `model_config_from_unet` from `UnverifiedCallSource` — Used for deriving model configurations from UNet.
+- unresolved: `model_sampling` from `UnverifiedCallSource` — Used for model sampling processes.
+- unresolved: `ModelPatcher` from `UnverifiedCallSource` — Used for patching models.
+- unresolved: `Morphology` from `UnverifiedCallSource` — Used for morphological operations.
+- unresolved: `MultiHeadCrossAttention` from `UnverifiedCallSource` — Used for multi-head cross attention mechanisms.
+- unresolved: `optimized_attention_for_device` from `UnverifiedCallSource` — Used for optimizing attention mechanisms for devices.
+- resolved: `Output` from `UnverifiedCallSource` — Used for output operations.
+  - Generic output data model, likely used across different APIs. (Class definition is simple, suggesting it's a generic container for output data.)
+- resolved: `pad_to_patch_size` from `UnverifiedCallSource` — Used for padding to patch size.
+  - Pad image to patch size. (Function to pad an image to ensure it fits the required patch size, used in models processing images.)
+- resolved: `PatchEmbed` from `UnverifiedCallSource` — Used for patch embeddings.
+  - Patch embedding layer. (Class definition for a patch embedding layer, transforming image patches into embeddings.)
+- unresolved: `PerformanceFeature` from `UnverifiedCallSource` — Used for performance features.
+- unresolved: `pick_weight_dtype` from `UnverifiedCallSource` — Used for picking weight data types.
+- unresolved: `PixArt` from `UnverifiedCallSource` — Used for PixArt models.
+- resolved: `preprocess_conds_hooks` from `UnverifiedCallSource` — Used for preprocessing conditions with hooks.
+  - Preprocesses conditioning parameters with hooks. (Applies hooks to preprocess conditioning parameters, potentially modifying or enhancing them before use.)
+- resolved: `preview_to_image` from `UnverifiedCallSource` — Used for converting previews to images.
+  - Function to convert a preview to an image. (The function name suggests it converts a preview (likely a latent image) into a standard image format.)
+- unresolved: `ProgressBar` from `UnverifiedCallSource` — Used for displaying progress bars in UI.
+- unresolved: `PromptExecutor` from `UnverifiedCallSource` — Used for executing prompts.
+- unresolved: `PromptQueue` from `UnverifiedCallSource` — Used for managing prompt queues.
+- unresolved: `PromptServer` from `UnverifiedCallSource` — Used for prompt servers.
+- resolved: `QuadrupleCLIPLoader` from `UnverifiedCallSource` — Used for loading quadruple CLIP models.
+  - Class for loading quadruple CLIP models. (Based on the name, this class is likely responsible for loading four CLIP models.)
+- unresolved: `repeat_to_batch_size` from `UnverifiedCallSource` — Used for repeating tensors to batch size.
+- resolved: `ResBlock` from `UnverifiedCallSource` — Used for residual blocks.
+  - A residual block module. (Defined as a subclass of nn.Module with typical residual block characteristics.)
+- unresolved: `ResBlockUnionControlnet` from `UnverifiedCallSource` — Used for residual blocks with ControlNets.
+- unresolved: `restore_functions` from `UnverifiedCallSource` — Used for restoring functions.
+- unresolved: `rms_norm` from `UnverifiedCallSource` — Used for RMS normalization.
+- resolved: `RMSNorm` from `UnverifiedCallSource` — Used for RMS normalization.
+  - Root Mean Square Layer Normalization. (Class definition for RMS Layer Normalization, a normalization technique used in models.)
+- unresolved: `rope` from `UnverifiedCallSource` — Used for rotary position embeddings.
+- unresolved: `save_checkpoint` from `UnverifiedCallSource` — Used for saving checkpoints.
+- resolved: `SD3` from `UnverifiedCallSource` — Used for SD3 models.
+  - A model named SD3, inheriting from BaseModel, possibly used for specific tasks like text-to-image or image-to-image translation. (Inherits from BaseModel, suggesting it's a specialized model within the system.)
+- unresolved: `SDClipModel` from `UnverifiedCallSource` — Used for SD CLIP models.
+- resolved: `SDTokenizer` from `UnverifiedCallSource` — Called for tokenization in text encoding nodes.
+  - A tokenizer for Stable Diffusion models, responsible for converting text into tokens suitable for model input. (Base class for tokenization in Stable Diffusion models.)
+- unresolved: `SDXL` from `UnverifiedCallSource` — Used for SDXL models.
+- unresolved: `SelfAttention` from `UnverifiedCallSource` — Used for self-attention mechanisms.
+- unresolved: `set_attr_param` from `UnverifiedCallSource` — Used for setting attribute parameters.
+- unresolved: `SetClipHooks` from `UnverifiedCallSource` — Used for setting CLIP hooks.
+- unresolved: `Sharpen` from `UnverifiedCallSource` — Used for sharpening images.
+- unresolved: `slice_attention` from `UnverifiedCallSource` — Used for slicing attention mechanisms.
+- unresolved: `SpatialTransformer` from `UnverifiedCallSource` — Used for spatial transformations.
+- unresolved: `Stable_Zero123` from `UnverifiedCallSource` — Used for Stable Zero123 models.
+- resolved: `StableAudio1` from `UnverifiedCallSource` — Used for Stable Audio1 models.
+  - A model named StableAudio1, inheriting from LatentFormat, possibly used for audio processing in the Stable Diffusion framework. (Inherits from LatentFormat, suggesting it's a specialized model within the system.)
+- unresolved: `start_comfyui` from `UnverifiedCallSource` — Used for starting ComfyUI.
+- unresolved: `state_dict_prefix_replace` from `UnverifiedCallSource` — Used for replacing prefixes in state dictionaries.
+- resolved: `stochastic_rounding` from `UnverifiedCallSource` — Used for stochastic rounding.
+  - Performs stochastic rounding on a value. (Rounds a value using stochastic rounding, which helps in reducing quantization errors and improving numerical stability.)
+- unresolved: `TAESD` from `UnverifiedCallSource` — Used for TAESD models.
+- unresolved: `TextEncodeAceStepAudio` from `UnverifiedCallSource` — Used for text encoding in AceStep audio models.
+- unresolved: `TextEncodeHunyuanVideo_ImageToVideo` from `UnverifiedCallSource` — Used for text encoding in HunYuan video-to-video models.
+- unresolved: `tiled_scale` from `UnverifiedCallSource` — Used for scaling images in tiles.
+- unresolved: `TimePositionalEmbedding` from `UnverifiedCallSource` — Used for time positional embeddings.
+- resolved: `timestep_embedding` from `UnverifiedCallSource` — Used for embedding time steps.
+  - Generate timestep embeddings. (Function to generate embeddings for timesteps, commonly used in diffusion models.)
+- resolved: `TimestepEmbedSequential` from `UnverifiedCallSource` — Used for sequential time step embeddings.
+  - Timestep embedding sequential container. (Defined as a subclass of nn.Sequential and TimestepBlock, handling timestep embeddings sequentially.)
+- unresolved: `transformers_convert` from `UnverifiedCallSource` — Used for converting models to transformers format.
+- unresolved: `TripleCLIPLoader` from `UnverifiedCallSource` — Used for loading triple CLIP models.
+- unresolved: `unCLIPCheckpointLoader` from `UnverifiedCallSource` — Used for loading unCLIP checkpoints.
+- unresolved: `unet_config_from_diffusers_unet` from `UnverifiedCallSource` — Used for deriving UNet configurations from diffusers UNet.
+- unresolved: `unet_to_diffusers` from `UnverifiedCallSource` — Used for converting UNet to diffusers format.
+- unresolved: `VAE` from `UnverifiedCallSource` — Used for Variational AutoEncoders.
+- resolved: `vae_attention` from `UnverifiedCallSource` — Used for VAE attention mechanisms.
+  - VAE attention mechanism. (Function definition implements an attention mechanism specific to VAEs.)
+- resolved: `WanModel` from `UnverifiedCallSource` — Referenced for WAN models.
+  - WAN model implementation. (Class definition for the WAN model, possibly a variant of a transformer model.)

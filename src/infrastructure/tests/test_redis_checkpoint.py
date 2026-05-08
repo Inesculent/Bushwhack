@@ -106,6 +106,8 @@ def test_delete_checkpoint_thread_uses_configured_saver(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     deleted_threads: list[str] = []
+    scan_patterns: list[str] = []
+    unlinked: list[tuple[bytes, ...]] = []
 
     class StubSaver:
         @classmethod
@@ -124,8 +126,34 @@ def test_delete_checkpoint_thread_uses_configured_saver(
         def delete_thread(self, thread_id: str) -> None:
             deleted_threads.append(thread_id)
 
-    monkeypatch.setattr(redis_checkpoint, "RedisSaver", StubSaver)
+    class StubRedis:
+        @classmethod
+        def from_url(cls, url: str) -> "StubRedis":
+            return cls()
 
-    delete_checkpoint_thread(Settings(), "run:owner__repo__pr1")
+        def scan_iter(self, *, match: str, count: int):
+            scan_patterns.append(match)
+            if "checkpoint_write" in match:
+                yield b"write-key-1"
+                yield b"write-key-2"
+            else:
+                yield b"checkpoint-key"
+
+        def unlink(self, *keys: bytes) -> int:
+            unlinked.append(keys)
+            return len(keys)
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr(redis_checkpoint, "RedisSaver", StubSaver)
+    monkeypatch.setattr(redis_checkpoint, "Redis", StubRedis)
+
+    settings = Settings(redis_namespace="reviewer")
+    delete_checkpoint_thread(settings, "run:owner__repo__pr1")
 
     assert deleted_threads == ["run:owner__repo__pr1"]
+    assert "reviewer:checkpoint:run:owner__repo__pr1:*" in scan_patterns
+    assert "reviewer:checkpoint_write:run:owner__repo__pr1:*" in scan_patterns
+    assert (b"checkpoint-key",) in unlinked
+    assert (b"write-key-1", b"write-key-2") in unlinked

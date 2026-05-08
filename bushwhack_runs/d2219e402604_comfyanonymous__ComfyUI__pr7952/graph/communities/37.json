@@ -1,0 +1,13 @@
+{
+  "community_id": 37,
+  "edges": [],
+  "nodes": [
+    {
+      "community_id": 37,
+      "file_path": "comfy/ldm/modules/encoders/__init__.py",
+      "id": "file:comfy/ldm/modules/encoders/__init__.py",
+      "language": "Python",
+      "node_type": "file"
+    }
+  ]
+}

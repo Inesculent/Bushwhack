@@ -1,0 +1,96 @@
+{
+  "community_id": 20,
+  "edges": [
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:comfy_extras/nodes_cfg.py",
+      "source_file": "comfy_extras/nodes_cfg.py",
+      "source_location": "L?",
+      "source_ref": "comfy_extras/nodes_cfg.py",
+      "target": "symbol:5b2575c94d61b255:CFGZeroStar",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:comfy_extras/nodes_cfg.py",
+      "source_file": "comfy_extras/nodes_cfg.py",
+      "source_location": "L?",
+      "source_ref": "comfy_extras/nodes_cfg.py",
+      "target": "symbol:bc02ff741fbd3d11:optimized_scale",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:5b2575c94d61b255:CFGZeroStar",
+      "source_file": "comfy_extras/nodes_cfg.py",
+      "source_location": "L?",
+      "source_ref": "comfy_extras/nodes_cfg.py",
+      "target": "symbol:bc02ff741fbd3d11:optimized_scale",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:bc02ff741fbd3d11:optimized_scale",
+      "source_file": "comfy_extras/nodes_cfg.py",
+      "source_location": "L?",
+      "source_ref": "comfy_extras/nodes_cfg.py",
+      "target": "symbol:bc02ff741fbd3d11:optimized_scale",
+      "weight": 1.0
+    }
+  ],
+  "nodes": [
+    {
+      "community_id": 20,
+      "file_path": "comfy_extras/nodes_cfg.py",
+      "id": "file:comfy_extras/nodes_cfg.py",
+      "language": "Python",
+      "node_type": "file"
+    },
+    {
+      "community_id": 20,
+      "file_path": "comfy_extras/nodes_cfg.py",
+      "id": "symbol:5b2575c94d61b255:CFGZeroStar",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "comfy_extras/nodes_cfg.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "semantic_confidence": 1.0,
+      "semantic_purpose": "Represents a configuration node that applies a zero-star strategy, likely used to initialize or reset certain parameters in the image generation pipeline.",
+      "semantic_rationale": "The name 'CFGZeroStar' suggests it might be related to a configuration that zeroes out or resets some aspect of the model's state, possibly related to control flow graphs or generation settings.",
+      "signature": "class CFGZeroStar:",
+      "symbol_name": "CFGZeroStar",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 20,
+      "file_path": "comfy_extras/nodes_cfg.py",
+      "id": "symbol:bc02ff741fbd3d11:optimized_scale",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "comfy_extras/nodes_cfg.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "semantic_confidence": 1.0,
+      "semantic_purpose": "Function to apply an optimized scaling between positive and negative inputs, likely used to adjust the influence of different factors in the generation process.",
+      "semantic_rationale": "The function name 'optimized_scale' indicates that it scales two inputs ('positive' and 'negative') in an optimized manner, which is typical in scenarios where balancing different influences is crucial for the output quality.",
+      "signature": "def optimized_scale(positive, negative):",
+      "symbol_name": "optimized_scale",
+      "symbol_type": "function"
+    }
+  ]
+}

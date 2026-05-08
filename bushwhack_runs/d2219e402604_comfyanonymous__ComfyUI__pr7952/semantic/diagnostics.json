@@ -1,0 +1,5136 @@
+{
+  "god_nodes": [
+    {
+      "node_id": "symbol:eb90783226600826:BaseModel",
+      "label": "BaseModel",
+      "degree": 363,
+      "community_id": 3
+    },
+    {
+      "node_id": "symbol:d661ec4694ef40ff:default",
+      "label": "default",
+      "degree": 350,
+      "community_id": 0
+    },
+    {
+      "node_id": "symbol:f2316e1b81974482:ModelPatcher",
+      "label": "ModelPatcher",
+      "degree": 197,
+      "community_id": 9
+    },
+    {
+      "node_id": "symbol:cacab859dfe83589:PromptServer",
+      "label": "PromptServer",
+      "degree": 180,
+      "community_id": 5
+    },
+    {
+      "node_id": "symbol:6a0e088f5ccb3191:VAE",
+      "label": "VAE",
+      "degree": 131,
+      "community_id": 0
+    },
+    {
+      "node_id": "symbol:e31576938d62fe2b:execute",
+      "label": "execute",
+      "degree": 119,
+      "community_id": 1
+    },
+    {
+      "node_id": "symbol:d86b2852ea8b360c:IO",
+      "label": "IO",
+      "degree": 119,
+      "community_id": 1
+    },
+    {
+      "node_id": "symbol:3f01cf4c980324f7:ControlNet",
+      "label": "ControlNet",
+      "degree": 116,
+      "community_id": 7
+    },
+    {
+      "node_id": "symbol:d81198940b0c33db:Decoder",
+      "label": "Decoder",
+      "degree": 102,
+      "community_id": 6
+    },
+    {
+      "node_id": "symbol:20cee9fabe9e6eb5:Attention",
+      "label": "Attention",
+      "degree": 102,
+      "community_id": 2
+    }
+  ],
+  "bridge_nodes": [
+    {
+      "node_id": "symbol:f2316e1b81974482:ModelPatcher",
+      "label": "ModelPatcher",
+      "betweenness": 0.08156123260768687,
+      "communities_bridged": [
+        0,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ]
+    },
+    {
+      "node_id": "symbol:eb90783226600826:BaseModel",
+      "label": "BaseModel",
+      "betweenness": 0.0768816366473599,
+      "communities_bridged": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ]
+    },
+    {
+      "node_id": "symbol:1a9663355b58fc65:WeightHook",
+      "label": "WeightHook",
+      "betweenness": 0.03888912023710475,
+      "communities_bridged": [
+        4,
+        5,
+        9
+      ]
+    },
+    {
+      "node_id": "symbol:6a0e088f5ccb3191:VAE",
+      "label": "VAE",
+      "betweenness": 0.030776005835611037,
+      "communities_bridged": [
+        0,
+        1,
+        2,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "node_id": "symbol:55cf3db5e68cc037:model_lora_keys_unet",
+      "label": "model_lora_keys_unet",
+      "betweenness": 0.026834754010667667,
+      "communities_bridged": [
+        0,
+        2,
+        4,
+        5,
+        9
+      ]
+    }
+  ],
+  "cross_community_edges": [
+    {
+      "edge_type": "defines",
+      "relation": "defines",
+      "provenance": "EXTRACTED",
+      "confidence": "EXTRACTED",
+      "source_ref": "comfy/cldm/cldm.py",
+      "source_file": "comfy/cldm/cldm.py",
+      "source_location": "L?",
+      "weight": 1.0,
+      "source": "file:comfy/cldm/cldm.py",
+      "target": "symbol:949ab7dbefe5c02f:ResBlockUnionControlnet",
+      "score": 1,
+      "source_community": 6,
+      "target_community": 2
+    },
+    {
+      "edge_type": "defines",
+      "relation": "defines",
+      "provenance": "EXTRACTED",
+      "confidence": "EXTRACTED",
+      "source_ref": "comfy/clip_vision.py",
+      "source_file": "comfy/clip_vision.py",
+      "source_location": "L?",
+      "weight": 1.0,
+      "source": "file:comfy/clip_vision.py",
+      "target": "symbol:046cef5c5e9ce3c8:Output",
+      "score": 1,
+      "source_community": 7,
+      "target_community": 3
+    },
+    {
+      "edge_type": "defines",
+      "relation": "defines",
+      "provenance": "EXTRACTED",
+      "confidence": "EXTRACTED",
+      "source_ref": "comfy/clip_vision.py",
+      "source_file": "comfy/clip_vision.py",
+      "source_location": "L?",
+      "weight": 1.0,
+      "source": "file:comfy/clip_vision.py",
+      "target": "symbol:12d171964644537e:load",
+      "score": 1,
+      "source_community": 7,
+      "target_community": 5
+    },
+    {
+      "edge_type": "defines",
+      "relation": "defines",
+      "provenance": "EXTRACTED",
+      "confidence": "EXTRACTED",
+      "source_ref": "comfy/comfy_types/node_typing.py",
+      "source_file": "comfy/comfy_types/node_typing.py",
+      "source_location": "L?",
+      "weight": 1.0,
+      "source": "file:comfy/comfy_types/node_typing.py",
+      "target": "symbol:3ba30f87daa38690:FileLocator",
+      "score": 1,
+      "source_community": 1,
+      "target_community": 0
+    },
+    {
+      "edge_type": "defines",
+      "relation": "defines",
+      "provenance": "EXTRACTED",
+      "confidence": "EXTRACTED",
+      "source_ref": "comfy/diffusers_convert.py",
+      "source_file": "comfy/diffusers_convert.py",
+      "source_location": "L?",
+      "weight": 1.0,
+      "source": "file:comfy/diffusers_convert.py",
+      "target": "symbol:aefbccddc2cd64c1:convert_text_enc_state_dict_v20",
+      "score": 1,
+      "source_community": 0,
+      "target_community": 4
+    },
+    {
+      "edge_type": "defines",
+      "relation": "defines",
+      "provenance": "EXTRACTED",
+      "confidence": "EXTRACTED",
+      "source_ref": "comfy/gligen.py",
+      "source_file": "comfy/gligen.py",
+      "source_location": "L?",
+      "weight": 1.0,
+      "source": "file:comfy/gligen.py",
+      "target": "symbol:9afe589535659eb1:GatedSelfAttentionDense2",
+      "score": 1,
+      "source_community": 7,
+      "target_community": 2
+    },
+    {
+      "edge_type": "defines",
+      "relation": "defines",
+      "provenance": "EXTRACTED",
+      "confidence": "EXTRACTED",
+      "source_ref": "comfy/ldm/audio/dit.py",
+      "source_file": "comfy/ldm/audio/dit.py",
+      "source_location": "L?",
+      "weight": 1.0,
+      "source": "file:comfy/ldm/audio/dit.py",
+      "target": "symbol:72e17c2d42bb8d86:AudioDiffusionTransformer",
+      "score": 1,
+      "source_community": 2,
+      "target_community": 4
+    },
+    {
+      "edge_type": "defines",
+      "relation": "defines",
+      "provenance": "EXTRACTED",
+      "confidence": "EXTRACTED",
+      "source_ref": "comfy/ldm/cosmos/cosmos_tokenizer/utils.py",
+      "source_file": "comfy/ldm/cosmos/cosmos_tokenizer/utils.py",
+      "source_location": "L?",
+      "weight": 1.0,
+      "source": "file:comfy/ldm/cosmos/cosmos_tokenizer/utils.py",
+      "target": "symbol:ef0b2b0112092849:log",
+      "score": 1,
+      "source_community": 6,
+      "target_community": 8
+    },
+    {
+      "edge_type": "defines",
+      "relation": "defines",
+      "provenance": "EXTRACTED",
+      "confidence": "EXTRACTED",
+      "source_ref": "comfy/ldm/lightricks/model.py",
+      "source_file": "comfy/ldm/lightricks/model.py",
+      "source_location": "L?",
+      "weight": 1.0,
+      "source": "file:comfy/ldm/lightricks/model.py",
+      "target": "symbol:92b8ddedfcb6db17:LTXVModel",
+      "score": 1,
+      "source_community": 2,
+      "target_community": 0
+    },
+    {
+      "edge_type": "defines",
+      "relation": "defines",
+      "provenance": "EXTRACTED",
+      "confidence": "EXTRACTED",
+      "source_ref": "comfy/ldm/lightricks/vae/causal_video_autoencoder.py",
+      "source_file": "comfy/ldm/lightricks/vae/causal_video_autoencoder.py",
+      "source_location": "L?",
+      "weight": 1.0,
+      "source": "file:comfy/ldm/lightricks/vae/causal_video_autoencoder.py",
+      "target": "symbol:a8f6494cd05edf57:patchify",
+      "score": 1,
+      "source_community": 6,
+      "target_community": 0
+    }
+  ],
+  "knowledge_gaps": [
+    {
+      "gap_type": "low_cohesion",
+      "description": "Community 0 has low cohesion (0.010) with 417 nodes.",
+      "affected_node_ids": [
+        "file:comfy/checkpoint_pickle.py",
+        "file:comfy/diffusers_convert.py",
+        "file:comfy/extra_samplers/uni_pc.py",
+        "file:comfy/ldm/lightricks/symmetric_patchifier.py",
+        "file:comfy/ldm/models/autoencoder.py",
+        "file:comfy/ldm/modules/distributions/distributions.py",
+        "file:comfy/ldm/modules/ema.py",
+        "file:comfy/sample.py",
+        "file:comfy_execution/graph_utils.py",
+        "file:comfy_extras/nodes_ace.py",
+        "file:comfy_extras/nodes_advanced_samplers.py",
+        "file:comfy_extras/nodes_align_your_steps.py",
+        "file:comfy_extras/nodes_attention_multiply.py",
+        "file:comfy_extras/nodes_audio.py",
+        "file:comfy_extras/nodes_compositing.py",
+        "file:comfy_extras/nodes_controlnet.py",
+        "file:comfy_extras/nodes_cosmos.py",
+        "file:comfy_extras/nodes_custom_sampler.py",
+        "file:comfy_extras/nodes_flux.py",
+        "file:comfy_extras/nodes_freelunch.py",
+        "file:comfy_extras/nodes_fresca.py",
+        "file:comfy_extras/nodes_gits.py",
+        "file:comfy_extras/nodes_hunyuan.py",
+        "file:comfy_extras/nodes_hunyuan3d.py",
+        "file:comfy_extras/nodes_hypertile.py",
+        "file:comfy_extras/nodes_images.py",
+        "file:comfy_extras/nodes_ip2p.py",
+        "file:comfy_extras/nodes_latent.py",
+        "file:comfy_extras/nodes_lora_extract.py",
+        "file:comfy_extras/nodes_lt.py",
+        "file:comfy_extras/nodes_lumina2.py",
+        "file:comfy_extras/nodes_mask.py",
+        "file:comfy_extras/nodes_mochi.py",
+        "file:comfy_extras/nodes_model_downscale.py",
+        "file:comfy_extras/nodes_model_merging.py",
+        "file:comfy_extras/nodes_model_merging_model_specific.py",
+        "file:comfy_extras/nodes_morphology.py",
+        "file:comfy_extras/nodes_optimalsteps.py",
+        "file:comfy_extras/nodes_post_processing.py",
+        "file:comfy_extras/nodes_rebatch.py",
+        "file:comfy_extras/nodes_sd3.py",
+        "file:comfy_extras/nodes_sdupscale.py",
+        "file:comfy_extras/nodes_stable3d.py",
+        "file:comfy_extras/nodes_stable_cascade.py",
+        "file:comfy_extras/nodes_video_model.py",
+        "file:comfy_extras/nodes_wan.py",
+        "file:node_helpers.py",
+        "file:nodes.py",
+        "file:script_examples/websockets_api_example_ws_images.py",
+        "file:tests/inference/test_execution.py"
+      ],
+      "community_id": 0,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "low_cohesion",
+      "description": "Community 1 has low cohesion (0.030) with 350 nodes.",
+      "affected_node_ids": [
+        "file:comfy/comfy_types/examples/example_nodes.py",
+        "file:comfy/comfy_types/node_typing.py",
+        "file:comfy_api/input/basic_types.py",
+        "file:comfy_api/input/video_types.py",
+        "file:comfy_api/input_impl/video_types.py",
+        "file:comfy_api/util/video_types.py",
+        "file:comfy_api_nodes/apinode_utils.py",
+        "file:comfy_api_nodes/apis/client.py",
+        "file:comfy_api_nodes/apis/luma_api.py",
+        "file:comfy_api_nodes/apis/pixverse_api.py",
+        "file:comfy_api_nodes/apis/recraft_api.py",
+        "file:comfy_api_nodes/apis/stability_api.py",
+        "file:comfy_api_nodes/mapper_utils.py",
+        "file:comfy_api_nodes/nodes_bfl.py",
+        "file:comfy_api_nodes/nodes_ideogram.py",
+        "file:comfy_api_nodes/nodes_kling.py",
+        "file:comfy_api_nodes/nodes_luma.py",
+        "file:comfy_api_nodes/nodes_minimax.py",
+        "file:comfy_api_nodes/nodes_openai.py",
+        "file:comfy_api_nodes/nodes_pika.py",
+        "file:comfy_api_nodes/nodes_pixverse.py",
+        "file:comfy_api_nodes/nodes_recraft.py",
+        "file:comfy_api_nodes/nodes_stability.py",
+        "file:comfy_api_nodes/nodes_veo2.py",
+        "file:comfy_extras/nodes_primitive.py",
+        "file:comfy_extras/nodes_string.py",
+        "file:comfy_extras/nodes_video.py",
+        "file:custom_nodes/websocket_image_save.py",
+        "file:tests-unit/comfy_api_nodes_test/mapper_utils_test.py",
+        "file:tests-unit/comfy_api_test/input_impl_test.py",
+        "symbol:00c0d2d28d1f6650:PollingOperation",
+        "symbol:01a2b205e9b936c8:StabilityUpscaleFastNode",
+        "symbol:031cd70978736900:RecraftColor",
+        "symbol:04e56c9681f8b6b1:validate_task_creation_response",
+        "symbol:05054c39515fc09e:LumaConceptObject",
+        "symbol:05466bfda20e57e8:ApiClient",
+        "symbol:05bd382b6bbc2706:Model1",
+        "symbol:06f4ea2859625fca:convert_mask_to_image",
+        "symbol:081331d2c32f0fbf:SaveSVGNode",
+        "symbol:08c077f48701e9e4:RegexExtract",
+        "symbol:09972d71483fcd2e:StringTrim",
+        "symbol:09e8444b4abb1d92:Data",
+        "symbol:0b30041f914a4b90:StabilityStable3_5Request",
+        "symbol:0e3dbebdd304dd1b:LumaConceptsNode",
+        "symbol:0e3e0c7e5ebf2594:LumaGenerationReference",
+        "symbol:0f9e1925d0ade803:test_model_field_to_float_input",
+        "symbol:100db6e580030863:StabilityAspectRatio",
+        "symbol:1091c925bc474f6a:LumaImageToVideoGenerationNode",
+        "symbol:119ff386b2d33b5e:Int",
+        "symbol:11c811869e30b2f5:PikaSwapsNode"
+      ],
+      "community_id": 1,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "low_cohesion",
+      "description": "Community 2 has low cohesion (0.020) with 345 nodes.",
+      "affected_node_ids": [
+        "file:.ci/update_windows/update.py",
+        "file:comfy/cldm/dit_embedder.py",
+        "file:comfy/clip_model.py",
+        "file:comfy/image_encoders/dino2.py",
+        "file:comfy/ldm/ace/attention.py",
+        "file:comfy/ldm/ace/lyric_encoder.py",
+        "file:comfy/ldm/ace/model.py",
+        "file:comfy/ldm/ace/vae/music_log_mel.py",
+        "file:comfy/ldm/ace/vae/music_vocoder.py",
+        "file:comfy/ldm/audio/dit.py",
+        "file:comfy/ldm/aura/mmdit.py",
+        "file:comfy/ldm/cascade/stage_c_coder.py",
+        "file:comfy/ldm/common_dit.py",
+        "file:comfy/ldm/cosmos/blocks.py",
+        "file:comfy/ldm/cosmos/model.py",
+        "file:comfy/ldm/cosmos/position_embedding.py",
+        "file:comfy/ldm/flux/math.py",
+        "file:comfy/ldm/genmo/joint_model/rope_mixed.py",
+        "file:comfy/ldm/genmo/joint_model/utils.py",
+        "file:comfy/ldm/hidream/model.py",
+        "file:comfy/ldm/hunyuan3d/vae.py",
+        "file:comfy/ldm/hunyuan_video/model.py",
+        "file:comfy/ldm/hydit/attn_layers.py",
+        "file:comfy/ldm/hydit/controlnet.py",
+        "file:comfy/ldm/hydit/models.py",
+        "file:comfy/ldm/hydit/poolers.py",
+        "file:comfy/ldm/hydit/posemb_layers.py",
+        "file:comfy/ldm/lightricks/model.py",
+        "file:comfy/ldm/lumina/model.py",
+        "file:comfy/ldm/modules/attention.py",
+        "file:comfy/ldm/modules/diffusionmodules/mmdit.py",
+        "file:comfy/ldm/pixart/blocks.py",
+        "file:comfy/ldm/pixart/pixartms.py",
+        "file:comfy/ldm/wan/model.py",
+        "file:comfy/text_encoders/bert.py",
+        "file:comfy/text_encoders/llama.py",
+        "file:comfy_extras/nodes_sag.py",
+        "symbol:005e65ac45328aa2:AttentionPool",
+        "symbol:03a46feaf3a1a578:HunYuanDiT",
+        "symbol:03b5efd2e39a0f2c:get_2d_sincos_pos_embed_torch",
+        "symbol:04947b4290efe1c5:pool_tokens",
+        "symbol:061731c3484e73cd:timestep_embedding",
+        "symbol:06d179c29a8d3748:BertIntermediate",
+        "symbol:076416fc94afcf7f:Swish",
+        "symbol:08b09b200c7b6201:Attention",
+        "symbol:0b04096636774779:ConditioningTimestepsRange",
+        "symbol:0b319ef8033401f0:files_equal",
+        "symbol:0b8659bd7650372a:SingleAttention",
+        "symbol:0bb5bef5ed160eb4:LinearEmbed",
+        "symbol:0e85f99226cc3031:file_size"
+      ],
+      "community_id": 2,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "low_cohesion",
+      "description": "Community 3 has low cohesion (0.020) with 316 nodes.",
+      "affected_node_ids": [
+        "file:comfy/comfy_types/__init__.py",
+        "file:comfy/ldm/modules/sub_quadratic_attention.py",
+        "file:comfy_api_nodes/apis/PixverseController.py",
+        "file:comfy_api_nodes/apis/PixverseDto.py",
+        "file:comfy_api_nodes/apis/__init__.py",
+        "file:comfy_api_nodes/apis/bfl_api.py",
+        "file:comfy_extras/nodes_canny.py",
+        "file:comfy_extras/nodes_slg.py",
+        "symbol:006580e404eb92c9:BFLFluxProGenerateRequest",
+        "symbol:018f98283d4a3feb:LumaImageReference",
+        "symbol:01ad1d2b53ac6860:PikaValidationError",
+        "symbol:0320df1bc44fd9dd:StabilityImageGenrationSD3Request",
+        "symbol:046cef5c5e9ce3c8:Output",
+        "symbol:05ba8f21f6bca06f:RecraftTextLayoutItem",
+        "symbol:05f4e2ede893a72a:PublisherStatus",
+        "symbol:05fb5f6fd67ae8d3:BFLAsyncResponse",
+        "symbol:062326ed04472be1:MinimaxBaseResponse",
+        "symbol:06478c5c94ed8cc7:RenderingSpeed1",
+        "symbol:06523cb9dc25fc10:StripeRequestInfo",
+        "symbol:077c53673ef0ae2d:RecraftUserControls",
+        "symbol:0863ee4658b004a8:BFLFluxCannyImageRequest",
+        "symbol:08748aa4121ec27e:PublisherMember",
+        "symbol:09ee461c60a92ae3:MagicPrompt1",
+        "symbol:0a83b0cdbba11414:KlingImageGenModelName",
+        "symbol:0ac4ea6877959a0c:PikaBodyGenerate22KeyframeGenerate22PikaframesPost",
+        "symbol:0b0e5dd746021ef4:StripePaymentMethodDetails",
+        "symbol:0b8e5bb6dbd59c25:StabilityImageGenrationUpscaleCreativeResponse200",
+        "symbol:0c61ebbe702af98e:Member",
+        "symbol:0d7edd56e8530703:Type1",
+        "symbol:0da840518a70acfa:BFLHTTPValidationError",
+        "symbol:0dc3603c21d232fe:Card",
+        "symbol:10ec55506f0f4934:Data3",
+        "symbol:130824445baca587:StabilityImageGenrationUpscaleConservativeResponse500",
+        "symbol:1404dc1a4cb002bc:ComputeQueryChunkAttn",
+        "symbol:147a68234a2454b6:LumaImageGenerationRequest",
+        "symbol:14d4238de9ae6f18:PixverseImageUploadResponse",
+        "symbol:14d7dd80856434a0:StabilityGenerationID",
+        "symbol:14f275f9914538b9:efficient_dot_product_attention",
+        "symbol:170f149277ba6c15:PikaHTTPValidationError",
+        "symbol:17c745262ef7e152:LumaError",
+        "symbol:183fa75329f03151:StripeCharge",
+        "symbol:18a196bf662babf1:Data8",
+        "symbol:193f0cf22996f889:LumaImageModel",
+        "symbol:1c99e3c290b710e7:Object1",
+        "symbol:1d01e61aa1f5c64a:ColorPalette",
+        "symbol:1e7fc3348e389130:StabilityStabilityClientVersion",
+        "symbol:1eca8e92ada2f731:KlingResourcePackageResponse",
+        "symbol:20d7bcb73198c0a0:Background",
+        "symbol:210f722ecc3dd531:StabilityImageGenrationUpscaleConservativeResponse413",
+        "symbol:2230fada9f345b3e:Status2"
+      ],
+      "community_id": 3,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "low_cohesion",
+      "description": "Community 4 has low cohesion (0.020) with 309 nodes.",
+      "affected_node_ids": [
+        "file:comfy/conds.py",
+        "file:comfy/latent_formats.py",
+        "file:comfy/ldm/chroma/layers.py",
+        "file:comfy/ldm/chroma/model.py",
+        "file:comfy/ldm/flux/layers.py",
+        "file:comfy/ldm/flux/model.py",
+        "file:comfy/ldm/modules/encoders/noise_aug_modules.py",
+        "file:comfy/lora.py",
+        "file:comfy/model_base.py",
+        "file:comfy/model_detection.py",
+        "file:comfy/sd1_clip.py",
+        "file:comfy/sdxl_clip.py",
+        "file:comfy/supported_models.py",
+        "file:comfy/supported_models_base.py",
+        "file:comfy/text_encoders/ace.py",
+        "file:comfy/text_encoders/aura_t5.py",
+        "file:comfy/text_encoders/cosmos.py",
+        "file:comfy/text_encoders/flux.py",
+        "file:comfy/text_encoders/genmo.py",
+        "file:comfy/text_encoders/hidream.py",
+        "file:comfy/text_encoders/hunyuan_video.py",
+        "file:comfy/text_encoders/hydit.py",
+        "file:comfy/text_encoders/long_clipl.py",
+        "file:comfy/text_encoders/lt.py",
+        "file:comfy/text_encoders/lumina2.py",
+        "file:comfy/text_encoders/pixart_t5.py",
+        "file:comfy/text_encoders/sa_t5.py",
+        "file:comfy/text_encoders/sd2_clip.py",
+        "file:comfy/text_encoders/sd3_clip.py",
+        "file:comfy/text_encoders/spiece_tokenizer.py",
+        "file:comfy/text_encoders/t5.py",
+        "file:comfy/text_encoders/wan.py",
+        "file:comfy/utils.py",
+        "symbol:0197b3a7d8eff401:T5LayerFF",
+        "symbol:01ef097099208ee9:SV3D_u",
+        "symbol:0222e175be30ce8a:ModelType",
+        "symbol:023ed91846271f5f:UMT5XXlTokenizer",
+        "symbol:02905b19cd24a8bc:SDTokenizer",
+        "symbol:032d699bcec7fbbb:PixArtT5XXL",
+        "symbol:044f7a529d8ad3b9:LTXV",
+        "symbol:04c7ff18e88178ee:StableCascadeClipG",
+        "symbol:05988daf6154f6bc:HunyuanVideoSkyreelsI2V",
+        "symbol:0704067a90ab3018:Chroma",
+        "symbol:07c58aade35ecc17:PixArtAlpha",
+        "symbol:08718cc6d4d6fb1c:ChromaParams",
+        "symbol:0a72feafd25f568e:llama_detect",
+        "symbol:0adf9a3c7b1fcd54:hidream_clip",
+        "symbol:10f1c3d087ecf4b3:model_lora_keys_clip",
+        "symbol:1271ff4b94d50faf:HiDream",
+        "symbol:13b3bf979c81fd27:T5XXLModel"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "low_cohesion",
+      "description": "Community 5 has low cohesion (0.030) with 212 nodes.",
+      "affected_node_ids": [
+        "file:api_server/routes/internal/internal_routes.py",
+        "file:api_server/services/terminal_service.py",
+        "file:api_server/utils/file_operations.py",
+        "file:app/app_settings.py",
+        "file:app/logger.py",
+        "file:app/model_manager.py",
+        "file:app/user_manager.py",
+        "file:comfy/cli_args.py",
+        "file:comfy/diffusers_load.py",
+        "file:comfy/ldm/flux/redux.py",
+        "file:comfy/lora_convert.py",
+        "file:comfy/weight_adapter/base.py",
+        "file:comfy/weight_adapter/boft.py",
+        "file:comfy/weight_adapter/glora.py",
+        "file:comfy/weight_adapter/loha.py",
+        "file:comfy/weight_adapter/lokr.py",
+        "file:comfy/weight_adapter/lora.py",
+        "file:comfy/weight_adapter/oft.py",
+        "file:comfy_extras/nodes_hidream.py",
+        "file:comfy_extras/nodes_hypernetwork.py",
+        "file:comfy_extras/nodes_load_3d.py",
+        "file:comfy_extras/nodes_upscale_model.py",
+        "file:comfy_extras/nodes_webcam.py",
+        "file:folder_paths.py",
+        "file:hook_breaker_ac10a0.py",
+        "file:latent_preview.py",
+        "file:main.py",
+        "file:new_updater.py",
+        "file:server.py",
+        "file:tests-unit/app_test/custom_node_manager_test.py",
+        "file:tests-unit/comfy_test/folder_path_test.py",
+        "file:tests-unit/folder_paths_test/filter_by_content_types_test.py",
+        "file:tests-unit/server/utils/file_operations_test.py",
+        "file:tests-unit/utils/extra_config_test.py",
+        "file:utils/extra_config.py",
+        "symbol:02c6d6a029770ec3:ImageOnlyCheckpointLoader",
+        "symbol:02d1138d48041849:FileInfo",
+        "symbol:036cd35f0cd52906:temp_dir",
+        "symbol:0560b77ba03b2c0e:LoadAudio",
+        "symbol:065abe6a84b4ede6:log_startup_warning",
+        "symbol:07932dfbfd2c230d:OFTAdapter",
+        "symbol:0a2e0e1468d83b78:test_base_path_changes",
+        "symbol:0a38aab9e6f71169:Type",
+        "symbol:0c32f44c523a9841:LoRAAdapter",
+        "symbol:0ddc585aa5667203:get_logs",
+        "symbol:0de279232438c949:LoadImageMask",
+        "symbol:0df10901ae091a93:DiffusersLoader",
+        "symbol:0e773dc1d7721df1:test_build_translations_loads_all_files",
+        "symbol:0ece63490e3388ec:patched_mimetype_cache",
+        "symbol:0f70317ad68f05bc:AppSettings"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "low_cohesion",
+      "description": "Community 6 has low cohesion (0.030) with 207 nodes.",
+      "affected_node_ids": [
+        "file:app/custom_node_manager.py",
+        "file:comfy/cldm/cldm.py",
+        "file:comfy/ldm/ace/vae/autoencoder_dc.py",
+        "file:comfy/ldm/ace/vae/music_dcae_pipeline.py",
+        "file:comfy/ldm/cascade/common.py",
+        "file:comfy/ldm/cascade/stage_a.py",
+        "file:comfy/ldm/cascade/stage_b.py",
+        "file:comfy/ldm/cascade/stage_c.py",
+        "file:comfy/ldm/cosmos/cosmos_tokenizer/layers3d.py",
+        "file:comfy/ldm/cosmos/cosmos_tokenizer/patching.py",
+        "file:comfy/ldm/cosmos/cosmos_tokenizer/utils.py",
+        "file:comfy/ldm/cosmos/vae.py",
+        "file:comfy/ldm/genmo/joint_model/asymm_models_joint.py",
+        "file:comfy/ldm/genmo/joint_model/temporal_rope.py",
+        "file:comfy/ldm/genmo/vae/model.py",
+        "file:comfy/ldm/lightricks/vae/causal_video_autoencoder.py",
+        "file:comfy/ldm/lightricks/vae/conv_nd_factory.py",
+        "file:comfy/ldm/lightricks/vae/dual_conv3d.py",
+        "file:comfy/ldm/lightricks/vae/pixel_norm.py",
+        "file:comfy/ldm/modules/diffusionmodules/model.py",
+        "file:comfy/ldm/modules/diffusionmodules/openaimodel.py",
+        "file:comfy/ldm/modules/temporal_ae.py",
+        "file:comfy/ldm/wan/vae.py",
+        "file:comfy/rmsnorm.py",
+        "file:comfy/t2i_adapter/adapter.py",
+        "file:comfy/taesd/taesd.py",
+        "file:comfy_extras/nodes_preview_any.py",
+        "file:fix_torch.py",
+        "symbol:00518cb75b29e6a8:ResBlock",
+        "symbol:018ad13015121f70:Model",
+        "symbol:035bf110fc834f08:make_linear_nd",
+        "symbol:03e64157cb7b125c:norm_fn",
+        "symbol:05d81891a9f74566:partialclass",
+        "symbol:0689710ee3437e36:ResnetBlock",
+        "symbol:0aca204443e3aaac:get_block",
+        "symbol:0d4ea160b1b8a2a8:GlobalResponseNorm",
+        "symbol:0e2deedfaff49e68:exists",
+        "symbol:0eeca1b6742a42c8:VideoResBlock",
+        "symbol:118aeef034a509c4:Decoder",
+        "symbol:14c4aefd19d82365:FourierFeatures",
+        "symbol:15af024775583051:Downsample",
+        "symbol:1a316f4c547eb578:conv_nd",
+        "symbol:1c00491b88a3ae49:ContinuousFormulation",
+        "symbol:1d536d1e5780e4f2:vae_attention",
+        "symbol:1f6cd9eb79d8d327:TimestepBlock",
+        "symbol:2171ba61c130af8d:LayerNorm2d_op",
+        "symbol:221a8dcab0934e29:OptimizedAttention",
+        "symbol:22ac2332d22cacc3:Decoder",
+        "symbol:22bb95b078b3a270:modulated_rmsnorm",
+        "symbol:22d0de9420baac23:CausalConv3d"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "low_cohesion",
+      "description": "Community 7 has low cohesion (0.040) with 161 nodes.",
+      "affected_node_ids": [
+        "file:comfy/clip_vision.py",
+        "file:comfy/controlnet.py",
+        "file:comfy/gligen.py",
+        "file:comfy/ldm/cascade/controlnet.py",
+        "file:comfy/ldm/flux/controlnet.py",
+        "file:comfy/model_management.py",
+        "file:comfy/ops.py",
+        "file:comfy/sd.py",
+        "file:comfy_extras/chainner_models/model_loading.py",
+        "file:comfy_extras/nodes_clip_sdxl.py",
+        "file:comfy_extras/nodes_cond.py",
+        "file:comfy_extras/nodes_lotus.py",
+        "file:comfy_extras/nodes_photomaker.py",
+        "file:comfy_extras/nodes_pixart.py",
+        "symbol:008d768d2ecf4e48:is_device_cuda",
+        "symbol:066d6aa1adbfdeaa:throw_exception_if_processing_interrupted",
+        "symbol:0707103f4c9b34cc:should_use_fp16",
+        "symbol:0992c48b42cf12e4:get_tiled_scale_steps",
+        "symbol:09d0f18b34db2593:supports_fp8_compute",
+        "symbol:0b3be87cff1f70e1:processing_interrupted",
+        "symbol:0f67fe1b4eb56a7a:cast_bias_weight",
+        "symbol:107f808b65acf3de:convert_to_transformers",
+        "symbol:1217451e785ce532:T2IAdapter",
+        "symbol:12e472f035495bce:extra_reserved_memory",
+        "symbol:131c7a72f8ed1e77:CLIP",
+        "symbol:133eeff66746b1c2:is_nvidia",
+        "symbol:14a98fcfce41973c:GLIGENLoader",
+        "symbol:1552c6a4ffef0071:ImageUpscaleWithModel",
+        "symbol:1771459a2c222ff6:maximum_vram_for_weights",
+        "symbol:17bd98e607f01999:get_supported_float8_types",
+        "symbol:1a17f78f00c929e7:load_state_dict",
+        "symbol:1c6bf52ddf80cea9:Gligen",
+        "symbol:1c7db69ce1ddd541:CLIPTextEncodeSDXL",
+        "symbol:1fa0e99345d44339:VRAMState",
+        "symbol:21ea795c7924f3cd:load_gligen",
+        "symbol:25d87fd18053409b:clip_preprocess",
+        "symbol:274f6080322eb8f2:loaded_models",
+        "symbol:29339094180ab16e:get_free_memory",
+        "symbol:2a173cb09044a6b5:is_device_mps",
+        "symbol:2c4fe2e4e8873943:supports_dtype",
+        "symbol:2c7431cbc86285d7:ControlNet",
+        "symbol:2cce5097b6cec630:load_clipvision_from_sd",
+        "symbol:325e8b6e9f509ff9:prompt_worker",
+        "symbol:34016fde75e736e0:get_offload_stream",
+        "symbol:3896cef8bc5dfd6f:ControlNetSD35",
+        "symbol:3939a8c75ee60239:vae_device",
+        "symbol:3bbd16eb322aa325:pytorch_attention_enabled_vae",
+        "symbol:3f01cf4c980324f7:ControlNet",
+        "symbol:3f28789d84738d99:fp8_ops",
+        "symbol:41e18e82c7f45957:StrengthType"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "low_cohesion",
+      "description": "Community 8 has low cohesion (0.040) with 155 nodes.",
+      "affected_node_ids": [
+        "file:comfy/k_diffusion/deis.py",
+        "file:comfy/k_diffusion/sampling.py",
+        "file:comfy/k_diffusion/utils.py",
+        "file:comfy/ldm/audio/autoencoder.py",
+        "file:comfy/model_sampling.py",
+        "file:comfy/samplers.py",
+        "file:comfy_extras/nodes_differential_diffusion.py",
+        "file:comfy_extras/nodes_model_advanced.py",
+        "symbol:0293a35852276b74:ModelSamplingSD3",
+        "symbol:035bec0355613b75:resolve_areas_and_cond_masks_multidim",
+        "symbol:04aa82ec2ada334c:calculate_sigmas",
+        "symbol:062c1ec21e38b6ab:simple_scheduler",
+        "symbol:0699b24cadc24e3f:AudioOobleckVAE",
+        "symbol:06b1e5dd67eff966:get_mask_aabb",
+        "symbol:0703a444dca94fc1:get_sigmas_polyexponential",
+        "symbol:09d2d9b5e2c76da6:calculate_start_end_timesteps",
+        "symbol:0a88dfb2d7d0ded0:append_zero",
+        "symbol:0b10d644130656bd:download_file",
+        "symbol:0ff30fd3dacc2512:get_sigmas_vp",
+        "symbol:1093882007103f7f:ddim_scheduler",
+        "symbol:1285006568b966e7:t2alpha_fn",
+        "symbol:12af667726a3b379:get_area_and_mult",
+        "symbol:14764c51a30bd3ba:ModelSamplingLTXV",
+        "symbol:14ef4b30816a1802:ModelSamplingContinuousV",
+        "symbol:15769ce0fbbf924b:default_noise_sampler",
+        "symbol:1d21c7ee5c81e04b:normal_scheduler",
+        "symbol:1de5d05606b13429:rescale_zero_terminal_snr_sigmas",
+        "symbol:1dea1262770cfc03:time_snr_shift",
+        "symbol:1e8ee8f81d84e65e:ModelSamplingFlux",
+        "symbol:23d353465ee0340f:sample_er_sde",
+        "symbol:25d03548e37b33ee:IMG_TO_IMG",
+        "symbol:27e1344a2de12935:ModelSamplingDiscreteEDM",
+        "symbol:294f5a140f482495:KSampler",
+        "symbol:2a1f6e9e0fc56a1b:n_params",
+        "symbol:2a540e3827c60f28:hf_datasets_augs_helper",
+        "symbol:2c600f1743e06a07:sample_gradient_estimation",
+        "symbol:2cebfeb991c97e1b:DecoderBlock",
+        "symbol:2d3cbef0ddff77da:cond_cat",
+        "symbol:2ec366fa935abc41:cal_poly",
+        "symbol:31357a887e924341:append_dims",
+        "symbol:315a2c66c40fbc96:sample_dpmpp_3m_sde",
+        "symbol:31a4edac5efa421e:add_area_dims",
+        "symbol:31ce966bdc2598d8:res_multistep",
+        "symbol:3746f6d24c3f1090:rand_log_logistic",
+        "symbol:39d870d4b2e88925:generic_step_sampler",
+        "symbol:3dd484bb539ff6d6:sample_ipndm_v",
+        "symbol:404722d189a7db0a:encode_model_conds",
+        "symbol:40c49c2998f56d68:sample_dpm_2_ancestral",
+        "symbol:424153df65889d03:ExponentialLR",
+        "symbol:47047c0a3dc6054b:StableCascadeSampling"
+      ],
+      "community_id": 8,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "low_cohesion",
+      "description": "Community 9 has low cohesion (0.060) with 121 nodes.",
+      "affected_node_ids": [
+        "file:comfy/float.py",
+        "file:comfy/hooks.py",
+        "file:comfy/model_patcher.py",
+        "file:comfy/patcher_extension.py",
+        "file:comfy/sampler_helpers.py",
+        "file:comfy_extras/nodes_hooks.py",
+        "file:comfy_extras/nodes_pag.py",
+        "file:comfy_extras/nodes_perpneg.py",
+        "symbol:008495785142c8b6:cfg_function",
+        "symbol:0228851d87c4761d:set_attr",
+        "symbol:0ccfd7cea4912443:default_should_register",
+        "symbol:0f1a328f87807ca5:ConditioningSetProperties",
+        "symbol:11cdecd5507835f1:InjectionsHook",
+        "symbol:12c554323cf113d8:get_patch_weights_from_model",
+        "symbol:12fd68ce56540c93:manual_stochastic_round_to_float8",
+        "symbol:140c813f9fa5da71:filter_registered_hooks_on_conds",
+        "symbol:14a1df553aca88c4:PerturbedAttentionGuidance",
+        "symbol:1a9663355b58fc65:WeightHook",
+        "symbol:1ab25ab07a014a3c:PerpNegGuider",
+        "symbol:1b8f9dade431a9af:CFGGuider",
+        "symbol:1ba0997f1bd74b35:_prepare_sampling",
+        "symbol:1c961957e165cfba:get_key_weight",
+        "symbol:204b87316eeb3370:get_attr",
+        "symbol:2084802fea48e946:CombineHooks",
+        "symbol:208eea1e99c116ab:CombineHooksEight",
+        "symbol:2097d1e7cb3a9d5a:CombineHooksFour",
+        "symbol:20e4757a9d6f3fec:HookKeyframe",
+        "symbol:240eabecdcf3ecfb:combine_with_new_conds",
+        "symbol:261a694b95cbd1e5:EnumHookMode",
+        "symbol:281b86abc56ad7dc:CreateHookModelAsLoraModelOnly",
+        "symbol:29d0d29cf61500e7:calc_cond_batch",
+        "symbol:2bdf317f8184fafa:preprocess_conds_hooks",
+        "symbol:2c1fd6c746af96b7:PerpNeg",
+        "symbol:2decc7d5fca07ff6:TransformerOptionsHook",
+        "symbol:2e1e27d879686104:PairConditioningCombine",
+        "symbol:31dede927fdce532:calc_cond_uncond_batch",
+        "symbol:334505a930b81d9c:CallbacksMP",
+        "symbol:33a9fc24db5a92e9:PairConditioningSetProperties",
+        "symbol:36f75d425ab79afb:set_mask_for_conditioning",
+        "symbol:3af9eff3dbff749b:Hook",
+        "symbol:40e0d91a1aa53059:CreateHookKeyframe",
+        "symbol:42473974a0ab6b4d:conditioning_set_values_with_hooks",
+        "symbol:425e5f964f264a08:calc_mantissa",
+        "symbol:431c2416f7b6f497:ConditioningSetDefaultAndCombine",
+        "symbol:44ee4888ffb4483d:set_timesteps_for_conditioning",
+        "symbol:49f636f53d038f4e:set_conds_props",
+        "symbol:4f0d6ab2e545f8fc:ObjectPatchHook",
+        "symbol:500d62d05dbcfc8b:sampling_function",
+        "symbol:5599a0150315c610:stochastic_rounding",
+        "symbol:572e7a57c889a6f2:_combine_hooks_from_values"
+      ],
+      "community_id": 9,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "low_cohesion",
+      "description": "Community 10 has low cohesion (0.100) with 55 nodes.",
+      "affected_node_ids": [
+        "file:comfy_execution/caching.py",
+        "file:comfy_execution/graph.py",
+        "file:comfy_execution/validation.py",
+        "file:execution.py",
+        "file:tests-unit/execution_test/validate_node_input_test.py",
+        "file:tests/inference/testing_nodes/testing-pack/tools.py",
+        "symbol:031194ac20408a16:ExecutionList",
+        "symbol:060e05aff756dad5:get_input_info",
+        "symbol:06ca00645e4b6fde:NodeInputError",
+        "symbol:1531174712b40c75:test_parametrized_cases",
+        "symbol:19d7ab96e9ab17f7:CacheKeySetID",
+        "symbol:256e71a93892e15e:test_ne_override",
+        "symbol:25f52464f4100b14:format_value",
+        "symbol:3185a61b95d84ee5:validate_node_input",
+        "symbol:41ce29c577822a73:test_exact_match",
+        "symbol:42eaccb259559f00:PromptExecutor",
+        "symbol:44e4f4b9cc93a011:TopologicalSort",
+        "symbol:521b8bc3d8379bce:PreviewImage",
+        "symbol:52d2ab54a3493ecb:validate_inputs",
+        "symbol:5bc12c6621400bb4:full_type_name",
+        "symbol:604428b858979a88:NodeNotFoundError",
+        "symbol:713e6670f6ce1f88:_map_node_over_list",
+        "symbol:791fe0041317abee:test_strict_mode",
+        "symbol:7a44fad03b814f2f:to_hashable",
+        "symbol:835cfd4ef43a317d:HierarchicalCache",
+        "symbol:851c307ee8b803fc:Unhashable",
+        "symbol:89b5b8b8ece5109c:CacheKeySet",
+        "symbol:8a8bd4913f491255:CacheType",
+        "symbol:8d91adb241c6ba1a:DynamicPrompt",
+        "symbol:94880d4757c29348:ExecutionBlocker",
+        "symbol:984bd01ed651ce82:BasicCache",
+        "symbol:9baf817534af3c5f:merge_result_data",
+        "symbol:a1814e155cdf0cdb:NotEqualsOverrideTest",
+        "symbol:a38ebd7c87e8e700:test_empty_strings",
+        "symbol:a674ce25794db4ce:CacheSet",
+        "symbol:b3812356b9907f8a:test_whitespace_handling",
+        "symbol:b9c1bd8af3bd98e0:DependencyAwareCache",
+        "symbol:bc89b1023a3929c0:DuplicateNodeError",
+        "symbol:bdbc5eafbbb32d13:test_single_vs_multiple",
+        "symbol:bf8dafc9b201ee18:VAEDecode",
+        "symbol:c15c485cf0390a90:test_non_string",
+        "symbol:ce8666f8db2e906d:IsChangedCache",
+        "symbol:d114f5ca728000e1:get_input_data",
+        "symbol:d6907aad1abaa605:DependencyCycleError",
+        "symbol:d83ebe53b9e005d5:LRUCache",
+        "symbol:db7171c895340086:test_non_strict_mode",
+        "symbol:de24eeaf6233aa7e:CacheKeySetInputSignature",
+        "symbol:df10ddee59737e1b:ExecutionResult",
+        "symbol:e4133f81b6c78450:VAELoader",
+        "symbol:e6cb5d8eaa2143c1:include_unique_id_in_input"
+      ],
+      "community_id": 10,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "low_cohesion",
+      "description": "Community 11 has low cohesion (0.120) with 51 nodes.",
+      "affected_node_ids": [
+        "file:app/frontend_management.py",
+        "file:tests-unit/app_test/frontend_manager_test.py",
+        "file:tests-unit/app_test/model_manager_test.py",
+        "file:tests-unit/prompt_server_test/user_manager_test.py",
+        "symbol:112856a43b5c50ab:Release",
+        "symbol:11345f6b04938690:test_listuserdata_v2_nonexistent_subdirectory",
+        "symbol:13de45360d10d514:model_manager",
+        "symbol:1878e044f3ae9713:test_listuserdata_recursive",
+        "symbol:18acd737bbc6ec08:test_listuserdata_full_info",
+        "symbol:19878463e6fb8bb5:test_get_release_latest",
+        "symbol:213cebe195ebe952:test_move_userdata_full_info",
+        "symbol:2dd9047880fe4a88:test_finally_block",
+        "symbol:329c5beb1e794e48:test_listuserdata_invalid_directory",
+        "symbol:3999f91ca4c03a1c:test_move_userdata",
+        "symbol:3c0ccea50da4d784:test_parse_version_string_invalid",
+        "symbol:3fb959cad8231dfc:test_init_frontend_invalid_version",
+        "symbol:40718d71353f29da:download_release_asset_zip",
+        "symbol:424ebc2f4c0e3bdd:test_listuserdata_empty_directory",
+        "symbol:43c17d0b5d0c9fe3:test_get_release_invalid_version",
+        "symbol:49141c62173d880c:frontend_install_warning_message",
+        "symbol:4d2a43fcd8388db9:test_get_release",
+        "symbol:4fcff47882c6eddc:test_listuserdata_split_path",
+        "symbol:55348cf53568f478:StabilityStabilityClientID",
+        "symbol:55f0d9a60c24af9a:test_get_model_preview_safetensors",
+        "symbol:6a990ac40f45a03f:mock_download",
+        "symbol:6c7a1fa3289d260d:test_init_frontend_fallback_on_error",
+        "symbol:7ebc2b9c629ae359:test_init_frontend_default",
+        "symbol:8322b7f672b83fa2:test_post_userdata_no_overwrite",
+        "symbol:8e073cf085adf6c9:Asset",
+        "symbol:968311728aa836ab:user_manager",
+        "symbol:9a55c0eaad99d6e3:mock_os_functions",
+        "symbol:9a7f38caddc60d2b:test_post_userdata_full_info",
+        "symbol:9de82f3908ae8913:test_post_userdata_overwrite_existing",
+        "symbol:9ed89f0a85691f96:test_listuserdata_v2_url_encoded_path",
+        "symbol:a2ce4688fb3c8af3:test_move_userdata_no_overwrite",
+        "symbol:a3b454071d4b7b3f:test_parse_version_string",
+        "symbol:a52ea81a3a87da42:test_listuserdata_v2_default",
+        "symbol:af903bac6a5e1151:app",
+        "symbol:b0b7f5e084aab28b:FrontEndProvider",
+        "symbol:b90ef83cbd65f33f:mock_releases",
+        "symbol:bb8a5aa60d2da7b3:test_listuserdata_v2_normalized_separators",
+        "symbol:c3bcca548b4b371f:test_post_userdata_new_file",
+        "symbol:c839889c75269fe1:test_init_frontend_invalid_provider",
+        "symbol:d620cfe5ed2b26d1:test_listuserdata_normalized_separator",
+        "symbol:dc7b18712e434058:app",
+        "symbol:e3ac6b3148684269:mock_provider",
+        "symbol:eaa3143e219f636c:test_listuserdata_v2_empty_root",
+        "symbol:ebf31295c23f4a8c:FrontendManager",
+        "symbol:f0ab563ae0c45f9f:test_listuserdata_with_files",
+        "symbol:f17c536ab9e51b54:test_init_frontend_default_with_mocks"
+      ],
+      "community_id": 11,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:00518cb75b29e6a8:ResBlock has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:00518cb75b29e6a8:ResBlock"
+      ],
+      "community_id": 6,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:005e65ac45328aa2:AttentionPool has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:005e65ac45328aa2:AttentionPool"
+      ],
+      "community_id": 2,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:006580e404eb92c9:BFLFluxProGenerateRequest has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:006580e404eb92c9:BFLFluxProGenerateRequest"
+      ],
+      "community_id": 3,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:018ad13015121f70:Model has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:018ad13015121f70:Model"
+      ],
+      "community_id": 6,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:018f98283d4a3feb:LumaImageReference has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:018f98283d4a3feb:LumaImageReference"
+      ],
+      "community_id": 3,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:02d1138d48041849:FileInfo has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:02d1138d48041849:FileInfo"
+      ],
+      "community_id": 5,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:03b5efd2e39a0f2c:get_2d_sincos_pos_embed_torch has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:03b5efd2e39a0f2c:get_2d_sincos_pos_embed_torch"
+      ],
+      "community_id": 2,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:043bb2b733583b60:cleanup_additional_models has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:043bb2b733583b60:cleanup_additional_models"
+      ],
+      "community_id": 0,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:044f7a529d8ad3b9:LTXV has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:044f7a529d8ad3b9:LTXV"
+      ],
+      "community_id": 4,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:05988daf6154f6bc:HunyuanVideoSkyreelsI2V has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:05988daf6154f6bc:HunyuanVideoSkyreelsI2V"
+      ],
+      "community_id": 4,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:0704067a90ab3018:Chroma has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:0704067a90ab3018:Chroma"
+      ],
+      "community_id": 4,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:08b09b200c7b6201:Attention has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:08b09b200c7b6201:Attention"
+      ],
+      "community_id": 2,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:0e2deedfaff49e68:exists has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:0e2deedfaff49e68:exists"
+      ],
+      "community_id": 6,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:117dd323f49a624f:PatchEmbed has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:117dd323f49a624f:PatchEmbed"
+      ],
+      "community_id": 2,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:118aeef034a509c4:Decoder has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:118aeef034a509c4:Decoder"
+      ],
+      "community_id": 6,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:1355fc76d2aef801:loglinear_interp has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:1355fc76d2aef801:loglinear_interp"
+      ],
+      "community_id": 0,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:13b3bf979c81fd27:T5XXLModel has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:13b3bf979c81fd27:T5XXLModel"
+      ],
+      "community_id": 4,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:14076c7005837f67:MLP has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:14076c7005837f67:MLP"
+      ],
+      "community_id": 2,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:147a68234a2454b6:LumaImageGenerationRequest has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:147a68234a2454b6:LumaImageGenerationRequest"
+      ],
+      "community_id": 3,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:14be8758573f45be:SD3 has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:14be8758573f45be:SD3"
+      ],
+      "community_id": 4,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:14d4238de9ae6f18:PixverseImageUploadResponse has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:14d4238de9ae6f18:PixverseImageUploadResponse"
+      ],
+      "community_id": 3,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:14ef4b30816a1802:ModelSamplingContinuousV has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:14ef4b30816a1802:ModelSamplingContinuousV"
+      ],
+      "community_id": 8,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:15af024775583051:Downsample has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:15af024775583051:Downsample"
+      ],
+      "community_id": 6,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:16efc9dee0b33490:T5XXLTokenizer has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:16efc9dee0b33490:T5XXLTokenizer"
+      ],
+      "community_id": 4,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:193f0cf22996f889:LumaImageModel has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:193f0cf22996f889:LumaImageModel"
+      ],
+      "community_id": 3,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:1a9748ea25cc05e3:StableAudio1 has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:1a9748ea25cc05e3:StableAudio1"
+      ],
+      "community_id": 4,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:1b27528199311a35:apply_rope has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:1b27528199311a35:apply_rope"
+      ],
+      "community_id": 2,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:1d0c07e6638d647d:modulate has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:1d0c07e6638d647d:modulate"
+      ],
+      "community_id": 2,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:1d4155552a2cb761:ACEStep has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:1d4155552a2cb761:ACEStep"
+      ],
+      "community_id": 4,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:1f21cb5849c06a4f:RMSNorm has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:1f21cb5849c06a4f:RMSNorm"
+      ],
+      "community_id": 2,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:1fd1dea19f24a7d8:args_pytest has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:1fd1dea19f24a7d8:args_pytest"
+      ],
+      "community_id": 15,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:21006bc6c14a35f1:ControlNet has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:21006bc6c14a35f1:ControlNet"
+      ],
+      "community_id": 22,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:2182bb463ec54a2a:TimestepEmbedder has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:2182bb463ec54a2a:TimestepEmbedder"
+      ],
+      "community_id": 2,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:221a8dcab0934e29:OptimizedAttention has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:221a8dcab0934e29:OptimizedAttention"
+      ],
+      "community_id": 6,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:22ac2332d22cacc3:Decoder has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:22ac2332d22cacc3:Decoder"
+      ],
+      "community_id": 6,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:2346c712199c26b5:T5XXLTokenizer has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:2346c712199c26b5:T5XXLTokenizer"
+      ],
+      "community_id": 4,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:246b4865a2d43a69:MLP has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:246b4865a2d43a69:MLP"
+      ],
+      "community_id": 2,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:294f5a140f482495:KSampler has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:294f5a140f482495:KSampler"
+      ],
+      "community_id": 8,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:29a5fc058c6ab975:LumaKeyframes has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:29a5fc058c6ab975:LumaKeyframes"
+      ],
+      "community_id": 3,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:2a1e235802956bac:get_image has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:2a1e235802956bac:get_image"
+      ],
+      "community_id": 19,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:2b397f5ad35cab9e:SD15_instructpix2pix has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:2b397f5ad35cab9e:SD15_instructpix2pix"
+      ],
+      "community_id": 4,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:2b49c49180eb7e31:RMSNorm has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:2b49c49180eb7e31:RMSNorm"
+      ],
+      "community_id": 6,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:2b5017021702bd67:AttentionBlock has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:2b5017021702bd67:AttentionBlock"
+      ],
+      "community_id": 6,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:2b7bd961e4872496:FinalLayer has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:2b7bd961e4872496:FinalLayer"
+      ],
+      "community_id": 2,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:2c7431cbc86285d7:ControlNet has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:2c7431cbc86285d7:ControlNet"
+      ],
+      "community_id": 7,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:2e90e56bb22b6b9a:ResBlock has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:2e90e56bb22b6b9a:ResBlock"
+      ],
+      "community_id": 6,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:2f0a8263a571869a:Lumina2 has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:2f0a8263a571869a:Lumina2"
+      ],
+      "community_id": 4,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:30ac940187334dbc:avg_pool_nd has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:30ac940187334dbc:avg_pool_nd"
+      ],
+      "community_id": 12,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:323df14e00d1efa8:LumaModifyImageRef has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:323df14e00d1efa8:LumaModifyImageRef"
+      ],
+      "community_id": 3,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:34c559cd898fc0a2:default has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:34c559cd898fc0a2:default"
+      ],
+      "community_id": 2,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:34d610445a0ade56:get_timestep_embedding has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:34d610445a0ade56:get_timestep_embedding"
+      ],
+      "community_id": 2,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:3754d678f35f8d06:PatchEmbed has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:3754d678f35f8d06:PatchEmbed"
+      ],
+      "community_id": 18,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:39ac92fe188b4ec0:nonlinearity has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:39ac92fe188b4ec0:nonlinearity"
+      ],
+      "community_id": 6,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:39fef8c9c028165e:mean_flat has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:39fef8c9c028165e:mean_flat"
+      ],
+      "community_id": 12,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:3aa66a7b53cb1de5:FeedForward has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:3aa66a7b53cb1de5:FeedForward"
+      ],
+      "community_id": 2,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:3b8aed6043460e10:Stable_Zero123 has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:3b8aed6043460e10:Stable_Zero123"
+      ],
+      "community_id": 4,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:3cdbaf5cf90301b9:loglinear_interp has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:3cdbaf5cf90301b9:loglinear_interp"
+      ],
+      "community_id": 0,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:3d82da5cfeaded6f:DoubleStreamBlock has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:3d82da5cfeaded6f:DoubleStreamBlock"
+      ],
+      "community_id": 4,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:404276fe7abae796:Decoder has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:404276fe7abae796:Decoder"
+      ],
+      "community_id": 6,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:416869349b27d764:Encoder has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:416869349b27d764:Encoder"
+      ],
+      "community_id": 6,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:419fb361f305a390:FourierFeatures has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:419fb361f305a390:FourierFeatures"
+      ],
+      "community_id": 2,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:42026e8106b1e7b8:FinalLayer has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:42026e8106b1e7b8:FinalLayer"
+      ],
+      "community_id": 2,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:42434ef393f72cde:cast_tuple has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:42434ef393f72cde:cast_tuple"
+      ],
+      "community_id": 6,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:42873cba0504042b:Attention has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:42873cba0504042b:Attention"
+      ],
+      "community_id": 2,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:43a9107c2af57d79:T5XXLModel has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:43a9107c2af57d79:T5XXLModel"
+      ],
+      "community_id": 4,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:4433e27330de729a:TimestepEmbedder has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:4433e27330de729a:TimestepEmbedder"
+      ],
+      "community_id": 18,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:450a9db1a0bcbe94:SV3D_p has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:450a9db1a0bcbe94:SV3D_p"
+      ],
+      "community_id": 4,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:45d78e9f25d34ccb:exists has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:45d78e9f25d34ccb:exists"
+      ],
+      "community_id": 2,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:45e720059f74ac8b:SelfAttention has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:45e720059f74ac8b:SelfAttention"
+      ],
+      "community_id": 4,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:45eab81bef537d1e:BasicTransformerBlock has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:45eab81bef537d1e:BasicTransformerBlock"
+      ],
+      "community_id": 2,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:4666232682636ba6:LumaGeneration has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:4666232682636ba6:LumaGeneration"
+      ],
+      "community_id": 3,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:477d9ba73d0e2a79:RecraftImageGenerationResponse has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:477d9ba73d0e2a79:RecraftImageGenerationResponse"
+      ],
+      "community_id": 3,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:481a84406878a8a8:T5XXLTokenizer has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:481a84406878a8a8:T5XXLTokenizer"
+      ],
+      "community_id": 4,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:49332fab1b2b6948:HunyuanVideo has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:49332fab1b2b6948:HunyuanVideo"
+      ],
+      "community_id": 4,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:4a4e3adef03dea70:Encoder has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:4a4e3adef03dea70:Encoder"
+      ],
+      "community_id": 6,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:4be18a082a6072f4:modulate has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:4be18a082a6072f4:modulate"
+      ],
+      "community_id": 2,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:4bf22438d8c2b660:BFLFluxProGenerateResponse has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:4bf22438d8c2b660:BFLFluxProGenerateResponse"
+      ],
+      "community_id": 3,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:4c337db022a20b7b:HunyuanVideo has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:4c337db022a20b7b:HunyuanVideo"
+      ],
+      "community_id": 4,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:4df2760d990b9d55:MLP has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:4df2760d990b9d55:MLP"
+      ],
+      "community_id": 2,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:4ea591c5f3e740d3:LTXV has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:4ea591c5f3e740d3:LTXV"
+      ],
+      "community_id": 4,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:4ec3f7f8a55ed9a3:LumaVideoModel has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:4ec3f7f8a55ed9a3:LumaVideoModel"
+      ],
+      "community_id": 3,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:4f32d904817b74b1:app has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:4f32d904817b74b1:app"
+      ],
+      "community_id": 5,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:500f004be636278f:HunyuanVideoI2V has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:500f004be636278f:HunyuanVideoI2V"
+      ],
+      "community_id": 4,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:51874dec1a70bd36:AuraFlow has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:51874dec1a70bd36:AuraFlow"
+      ],
+      "community_id": 4,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:521d4469bccfc701:PixverseImageVideoRequest has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:521d4469bccfc701:PixverseImageVideoRequest"
+      ],
+      "community_id": 3,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:53f7227968f6750d:T5XXLTokenizer has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:53f7227968f6750d:T5XXLTokenizer"
+      ],
+      "community_id": 4,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:55bf760fefa95a34:attention has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:55bf760fefa95a34:attention"
+      ],
+      "community_id": 2,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:5b0d8b7efcf188e2:FeedForward has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:5b0d8b7efcf188e2:FeedForward"
+      ],
+      "community_id": 7,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:5db9822c6914a105:T5XXLModel has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:5db9822c6914a105:T5XXLModel"
+      ],
+      "community_id": 4,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:5dd4c220be1e313a:Encoder has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:5dd4c220be1e313a:Encoder"
+      ],
+      "community_id": 6,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:5f395e1fb6a22a7d:LayerNorm has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:5f395e1fb6a22a7d:LayerNorm"
+      ],
+      "community_id": 6,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:5f9c8a4c8faf80e4:VideoResBlock has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:5f9c8a4c8faf80e4:VideoResBlock"
+      ],
+      "community_id": 6,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:6052634040ad6352:Flux has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:6052634040ad6352:Flux"
+      ],
+      "community_id": 4,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:609aebdbe16db05a:load_gligen has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:609aebdbe16db05a:load_gligen"
+      ],
+      "community_id": 7,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:63ad90f4bb64ea94:VideoVAE has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:63ad90f4bb64ea94:VideoVAE"
+      ],
+      "community_id": 6,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:64caffea39f61845:queue_prompt has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:64caffea39f61845:queue_prompt"
+      ],
+      "community_id": 28,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:65a6e29cc3416339:SD15 has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:65a6e29cc3416339:SD15"
+      ],
+      "community_id": 4,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:66eef40a77183443:ControlNet has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:66eef40a77183443:ControlNet"
+      ],
+      "community_id": 6,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:6724aadb8a35705f:RMSNorm has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:6724aadb8a35705f:RMSNorm"
+      ],
+      "community_id": 4,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:6771f82e9e0ee293:get_2d_sincos_pos_embed_from_grid has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:6771f82e9e0ee293:get_2d_sincos_pos_embed_from_grid"
+      ],
+      "community_id": 2,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:681f410596d962e8:GenmoMochi has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:681f410596d962e8:GenmoMochi"
+      ],
+      "community_id": 4,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:68766bd7a449dd9d:Node has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:68766bd7a449dd9d:Node"
+      ],
+      "community_id": 3,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:695d3202038a74cf:LumaImageRef has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:695d3202038a74cf:LumaImageRef"
+      ],
+      "community_id": 3,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:6a162935b26bacbd:ResidualAttentionBlock has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:6a162935b26bacbd:ResidualAttentionBlock"
+      ],
+      "community_id": 2,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:6ade01bfb656261c:EmbedND has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:6ade01bfb656261c:EmbedND"
+      ],
+      "community_id": 4,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:6d805face779828a:MMDiT has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:6d805face779828a:MMDiT"
+      ],
+      "community_id": 2,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:6da1310011db549b:SD_X4Upscaler has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:6da1310011db549b:SD_X4Upscaler"
+      ],
+      "community_id": 4,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:6dcda8e62fa00a26:t2i_modulate has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:6dcda8e62fa00a26:t2i_modulate"
+      ],
+      "community_id": 2,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:6e2470217dc81f54:SV3D_u has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:6e2470217dc81f54:SV3D_u"
+      ],
+      "community_id": 4,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:6f4a51a20e19a0f5:default has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:6f4a51a20e19a0f5:default"
+      ],
+      "community_id": 7,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:6f9043660e013d94:SingleStreamBlock has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:6f9043660e013d94:SingleStreamBlock"
+      ],
+      "community_id": 4,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:6fd7c5a19f7cc41f:HiDream has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:6fd7c5a19f7cc41f:HiDream"
+      ],
+      "community_id": 4,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:6fea82b08dd168f5:SDXLRefiner has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:6fea82b08dd168f5:SDXLRefiner"
+      ],
+      "community_id": 4,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:725e5eb8c99a9b38:prepare_sampling has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:725e5eb8c99a9b38:prepare_sampling"
+      ],
+      "community_id": 0,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:72a0aadc3927c160:Attention has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:72a0aadc3927c160:Attention"
+      ],
+      "community_id": 2,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:7369022e8bbeb75b:get_2d_sincos_pos_embed has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:7369022e8bbeb75b:get_2d_sincos_pos_embed"
+      ],
+      "community_id": 2,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:741b822f74616de6:PixverseTransitionVideoRequest has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:741b822f74616de6:PixverseTransitionVideoRequest"
+      ],
+      "community_id": 3,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:760e49ebc0bb47c1:ResBlock has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:760e49ebc0bb47c1:ResBlock"
+      ],
+      "community_id": 6,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:768351dd25434f13:get_activation has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:768351dd25434f13:get_activation"
+      ],
+      "community_id": 6,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:7696b70167c2ee6b:precompute_freqs_cis has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:7696b70167c2ee6b:precompute_freqs_cis"
+      ],
+      "community_id": 2,
+      "severity": "low"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `_calc_cond_batch`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `_map_node_over_list`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `AbstractAutoencoder`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 12,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `AbstractLowScaleModel`.",
+      "affected_node_ids": [
+        "symbol:0699b24cadc24e3f:AudioOobleckVAE"
+      ],
+      "community_id": 8,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `Adapter`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `Adapter_light`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `AlignYourStepsScheduler`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `ApiEndpoint`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `app`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `apply_custom_paths`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `AsymmDiTJoint`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `attention_basic`.",
+      "affected_node_ids": [
+        "symbol:118aeef034a509c4:Decoder"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `attention_split`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `attention_sub_quad`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `AttentionKVCompress`.",
+      "affected_node_ids": [
+        "symbol:39ac92fe188b4ec0:nonlinearity"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `AudioDiffusionTransformer`.",
+      "affected_node_ids": [
+        "symbol:1f6cd9eb79d8d327:TimestepBlock"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `AuraFlow`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `AutoencodingEngine`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 12,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `AutoencodingEngineLegacy`.",
+      "affected_node_ids": [
+        "symbol:018ad13015121f70:Model"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `BASE`.",
+      "affected_node_ids": [
+        "symbol:2959d5d70adfedcb:Patcher3D"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `BaseModel`.",
+      "affected_node_ids": [
+        "symbol:1d536d1e5780e4f2:vae_attention"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `before_node_execution`.",
+      "affected_node_ids": [
+        "symbol:42eaccb259559f00"
+      ],
+      "community_id": 10,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `BERTModel`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `BFLValidationError`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `Block`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `block_mixing`.",
+      "affected_node_ids": [
+        "symbol:0d4ea160b1b8a2a8:GlobalResponseNorm"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `Blur`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `CacheType`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `calc_lora_model`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `calculate_parameters`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `Canny`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `CaseConverter`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 13,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `cast_to`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `cast_to_device`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `cat_tensors`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `checkpoint`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `CheckpointFunction`.",
+      "affected_node_ids": [
+        "symbol:27198b3f01f978a6:UpDownBlock2d"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `CheckpointLoader`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `CheckpointLoaderSimple`.",
+      "affected_node_ids": [
+        "symbol:3684475609434427:ResnetBlock3D"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `CheckpointSave`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `cleanup_models`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `cleanup_models_gc`.",
+      "affected_node_ids": [
+        "symbol:42eaccb259559f00"
+      ],
+      "community_id": 10,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `CLIP`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `CLIPAdd`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `CLIPAttentionMultiply`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `CLIPEmbeddingNoiseAugmentation`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `CLIPLoader`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `CLIPMergeSimple`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `CLIPSave`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `CLIPSetLastLayer`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `CLIPSubtract`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `CLIPTextEncode`.",
+      "affected_node_ids": [
+        "symbol:38ab02e47aec7f37:CausalUpsample3d"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `CLIPTextEncodeFlux`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `CLIPTextEncodeHiDream`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `CLIPTextEncodeHunyuanDiT`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `CLIPTextEncodeLumina2`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `CLIPTextEncodeSD3`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `CLIPTextModel`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `ClipVisionModel`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `CNetResBlock`.",
+      "affected_node_ids": [
+        "symbol:2e90e56bb22b6b9a:ResBlock"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `comfy.ldm.modules.diffusionmodules.mmdit.MMDiT`.",
+      "affected_node_ids": [
+        "symbol:21006bc6c14a35f1"
+      ],
+      "community_id": 22,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `ComfyClient`.",
+      "affected_node_ids": [
+        "symbol:713e6670f6ce1f88"
+      ],
+      "community_id": 10,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `ComfyNodeABC`.",
+      "affected_node_ids": [
+        "symbol:713e6670f6ce1f88"
+      ],
+      "community_id": 10,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `common_ksampler`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `common_upscale`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `composite`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `ConformerEncoder`.",
+      "affected_node_ids": [
+        "symbol:1c00491b88a3ae49:ContinuousFormulation"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `ConformerEncoderLayer`.",
+      "affected_node_ids": [
+        "symbol:3aadbf1a78048f39:DepthToSpaceTime"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `continuous_transformer`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `ContinuousTransformer`.",
+      "affected_node_ids": [
+        "symbol:3298e724aff9ff27:divisible_by"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `ControlNet`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `controlnet_config`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `ControlNetApply`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `ControlNetEmbedder`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `conv`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `convert_diffusers_mmdit`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `convert_lora_bfl_control`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `convert_lora_wan_fun`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `convert_mistoline`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `convert_to_transformers`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `convert_vae_state_dict`.",
+      "affected_node_ids": [
+        "symbol:2171ba61c130af8d:LayerNorm2d_op"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `ConvNeXtBlock`.",
+      "affected_node_ids": [
+        "symbol:05d81891a9f74566:partialclass"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `ConvNeXtEncoder`.",
+      "affected_node_ids": [
+        "symbol:03e64157cb7b125c:norm_fn"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `ConvolutionModule`.",
+      "affected_node_ids": [
+        "symbol:22d0de9420baac23:CausalConv3d"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `count_blocks`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `create_blur_map`.",
+      "affected_node_ids": [
+        "symbol:118aeef034a509c4:Decoder"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `CreateHookLora`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `CreateHookLoraModelOnly`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `CreateHookModelAsLora`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `CrossAttention`.",
+      "affected_node_ids": [
+        "symbol:259bbc660e65bcf3:AutoencoderDC"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `CSVLogger`.",
+      "affected_node_ids": [
+        "symbol:2e4b0e52e3f8fb2d:exists"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `CustomLiteLAProcessor2_0`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `default`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `DependencyAwareCache`.",
+      "affected_node_ids": [
+        "symbol:00518cb75b29e6a8:ResBlock"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `detect_te_model`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `device_supports_non_blocking`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `DiagonalGaussianDistribution`.",
+      "affected_node_ids": [
+        "symbol:0e2deedfaff49e68:exists"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `Dino2Embeddings`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `disable_weight_init`.",
+      "affected_node_ids": [
+        "symbol:345a524224617c71:replication_pad"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `DismantledBlock`.",
+      "affected_node_ids": [
+        "symbol:25de23735ce01c51:AsymmetricJointBlock"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `DITBuildingBlock`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `dtype_size`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `DualCLIPLoader`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `EMAWarmup`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `Error`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `execute`.",
+      "affected_node_ids": [
+        "symbol:0eeca1b6742a42c8:VideoResBlock"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `execute_prestartup_script`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `exists_annotated_filepath`.",
+      "affected_node_ids": [
+        "symbol:416869349b27d764:Encoder"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `ExponentialScheduler`.",
+      "affected_node_ids": [
+        "symbol:062c1ec21e38b6ab:simple_scheduler"
+      ],
+      "community_id": 8,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `FeedForward`.",
+      "affected_node_ids": [
+        "symbol:26c708459de65199:UnPatcher"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `File`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `fix_empty_latent_channels`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `Flux`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `FluxDisableGuidance`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `FluxProUltraImageNode`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `free_memory`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `GeneralDIT`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `get_activation`.",
+      "affected_node_ids": [
+        "symbol:035bf110fc834f08:make_linear_nd"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `get_all_wrappers`.",
+      "affected_node_ids": [
+        "symbol:22d0de9420baac23:CausalConv3d"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `get_deis_coeff_list`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `get_filename_list`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `get_folder_paths`.",
+      "affected_node_ids": [
+        "symbol:2e90e56bb22b6b9a:ResBlock"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `get_free_memory`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `get_full_path`.",
+      "affected_node_ids": [
+        "symbol:3e55a05572e6b762:residual_tanh_gated_rmsnorm"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `get_full_path_or_raise`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `get_history`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `get_input_data`.",
+      "affected_node_ids": [
+        "symbol:145b196a67ab609c:upload_video_to_comfyapi"
+      ],
+      "community_id": 1,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `get_input_info`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `get_output_data`.",
+      "affected_node_ids": [
+        "symbol:1887a2f536790784:upload_images_to_comfyapi"
+      ],
+      "community_id": 1,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `get_output_directory`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `get_save_image_path`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `get_timestep_embedding`.",
+      "affected_node_ids": [
+        "symbol:09d2d9b5e2c76da6:calculate_start_end_timesteps"
+      ],
+      "community_id": 8,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `get_torch_device`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `get_torch_device_name`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `get_total_memory`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `GLIGENLoader`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `GLIGENTextBoxApply`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `hasher`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `HiddenInputTypeDict`.",
+      "affected_node_ids": [
+        "symbol:713e6670f6ce1f88"
+      ],
+      "community_id": 10,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `HiDreamAttention`.",
+      "affected_node_ids": [
+        "symbol:3e55a05572e6b762:residual_tanh_gated_rmsnorm"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `HiDreamAttnProcessor_flashattn`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `hijack_progress`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `HookGroup`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `HunYuanControlNet`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `HunYuanDiTBlock`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `HunYuanVideoParams`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `Image`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `ImageConcatWithNoiseAugmentation`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `ImageOnlyCheckpointSave`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `init_api_nodes`.",
+      "affected_node_ids": [
+        "010222ac6f99e674"
+      ],
+      "community_id": 0,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `init_custom_nodes`.",
+      "affected_node_ids": [
+        "010222ac6f99e674"
+      ],
+      "community_id": 0,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `init_external_custom_nodes`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `init_extra_nodes`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `InputTypeDict`.",
+      "affected_node_ids": [
+        "symbol:713e6670f6ce1f88"
+      ],
+      "community_id": 10,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `InputTypeOptions`.",
+      "affected_node_ids": [
+        "symbol:2f73163dc4c3c8fc:normal_attention"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `intermediate_device`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `InternalRoutes`.",
+      "affected_node_ids": [
+        "symbol:19878463e6fb8bb5:test_get_release_latest"
+      ],
+      "community_id": 11,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `interrupt_processing`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `InterruptProcessingException`.",
+      "affected_node_ids": [
+        "symbol:42eaccb259559f00"
+      ],
+      "community_id": 10,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `IO`.",
+      "affected_node_ids": [
+        "symbol:3298e724aff9ff27:divisible_by"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `is_link`.",
+      "affected_node_ids": [
+        "symbol:713e6670f6ce1f88"
+      ],
+      "community_id": 10,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `is_valid_directory`.",
+      "affected_node_ids": [
+        "symbol:25de23735ce01c51:AsymmetricJointBlock"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `JointAttention`.",
+      "affected_node_ids": [
+        "symbol:404276fe7abae796:Decoder"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `JointTransformerBlock`.",
+      "affected_node_ids": [
+        "symbol:0689710ee3437e36:ResnetBlock"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `KlingStartEndFrameNode`.",
+      "affected_node_ids": [
+        "symbol:19878463e6fb8bb5:test_get_release_latest"
+      ],
+      "community_id": 11,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `KlingVirtualTryOnResponse`.",
+      "affected_node_ids": [
+        "symbol:2351b0080998e393:is_valid_image_response"
+      ],
+      "community_id": 3,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `lanczos`.",
+      "affected_node_ids": [
+        "symbol:20de29d1e3d83c96:tensor_to_data_uri"
+      ],
+      "community_id": 1,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `LatentPreviewMethod`.",
+      "affected_node_ids": [
+        "symbol:24c1ffba79a218aa:space2batch"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `LayerNorm`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `LayerScale`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `LinearTransformerBlock`.",
+      "affected_node_ids": [
+        "symbol:2b5017021702bd67:AttentionBlock"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `Llama2`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `Llama2_`.",
+      "affected_node_ids": [
+        "symbol:38ab02e47aec7f37:CausalUpsample3d"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `load_checkpoint_guess_config`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `load_clip`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `load_clipvision_from_sd`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `load_controlnet`.",
+      "affected_node_ids": [
+        "symbol:1a316f4c547eb578:conv_nd"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `load_controlnet_flux_instantx`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `load_controlnet_hunyuandit`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `load_controlnet_mmdit`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `load_controlnet_sd35`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `load_controlnet_state_dict`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `load_custom_node`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `load_diffusers`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `load_diffusion_model`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `load_diffusion_model_state_dict`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `load_embed`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `load_gligen`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `load_hook_lora_for_models`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `load_hypernetwork_patch`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `load_lora_for_models`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `load_models_gpu`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `load_state_dict`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `load_state_dict_guess_config`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `load_t2i_adapter`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `load_text_encoder_state_dicts`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `load_torch_file`.",
+      "affected_node_ids": [
+        "symbol:018ad13015121f70:Model"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `log`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `LoraLoader`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `LoraSave`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `LowVramPatch`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `LTXVModel`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `make_beta_schedule`.",
+      "affected_node_ids": [
+        "symbol:0703a444dca94fc1:get_sigmas_polyexponential"
+      ],
+      "community_id": 8,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `manual_cast`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `MaskPreview`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `merge_json_recursive`.",
+      "affected_node_ids": [
+        "symbol:2e4b0e52e3f8fb2d:exists"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `model_config_from_diffusers_unet`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `model_config_from_unet`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `model_lora_keys_unet`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `model_sampling`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `ModelFileManager`.",
+      "affected_node_ids": [
+        "symbol:2171ba61c130af8d:LayerNorm2d_op"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `ModelPatcher`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `models`.",
+      "affected_node_ids": [
+        "043bb2b733583b60"
+      ],
+      "community_id": 0,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `ModelSamplingDiscrete`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `ModelSamplingStableCascade`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `ModelSave`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `Morphology`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `MultiheadAttention`.",
+      "affected_node_ids": [
+        "symbol:26c708459de65199:UnPatcher"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `MultiHeadCrossAttention`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `multilingual_cleaners`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `MusicDCAE`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `NextDiT`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `Node`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `normalize`.",
+      "affected_node_ids": [
+        "symbol:1d08501cbd1d199e:convert_image_to_base64"
+      ],
+      "community_id": 1,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `NumberConditioner`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `OpenAISignatureMMDITWrapper`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `OptimalStepsScheduler`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `optimized_attention_for_device`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `Parameters`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `patchify`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `PerformanceFeature`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `PhotoMakerLoader`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `pick_operations`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `pick_weight_dtype`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `PixArt`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `PixArtAlphaCombinedTimestepSizeEmbeddings`.",
+      "affected_node_ids": [
+        "symbol:37d59424bd9073dc:CausalDownsample3d"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `PixArtMS`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `prepare_sampling`.",
+      "affected_node_ids": [
+        "symbol:2372f0807e089acf:PikaBodyGeneratePikaffectsGeneratePikaffectsPost"
+      ],
+      "community_id": 1,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `PreviewAudio`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `PreviewImage`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `process_image_response`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `processor`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `ProgressBar`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `prompt`.",
+      "affected_node_ids": [
+        "09e251f8e5a43baa"
+      ],
+      "community_id": 0,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `prompt_id`.",
+      "affected_node_ids": [
+        "08bf7810ee623f36"
+      ],
+      "community_id": 0,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `prompt_worker`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `PromptExecutor`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `PromptQueue`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `PromptServer`.",
+      "affected_node_ids": [
+        "symbol:0aca204443e3aaac:get_block"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `Publisher`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 13,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `pytorch_attention_enabled_vae`.",
+      "affected_node_ids": [
+        "symbol:1c00491b88a3ae49:ContinuousFormulation"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `QKNorm`.",
+      "affected_node_ids": [
+        "symbol:345a524224617c71:replication_pad"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `Quantize`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `recraft_multipart_parser`.",
+      "affected_node_ids": [
+        "symbol:035bf110fc834f08:make_linear_nd"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `repeat_to_batch_size`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `ResBlock1`.",
+      "affected_node_ids": [
+        "symbol:259bbc660e65bcf3:AutoencoderDC"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `ResBlockUnionControlnet`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `reshape_latent_to`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `reshape_mask`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `ResidualAttentionBlock`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `ResidualUnitUnionControlnet`.",
+      "affected_node_ids": [
+        "symbol:2ae5a8e7f5f1ee3d:CausalContinuousVideoTokenizer"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `resize_image`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `response`.",
+      "affected_node_ids": [
+        "symbol:23b4e4397964403c:validate_image_result_response"
+      ],
+      "community_id": 3,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `restore_functions`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `rms_norm`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `rope`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `run`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `safe_load_json_file`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `sample`.",
+      "affected_node_ids": [
+        "symbol:0aca204443e3aaac:get_block"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `Sampler`.",
+      "affected_node_ids": [
+        "symbol:294f5a140f482495:KSampler"
+      ],
+      "community_id": 8,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `SamplerCustom`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `SamplerCustomAdvanced`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `save_checkpoint`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `save_torch_file`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `scaled_fp8_ops`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `SD_X4Upscaler`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 12,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `SDClipModel`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `SDXL`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `SelfAttention`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `set_attr_param`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `set_progress_bar_global_hook`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `SetClipHooks`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `Sharpen`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `SkipLayerGuidanceDiT`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `slice_attention`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `soft_empty_cache`.",
+      "affected_node_ids": [
+        "symbol:22ac2332d22cacc3:Decoder"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `SpatialTransformer`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `Stable_Zero123`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `StableCascade_B`.",
+      "affected_node_ids": [
+        "symbol:3684475609434427:ResnetBlock3D"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `StableCascade_C`.",
+      "affected_node_ids": [
+        "symbol:2ca5549554dee1e7:SanaMultiscaleAttentionProjection"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `StableZero123_Conditioning_Batched`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `StageB`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `StageC`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `start_comfyui`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `state_dict_prefix_replace`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `StripeEvent`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `supports_cast`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `SynchronousOperation`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `T2IFinalLayer`.",
+      "affected_node_ids": [
+        "symbol:2f73163dc4c3c8fc:normal_attention"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `TAESD`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `TEModel`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `test_get_workflow_templates`.",
+      "affected_node_ids": [
+        "symbol:19878463e6fb8bb5:test_get_release_latest"
+      ],
+      "community_id": 11,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `test_load_extra_model_paths_expands_userpath`.",
+      "affected_node_ids": [
+        "symbol:0689710ee3437e36:ResnetBlock"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `TestExecution`.",
+      "affected_node_ids": [
+        "symbol:2f557f86ea3b3c0c:AlphaBlender"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `TestExecutionBlockerNode`.",
+      "affected_node_ids": [
+        "symbol:713e6670f6ce1f88"
+      ],
+      "community_id": 10,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `TestInference`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 15,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `TextEncodeAceStepAudio`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `TextEncodeHunyuanVideo_ImageToVideo`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `throw_exception_if_processing_interrupted`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `tiled_scale`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `TimePositionalEmbedding`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `TokenRefiner`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `Transformer`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `TransformerBlockGemma2`.",
+      "affected_node_ids": [
+        "symbol:2b5017021702bd67:AttentionBlock"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `transformers_convert`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `TripleCLIPLoader`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `unCLIPCheckpointLoader`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `unet_config_from_diffusers_unet`.",
+      "affected_node_ids": [
+        "UnverifiedCallSource"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `unet_to_diffusers`.",
+      "affected_node_ids": [
+        "symbol:40c4d3524586065d:Decoder3d"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `UNETLoader`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `unload_all_models`.",
+      "affected_node_ids": [
+        "symbol:42eaccb259559f00"
+      ],
+      "community_id": 10,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `unpatchify`.",
+      "affected_node_ids": [
+        "symbol:14c4aefd19d82365:FourierFeatures"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `UnverifiedCallTarget`.",
+      "affected_node_ids": [
+        "symbol:03a46feaf3a1a578:HunYuanDiT"
+      ],
+      "community_id": 2,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `UpscaleModelLoader`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `UserManager`.",
+      "affected_node_ids": [
+        "symbol:416869349b27d764:Encoder"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `V_PREDICTION`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `VaceWanModel`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `VAE`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `VAELoader`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `val2tuple`.",
+      "affected_node_ids": [
+        "symbol:15af024775583051:Downsample"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `validate_inputs`.",
+      "affected_node_ids": [
+        "symbol:04e56c9681f8b6b1:validate_task_creation_response"
+      ],
+      "community_id": 1,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `validate_prompt`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `Veo2GenVidPollResponse`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `VeoVideoGenerationNode`.",
+      "affected_node_ids": [
+        "symbol:15af024775583051:Downsample"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `Video`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `VoiceBpeTokenizer`.",
+      "affected_node_ids": [
+        "UnverifiedCallTarget"
+      ],
+      "community_id": 13,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `Wan21`.",
+      "affected_node_ids": [
+        "symbol:0adf9a3c7b1fcd54:hidream_clip"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `WrapperExecutor`.",
+      "affected_node_ids": [
+        "symbol:3aadbf1a78048f39:DepthToSpaceTime"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `WrappersMP`.",
+      "affected_node_ids": [
+        "symbol:22bb95b078b3a270:modulated_rmsnorm"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `ws`.",
+      "affected_node_ids": [
+        "24596ddceda92c95"
+      ],
+      "community_id": 0,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `xformers_enabled_vae`.",
+      "affected_node_ids": [
+        "symbol:1f6cd9eb79d8d327:TimestepBlock"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    }
+  ]
+}

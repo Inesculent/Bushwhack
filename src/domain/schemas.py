@@ -432,5 +432,111 @@ class StructuralTopologySummary(BaseModel):
     config: Dict[str, Any] = Field(default_factory=dict)
 
 
+# --- Phase 2: semantic bubble-up ---
 
+
+class SymbolSemanticSummary(BaseModel):
+    symbol_node_id: str
+    purpose: str
+    rationale: Optional[str] = None
+    confidence: float = Field(ge=0.0, le=1.0)
+
+
+class FileSemanticSummary(BaseModel):
+    file_node_id: str
+    purpose: str
+    key_symbols: List[str] = Field(default_factory=list)
+    confidence: float = Field(ge=0.0, le=1.0)
+
+
+class UnverifiedCallTarget(BaseModel):
+    source_symbol_id: str
+    target_name: str
+    source_community_id: int
+    context_hint: str = ""
+    resolved: bool = False
+    resolved_target_id: Optional[str] = None
+    resolution_summary: Optional[str] = None
+
+
+class CommunitySemanticSummary(BaseModel):
+    community_id: int
+    label: str
+    purpose: str
+    file_summaries: List[FileSemanticSummary] = Field(default_factory=list)
+    symbol_summaries: List[SymbolSemanticSummary] = Field(default_factory=list)
+    unverified_calls: List[UnverifiedCallTarget] = Field(default_factory=list)
+    cross_community_dependencies: List[int] = Field(default_factory=list)
+    confidence: float = Field(ge=0.0, le=1.0)
+
+
+KnowledgeGapType = Literal["isolated_symbol", "low_cohesion", "ambiguous_heavy", "extraction_gap", "unverified_call"]
+
+
+class KnowledgeGap(BaseModel):
+    gap_type: KnowledgeGapType
+    description: str
+    affected_node_ids: List[str] = Field(default_factory=list)
+    community_id: Optional[int] = None
+    severity: Literal["low", "medium", "high"] = "medium"
+
+
+class SnapshotDiagnostics(BaseModel):
+    god_nodes: List[Dict[str, Any]] = Field(default_factory=list)
+    bridge_nodes: List[Dict[str, Any]] = Field(default_factory=list)
+    cross_community_edges: List[Dict[str, Any]] = Field(default_factory=list)
+    knowledge_gaps: List[KnowledgeGap] = Field(default_factory=list)
+
+
+ExplorationSnapshotStatus = Literal["exploration_complete", "partial", "failed"]
+
+
+class ExplorationSnapshot(BaseModel):
+    snapshot_id: str
+    run_id: str
+    snapshot_root: str
+    status: ExplorationSnapshotStatus
+    community_count: int = Field(ge=0)
+    total_nodes: int = Field(ge=0)
+    total_edges: int = Field(ge=0)
+    unresolved_call_count: int = Field(ge=0)
+    extraction_gap_count: int = Field(ge=0)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class CommunityWorkItem(BaseModel):
+    """Payload for ``Send()`` to ``community_semantic_agent``."""
+
+    community_id: int
+    file_paths: List[str] = Field(default_factory=list)
+    symbol_context_lines: List[str] = Field(
+        default_factory=list,
+        description="Pre-rendered lines: node id, name, signature, truncated body.",
+    )
+    outbound_cross_community_targets: List[str] = Field(
+        default_factory=list,
+        description="Callee symbol names referenced across community boundaries (no summaries).",
+    )
+    target_communities_hint: List[int] = Field(
+        default_factory=list,
+        description="Community ids of outbound cross-boundary targets (same order as targets when possible).",
+    )
+
+
+class CommunityAgentOutput(BaseModel):
+    """Structured LLM output for one community."""
+
+    summary: CommunitySemanticSummary
+    warnings: List[str] = Field(default_factory=list)
+
+
+class GlobalSemanticSynthesisOutput(BaseModel):
+    global_summary: str = Field(default="", description="Repository-level synthesis from community summaries.")
+
+
+class ResolverSymbolSummaryOutput(BaseModel):
+    """One-shot summary when resolving a symbol via AST in the resolver tier."""
+
+    symbol_node_id: str
+    one_line_summary: str = Field(default="", description="Single-sentence purpose summary.")
 

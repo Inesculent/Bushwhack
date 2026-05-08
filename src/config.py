@@ -116,10 +116,16 @@ class Settings(BaseSettings):
 		description="API key placeholder for OpenAI-compatible local model servers.",
 	)
 	local_llm_timeout_seconds: int = Field(
-		default=180,
+		default=600,
 		ge=1,
-		le=600,
+		le=3600,
 		description="Request timeout for OpenAI-compatible local model servers.",
+	)
+	local_llm_status_timeout_seconds: float = Field(
+		default=5.0,
+		ge=0.5,
+		le=60.0,
+		description="Short timeout for local model server health/status probes.",
 	)
 	local_llm_max_retries: int = Field(
 		default=0,
@@ -212,6 +218,115 @@ class Settings(BaseSettings):
 		default=8_000,
 		ge=500,
 		description="Truncate inlined CandidateFinding JSON per digest shard prompt.",
+	)
+	reviewer_reflection_retry_backoff_seconds: float = Field(
+		default=5.0,
+		ge=0.0,
+		le=120.0,
+		description="Base backoff between adversarial reflection retries when the local LLM server is still active.",
+	)
+	reviewer_reflection_timeout_patience_seconds: int = Field(
+		default=1800,
+		ge=0,
+		le=7200,
+		description=(
+			"Extra wall-clock budget for adversarial reflectors to keep waiting/retrying local LLM timeouts "
+			"while the model server still answers status probes."
+		),
+	)
+
+	# Phase 2 semantic enrichment + snapshot layout
+	snapshot_base_path: Path = Field(
+		default=Path("./bushwhack_runs"),
+		description="Root directory for exploration snapshot disk trees.",
+	)
+	snapshot_keep_full_graph: bool = Field(
+		default=True,
+		description="Keep graph/full_graph.json after snapshot_pin (False deletes after pin).",
+	)
+	semantic_enrichment_enabled: bool = Field(
+		default=True,
+		description="Run Phase 2 semantic bubble-up after structural extraction when topology exists.",
+	)
+	semantic_max_tokens_per_community: int = Field(
+		default=8000,
+		ge=500,
+		description="Approximate max prompt characters budget per community agent (rough token proxy).",
+	)
+	semantic_max_files_per_agent: int = Field(
+		default=20,
+		ge=1,
+		description="Max file nodes to include per community work item.",
+	)
+	semantic_max_symbols_per_agent: int = Field(
+		default=50,
+		ge=1,
+		description="Max symbol nodes to include per community work item.",
+	)
+	semantic_max_parallel_agents: int = Field(
+		default=4,
+		ge=1,
+		le=64,
+		description="Max Phase 2 community semantic agents allowed to call the LLM concurrently.",
+	)
+	semantic_agent_max_retries: int = Field(
+		default=2,
+		ge=0,
+		le=10,
+		description="Retries per community semantic LLM call before emitting a degraded summary.",
+	)
+	semantic_agent_retry_backoff_seconds: float = Field(
+		default=5.0,
+		ge=0.0,
+		le=120.0,
+		description="Base backoff between community semantic LLM retries.",
+	)
+	semantic_agent_timeout_patience_seconds: int = Field(
+		default=1800,
+		ge=0,
+		le=7200,
+		description=(
+			"Extra wall-clock budget for semantic agents to keep waiting/retrying local LLM timeouts "
+			"while the model server still answers status probes."
+		),
+	)
+	unverified_call_max_resolution_rounds: int = Field(
+		default=3,
+		ge=1,
+		le=10,
+		description="Max resolver self-loop rounds for newly surfaced unverified targets.",
+	)
+	semantic_model_key: str = Field(
+		default="qwen2.5-coder-32b",
+		description=(
+			"Models factory key for community semantic agents (same registry as reviewer_worker_model_key). "
+			"Defaults to the local Qwen stack; set e.g. gemini-pro only if langchain-google-genai is installed."
+		),
+	)
+	semantic_merge_model_key: str = Field(
+		default="qwen2.5-coder-32b",
+		description=(
+			"Models factory key for global semantic synthesis at merge (same as Models.DEFAULT_ROLE_MODELS['synthesizer']). "
+			"Defaults to local Qwen; override with REVIEW_SEMANTIC_MERGE_MODEL_KEY."
+		),
+	)
+	skip_trivial_communities: bool = Field(
+		default=True,
+		description="Synthesize trivial __init__-only communities without LLM.",
+	)
+	diagnostics_god_nodes_top_n: int = Field(default=10, ge=1, le=100)
+	diagnostics_bridge_nodes_top_n: int = Field(default=5, ge=1, le=50)
+	diagnostics_cross_community_edges_top_n: int = Field(default=10, ge=1, le=200)
+	diagnostics_low_cohesion_threshold: float = Field(
+		default=0.15,
+		ge=0.0,
+		le=1.0,
+		description="Communities below this cohesion with enough nodes are flagged as knowledge gaps.",
+	)
+	semantic_snapshot_pointer_ttl_seconds: int = Field(
+		default=86400,
+		ge=60,
+		description="TTL for Redis snapshot pointer keys (separate from checkpoint TTL).",
 	)
 
 	def get_ast_mcp_cwd(self) -> str:

@@ -2,9 +2,11 @@ from typing import TypedDict, List, Annotated, Dict, Any, Literal, Required, Not
 import operator
 from .schemas import (
     CandidateFinding,
+    CommunitySemanticSummary,
     CritiqueRevisionDigest,
     FocusedContextRequest,
     FocusedContextResult,
+    KnowledgeGap,
     PreflightParseIssue,
     PreflightSummary,
     ReflectionReport,
@@ -15,6 +17,7 @@ from .schemas import (
     StructuralExtractionGap,
     StructuralTopologySummary,
     TaskStatus,
+    UnverifiedCallTarget,
 )
 
 
@@ -30,6 +33,16 @@ def merge_graph_metadata(
         else:
             merged[key] = val
     return merged
+
+
+def replace_list_reducer(
+    left: List[Any] | None,
+    right: List[Any] | None,
+) -> List[Any]:
+    """Replace list when the incoming update includes the key (even if empty)."""
+    if right is not None:
+        return list(right)
+    return list(left or [])
 
 
 class GraphState(TypedDict, total=False):
@@ -53,6 +66,18 @@ class GraphState(TypedDict, total=False):
     structural_graph_node_link: NotRequired[Dict[str, Any]]
     structural_topology: NotRequired[StructuralTopologySummary]
     structural_extraction_gaps: Annotated[List[StructuralExtractionGap], operator.add]
+
+    # Phase 2 semantic enrichment (transient until snapshot_pin externalizes)
+    community_summaries: Annotated[List[CommunitySemanticSummary], operator.add]
+    unverified_call_targets: Annotated[List[UnverifiedCallTarget], operator.add]
+    resolved_unverified_calls: Annotated[List[UnverifiedCallTarget], replace_list_reducer]
+    knowledge_gaps: Annotated[List[KnowledgeGap], operator.add]
+    global_summary: NotRequired[str]
+    snapshot_root: NotRequired[str]
+    snapshot_id: NotRequired[str]
+    semantic_community_work_item: NotRequired[Dict[str, Any]]
+    semantic_community_work_queue: Annotated[List[Dict[str, Any]], replace_list_reducer]
+    semantic_dispatch_cursor: NotRequired[int]
 
     # Task state: canonical task payloads + lifecycle status by task id.
     # Dict union reducers support compact per-task updates that are cache-friendly.

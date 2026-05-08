@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import pytest
 
-from src.config import get_settings
+from src.config import Settings, get_settings
 from src.domain.schemas import (
     CandidateFinding,
     CritiqueRevisionDigest,
     FocusedContextRequest,
     FocusedContextResult,
+    ReflectionBatchOutput,
     ReflectionReport,
     ReviewFinding,
     SearchResult,
@@ -278,6 +279,50 @@ def test_adversarial_cleanup_drops_when_routed_expert_says_not_applicable() -> N
     ] == "security"
 
 
+def test_adversarial_cleanup_drops_when_routed_expert_times_out() -> None:
+    node = make_adversarial_cleanup_node()
+    cand = CandidateFinding(
+        candidate_id="review-logic-1",
+        patch_task_id="review-logic",
+        file_path="src/x.py",
+        line_start=10,
+        line_end=12,
+        content="All-groups extraction can return the wrong match data.",
+        claim_type="defect",
+        failure_mode="The changed code mishandles regex group extraction.",
+        evidence_summary="The candidate was routed to both logic and general reflectors.",
+        suspected_category="logic",
+        reflection_specialties=["logic", "general"],
+        recommendation="Validate the group extraction branch with patterns that have no captures.",
+    )
+    reports = [
+        ReflectionReport(
+            candidate_id=cand.candidate_id,
+            reflector_specialty="general",
+            verdict="accept",
+            rationale="The recommendation is readable and actionable.",
+        )
+    ]
+
+    out = node(
+        {
+            "run_id": "t",
+            "candidate_findings": [cand],
+            "reflection_reports": reports,
+            "metadata": {
+                "adversarial_reflection": {
+                    "warnings": ["reflection_failed:logic:APITimeoutError: Request timed out."]
+                }
+            },
+        }
+    )
+
+    assert out["findings"] == []
+    cleanup = out["metadata"]["adversarial_cleanup"]
+    assert cleanup["missing_required_reflections"] == {cand.candidate_id: ["logic"]}
+    assert cleanup["candidate_lifecycle"][cand.candidate_id]["reason"] == "missing_required_reflection"
+
+
 def test_adversarial_cleanup_drops_positive_observation() -> None:
     node = make_adversarial_cleanup_node()
     cand = CandidateFinding(
@@ -385,6 +430,66 @@ def test_reflection_routes_candidates_only_to_declared_domains() -> None:
         "general": 1,
     }
     assert out["metadata"]["adversarial_reflection"]["total_routed_candidate_reviews"] == 2
+
+
+def test_reflection_retries_active_local_server_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    settings = Settings(
+        redis_enabled=False,
+        reviewer_reflection_retry_backoff_seconds=0,
+        reviewer_reflection_timeout_patience_seconds=60,
+    )
+    calls = {"invoke": 0}
+
+    class FakeLlm:
+        def invoke(self, _prompt: str) -> ReflectionBatchOutput:
+            calls["invoke"] += 1
+            if calls["invoke"] == 1:
+                raise TimeoutError("Request timed out.")
+            return ReflectionBatchOutput(
+                reports=[
+                    ReflectionReport(
+                        candidate_id="review-logic-1",
+                        reflector_specialty="logic",
+                        verdict="accept",
+                        rationale="The logic claim is valid.",
+                    )
+                ]
+            )
+
+    monkeypatch.setattr(
+        "src.orchestration.nodes.application.reflection.Models.worker",
+        lambda *_args, **_kwargs: FakeLlm(),
+    )
+    monkeypatch.setattr(
+        "src.orchestration.nodes.application.reflection.local_llm_server_active",
+        lambda _settings: (True, "status ok"),
+    )
+
+    node = make_adversarial_reflection_node(settings=settings)
+    out = node(
+        {
+            "run_id": "t",
+            "candidate_findings": [
+                CandidateFinding(
+                    candidate_id="review-logic-1",
+                    patch_task_id="review-logic",
+                    file_path="src/x.py",
+                    line_start=1,
+                    line_end=2,
+                    content="Logic issue",
+                    suspected_category="logic",
+                    reflection_specialties=["logic"],
+                )
+            ],
+            "metadata": {},
+        }
+    )
+
+    assert calls["invoke"] == 2
+    assert len(out["reflection_reports"]) == 1
+    assert out["metadata"]["adversarial_reflection"]["warnings"] == [
+        "reflection_timeout_server_active:logic"
+    ]
 
 
 def test_plan_critique_revision_shards_splits_when_over_budget() -> None:

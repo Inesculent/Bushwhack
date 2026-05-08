@@ -143,6 +143,7 @@ def make_adversarial_cleanup_node():
         dropped: List[str] = []
         ignored_rejections: Dict[str, List[str]] = {}
         ignored_context_requests: Dict[str, List[str]] = {}
+        missing_required_reflections: Dict[str, List[str]] = {}
         misrouted_candidates: Dict[str, List[Dict[str, str]]] = {}
         lifecycle: Dict[str, Dict[str, Any]] = {}
 
@@ -170,6 +171,16 @@ def make_adversarial_cleanup_node():
 
             category = _final_category(candidate, cand_reports)
             relevant_reflectors = _relevant_reflectors(candidate, category)
+            missing_relevant = relevant_reflectors - specialties
+            if missing_relevant:
+                missing_required_reflections[candidate.candidate_id] = sorted(missing_relevant)
+                drop(
+                    candidate,
+                    "missing_required_reflection",
+                    {"expected_reflectors": sorted(relevant_reflectors)},
+                )
+                continue
+
             relevant_reports = [
                 report for report in cand_reports if report.reflector_specialty in relevant_reflectors
             ]
@@ -308,6 +319,7 @@ def make_adversarial_cleanup_node():
             "dropped_candidate_ids": dropped,
             "ignored_off_domain_rejections": ignored_rejections,
             "ignored_off_domain_context_requests": ignored_context_requests,
+            "missing_required_reflections": missing_required_reflections,
             "misrouted_candidate_ids": misrouted_candidates,
             "candidate_lifecycle": lifecycle,
         }

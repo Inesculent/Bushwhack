@@ -1,0 +1,43 @@
+{
+  "community_id": 23,
+  "edges": [
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:comfy_extras/nodes_torch_compile.py",
+      "source_file": "comfy_extras/nodes_torch_compile.py",
+      "source_location": "L?",
+      "source_ref": "comfy_extras/nodes_torch_compile.py",
+      "target": "symbol:251191f456c336e0:TorchCompileModel",
+      "weight": 1.0
+    }
+  ],
+  "nodes": [
+    {
+      "community_id": 23,
+      "file_path": "comfy_extras/nodes_torch_compile.py",
+      "id": "symbol:251191f456c336e0:TorchCompileModel",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "comfy_extras/nodes_torch_compile.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "semantic_confidence": 1.0,
+      "semantic_purpose": "A class designed to encapsulate the process of compiling PyTorch models using torch.compile.",
+      "semantic_rationale": "The class name suggests it is related to model compilation, and given the file context, it likely involves torch.compile.",
+      "signature": "class TorchCompileModel:",
+      "symbol_name": "TorchCompileModel",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 23,
+      "file_path": "comfy_extras/nodes_torch_compile.py",
+      "id": "file:comfy_extras/nodes_torch_compile.py",
+      "language": "Python",
+      "node_type": "file"
+    }
+  ]
+}

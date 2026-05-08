@@ -1,0 +1,198 @@
+# Community 8: Diffusion Sampling
+
+**Purpose:** Implement various diffusion sampling techniques and utility functions.
+
+## Files
+- `comfy/k_diffusion/deis.py`: Implement Denoising Diffusion Implicit Models (DEIS) sampling techniques. (confidence 1.00)
+- `comfy/k_diffusion/sampling.py`: Provide general sampling methods used in diffusion models. (confidence 1.00)
+- `comfy/k_diffusion/utils.py`: Utility functions for diffusion models. (confidence 1.00)
+- `comfy/ldm/audio/autoencoder.py`: Define an audio autoencoder model based on diffusion principles. (confidence 1.00)
+- `comfy/model_sampling.py`: Define classes and functions for different types of model sampling in diffusion models. (confidence 1.00)
+- `comfy/samplers.py`: Define sampler classes used in diffusion models. (confidence 1.00)
+- `comfy_extras/nodes_differential_diffusion.py`: Provide additional nodes for differential diffusion processes. (confidence 0.50)
+- `comfy_extras/nodes_model_advanced.py`: Provide advanced nodes for handling diffusion models. (confidence 0.50)
+
+## Symbols
+- `symbol:0293a35852276b74:ModelSamplingSD3`: Class representing a specific type of diffusion model sampling strategy. (confidence 1.00)
+  - _Rationale:_ Inherits from a base sampling class and implements its own unique sampling method.
+- `symbol:035bec0355613b75:resolve_areas_and_cond_masks_multidim`: Resolve area and conditional masks for multidimensional inputs. (confidence 1.00)
+  - _Rationale:_ Processes conditions and dimensions to generate appropriate masks for sampling.
+- `symbol:04aa82ec2ada334c:calculate_sigmas`: Calculate sigma values for the sampling process. (confidence 1.00)
+  - _Rationale:_ Uses the scheduler name and number of steps to compute sigma values.
+- `symbol:062c1ec21e38b6ab:simple_scheduler`: Implement a simple scheduling mechanism for sampling. (confidence 1.00)
+  - _Rationale:_ Provides basic scheduling logic for diffusion sampling.
+- `symbol:0699b24cadc24e3f:AudioOobleckVAE`: Define an audio autoencoder model. (confidence 1.00)
+  - _Rationale:_ Extends nn.Module to create a model suitable for encoding and decoding audio data using diffusion principles.
+- `symbol:06b1e5dd67eff966:get_mask_aabb`: Calculate the axis-aligned bounding box for a given mask. (confidence 1.00)
+  - _Rationale:_ Determines the smallest box that completely encloses the mask.
+- `symbol:0703a444dca94fc1:get_sigmas_polyexponential`: Compute sigma values using a polyexponential schedule. (confidence 1.00)
+  - _Rationale:_ Generates sigma values based on a polyexponential distribution.
+- `symbol:09d2d9b5e2c76da6:calculate_start_end_timesteps`: Determine start and end timesteps for the sampling process. (confidence 1.00)
+  - _Rationale:_ Computes the starting and ending timesteps based on the model and conditions.
+- `symbol:0a88dfb2d7d0ded0:append_zero`: Append a zero value to a tensor. (confidence 1.00)
+  - _Rationale:_ Extends a tensor by adding a zero at the end.
+- `symbol:0b10d644130656bd:download_file`: Download a file from a URL with optional integrity check. (confidence 1.00)
+  - _Rationale:_ Handles downloading files and verifying their integrity using a digest.
+- `symbol:0ff30fd3dacc2512:get_sigmas_vp`: Compute sigma values using a VP (Variational Path) schedule. (confidence 1.00)
+  - _Rationale:_ Generates sigma values based on a VP distribution.
+- `symbol:1093882007103f7f:ddim_scheduler`: Implement a DDIM (Denoising Diffusion Implicit Models) scheduling mechanism. (confidence 1.00)
+  - _Rationale:_ Provides scheduling logic specific to DDIM.
+- `symbol:1285006568b966e7:t2alpha_fn`: Compute alpha values based on beta parameters and timestep. (confidence 1.00)
+  - _Rationale:_ Calculates alpha values for a given timestep using beta parameters.
+- `symbol:12af667726a3b379:get_area_and_mult`: Get area and multiplier for conditions and input data. (confidence 1.00)
+  - _Rationale:_ Extracts area and multiplier information from conditions and input data.
+- `symbol:14764c51a30bd3ba:ModelSamplingLTXV`: Class representing another specific type of diffusion model sampling strategy. (confidence 1.00)
+  - _Rationale:_ Inherits from a base sampling class and implements its own unique sampling method.
+- `symbol:14ef4b30816a1802:ModelSamplingContinuousV`: Class representing a continuous version of diffusion model sampling. (confidence 1.00)
+  - _Rationale:_ Extends a discrete sampling class to implement continuous sampling.
+- `symbol:15769ce0fbbf924b:default_noise_sampler`: Provide a default noise sampling function. (confidence 1.00)
+  - _Rationale:_ Generates noise samples for the diffusion process.
+- `symbol:1d21c7ee5c81e04b:normal_scheduler`: Implement a normal scheduling mechanism for sampling. (confidence 1.00)
+  - _Rationale:_ Provides scheduling logic using a normal distribution.
+- `symbol:1de5d05606b13429:rescale_zero_terminal_snr_sigmas`: Rescale sigma values based on zero terminal SNR. (confidence 1.00)
+  - _Rationale:_ Adjusts sigma values to account for zero terminal signal-to-noise ratio.
+- `symbol:1dea1262770cfc03:time_snr_shift`: Shift time based on SNR (Signal-to-Noise Ratio). (confidence 1.00)
+  - _Rationale:_ Adjusts the timestep based on the signal-to-noise ratio.
+- `symbol:1e8ee8f81d84e65e:ModelSamplingFlux`: Class representing a flux-based diffusion model sampling strategy. (confidence 1.00)
+  - _Rationale:_ Inherits from a base sampling class and implements its own unique sampling method.
+- `symbol:23d353465ee0340f:sample_er_sde`: Sample from an Euler-Maruyama SDE (Stochastic Differential Equation). (confidence 1.00)
+  - _Rationale:_ Implements sampling from an SDE using the Euler-Maruyama method.
+- `symbol:25d03548e37b33ee:IMG_TO_IMG`: Class representing an image-to-image transformation model. (confidence 1.00)
+  - _Rationale:_ Extends a base class to handle image-to-image transformations using diffusion principles.
+- `symbol:27e1344a2de12935:ModelSamplingDiscreteEDM`: Class representing a discrete version of diffusion model sampling. (confidence 1.00)
+  - _Rationale:_ Extends a base sampling class to implement discrete sampling.
+- `symbol:294f5a140f482495:KSampler`: Class representing a diffusion sampling algorithm. (confidence 1.00)
+  - _Rationale:_ Implements a general-purpose sampling algorithm for diffusion models.
+- `symbol:2a1f6e9e0fc56a1b:n_params`: Count the number of parameters in a module. (confidence 1.00)
+  - _Rationale:_ Calculates the total number of parameters in a neural network module.
+- `symbol:2a540e3827c60f28:hf_datasets_augs_helper`: Helper function for augmenting datasets using Hugging Face datasets. (confidence 1.00)
+  - _Rationale:_ Applies transformations to dataset examples using Hugging Face's dataset utilities.
+- `symbol:2c600f1743e06a07:sample_gradient_estimation`: Estimate gradients for sampling. (confidence 1.00)
+  - _Rationale:_ Computes gradient estimates for use in sampling algorithms.
+- `symbol:2cebfeb991c97e1b:DecoderBlock`: Define a decoder block for neural networks. (confidence 1.00)
+  - _Rationale:_ Extends nn.Module to create a reusable decoder block component.
+- `symbol:2d3cbef0ddff77da:cond_cat`: Concatenate condition tensors. (confidence 1.00)
+  - _Rationale:_ Combines multiple condition tensors into a single tensor.
+- `symbol:2ec366fa935abc41:cal_poly`: Calculate polynomial values. (confidence 1.00)
+  - _Rationale:_ Evaluates polynomial expressions based on given parameters.
+- `symbol:31357a887e924341:append_dims`: Append dimensions to a tensor. (confidence 1.00)
+  - _Rationale:_ Extends a tensor by adding specified dimensions.
+- `symbol:315a2c66c40fbc96:sample_dpmpp_3m_sde`: Sample from a DPM++ (Denoising Probabilistic Model) SDE using a specific method. (confidence 1.00)
+  - _Rationale:_ Implements sampling from an SDE using the DPM++ 3M method.
+- `symbol:31a4edac5efa421e:add_area_dims`: Add dimensions to an area tensor. (confidence 1.00)
+  - _Rationale:_ Extends an area tensor by adding specified dimensions.
+- `symbol:31ce966bdc2598d8:res_multistep`: Perform multi-step residual sampling. (confidence 1.00)
+  - _Rationale:_ Implements a multi-step residual sampling algorithm.
+- `symbol:3746f6d24c3f1090:rand_log_logistic`: Generate random samples from a log-logistic distribution. (confidence 1.00)
+  - _Rationale:_ Produces random numbers following a log-logistic distribution.
+- `symbol:39d870d4b2e88925:generic_step_sampler`: Implement a generic step-wise sampling mechanism. (confidence 1.00)
+  - _Rationale:_ Provides a flexible sampling algorithm that can be customized with different step functions.
+- `symbol:3dd484bb539ff6d6:sample_ipndm_v`: Sample from an IPN-DM (Implicit Probabilistic Neural Diffusion Model) using a specific method. (confidence 1.00)
+  - _Rationale:_ Implements sampling from an IPN-DM using the V method.
+- `symbol:404722d189a7db0a:encode_model_conds`: Encode model conditions. (confidence 1.00)
+  - _Rationale:_ Transforms model conditions into a format suitable for the diffusion process.
+- `symbol:40c49c2998f56d68:sample_dpm_2_ancestral`: Sample from a DPM (Denoising Probabilistic Model) using the ancestral sampling method. (confidence 1.00)
+  - _Rationale:_ Implements sampling from a DPM using the ancestral sampling method.
+- `symbol:424153df65889d03:ExponentialLR`: Define an exponential learning rate scheduler. (confidence 1.00)
+  - _Rationale:_ Extends a base scheduler class to implement an exponential learning rate schedule.
+- `symbol:47047c0a3dc6054b:StableCascadeSampling`: Class representing a stable cascade sampling strategy. (confidence 1.00)
+  - _Rationale:_ Extends a discrete sampling class to implement a stable cascade sampling method.
+- `symbol:47557cd2cca53085:get_sigmas_karras`: Compute sigma values using a Karras schedule. (confidence 1.00)
+  - _Rationale:_ Generates sigma values based on a Karras distribution.
+- `symbol:49a0aab6c57e137a:sample_dpm_2_ancestral_RF`: Sample from a DPM using the ancestral sampling method with RF (Randomized Filtering). (confidence 1.00)
+  - _Rationale:_ Implements sampling from a DPM using the ancestral sampling method with randomized filtering.
+- `symbol:4a96ad2616cb5826:sample_dpm_fast`: Sample from a DPM using a fast method. (confidence 1.00)
+  - _Rationale:_ Implements a fast sampling algorithm for DPM.
+- `symbol:4bc21c865817cdc4:ResidualUnit`: Define a residual unit for neural networks. (confidence 1.00)
+  - _Rationale:_ Extends nn.Module to create a reusable residual unit component.
+- `symbol:4df84ee7fb017d56:PIDStepSizeController`: Define a PID controller for step size adjustment. (confidence 1.00)
+  - _Rationale:_ Controls the step size in iterative algorithms using a PID control strategy.
+- `symbol:50406c0653047faa:set_model_options_post_cfg_function`: Set a post-CFG (Conditional Gradient Flow) function for model options. (confidence 1.00)
+  - _Rationale:_ Configures model options with a post-CFG function for additional processing.
+- `symbol:50d1fd572b59452e:cond_equal_size`: Check if two condition tensors have equal size. (confidence 1.00)
+  - _Rationale:_ Compares the sizes of two condition tensors to ensure they match.
+- `symbol:50f6a6d5d5757e04:process_conds`: Process conditions for the diffusion model. (confidence 1.00)
+  - _Rationale:_ Prepares conditions for use in the diffusion model by applying necessary transformations.
+
+## Cross-community dependencies
+0, 1, 2, 3, 4, 5, 6, 7, 9, 12
+
+## Unverified / resolved calls
+- unresolved: `AbstractLowScaleModel` from `symbol:0699b24cadc24e3f:AudioOobleckVAE` — Inheritance or usage within the class definition.
+- resolved: `exists` from `symbol:035bec0355613b75:resolve_areas_and_cond_masks_multidim` — File operation or condition check.
+  - Checks if a variable exists. (Function definition checks for existence of a variable, possibly used for validation.)
+- resolved: `exists` from `symbol:06b1e5dd67eff966:get_mask_aabb` — File operation or condition check.
+  - Checks if a variable exists. (Function definition checks for existence of a variable, possibly used for validation.)
+- resolved: `exists` from `symbol:0a88dfb2d7d0ded0:append_zero` — File operation or condition check.
+  - Checks if a variable exists. (Function definition checks for existence of a variable, possibly used for validation.)
+- resolved: `exists` from `symbol:0b10d644130656bd:download_file` — File operation or condition check.
+  - Checks if a variable exists. (Function definition checks for existence of a variable, possibly used for validation.)
+- resolved: `exists` from `symbol:12af667726a3b379:get_area_and_mult` — File operation or condition check.
+  - Checks if a variable exists. (Function definition checks for existence of a variable, possibly used for validation.)
+- resolved: `exists` from `symbol:2a1f6e9e0fc56a1b:n_params` — File operation or condition check.
+  - Checks if a variable exists. (Function definition checks for existence of a variable, possibly used for validation.)
+- resolved: `exists` from `symbol:2a540e3827c60f28:hf_datasets_augs_helper` — File operation or condition check.
+  - Checks if a variable exists. (Function definition checks for existence of a variable, possibly used for validation.)
+- resolved: `exists` from `symbol:2d3cbef0ddff77da:cond_cat` — File operation or condition check.
+  - Checks if a variable exists. (Function definition checks for existence of a variable, possibly used for validation.)
+- resolved: `exists` from `symbol:31357a887e924341:append_dims` — File operation or condition check.
+  - Checks if a variable exists. (Function definition checks for existence of a variable, possibly used for validation.)
+- resolved: `exists` from `symbol:31a4edac5efa421e:add_area_dims` — File operation or condition check.
+  - Checks if a variable exists. (Function definition checks for existence of a variable, possibly used for validation.)
+- resolved: `exists` from `symbol:3746f6d24c3f1090:rand_log_logistic` — File operation or condition check.
+  - Checks if a variable exists. (Function definition checks for existence of a variable, possibly used for validation.)
+- resolved: `exists` from `symbol:404722d189a7db0a:encode_model_conds` — File operation or condition check.
+  - Checks if a variable exists. (Function definition checks for existence of a variable, possibly used for validation.)
+- resolved: `exists` from `symbol:424153df65889d03:ExponentialLR` — File operation or condition check.
+  - Checks if a variable exists. (Function definition checks for existence of a variable, possibly used for validation.)
+- resolved: `exists` from `symbol:4df84ee7fb017d56:PIDStepSizeController` — File operation or condition check.
+  - Checks if a variable exists. (Function definition checks for existence of a variable, possibly used for validation.)
+- resolved: `exists` from `symbol:50406c0653047faa:set_model_options_post_cfg_function` — File operation or condition check.
+  - Checks if a variable exists. (Function definition checks for existence of a variable, possibly used for validation.)
+- resolved: `exists` from `symbol:50d1fd572b59452e:cond_equal_size` — File operation or condition check.
+  - Checks if a variable exists. (Function definition checks for existence of a variable, possibly used for validation.)
+- resolved: `exists` from `symbol:50f6a6d5d5757e04:process_conds` — File operation or condition check.
+  - Checks if a variable exists. (Function definition checks for existence of a variable, possibly used for validation.)
+- unresolved: `ExponentialScheduler` from `symbol:062c1ec21e38b6ab:simple_scheduler` — Possible instantiation or usage.
+- unresolved: `ExponentialScheduler` from `symbol:1093882007103f7f:ddim_scheduler` — Possible instantiation or usage.
+- unresolved: `ExponentialScheduler` from `symbol:1d21c7ee5c81e04b:normal_scheduler` — Possible instantiation or usage.
+- unresolved: `ExponentialScheduler` from `symbol:23d353465ee0340f:sample_er_sde` — Possible instantiation or usage.
+- unresolved: `ExponentialScheduler` from `symbol:2c600f1743e06a07:sample_gradient_estimation` — Possible instantiation or usage.
+- unresolved: `ExponentialScheduler` from `symbol:315a2c66c40fbc96:sample_dpmpp_3m_sde` — Possible instantiation or usage.
+- unresolved: `ExponentialScheduler` from `symbol:31ce966bdc2598d8:res_multistep` — Possible instantiation or usage.
+- unresolved: `ExponentialScheduler` from `symbol:39d870d4b2e88925:generic_step_sampler` — Possible instantiation or usage.
+- unresolved: `ExponentialScheduler` from `symbol:3dd484bb539ff6d6:sample_ipndm_v` — Possible instantiation or usage.
+- unresolved: `ExponentialScheduler` from `symbol:40c49c2998f56d68:sample_dpm_2_ancestral` — Possible instantiation or usage.
+- unresolved: `ExponentialScheduler` from `symbol:49a0aab6c57e137a:sample_dpm_2_ancestral_RF` — Possible instantiation or usage.
+- unresolved: `ExponentialScheduler` from `symbol:4a96ad2616cb5826:sample_dpm_fast` — Possible instantiation or usage.
+- unresolved: `get_timestep_embedding` from `symbol:09d2d9b5e2c76da6:calculate_start_end_timesteps` — Possible embedding of timesteps.
+- resolved: `KSAMPLER` from `symbol:15769ce0fbbf924b:default_noise_sampler` — Possible instantiation or usage.
+  - Class representing a diffusion sampling algorithm. (Implements a general-purpose sampling algorithm for diffusion models.)
+- unresolved: `make_beta_schedule` from `symbol:0703a444dca94fc1:get_sigmas_polyexponential` — Possible generation of beta schedule.
+- unresolved: `make_beta_schedule` from `symbol:0ff30fd3dacc2512:get_sigmas_vp` — Possible generation of beta schedule.
+- unresolved: `make_beta_schedule` from `symbol:1285006568b966e7:t2alpha_fn` — Possible generation of beta schedule.
+- unresolved: `make_beta_schedule` from `symbol:1de5d05606b13429:rescale_zero_terminal_snr_sigmas` — Possible generation of beta schedule.
+- unresolved: `make_beta_schedule` from `symbol:1dea1262770cfc03:time_snr_shift` — Possible generation of beta schedule.
+- unresolved: `make_beta_schedule` from `symbol:2ec366fa935abc41:cal_poly` — Possible generation of beta schedule.
+- unresolved: `make_beta_schedule` from `symbol:47557cd2cca53085:get_sigmas_karras` — Possible generation of beta schedule.
+- resolved: `ModelType` from `symbol:0293a35852276b74:ModelSamplingSD3` — Inheritance or usage within the class definition.
+  - An enumeration defining different types of models. (Used to categorize and handle different models within the system.)
+- resolved: `ModelType` from `symbol:14764c51a30bd3ba:ModelSamplingLTXV` — Inheritance or usage within the class definition.
+  - An enumeration defining different types of models. (Used to categorize and handle different models within the system.)
+- resolved: `ModelType` from `symbol:14ef4b30816a1802:ModelSamplingContinuousV` — Inheritance or usage within the class definition.
+  - An enumeration defining different types of models. (Used to categorize and handle different models within the system.)
+- resolved: `ModelType` from `symbol:1e8ee8f81d84e65e:ModelSamplingFlux` — Inheritance or usage within the class definition.
+  - An enumeration defining different types of models. (Used to categorize and handle different models within the system.)
+- resolved: `ModelType` from `symbol:25d03548e37b33ee:IMG_TO_IMG` — Inheritance or usage within the class definition.
+  - An enumeration defining different types of models. (Used to categorize and handle different models within the system.)
+- resolved: `ModelType` from `symbol:27e1344a2de12935:ModelSamplingDiscreteEDM` — Inheritance or usage within the class definition.
+  - An enumeration defining different types of models. (Used to categorize and handle different models within the system.)
+- resolved: `ModelType` from `symbol:2cebfeb991c97e1b:DecoderBlock` — Inheritance or usage within the class definition.
+  - An enumeration defining different types of models. (Used to categorize and handle different models within the system.)
+- resolved: `ModelType` from `symbol:47047c0a3dc6054b:StableCascadeSampling` — Inheritance or usage within the class definition.
+  - An enumeration defining different types of models. (Used to categorize and handle different models within the system.)
+- resolved: `ModelType` from `symbol:4bc21c865817cdc4:ResidualUnit` — Inheritance or usage within the class definition.
+  - An enumeration defining different types of models. (Used to categorize and handle different models within the system.)
+- unresolved: `Sampler` from `symbol:294f5a140f482495:KSampler` — Inheritance or usage within the class definition.
+- resolved: `timestep_embedding` from `symbol:04aa82ec2ada334c:calculate_sigmas` — Possible embedding of timesteps.
+  - Generate timestep embeddings. (Function to generate embeddings for timesteps, commonly used in diffusion models.)

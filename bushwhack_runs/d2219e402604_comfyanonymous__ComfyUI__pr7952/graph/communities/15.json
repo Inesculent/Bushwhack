@@ -1,0 +1,397 @@
+{
+  "community_id": 15,
+  "edges": [
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:tests/compare/conftest.py",
+      "source_file": "tests/compare/conftest.py",
+      "source_location": "L?",
+      "source_ref": "tests/compare/conftest.py",
+      "target": "symbol:12f4cef04e085fb6:gather_file_basenames",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:tests/compare/conftest.py",
+      "source_file": "tests/compare/conftest.py",
+      "source_location": "L?",
+      "source_ref": "tests/compare/conftest.py",
+      "target": "symbol:1fd1dea19f24a7d8:args_pytest",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:tests/compare/conftest.py",
+      "source_file": "tests/compare/conftest.py",
+      "source_location": "L?",
+      "source_ref": "tests/compare/conftest.py",
+      "target": "symbol:787524cba234dc81:pytest_addoption",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:tests/compare/conftest.py",
+      "source_file": "tests/compare/conftest.py",
+      "source_location": "L?",
+      "source_ref": "tests/compare/conftest.py",
+      "target": "symbol:fc7f60cd2283aea6:pytest_generate_tests",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:tests/compare/test_quality.py",
+      "source_file": "tests/compare/test_quality.py",
+      "source_location": "L?",
+      "source_ref": "tests/compare/test_quality.py",
+      "target": "symbol:0bb0f5df1a46c5d5:ssim_score",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:tests/compare/test_quality.py",
+      "source_file": "tests/compare/test_quality.py",
+      "source_location": "L?",
+      "source_ref": "tests/compare/test_quality.py",
+      "target": "symbol:b037b6ca0f82db32:TestCompareImageMetrics",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:tests/conftest.py",
+      "source_file": "tests/conftest.py",
+      "source_location": "L?",
+      "source_ref": "tests/conftest.py",
+      "target": "symbol:2ddb52baeae280a3:pytest_collection_modifyitems",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:tests/conftest.py",
+      "source_file": "tests/conftest.py",
+      "source_location": "L?",
+      "source_ref": "tests/conftest.py",
+      "target": "symbol:935feb59388b97b3:pytest_addoption",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:tests/conftest.py",
+      "source_file": "tests/conftest.py",
+      "source_location": "L?",
+      "source_ref": "tests/conftest.py",
+      "target": "symbol:9c8cbd294d2e7601:args_pytest",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:0bb0f5df1a46c5d5:ssim_score",
+      "source_file": "tests/compare/test_quality.py",
+      "source_location": "L?",
+      "source_ref": "tests/compare/test_quality.py",
+      "target": "symbol:0bb0f5df1a46c5d5:ssim_score",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:12f4cef04e085fb6:gather_file_basenames",
+      "source_file": "tests/compare/conftest.py",
+      "source_location": "L?",
+      "source_ref": "tests/compare/conftest.py",
+      "target": "symbol:12f4cef04e085fb6:gather_file_basenames",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:2ddb52baeae280a3:pytest_collection_modifyitems",
+      "source_file": "tests/conftest.py",
+      "source_location": "L?",
+      "source_ref": "tests/conftest.py",
+      "target": "symbol:2ddb52baeae280a3:pytest_collection_modifyitems",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:935feb59388b97b3:pytest_addoption",
+      "source_file": "tests/compare/conftest.py",
+      "source_location": "L?",
+      "source_ref": "tests/compare/conftest.py",
+      "target": "symbol:935feb59388b97b3:pytest_addoption",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:9c8cbd294d2e7601:args_pytest",
+      "source_file": "tests/compare/conftest.py",
+      "source_location": "L?",
+      "source_ref": "tests/compare/conftest.py",
+      "target": "symbol:9c8cbd294d2e7601:args_pytest",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:b037b6ca0f82db32:TestCompareImageMetrics",
+      "source_file": "tests/compare/test_quality.py",
+      "source_location": "L?",
+      "source_ref": "tests/compare/test_quality.py",
+      "target": "symbol:12f4cef04e085fb6:gather_file_basenames",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "references",
+      "provenance": "EXTRACTED",
+      "relation": "references",
+      "source": "symbol:b037b6ca0f82db32:TestCompareImageMetrics",
+      "source_file": "tests/compare/test_quality.py",
+      "source_location": "L?",
+      "source_ref": "tests/compare/test_quality.py",
+      "target": "symbol:9c8cbd294d2e7601:args_pytest",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:fc7f60cd2283aea6:pytest_generate_tests",
+      "source_file": "tests/compare/conftest.py",
+      "source_location": "L?",
+      "source_ref": "tests/compare/conftest.py",
+      "target": "symbol:12f4cef04e085fb6:gather_file_basenames",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:fc7f60cd2283aea6:pytest_generate_tests",
+      "source_file": "tests/compare/conftest.py",
+      "source_location": "L?",
+      "source_ref": "tests/compare/conftest.py",
+      "target": "symbol:fc7f60cd2283aea6:pytest_generate_tests",
+      "weight": 1.0
+    }
+  ],
+  "nodes": [
+    {
+      "community_id": 15,
+      "file_path": "tests/conftest.py",
+      "id": "symbol:2ddb52baeae280a3:pytest_collection_modifyitems",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "tests/conftest.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "semantic_confidence": 1.0,
+      "semantic_purpose": "Modify collected pytest test items.",
+      "semantic_rationale": "Function allows customization of collected test items before execution.",
+      "signature": "def pytest_collection_modifyitems(items):",
+      "symbol_name": "pytest_collection_modifyitems",
+      "symbol_type": "function"
+    },
+    {
+      "community_id": 15,
+      "file_path": "tests/compare/conftest.py",
+      "id": "file:tests/compare/conftest.py",
+      "language": "Python",
+      "node_type": "file"
+    },
+    {
+      "community_id": 15,
+      "file_path": "tests/compare/conftest.py",
+      "id": "symbol:12f4cef04e085fb6:gather_file_basenames",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "tests/compare/conftest.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "semantic_confidence": 0.8,
+      "semantic_purpose": "Collect base names of files in a specified directory.",
+      "semantic_rationale": "Function scans the given directory and returns a list of file base names without extensions.",
+      "signature": "def gather_file_basenames(directory: str):",
+      "symbol_name": "gather_file_basenames",
+      "symbol_type": "function"
+    },
+    {
+      "community_id": 15,
+      "file_path": "tests/conftest.py",
+      "id": "file:tests/conftest.py",
+      "language": "Python",
+      "node_type": "file"
+    },
+    {
+      "community_id": 15,
+      "file_path": "tests/compare/test_quality.py",
+      "id": "symbol:0bb0f5df1a46c5d5:ssim_score",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "tests/compare/test_quality.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "semantic_confidence": 1.0,
+      "semantic_purpose": "Compute Structural Similarity Index Measure (SSIM) between two images.",
+      "semantic_rationale": "Function takes two numpy arrays representing images as input and returns SSIM score and map.",
+      "signature": "def ssim_score(img0: np.ndarray, img1: np.ndarray) -> Tuple[float, np.ndarray]:",
+      "symbol_name": "ssim_score",
+      "symbol_type": "function"
+    },
+    {
+      "community_id": 15,
+      "file_path": "tests/conftest.py",
+      "id": "symbol:935feb59388b97b3:pytest_addoption",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "tests/conftest.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "semantic_confidence": 1.0,
+      "semantic_purpose": "Add custom options to pytest command-line interface.",
+      "semantic_rationale": "Function defines additional command-line options for pytest.",
+      "signature": "def pytest_addoption(parser):",
+      "symbol_name": "pytest_addoption",
+      "symbol_type": "function"
+    },
+    {
+      "community_id": 15,
+      "file_path": "tests/conftest.py",
+      "id": "symbol:9c8cbd294d2e7601:args_pytest",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "tests/conftest.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "semantic_confidence": 1.0,
+      "semantic_purpose": "Parse and set pytest configuration arguments.",
+      "semantic_rationale": "Function processes pytest configuration to extract and set specific command-line arguments.",
+      "signature": "def args_pytest(pytestconfig):",
+      "symbol_name": "args_pytest",
+      "symbol_type": "function"
+    },
+    {
+      "community_id": 15,
+      "file_path": "tests/compare/test_quality.py",
+      "id": "symbol:b037b6ca0f82db32:TestCompareImageMetrics",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "tests/compare/test_quality.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "semantic_confidence": 1.0,
+      "semantic_purpose": "Define test cases for comparing image metrics.",
+      "semantic_rationale": "Class contains methods that perform tests on image quality metrics.",
+      "signature": "class TestCompareImageMetrics:",
+      "symbol_name": "TestCompareImageMetrics",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 15,
+      "file_path": "tests/compare/conftest.py",
+      "id": "symbol:1fd1dea19f24a7d8:args_pytest",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "tests/compare/conftest.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "semantic_confidence": 1.0,
+      "semantic_purpose": "Parse and set pytest configuration arguments.",
+      "semantic_rationale": "Function processes pytest configuration to extract and set specific command-line arguments.",
+      "signature": "def args_pytest(pytestconfig):",
+      "symbol_name": "args_pytest",
+      "symbol_type": "function"
+    },
+    {
+      "community_id": 15,
+      "file_path": "tests/compare/conftest.py",
+      "id": "symbol:fc7f60cd2283aea6:pytest_generate_tests",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "tests/compare/conftest.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "semantic_confidence": 1.0,
+      "semantic_purpose": "Dynamically generate pytest test cases.",
+      "semantic_rationale": "Function is used to parametrize test cases based on external data sources or conditions.",
+      "signature": "def pytest_generate_tests(metafunc):",
+      "symbol_name": "pytest_generate_tests",
+      "symbol_type": "function"
+    },
+    {
+      "community_id": 15,
+      "file_path": "tests/compare/conftest.py",
+      "id": "symbol:787524cba234dc81:pytest_addoption",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "tests/compare/conftest.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "semantic_confidence": 1.0,
+      "semantic_purpose": "Add custom options to pytest command-line interface.",
+      "semantic_rationale": "Function defines additional command-line options for pytest.",
+      "signature": "def pytest_addoption(parser):",
+      "symbol_name": "pytest_addoption",
+      "symbol_type": "function"
+    },
+    {
+      "community_id": 15,
+      "file_path": "tests/compare/test_quality.py",
+      "id": "file:tests/compare/test_quality.py",
+      "language": "Python",
+      "node_type": "file"
+    }
+  ]
+}

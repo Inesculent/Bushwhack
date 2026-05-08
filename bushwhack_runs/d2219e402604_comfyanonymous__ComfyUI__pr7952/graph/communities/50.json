@@ -1,0 +1,13 @@
+{
+  "community_id": 50,
+  "edges": [],
+  "nodes": [
+    {
+      "community_id": 50,
+      "file_path": "tests/inference/testing_nodes/testing-pack/__init__.py",
+      "id": "file:tests/inference/testing_nodes/testing-pack/__init__.py",
+      "language": "Python",
+      "node_type": "file"
+    }
+  ]
+}

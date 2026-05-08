@@ -1,0 +1,142 @@
+{
+  "community_id": 14,
+  "edges": [
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:comfy/ldm/genmo/joint_model/layers.py",
+      "source_file": "comfy/ldm/genmo/joint_model/layers.py",
+      "source_location": "L?",
+      "source_ref": "comfy/ldm/genmo/joint_model/layers.py",
+      "target": "symbol:22900dac991a1a0f:_ntuple",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:comfy/ldm/genmo/joint_model/layers.py",
+      "source_file": "comfy/ldm/genmo/joint_model/layers.py",
+      "source_location": "L?",
+      "source_ref": "comfy/ldm/genmo/joint_model/layers.py",
+      "target": "symbol:3754d678f35f8d06:PatchEmbed",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:comfy/ldm/genmo/joint_model/layers.py",
+      "source_file": "comfy/ldm/genmo/joint_model/layers.py",
+      "source_location": "L?",
+      "source_ref": "comfy/ldm/genmo/joint_model/layers.py",
+      "target": "symbol:4433e27330de729a:TimestepEmbedder",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:comfy/ldm/genmo/joint_model/layers.py",
+      "source_file": "comfy/ldm/genmo/joint_model/layers.py",
+      "source_location": "L?",
+      "source_ref": "comfy/ldm/genmo/joint_model/layers.py",
+      "target": "symbol:9d58063cb87c2d70:FeedForward",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:22900dac991a1a0f:_ntuple",
+      "source_file": "comfy/ldm/genmo/joint_model/layers.py",
+      "source_location": "L?",
+      "source_ref": "comfy/ldm/genmo/joint_model/layers.py",
+      "target": "symbol:22900dac991a1a0f:_ntuple",
+      "weight": 1.0
+    }
+  ],
+  "nodes": [
+    {
+      "community_id": 14,
+      "file_path": "comfy/ldm/genmo/joint_model/layers.py",
+      "id": "symbol:9d58063cb87c2d70:FeedForward",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "comfy/ldm/genmo/joint_model/layers.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "semantic_confidence": 1.0,
+      "semantic_purpose": "Neural network layer implementing a feedforward neural network module.",
+      "semantic_rationale": "The FeedForward class inherits from nn.Module and likely implements a standard feedforward neural network layer with possibly non-linear activations.",
+      "signature": "class FeedForward(nn.Module):",
+      "symbol_name": "FeedForward",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 14,
+      "file_path": "comfy/ldm/genmo/joint_model/layers.py",
+      "id": "symbol:4433e27330de729a:TimestepEmbedder",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "comfy/ldm/genmo/joint_model/layers.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "semantic_confidence": 1.0,
+      "semantic_purpose": "Neural network layer to embed timestep information into a higher-dimensional space.",
+      "semantic_rationale": "The TimestepEmbedder class inherits from nn.Module and likely contains methods for processing timestep information and embedding it into a higher-dimensional space.",
+      "signature": "class TimestepEmbedder(nn.Module):",
+      "symbol_name": "TimestepEmbedder",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 14,
+      "file_path": "comfy/ldm/genmo/joint_model/layers.py",
+      "id": "symbol:3754d678f35f8d06:PatchEmbed",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "comfy/ldm/genmo/joint_model/layers.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "semantic_confidence": 1.0,
+      "semantic_purpose": "Neural network layer to embed image patches into a higher-dimensional space.",
+      "semantic_rationale": "The PatchEmbed class inherits from nn.Module and likely contains methods for processing image patches and embedding them into a higher-dimensional space.",
+      "signature": "class PatchEmbed(nn.Module):",
+      "symbol_name": "PatchEmbed",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 14,
+      "file_path": "comfy/ldm/genmo/joint_model/layers.py",
+      "id": "symbol:22900dac991a1a0f:_ntuple",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "comfy/ldm/genmo/joint_model/layers.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "semantic_confidence": 1.0,
+      "semantic_purpose": "Utility function to create a tuple of length n, repeating a single value if necessary.",
+      "semantic_rationale": "The function _ntuple is defined to take an integer n and return a function that creates a tuple of length n, with repeated values if only one value is provided.",
+      "signature": "def _ntuple(n):",
+      "symbol_name": "_ntuple",
+      "symbol_type": "function"
+    },
+    {
+      "community_id": 14,
+      "file_path": "comfy/ldm/genmo/joint_model/layers.py",
+      "id": "file:comfy/ldm/genmo/joint_model/layers.py",
+      "language": "Python",
+      "node_type": "file"
+    }
+  ]
+}

@@ -1,0 +1,128 @@
+# Community 10: Execution Management
+
+**Purpose:** Handles graph execution, caching, and validation in ComfyUI.
+
+## Files
+- `comfy/checkpoint_pickle.py`: Handles checkpoint loading and unpickling. (confidence 0.80)
+- `comfy_execution/caching.py`: Manages caching mechanisms for efficient data retrieval. (confidence 0.90)
+- `comfy_execution/graph.py`: Defines and manages graph structures for node-based computations. (confidence 0.90)
+- `comfy_execution/graph_utils.py`: Provides utility functions for graph operations. (confidence 0.80)
+- `comfy_execution/validation.py`: Validates inputs and nodes in the computation graph. (confidence 0.90)
+- `execution.py`: Executes prompts and handles prompt queues. (confidence 0.80)
+- `script_examples/websockets_api_example_ws_images.py`: Demonstrates WebSocket API usage for image generation. (confidence 0.70)
+- `tests-unit/execution_test/validate_node_input_test.py`: Unit tests for node input validation. (confidence 0.90)
+- `tests/inference/test_execution.py`: Tests for the execution module. (confidence 0.90)
+- `tests/inference/test_inference.py`: Additional tests for inference processes. (confidence 0.70)
+- `tests/inference/testing_nodes/testing-pack/specific_tests.py`: Specific tests for individual nodes. (confidence 0.70)
+- `tests/inference/testing_nodes/testing-pack/stubs.py`: Stub implementations for testing purposes. (confidence 0.70)
+- `tests/inference/testing_nodes/testing-pack/tools.py`: Utility tools for testing. (confidence 0.80)
+
+## Symbols
+- `symbol:031194ac20408a16`: Manages topologically sorted execution lists. (confidence 0.90)
+  - _Rationale:_ Derived from TopologicalSort, used in managing execution order.
+- `symbol:043de6b952f45c2d`: Represents the result of an execution run. (confidence 0.80)
+  - _Rationale:_ Used to store and manage execution results.
+- `symbol:04bc14dc4ed29a78`: Adds a prefix to graph outputs. (confidence 0.80)
+  - _Rationale:_ Util function for modifying graph output identifiers.
+- `symbol:060e05aff756dad5`: Retrieves information about node inputs. (confidence 0.80)
+  - _Rationale:_ Used in validating and processing node inputs.
+- `symbol:06a376086d310d1c`: Test case for custom input change detection. (confidence 0.90)
+  - _Rationale:_ Part of unit tests for input validation.
+- `symbol:06ca00645e4b6fde`: Exception raised for invalid node inputs. (confidence 0.90)
+  - _Rationale:_ Used to signal input validation errors.
+- `symbol:08b1935daa2a8555`: Checks if an object is a link. (confidence 0.80)
+  - _Rationale:_ Utility function for identifying linked objects in graphs.
+- `symbol:08bf7810ee623f36`: Retrieves history for a given prompt ID. (confidence 0.80)
+  - _Rationale:_ Used in tracking prompt execution history.
+- `symbol:09e251f8e5a43baa`: Queues a prompt for execution. (confidence 0.80)
+  - _Rationale:_ Used in scheduling prompts for execution.
+- `symbol:0ac83a5d550f98c3`: Test case for mixed expansion returns. (confidence 0.90)
+  - _Rationale:_ Part of unit tests for specific node behaviors.
+- `symbol:0af43d79639897b8`: Test case for lazy image mixing. (confidence 0.90)
+  - _Rationale:_ Part of unit tests for specific node behaviors.
+- `symbol:1531174712b40c75`: Test parametrized cases for input validation. (confidence 0.90)
+  - _Rationale:_ Used in unit tests for input validation.
+- `symbol:19d7ab96e9ab17f7`: Cache key set with ID. (confidence 0.90)
+  - _Rationale:_ Extends CacheKeySet with an ID for unique identification.
+- `symbol:1b90f260209b4e3b`: Test case for dynamic dependency cycles. (confidence 0.90)
+  - _Rationale:_ Part of unit tests for cycle detection in graphs.
+- `symbol:1d539af4e678e070`: Test case for closing while loops. (confidence 0.90)
+  - _Rationale:_ Part of unit tests for loop constructs in graphs.
+- `symbol:24596ddceda92c95`: Retrieves images from a WebSocket server. (confidence 0.80)
+  - _Rationale:_ Used in fetching generated images from the server.
+- `symbol:256e71a93892e15e`: Tests override of 'ne' operator. (confidence 0.90)
+  - _Rationale:_ Used in unit tests for operator overrides.
+- `symbol:25f52464f4100b14`: Formats a value for display or logging. (confidence 0.80)
+  - _Rationale:_ Utility function for formatting output values.
+- `symbol:2c8e0d4c29fc862c`: WebSocket client for interacting with ComfyUI. (confidence 0.80)
+  - _Rationale:_ Used in web socket communication examples.
+- `symbol:3185a61b95d84ee5`: Validates node inputs based on provided specifications. (confidence 0.90)
+  - _Rationale:_ Used in ensuring correct input types and values.
+- `symbol:356c95097d480f57`: Second custom validation test case. (confidence 0.90)
+  - _Rationale:_ Part of unit tests for input validation.
+- `symbol:35b454d1adc40d3c`: First custom validation test case. (confidence 0.90)
+  - _Rationale:_ Part of unit tests for input validation.
+- `symbol:3aa39a57e88d8177`: Builds computation graphs from nodes. (confidence 0.90)
+  - _Rationale:_ Used in constructing and manipulating graphs.
+- `symbol:3da89f32b0b82f0a`: Saves images to disk. (confidence 0.80)
+  - _Rationale:_ Used in saving generated images.
+- `symbol:41ce29c577822a73`: Tests exact match scenarios for input validation. (confidence 0.90)
+  - _Rationale:_ Used in unit tests for input validation.
+- `symbol:42eaccb259559f00`: Executes prompts and manages their lifecycle. (confidence 0.90)
+  - _Rationale:_ Core component for executing prompts.
+- `symbol:44e4f4b9cc93a011`: Base class for topologically sorting nodes. (confidence 0.90)
+  - _Rationale:_ Used in determining execution order of nodes.
+- `symbol:51c911bb67a04ab5`: Fourth custom validation test case. (confidence 0.90)
+  - _Rationale:_ Part of unit tests for input validation.
+- `symbol:521b8bc3d8379bce`: Previews images without saving them. (confidence 0.80)
+  - _Rationale:_ Used in displaying images without permanent storage.
+- `symbol:523cfab984f02f8e`: Represents a computation graph in ComfyUI. (confidence 0.90)
+  - _Rationale:_ Core structure for defining computational workflows.
+- `symbol:52d2ab54a3493ecb`: Validates inputs against prompt specifications. (confidence 0.90)
+  - _Rationale:_ Ensures that all required inputs are correctly provided.
+- `symbol:5a2e671d1475792f`: Third custom validation test case. (confidence 0.90)
+  - _Rationale:_ Part of unit tests for input validation.
+- `symbol:5bc12c6621400bb4`: Generates a full type name for a class. (confidence 0.80)
+  - _Rationale:_ Utility function for generating type names.
+- `symbol:604428b858979a88`: Exception raised when a node is not found. (confidence 0.90)
+  - _Rationale:_ Used to signal missing node errors.
+- `symbol:6802bf1ddb25cddf`: Retrieves an image from a specified location. (confidence 0.80)
+  - _Rationale:_ Used in fetching images for various purposes.
+- `symbol:6b5a0879cbf9966f`: Test case for inference processes. (confidence 0.90)
+  - _Rationale:_ Part of unit tests for inference.
+- `symbol:6b7c040da6579a9c`: Test case for variadic average calculations. (confidence 0.90)
+  - _Rationale:_ Part of unit tests for specific node behaviors.
+- `symbol:713e6670f6ce1f88`: Maps a node over a list of inputs. (confidence 0.80)
+  - _Rationale:_ Utility function for applying nodes to multiple inputs.
+- `symbol:791fe0041317abee`: Tests strict mode for input validation. (confidence 0.90)
+  - _Rationale:_ Used in unit tests for input validation.
+- `symbol:7a44fad03b814f2f`: Converts an object to a hashable form. (confidence 0.80)
+  - _Rationale:_ Utility function for creating hashable representations.
+- `symbol:8145ad793dae2091`: Custom unpickler for handling checkpoint loading. (confidence 0.80)
+  - _Rationale:_ Used in loading checkpoints from files.
+- `symbol:835cfd4ef43a317d`: Hierarchical cache for storing and retrieving data. (confidence 0.90)
+  - _Rationale:_ Used in managing cached data with hierarchical structure.
+- `symbol:851c307ee8b803fc`: Represents an unhashable object. (confidence 0.80)
+  - _Rationale:_ Used to handle objects that cannot be hashed.
+- `symbol:89b5b8b8ece5109c`: Base class for cache key sets. (confidence 0.90)
+  - _Rationale:_ Used in managing sets of cache keys.
+- `symbol:8a8bd4913f491255`: Enumeration of different cache types. (confidence 0.90)
+  - _Rationale:_ Used to categorize different types of caches.
+- `symbol:8d91adb241c6ba1a`: Represents dynamic prompts in the system. (confidence 0.80)
+  - _Rationale:_ Used in handling prompts that can change dynamically.
+- `symbol:9451f97aa99879d2`: Represents an empty object. (confidence 0.80)
+  - _Rationale:_ Used as a placeholder for empty values.
+- `symbol:94880d4757c29348`: Blocks execution under certain conditions. (confidence 0.80)
+  - _Rationale:_ Used to control execution flow based on conditions.
+- `symbol:984bd01ed651ce82`: Basic cache implementation. (confidence 0.90)
+  - _Rationale:_ Used in simple caching scenarios.
+- `symbol:9baf817534af3c5f`: Merges result data from multiple sources. (confidence 0.80)
+  - _Rationale:_ Utility function for combining results.
+
+## Cross-community dependencies
+0, 3, 4, 6, 7, 11
+
+## Unverified / resolved calls
+- unresolved: `validate_prompt` from `symbol:060e05aff756dad5` — Called to validate prompts in get_input_info
+- unresolved: `validate_prompt` from `symbol:3185a61b95d84ee5` — Called to validate prompts in validate_node_input
+- unresolved: `validate_prompt` from `symbol:52d2ab54a3493ecb` — Called to validate prompts in validate_inputs

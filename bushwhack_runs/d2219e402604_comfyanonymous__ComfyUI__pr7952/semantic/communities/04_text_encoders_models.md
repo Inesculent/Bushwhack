@@ -1,0 +1,254 @@
+# Community 4: Text Encoders & Models
+
+**Purpose:** This community includes various text encoders and models used for different tasks such as image generation, video processing, and natural language processing.
+
+## Files
+- `comfy/conds.py`: Conditional handling for models, possibly including text conditions for generation tasks. (confidence 0.80)
+- `comfy/latent_formats.py`: Handling latent formats for models, which may include audio and other non-image data types. (confidence 0.90)
+- `comfy/ldm/chroma/layers.py`: Defining layers for the Chroma model, likely related to video processing or transformation. (confidence 0.70)
+- `comfy/ldm/chroma/model.py`: Implementation of the Chroma model, possibly involving video-to-video or video-to-image transformations. (confidence 0.80)
+- `comfy/ldm/flux/layers.py`: Defining layers for the Flux model, potentially related to advanced image or video processing. (confidence 0.70)
+- `comfy/ldm/flux/model.py`: Implementation of the Flux model, which could be used for tasks like image generation or enhancement. (confidence 0.60)
+- `comfy/ldm/modules/encoders/noise_aug_modules.py`: Modules for noise augmentation, which can be used to improve robustness of models against noise. (confidence 0.80)
+- `comfy/lora.py`: Handling LoRA (Low-Rank Adaptation) for models, which allows fine-tuning without modifying the entire model. (confidence 0.90)
+- `comfy/model_base.py`: Base classes for models, providing common functionalities shared across different models. (confidence 0.90)
+- `comfy/model_detection.py`: Detecting and identifying different model configurations and architectures. (confidence 0.80)
+- `comfy/sd1_clip.py`: Implementation of CLIP-based models, specifically for Stable Diffusion 1.x series. (confidence 0.90)
+- `comfy/sdxl_clip.py`: Implementation of CLIP-based models, specifically for Stable Diffusion XL series. (confidence 0.80)
+- `comfy/supported_models.py`: Support for different models, including their initialization and configuration. (confidence 0.90)
+- `comfy/supported_models_base.py`: Base classes and utilities for supported models, providing common functionalities. (confidence 0.90)
+- `comfy/text_encoders/ace.py`: Implementation of the ACE text encoder, possibly for advanced text processing tasks. (confidence 0.60)
+- `comfy/text_encoders/aura_t5.py`: Implementation of the Aura T5 text encoder, possibly for specific applications requiring T5 architecture. (confidence 0.60)
+- `comfy/text_encoders/cosmos.py`: Implementation of the Cosmos text encoder, potentially for multi-modal processing involving text and other data types. (confidence 0.60)
+- `comfy/text_encoders/flux.py`: Implementation of the Flux text encoder, possibly for advanced text processing or generation tasks. (confidence 0.60)
+- `comfy/text_encoders/genmo.py`: Implementation of the GenMo text encoder, possibly for generating models based on text input. (confidence 0.60)
+- `comfy/text_encoders/hidream.py`: Implementation of the HiDream text encoder, possibly for high-quality image generation from text. (confidence 0.80)
+
+## Symbols
+- `symbol:0197b3a7d8eff401:T5LayerFF`: A feed-forward layer in the T5 transformer model. (confidence 0.90)
+  - _Rationale:_ Derived from T5 implementation, this layer is part of the transformer architecture.
+- `symbol:01ef097099208ee9:SV3D_u`: A specialized version of the SVD_img2vid model, possibly optimized or extended for specific use cases. (confidence 0.80)
+  - _Rationale:_ Inherits from SVD_img2vid, indicating it's an enhanced or modified version of that model.
+- `symbol:0222e175be30ce8a:ModelType`: An enumeration defining different types of models. (confidence 0.90)
+  - _Rationale:_ Used to categorize and handle different models within the system.
+- `symbol:023ed91846271f5f:UMT5XXlTokenizer`: A tokenizer for the UMT5XXl model, extending the functionality of the SD1ClipModel tokenizer. (confidence 0.90)
+  - _Rationale:_ Extends SD1ClipModel.SDTokenizer, adding capabilities specific to the UMT5XXl model.
+- `symbol:02905b19cd24a8bc:SDTokenizer`: A tokenizer for Stable Diffusion models, responsible for converting text into tokens suitable for model input. (confidence 0.90)
+  - _Rationale:_ Base class for tokenization in Stable Diffusion models.
+- `symbol:032d699bcec7fbbb:PixArtT5XXL`: A large T5-based model specifically designed for PixArt tasks, extending the functionality of the SD1ClipModel. (confidence 0.90)
+  - _Rationale:_ Extends SD1ClipModel.SD1ClipModel, adding capabilities specific to the PixArtT5XXL model.
+- `symbol:044f7a529d8ad3b9:LTXV`: A model named LTXV, inheriting from BaseModel, possibly used for specific tasks like text-to-image or image-to-image translation. (confidence 0.80)
+  - _Rationale:_ Inherits from BaseModel, suggesting it's a specialized model within the system.
+- `symbol:04c7ff18e88178ee:StableCascadeClipG`: A CLIP-based model for Stable Diffusion Cascade, extending the functionality of the SDClipModel. (confidence 0.90)
+  - _Rationale:_ Extends SD1ClipModel.SDClipModel, adding capabilities specific to the StableCascadeClipG model.
+- `symbol:05988daf6154f6bc:HunyuanVideoSkyreelsI2V`: A model for converting Skyreels videos to a format usable by the HunyuanVideo system, extending the functionality of the HunyuanVideo model. (confidence 0.90)
+  - _Rationale:_ Extends HunyuanVideo.HunyuanVideo, adding capabilities specific to the Skyreels conversion.
+- `symbol:0704067a90ab3018:Chroma`: A model named Chroma, inheriting from Flux, possibly used for chromatic adjustments or transformations in images or videos. (confidence 0.80)
+  - _Rationale:_ Inherits from Flux, suggesting it's a specialized model within the system.
+- `symbol:07c58aade35ecc17:PixArtAlpha`: A model named PixArtAlpha, inheriting from BASE, possibly used for generating images based on text input with alpha channels for transparency. (confidence 0.90)
+  - _Rationale:_ Inherits from supported_models_base.BASE, suggesting it's a specialized model within the system.
+- `symbol:08718cc6d4d6fb1c:ChromaParams`: A class defining parameters for the Chroma model. (confidence 0.90)
+  - _Rationale:_ Used to configure the Chroma model with specific parameters.
+- `symbol:0a72feafd25f568e:llama_detect`: A function for detecting the presence and configuration of the LLaMA model in a state dictionary. (confidence 0.90)
+  - _Rationale:_ Used to identify and handle the LLaMA model within a larger system or model collection.
+- `symbol:0adf9a3c7b1fcd54:hidream_clip`: A function for initializing and configuring the HiDream CLIP model with optional components like T5 and LLaMA. (confidence 0.90)
+  - _Rationale:_ Used to set up the HiDream CLIP model with specific configurations and components.
+- `symbol:10f1c3d087ecf4b3:model_lora_keys_clip`: A function for extracting keys related to LoRA (Low-Rank Adaptation) from a model's state dictionary, specifically for CLIP models. (confidence 0.90)
+  - _Rationale:_ Used to handle LoRA adaptation for CLIP models, allowing fine-tuning without modifying the entire model.
+- `symbol:1271ff4b94d50faf:HiDream`: A model named HiDream, inheriting from BASE, possibly used for high-quality image generation from text. (confidence 0.90)
+  - _Rationale:_ Inherits from supported_models_base.BASE, suggesting it's a specialized model within the system.
+- `symbol:13b3bf979c81fd27:T5XXLModel`: A large T5-based model, extending the functionality of the T5XXLModel from sd3_clip. (confidence 0.90)
+  - _Rationale:_ Extends sd3_clip.T5XXLModel, adding capabilities specific to the T5XXLModel.
+- `symbol:14b26b3163ab29a5:T5DenseGatedActDense`: A dense gated activation layer in the T5 transformer model, used for processing intermediate activations. (confidence 0.90)
+  - _Rationale:_ Derived from T5 implementation, this layer is part of the transformer architecture.
+- `symbol:14be8758573f45be:SD3`: A model named SD3, inheriting from BaseModel, possibly used for specific tasks like text-to-image or image-to-image translation. (confidence 0.80)
+  - _Rationale:_ Inherits from BaseModel, suggesting it's a specialized model within the system.
+- `symbol:16e8f6fee0c5cc65:SD21UnclipL`: A model named SD21UnclipL, inheriting from SD20, possibly used for unclipping operations in Stable Diffusion 2.1. (confidence 0.80)
+  - _Rationale:_ Inherits from SD20, suggesting it's a specialized model within the system.
+- `symbol:16efc9dee0b33490:T5XXLTokenizer`: A tokenizer for the T5XXL model, extending the functionality of the SDTokenizer. (confidence 0.90)
+  - _Rationale:_ Extends SD1ClipModel.SDTokenizer, adding capabilities specific to the T5XXL model.
+- `symbol:16f48d8364c19eaf:SD20`: A model named SD20, inheriting from BASE, possibly used as a base for other Stable Diffusion models. (confidence 0.90)
+  - _Rationale:_ Inherits from supported_models_base.BASE, suggesting it's a specialized model within the system.
+- `symbol:174b9c96695be02c:SPieceTokenizer`: A sentence piece tokenizer, used for breaking down text into subword units. (confidence 0.90)
+  - _Rationale:_ Used for tokenization in models that require subword-level processing.
+- `symbol:17727ee802aaa830:sdxl_pooled`: A function for pooling operations in the SDXL model, possibly used for aggregating features from different parts of the model. (confidence 0.80)
+  - _Rationale:_ Used to perform pooling operations, which are common in neural network architectures.
+- `symbol:18b09443c624d232:FluxClipModel`: A CLIP-based model for the Flux system, extending the functionality of the torch.nn.Module. (confidence 0.90)
+  - _Rationale:_ Extends torch.nn.Module, adding capabilities specific to the FluxClipModel.
+- `symbol:1976269841c73b45:token_weights`: A function for calculating token weights based on a string and a current weight. (confidence 0.80)
+  - _Rationale:_ Used to assign weights to tokens, which can be important for tasks like weighted text input.
+- `symbol:1a9748ea25cc05e3:StableAudio1`: A model named StableAudio1, inheriting from LatentFormat, possibly used for audio processing in the Stable Diffusion framework. (confidence 0.80)
+  - _Rationale:_ Inherits from LatentFormat, suggesting it's a specialized model within the system.
+- `symbol:1bc9fb87cb62f169:MochiT5XXL`: A large T5-based model named MochiT5XXL, extending the functionality of the SD1ClipModel. (confidence 0.90)
+  - _Rationale:_ Extends SD1ClipModel.SD1ClipModel, adding capabilities specific to the MochiT5XXL model.
+- `symbol:1bec0410c4712a46:HunyuanVideo`: A model named HunyuanVideo, inheriting from BASE, possibly used for video processing tasks. (confidence 0.90)
+  - _Rationale:_ Inherits from supported_models_base.BASE, suggesting it's a specialized model within the system.
+- `symbol:1d4155552a2cb761:ACEStep`: A model named ACEStep, inheriting from BaseModel, possibly used for specific steps in the ACE process. (confidence 0.80)
+  - _Rationale:_ Inherits from BaseModel, suggesting it's a specialized model within the system.
+- `symbol:1da61e753feb92a6:HunyuanDiT1`: A model named HunyuanDiT1, inheriting from HunyuanDiT, possibly used for specific tasks related to DiT architecture. (confidence 0.90)
+  - _Rationale:_ Inherits from HunyuanDiT, suggesting it's a specialized model within the system.
+- `symbol:1f564644ea1778c4:LuminaTokenizer`: A tokenizer for the Lumina model, extending the functionality of the SD1Tokenizer. (confidence 0.90)
+  - _Rationale:_ Extends SD1ClipModel.SD1Tokenizer, adding capabilities specific to the Lumina model.
+- `symbol:1ff980b5403acea6:set_progress_bar_enabled`: A function for enabling or disabling progress bars in the system. (confidence 0.90)
+  - _Rationale:_ Used to control the display of progress bars, which can be useful for monitoring long-running processes.
+- `symbol:21cc0493d3bf4c54:HunyuanVideoTokenizer`: A tokenizer specifically for the HunyuanVideo model, possibly used for converting video-related text into tokens. (confidence 0.80)
+  - _Rationale:_ Used to tokenize video-related text, which can be important for video processing tasks.
+- `symbol:226b25d127027506:ACEStep`: A model named ACEStep, inheriting from BASE, possibly used for specific steps in the ACE process. (confidence 0.90)
+  - _Rationale:_ Inherits from supported_models_base.BASE, suggesting it's a specialized model within the system.
+- `symbol:22b9c37841e2da5f:detect_unet_config`: A function for detecting the UNet configuration from a model's state dictionary, possibly used for identifying the model architecture. (confidence 0.90)
+  - _Rationale:_ Used to identify the UNet configuration, which is important for handling different model architectures.
+- `symbol:2346c712199c26b5:T5XXLTokenizer`: A tokenizer for the T5XXL model, extending the functionality of the SDTokenizer. (confidence 0.90)
+  - _Rationale:_ Extends SD1ClipModel.SDTokenizer, adding capabilities specific to the T5XXL model.
+- `symbol:2464d69cd8875b6c:Approximator`: A model named Approximator, inheriting from nn.Module, possibly used for approximating certain functions or data. (confidence 0.80)
+  - _Rationale:_ Inherits from nn.Module, suggesting it's a specialized model within the system.
+- `symbol:25876de9ead78ecf:HunyuanVideoI2V`: A model named HunyuanVideoI2V, inheriting from HunyuanVideo, possibly used for converting images to video format using the HunyuanVideo system. (confidence 0.90)
+  - _Rationale:_ Extends HunyuanVideo.HunyuanVideo, adding capabilities specific to the I2V conversion.
+- `symbol:25c3567d1988f244:MochiT5Tokenizer`: A tokenizer for the MochiT5 model, extending the functionality of the SD1Tokenizer. (confidence 0.90)
+  - _Rationale:_ Extends SD1ClipModel.SD1Tokenizer, adding capabilities specific to the MochiT5 model.
+- `symbol:26f6266dc6138fca:LatentFormat`: A base class for latent formats, possibly used for handling latent representations in models. (confidence 0.90)
+  - _Rationale:_ Used to define and handle latent formats, which are important for certain types of models.
+- `symbol:286c5b6a4dae1f8c:StableAudio`: A model named StableAudio, inheriting from BASE, possibly used for audio processing in the Stable Diffusion framework. (confidence 0.90)
+  - _Rationale:_ Inherits from supported_models_base.BASE, suggesting it's a specialized model within the system.
+- `symbol:28cc1e2423017427:SAT5Model`: A model named SAT5Model, extending the functionality of the SD1ClipModel. (confidence 0.90)
+  - _Rationale:_ Extends SD1ClipModel.SD1ClipModel, adding capabilities specific to the SAT5Model.
+- `symbol:2929e1c4e631e610:Lotus`: A model named Lotus, inheriting from BaseModel, possibly used for specific tasks like text-to-image or image-to-image translation. (confidence 0.80)
+  - _Rationale:_ Inherits from BaseModel, suggesting it's a specialized model within the system.
+- `symbol:294f4ecb5944ce42:LLAMA3Tokenizer`: A tokenizer for the LLaMA3 model, extending the functionality of the SDTokenizer. (confidence 0.90)
+  - _Rationale:_ Extends SD1ClipModel.SDTokenizer, adding capabilities specific to the LLaMA3 model.
+- `symbol:2a2d22386845b478:expand_directory_list`: A function for expanding a list of directories, possibly used for file handling or model loading. (confidence 0.80)
+  - _Rationale:_ Used to handle directory lists, which can be important for file management and model loading.
+- `symbol:2b397f5ad35cab9e:SD15_instructpix2pix`: A model named SD15_instructpix2pix, inheriting from IP2P and BaseModel, possibly used for pixel-to-pixel transformations guided by instructions. (confidence 0.90)
+  - _Rationale:_ Inherits from IP2P and BaseModel, suggesting it's a specialized model within the system.
+- `symbol:2ecb4ef42fd9bfe2:T5Block`: A block in the T5 transformer model, used for processing sequences of tokens. (confidence 0.90)
+  - _Rationale:_ Derived from T5 implementation, this block is part of the transformer architecture.
+- `symbol:2f0a8263a571869a:Lumina2`: A model named Lumina2, inheriting from BaseModel, possibly used for specific tasks like text-to-image or image-to-image translation. (confidence 0.80)
+  - _Rationale:_ Inherits from BaseModel, suggesting it's a specialized model within the system.
+- `symbol:2f6f29f892370dc4:WanT5Model`: A T5-based model named WanT5Model, extending the functionality of the SD1ClipModel. (confidence 0.90)
+  - _Rationale:_ Extends SD1ClipModel.SD1ClipModel, adding capabilities specific to the WanT5Model.
+
+## Cross-community dependencies
+0, 1, 2, 3, 5, 6, 7, 8, 9, 12, 13, 16
+
+## Unverified / resolved calls
+- unresolved: `AlignYourStepsScheduler` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls AlignYourStepsScheduler
+- unresolved: `AsymmDiTJoint` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls AsymmDiTJoint
+- resolved: `attention` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls attention
+  - Attention mechanism. (Class definition for an attention mechanism, possibly multi-head self-attention.)
+- unresolved: `AuraFlow` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls AuraFlow
+- unresolved: `BERTModel` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls BERTModel
+- unresolved: `calculate_parameters` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls calculate_parameters
+- resolved: `cast_to_input` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls cast_to_input
+  - Cast weight to input type. (Function to cast a weight tensor to the type of the input tensor, ensuring compatibility.)
+- unresolved: `cat_tensors` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls cat_tensors
+- resolved: `CausalContinuousVideoTokenizer` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls CausalContinuousVideoTokenizer
+  - Causal continuous video tokenizer. (Defined as a subclass of nn.Module, tokenizing video data causally.)
+- unresolved: `CheckpointSave` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls CheckpointSave
+- unresolved: `CLIP` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls CLIP
+- unresolved: `CLIPSave` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls CLIPSave
+- unresolved: `CLIPTextEncodeLumina2` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls CLIPTextEncodeLumina2
+- unresolved: `CLIPTextModel` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls CLIPTextModel
+- unresolved: `common_upscale` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls common_upscale
+- unresolved: `composite` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls composite
+- unresolved: `continuous_transformer` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls continuous_transformer
+- unresolved: `ControlNet` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls ControlNet
+- unresolved: `controlnet_config` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls controlnet_config
+- unresolved: `conv` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls conv
+- unresolved: `convert_lora_bfl_control` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls convert_lora_bfl_control
+- unresolved: `convert_lora_wan_fun` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls convert_lora_wan_fun
+- unresolved: `convert_mistoline` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls convert_mistoline
+- unresolved: `convert_to_transformers` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls convert_to_transformers
+- unresolved: `CustomLiteLAProcessor2_0` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls CustomLiteLAProcessor2_0
+- unresolved: `default` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls default
+- unresolved: `detect_te_model` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls detect_te_model
+- unresolved: `dtype_size` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls dtype_size
+- resolved: `exists` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls exists
+  - Checks if a variable exists. (Function definition checks for existence of a variable, possibly used for validation.)
+- unresolved: `fix_empty_latent_channels` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls fix_empty_latent_channels
+- unresolved: `FluxDisableGuidance` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls FluxDisableGuidance
+- unresolved: `FluxProUltraImageNode` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls FluxProUltraImageNode
+- resolved: `FourierFeatures` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls FourierFeatures
+  - Fourier feature transformation layer. (Defined as a subclass of nn.Module, transforming input features using Fourier methods.)
+- unresolved: `GeneralDIT` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls GeneralDIT
+- unresolved: `get_save_image_path` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls get_save_image_path
+- unresolved: `HiDreamAttnProcessor_flashattn` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls HiDreamAttnProcessor_flashattn
+- resolved: `HiDreamImageTransformer2DModel` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls HiDreamImageTransformer2DModel
+  - HiDream 2D image transformer model. (Class definition for the HiDream 2D image transformer model, used in image processing tasks.)
+- unresolved: `hijack_progress` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls hijack_progress
+- unresolved: `HunYuanControlNet` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls HunYuanControlNet
+- unresolved: `HunYuanDiTBlock` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls HunYuanDiTBlock
+- unresolved: `HunYuanVideoParams` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls HunYuanVideoParams
+- unresolved: `ImageConcatWithNoiseAugmentation` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls ImageConcatWithNoiseAugmentation
+- unresolved: `ImageOnlyCheckpointSave` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls ImageOnlyCheckpointSave
+- resolved: `IMG_TO_IMG` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls IMG_TO_IMG
+  - Class representing an image-to-image transformation model. (Extends a base class to handle image-to-image transformations using diffusion principles.)
+- unresolved: `intermediate_device` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls intermediate_device
+- unresolved: `LayerNorm` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls LayerNorm
+- unresolved: `Llama2` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls Llama2
+- resolved: `load_checkpoint` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls load_checkpoint
+  - Function to load checkpoints. (The function name suggests it loads checkpoints, likely from a configuration or file.)
+- unresolved: `load_clip` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls load_clip
+- unresolved: `load_controlnet_flux_instantx` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls load_controlnet_flux_instantx
+- unresolved: `load_controlnet_hunyuandit` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls load_controlnet_hunyuandit
+- unresolved: `load_controlnet_mmdit` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls load_controlnet_mmdit
+- unresolved: `load_controlnet_sd35` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls load_controlnet_sd35
+- unresolved: `load_controlnet_state_dict` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls load_controlnet_state_dict
+- unresolved: `load_diffusion_model_state_dict` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls load_diffusion_model_state_dict
+- unresolved: `load_hook_lora_for_models` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls load_hook_lora_for_models
+- unresolved: `load_lora_for_models` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls load_lora_for_models
+- unresolved: `load_models_gpu` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls load_models_gpu
+- unresolved: `load_state_dict` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls load_state_dict
+- unresolved: `load_state_dict_guess_config` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls load_state_dict_guess_config
+- unresolved: `load_t2i_adapter` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls load_t2i_adapter
+- unresolved: `log` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls log
+- unresolved: `LTXVModel` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls LTXVModel
+- unresolved: `manual_cast` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls manual_cast
+- resolved: `MLP` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls MLP
+  - Multi-layer perceptron. (Class definition for a multi-layer perceptron, a simple feedforward neural network.)
+- unresolved: `model_sampling` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls model_sampling
+- unresolved: `ModelPatcher` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls ModelPatcher
+- unresolved: `ModelSamplingDiscrete` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls ModelSamplingDiscrete
+- unresolved: `ModelSamplingStableCascade` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls ModelSamplingStableCascade
+- unresolved: `ModelSave` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls ModelSave
+- unresolved: `multilingual_cleaners` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls multilingual_cleaners
+- unresolved: `NextDiT` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls NextDiT
+- unresolved: `normalize` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls normalize
+- unresolved: `NumberConditioner` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls NumberConditioner
+- unresolved: `OpenAISignatureMMDITWrapper` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls OpenAISignatureMMDITWrapper
+- unresolved: `OptimalStepsScheduler` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls OptimalStepsScheduler
+- unresolved: `optimized_attention_for_device` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls optimized_attention_for_device
+- resolved: `pad_to_patch_size` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls pad_to_patch_size
+  - Pad image to patch size. (Function to pad an image to ensure it fits the required patch size, used in models processing images.)
+- resolved: `PatchEmbed` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls PatchEmbed
+  - Patch embedding layer. (Class definition for a patch embedding layer, transforming image patches into embeddings.)
+- unresolved: `patchify` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls patchify
+- unresolved: `PixArtMS` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls PixArtMS
+- unresolved: `processor` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls processor
+- unresolved: `reshape_latent_to` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls reshape_latent_to
+- unresolved: `reshape_mask` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls reshape_mask
+- unresolved: `resize_image` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls resize_image
+- resolved: `RMSNorm` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls RMSNorm
+  - Root Mean Square Layer Normalization. (Class definition for RMS Layer Normalization, a normalization technique used in models.)
+- unresolved: `rope` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls rope
+- unresolved: `run` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls run
+- unresolved: `save_torch_file` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls save_torch_file
+- unresolved: `scaled_fp8_ops` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls scaled_fp8_ops
+- unresolved: `SelfAttention` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls SelfAttention
+- unresolved: `SkipLayerGuidanceDiT` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls SkipLayerGuidanceDiT
+- unresolved: `StableZero123_Conditioning_Batched` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls StableZero123_Conditioning_Batched
+- unresolved: `StageB` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls StageB
+- unresolved: `StageC` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls StageC
+- unresolved: `supports_cast` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls supports_cast
+- unresolved: `TEModel` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls TEModel
+- resolved: `timestep_embedding` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls timestep_embedding
+  - Generate timestep embeddings. (Function to generate embeddings for timesteps, commonly used in diffusion models.)
+- unresolved: `TokenRefiner` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls TokenRefiner
+- unresolved: `Transformer` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls Transformer
+- unresolved: `UpscaleModelLoader` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls UpscaleModelLoader
+- unresolved: `VaceWanModel` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls VaceWanModel
+- unresolved: `VAE` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls VAE
+- unresolved: `Video` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls Video
+- unresolved: `Wan21` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls Wan21
+- resolved: `WanModel` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls WanModel
+  - WAN model implementation. (Class definition for the WAN model, possibly a variant of a transformer model.)
+- resolved: `WeightHook` from `symbol:0adf9a3c7b1fcd54:hidream_clip` — hidream_clip function calls WeightHook
+  - A hook for modifying model weights. (Subclass of Hook, intended for altering or modifying the weights of the model during its execution.)

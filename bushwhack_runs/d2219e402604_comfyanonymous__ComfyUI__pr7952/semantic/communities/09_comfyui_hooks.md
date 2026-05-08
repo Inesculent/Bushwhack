@@ -1,0 +1,126 @@
+# Community 9: ComfyUI Hooks
+
+**Purpose:** Provides mechanisms for modifying and extending models during inference and sampling processes.
+
+## Files
+- `comfy/float.py`: Includes functions related to floating-point operations, such as stochastic rounding. (confidence 0.90)
+- `comfy/hooks.py`: Defines various hooks and utility functions for modifying model behaviors. (confidence 0.95)
+- `comfy/model_patcher.py`: Handles patching of models with additional functionality or modifications. (confidence 0.90)
+- `comfy/patcher_extension.py`: Extends the capabilities of the model patcher with additional functionalities. (confidence 0.60)
+- `comfy/sampler_helpers.py`: Contains helper functions for the sampling process, including conditional batch preparation. (confidence 0.95)
+- `comfy_extras/nodes_hooks.py`: Additional nodes and hooks for extended functionality. (confidence 0.90)
+- `comfy_extras/nodes_pag.py`: Nodes for Perpendicular Negative Guidance (PerpNeg). (confidence 0.70)
+- `comfy_extras/nodes_perpneg.py`: Nodes for Perturbed Attention Guidance. (confidence 0.70)
+
+## Symbols
+- `symbol:008495785142c8b6:cfg_function`: Applies conditional guidance function during sampling. (confidence 0.90)
+  - _Rationale:_ The function takes model predictions, condition predictions, unconditional predictions, scaling factor, input data, timestep, model options, and optional conditions, then combines them according to the conditional guidance formula.
+- `symbol:0228851d87c4761d:set_attr`: Sets an attribute on an object. (confidence 0.90)
+  - _Rationale:_ A simple utility function that sets the specified attribute on the given object to the provided value.
+- `symbol:0ccfd7cea4912443:default_should_register`: Determines if a hook should be registered by default. (confidence 0.90)
+  - _Rationale:_ Evaluates whether a hook should be automatically registered based on the hook instance, model, model options, target dictionary, and already registered hooks.
+- `symbol:0f1a328f87807ca5:ConditioningSetProperties`: Represents properties for setting conditioning. (confidence 0.90)
+  - _Rationale:_ A class that likely holds configuration or state information for setting up conditioning in the model.
+- `symbol:11cdecd5507835f1:InjectionsHook`: A hook for injecting specific functionalities into the model. (confidence 0.90)
+  - _Rationale:_ Subclass of Hook, designed for adding specific behaviors or modifications to the model during its execution.
+- `symbol:12c554323cf113d8:get_patch_weights_from_model`: Extracts patch weights from a model. (confidence 0.90)
+  - _Rationale:_ Retrieves weights used for patching the model, potentially excluding certain components like model sampling if specified.
+- `symbol:12fd68ce56540c93:manual_stochastic_round_to_float8`: Manually performs stochastic rounding to float8 precision. (confidence 0.90)
+  - _Rationale:_ A function that rounds tensor values to float8 precision using stochastic rounding, which can help in reducing memory usage and improving performance.
+- `symbol:140c813f9fa5da71:filter_registered_hooks_on_conds`: Filters registered hooks based on conditioning parameters. (confidence 0.90)
+  - _Rationale:_ Processes a dictionary of conditioning parameters and filters the hooks based on the model options provided.
+- `symbol:14a1df553aca88c4:PerturbedAttentionGuidance`: A guidance mechanism that introduces perturbations to the attention mechanism. (confidence 0.90)
+  - _Rationale:_ Subclass of Hook, specifically designed to modify the attention mechanism by introducing controlled perturbations.
+- `symbol:1a9663355b58fc65:WeightHook`: A hook for modifying model weights. (confidence 0.90)
+  - _Rationale:_ Subclass of Hook, intended for altering or modifying the weights of the model during its execution.
+- `symbol:1ab25ab07a014a3c:PerpNegGuider`: Guidance mechanism for perpendicular negative sampling. (confidence 0.90)
+  - _Rationale:_ Subclass of Hook, designed to implement perpendicular negative sampling techniques in the model.
+- `symbol:1b8f9dade431a9af:CFGGuider`: Guidance mechanism for classifier-free guidance. (confidence 0.90)
+  - _Rationale:_ Subclass of Hook, implementing classifier-free guidance techniques to improve sampling quality.
+- `symbol:1ba0997f1bd74b35:_prepare_sampling`: Prepares the sampling process by setting up necessary parameters. (confidence 0.90)
+  - _Rationale:_ Initializes the sampling process by preparing the noise shape, conditioning, and other parameters required for sampling.
+- `symbol:1c961957e165cfba:get_key_weight`: Retrieves the weight associated with a specific key from the model. (confidence 0.90)
+  - _Rationale:_ A utility function that fetches the weight corresponding to a given key from the model's internal structure.
+- `symbol:204b87316eeb3370:get_attr`: Retrieves an attribute from an object. (confidence 0.90)
+  - _Rationale:_ A simple utility function that returns the value of the specified attribute from the given object.
+- `symbol:2084802fea48e946:CombineHooks`: Combines multiple hooks into a single hook. (confidence 0.90)
+  - _Rationale:_ A class that aggregates multiple hooks into a single entity, allowing for combined execution of their functionalities.
+- `symbol:208eea1e99c116ab:CombineHooksEight`: Combines eight hooks into a single hook. (confidence 0.90)
+  - _Rationale:_ A subclass of CombineHooks, specifically designed to handle the combination of exactly eight hooks.
+- `symbol:2097d1e7cb3a9d5a:CombineHooksFour`: Combines four hooks into a single hook. (confidence 0.90)
+  - _Rationale:_ A subclass of CombineHooks, designed to combine exactly four hooks into a single entity.
+- `symbol:20e4757a9d6f3fec:HookKeyframe`: Represents a keyframe for hooks. (confidence 0.90)
+  - _Rationale:_ A class that likely manages keyframes for hooks, possibly for animation or time-based hook application.
+- `symbol:240eabecdcf3ecfb:combine_with_new_conds`: Combines existing conditioning with new conditioning parameters. (confidence 0.90)
+  - _Rationale:_ Merges new conditioning parameters into existing ones, facilitating dynamic adjustments during the sampling process.
+- `symbol:261a694b95cbd1e5:EnumHookMode`: Enumerates different modes for hooks. (confidence 0.90)
+  - _Rationale:_ An enumeration class that defines various modes or states that hooks can operate in.
+- `symbol:281b86abc56ad7dc:CreateHookModelAsLoraModelOnly`: Creates a hook model specifically as a LoRA model. (confidence 0.90)
+  - _Rationale:_ A subclass of CreateHookModelAsLora, designed to create hooks that are exclusively LoRA models.
+- `symbol:29d0d29cf61500e7:calc_cond_batch`: Calculates the batch of conditioning data. (confidence 0.90)
+  - _Rationale:_ Generates a batch of conditioning data based on the model, conditioning list, input tensor, timestep, and model options.
+- `symbol:2bdf317f8184fafa:preprocess_conds_hooks`: Preprocesses conditioning parameters with hooks. (confidence 0.90)
+  - _Rationale:_ Applies hooks to preprocess conditioning parameters, potentially modifying or enhancing them before use.
+- `symbol:2c1fd6c746af96b7:PerpNeg`: Implements perpendicular negative sampling. (confidence 0.90)
+  - _Rationale:_ A class that implements perpendicular negative sampling techniques to improve sampling quality.
+- `symbol:2decc7d5fca07ff6:TransformerOptionsHook`: A hook for transformer options. (confidence 0.90)
+  - _Rationale:_ Subclass of Hook, designed to handle transformer-specific options or configurations.
+- `symbol:2e1e27d879686104:PairConditioningCombine`: Combines paired conditioning data. (confidence 0.90)
+  - _Rationale:_ A class that combines paired conditioning data, likely for merging two sets of conditioning parameters.
+- `symbol:31dede927fdce532:calc_cond_uncond_batch`: Calculates the batch of conditional and unconditional data. (confidence 0.90)
+  - _Rationale:_ Generates batches of both conditional and unconditional data based on the model, conditioning, unconditioning, input tensor, timestep, and model options.
+- `symbol:334505a930b81d9c:CallbacksMP`: Manages callbacks for multiprocessing. (confidence 0.90)
+  - _Rationale:_ A class that handles callbacks in a multiprocessing environment, ensuring proper communication and synchronization.
+- `symbol:33a9fc24db5a92e9:PairConditioningSetProperties`: Sets properties for paired conditioning. (confidence 0.90)
+  - _Rationale:_ A class that configures properties for paired conditioning, likely holding configuration or state information.
+- `symbol:36f75d425ab79afb:set_mask_for_conditioning`: Sets a mask for conditioning data. (confidence 0.90)
+  - _Rationale:_ Applies a mask to the conditioning data, allowing for selective modification or emphasis of certain parts of the conditioning.
+- `symbol:3af9eff3dbff749b:Hook`: Base class for hooks. (confidence 0.90)
+  - _Rationale:_ A base class that defines the structure and common methods for all hooks in the system.
+- `symbol:40e0d91a1aa53059:CreateHookKeyframe`: Creates a keyframe for hooks. (confidence 0.90)
+  - _Rationale:_ A subclass of HookKeyframe, designed to create keyframes specifically for hooks.
+- `symbol:42473974a0ab6b4d:conditioning_set_values_with_hooks`: Sets conditioning values with hooks. (confidence 0.90)
+  - _Rationale:_ Applies hooks to set values for conditioning, allowing for dynamic and customizable conditioning setups.
+- `symbol:425e5f964f264a08:calc_mantissa`: Calculates the mantissa of a floating-point number. (confidence 0.90)
+  - _Rationale:_ Computes the mantissa part of a floating-point number, which is the significant digits of the number.
+- `symbol:431c2416f7b6f497:ConditioningSetDefaultAndCombine`: Sets default conditioning and combines it with new conditioning. (confidence 0.90)
+  - _Rationale:_ A class that sets default conditioning parameters and combines them with new ones, facilitating flexible and dynamic conditioning.
+- `symbol:44ee4888ffb4483d:set_timesteps_for_conditioning`: Sets timesteps for conditioning data. (confidence 0.90)
+  - _Rationale:_ Applies timesteps to the conditioning data, likely for time-based conditioning or diffusion processes.
+- `symbol:49f636f53d038f4e:set_conds_props`: Sets properties for conditioning data. (confidence 0.90)
+  - _Rationale:_ Configures properties for conditioning data, allowing for customization of the conditioning setup.
+- `symbol:4f0d6ab2e545f8fc:ObjectPatchHook`: A hook for patching objects. (confidence 0.90)
+  - _Rationale:_ Subclass of Hook, designed to patch or modify objects during the model's execution.
+- `symbol:500d62d05dbcfc8b:sampling_function`: Main sampling function for generating samples. (confidence 0.90)
+  - _Rationale:_ Executes the sampling process by combining model predictions, conditioning, and other parameters to generate final samples.
+- `symbol:5599a0150315c610:stochastic_rounding`: Performs stochastic rounding on a value. (confidence 0.90)
+  - _Rationale:_ Rounds a value using stochastic rounding, which helps in reducing quantization errors and improving numerical stability.
+- `symbol:572e7a57c889a6f2:_combine_hooks_from_values`: Combines hooks from provided values. (confidence 0.90)
+  - _Rationale:_ Aggregates hooks from the provided values, potentially caching results for efficiency.
+- `symbol:58236b0d09ef53e5:add_wrapper_with_key`: Adds a wrapper with a specific key. (confidence 0.90)
+  - _Rationale:_ Registers a wrapper with a unique key, associating it with specific transformer options and model options if applicable.
+- `symbol:58691e71eb66c8b3:get_wrappers_with_key`: Retrieves wrappers with a specific key. (confidence 0.90)
+  - _Rationale:_ Fetches wrappers associated with a specific key, using the provided transformer options and model options if applicable.
+- `symbol:5a18d43f4b8ada25:Guider_DualCFG`: Guidance mechanism for dual classifier-free guidance. (confidence 0.90)
+  - _Rationale:_ Subclass of CFGGuider, implementing dual classifier-free guidance techniques to enhance sampling quality.
+- `symbol:5baf0d2d3bed1abc:set_default_conds_and_combine`: Sets default conditioning and combines it with new conditioning. (confidence 0.90)
+  - _Rationale:_ Function that sets default conditioning parameters and combines them with new ones, facilitating flexible and dynamic conditioning.
+- `symbol:5bdf7654ba002768:copy_nested_dicts`: Copies nested dictionaries. (confidence 0.90)
+  - _Rationale:_ Recursively copies nested dictionaries, ensuring deep copying of all levels of the dictionary structure.
+- `symbol:5c2f7602de9f791a:get_hooks_from_cond`: Retrieves hooks from conditioning data. (confidence 0.90)
+  - _Rationale:_ Extracts hooks from the provided conditioning data, allowing for dynamic hook application based on the conditioning.
+- `symbol:5db987f5a9f13db0:get_additional_models`: Retrieves additional models based on conditioning data. (confidence 0.90)
+  - _Rationale:_ Identifies and retrieves additional models that are relevant to the provided conditioning data and data type.
+- `symbol:5f69a85ffb4fd32b:get_models_from_cond`: Retrieves models from conditioning data. (confidence 0.90)
+  - _Rationale:_ Extracts models from the provided conditioning data, likely for use in the sampling or inference process.
+
+## Cross-community dependencies
+0, 1, 2, 3, 4, 5, 6, 7, 8
+
+## Unverified / resolved calls
+- unresolved: `model_sampling` from `symbol:008495785142c8b6:cfg_function` — Called within the cfg_function to perform model sampling.
+- unresolved: `model_sampling` from `symbol:12c554323cf113d8:get_patch_weights_from_model` — Referenced in comments but not explicitly called within the function.
+- unresolved: `model_sampling` from `symbol:1ba0997f1bd74b35:_prepare_sampling` — Called within _prepare_sampling to prepare the model for sampling.
+- unresolved: `model_sampling` from `symbol:29d0d29cf61500e7:calc_cond_batch` — Referenced in comments but not explicitly called within the function.
+- unresolved: `model_sampling` from `symbol:31dede927fdce532:calc_cond_uncond_batch` — Referenced in comments but not explicitly called within the function.
+- unresolved: `model_sampling` from `symbol:500d62d05dbcfc8b:sampling_function` — Called within sampling_function to perform the actual sampling.

@@ -1,0 +1,124 @@
+# Community 8: Sampling & Hooks
+
+**Purpose:** Provides functionalities for sampling models and handling hooks in a machine learning context.
+
+## Files
+- `comfy/float.py`: Includes utilities for floating-point operations, possibly related to precision management. (confidence 0.80)
+- `comfy/hooks.py`: Defines various hook classes and utility functions for modifying model behavior during inference or training. (confidence 0.90)
+- `comfy/model_patcher.py`: Handles patching of models, including loading and applying weights, preparing sampling, and managing model options. (confidence 0.90)
+- `comfy/patcher_extension.py`: Extends functionality for model patching, likely including advanced patching techniques or additional hooks. (confidence 0.60)
+- `comfy/sampler_helpers.py`: Provides helper functions for sampling processes, including scheduling and condition handling. (confidence 0.90)
+- `comfy/samplers.py`: Defines sampler classes and methods for generating samples from models, possibly including different sampling strategies. (confidence 0.80)
+- `comfy_extras/nodes_hooks.py`: Additional nodes or utilities related to hooks, extending the capabilities defined in `hooks.py`. (confidence 0.60)
+- `comfy_extras/nodes_pag.py`: Nodes or utilities specifically related to Perpendicular Negative Guidance (PerpNeg) or similar techniques. (confidence 0.70)
+- `comfy_extras/nodes_perpneg.py`: Nodes or utilities related to Perpendicular Negative Guidance (PerpNeg) or similar techniques. (confidence 0.60)
+- `comfy_extras/nodes_slg.py`: Nodes or utilities related to some form of guidance or conditioning technique, possibly SLG (Self-Learned Guidance). (confidence 0.60)
+
+## Symbols
+- `cfg_function`: Applies classifier-free guidance to a model's predictions. (confidence 0.90)
+  - _Rationale:_ Function name and parameters suggest its role in applying guidance to model outputs, likely in a generative model context.
+- `resolve_areas_and_cond_masks_multidim`: Resolves areas and conditional masks for multidimensional conditions. (confidence 0.90)
+  - _Rationale:_ Function name and parameters indicate processing of multidimensional conditions, resolving areas and masks.
+- `simple_scheduler`: Provides a simple sampling scheduler for a given number of steps. (confidence 0.90)
+  - _Rationale:_ Function name suggests it is a basic scheduler, and the parameter indicates it works with a number of steps.
+- `get_mask_aabb`: Calculates the axis-aligned bounding box (AABB) for a given mask. (confidence 0.90)
+  - _Rationale:_ Function name directly indicates its purpose, which is to compute the AABB for a mask.
+- `calculate_start_end_timesteps`: Calculates the start and end timesteps for a given set of conditions. (confidence 0.90)
+  - _Rationale:_ Function name and parameters suggest it calculates timesteps based on conditions, likely for sampling.
+- `default_should_register`: Determines if a hook should be registered based on certain conditions. (confidence 0.90)
+  - _Rationale:_ Function name and parameters indicate it checks whether a hook should be registered under specific conditions.
+- `ConditioningSetProperties`: Class defining properties for conditioning sets. (confidence 0.90)
+  - _Rationale:_ Class name suggests it is used to define properties related to conditioning sets in a model.
+- `ddim_scheduler`: Provides a Denoising Diffusion Implicit Model (DDIM) scheduler for a given number of steps. (confidence 0.90)
+  - _Rationale:_ Function name suggests it is a DDIM scheduler, and the parameter indicates it works with a number of steps.
+- `InjectionsHook`: A hook class for injecting data or modifications into a model. (confidence 0.90)
+  - _Rationale:_ Class name suggests it is a hook for injecting data or modifications, inheriting from a base Hook class.
+- `get_area_and_mult`: Gets the area and multiplier for conditions, given input tensor and timestep. (confidence 0.90)
+  - _Rationale:_ Function name and parameters suggest it calculates area and multiplier based on conditions, input tensor, and timestep.
+- `get_patch_weights_from_model`: Retrieves patch weights from a model, optionally discarding model sampling. (confidence 0.90)
+  - _Rationale:_ Function name and parameters suggest it extracts patch weights from a model, with an option to discard sampling.
+- `manual_stochastic_round_to_float8`: Manually rounds a tensor to float8 format using stochastic rounding. (confidence 0.90)
+  - _Rationale:_ Function name and parameters indicate it performs stochastic rounding to float8, likely for precision management.
+- `filter_registered_hooks_on_conds`: Filters registered hooks based on given conditions and model options. (confidence 0.90)
+  - _Rationale:_ Function name and parameters suggest it filters hooks according to specified conditions and model options.
+- `PerturbedAttentionGuidance`: A class for guidance using perturbed attention mechanisms. (confidence 0.90)
+  - _Rationale:_ Class name suggests it implements guidance through perturbations in attention mechanisms.
+- `WeightHook`: A hook class for modifying weights in a model. (confidence 0.90)
+  - _Rationale:_ Class name suggests it is a hook for modifying weights, inheriting from a base Hook class.
+- `PerpNegGuider`: A guide class for implementing perpendicular negative guidance. (confidence 0.90)
+  - _Rationale:_ Class name suggests it is used for perpendicular negative guidance in a model.
+- `CFGGuider`: A guide class for Classifier-Free Guidance (CFG). (confidence 0.90)
+  - _Rationale:_ Class name suggests it is used for implementing Classifier-Free Guidance in a model.
+- `_prepare_sampling`: Prepares sampling for a model with given noise shape, conditions, and options. (confidence 0.90)
+  - _Rationale:_ Function name and parameters suggest it prepares the sampling process for a model.
+- `get_key_weight`: Retrieves the weight associated with a specific key from a model. (confidence 0.90)
+  - _Rationale:_ Function name and parameters suggest it fetches the weight for a given key from a model.
+- `get_attr`: Retrieves an attribute from an object based on a string name. (confidence 0.90)
+  - _Rationale:_ Function name and parameters suggest it accesses an attribute of an object using a string name.
+- `CombineHooks`: A class for combining multiple hooks. (confidence 0.90)
+  - _Rationale:_ Class name suggests it is used to combine multiple hooks.
+- `CombineHooksEight`: A class for combining eight hooks. (confidence 0.90)
+  - _Rationale:_ Class name suggests it is used to combine exactly eight hooks.
+- `CombineHooksFour`: A class for combining four hooks. (confidence 0.90)
+  - _Rationale:_ Class name suggests it is used to combine exactly four hooks.
+- `HookKeyframe`: A class representing a keyframe for hooks. (confidence 0.90)
+  - _Rationale:_ Class name suggests it is used to represent a keyframe in the context of hooks.
+- `combine_with_new_conds`: Combines existing conditions with new conditions. (confidence 0.90)
+  - _Rationale:_ Function name and parameters suggest it merges existing conditions with new ones.
+- `EnumHookMode`: An enumeration class defining different modes for hooks. (confidence 0.90)
+  - _Rationale:_ Class name suggests it is an enumeration defining various hook modes.
+- `CreateHookModelAsLoraModelOnly`: A class for creating a hook model as a LoRA model only. (confidence 0.90)
+  - _Rationale:_ Class name suggests it is used to create a hook model specifically as a LoRA model.
+- `KSampler`: A class for sampling using a kernel-based method. (confidence 0.90)
+  - _Rationale:_ Class name suggests it is used for sampling with a kernel-based approach.
+- `calc_cond_batch`: Calculates a batch of conditions for a model. (confidence 0.90)
+  - _Rationale:_ Function name and parameters suggest it computes batches of conditions for a model.
+- `preprocess_conds_hooks`: Preprocesses conditions using hooks. (confidence 0.90)
+  - _Rationale:_ Function name and parameters suggest it applies preprocessing to conditions using hooks.
+- `PerpNeg`: A class for implementing perpendicular negative guidance. (confidence 0.90)
+  - _Rationale:_ Class name suggests it is used for perpendicular negative guidance in a model.
+- `cond_cat`: Concatenates a list of conditions. (confidence 0.90)
+  - _Rationale:_ Function name suggests it concatenates a list of conditions.
+- `TransformerOptionsHook`: A hook class for modifying transformer options. (confidence 0.90)
+  - _Rationale:_ Class name suggests it is a hook for modifying transformer options.
+- `PairConditioningCombine`: A class for combining pair conditioning. (confidence 0.90)
+  - _Rationale:_ Class name suggests it is used to combine pair conditioning.
+- `add_area_dims`: Adds dimensions to an area based on the number of dimensions. (confidence 0.90)
+  - _Rationale:_ Function name and parameters suggest it adds dimensions to an area.
+- `calc_cond_uncond_batch`: Calculates a batch of conditional and unconditional conditions for a model. (confidence 0.90)
+  - _Rationale:_ Function name and parameters suggest it computes batches of conditional and unconditional conditions for a model.
+- `CallbacksMP`: A class for managing callbacks in a multiprocessing environment. (confidence 0.90)
+  - _Rationale:_ Class name suggests it is used for managing callbacks in a multiprocessing setting.
+- `PairConditioningSetProperties`: A class defining properties for pair conditioning sets. (confidence 0.90)
+  - _Rationale:_ Class name suggests it is used to define properties related to pair conditioning sets.
+- `set_mask_for_conditioning`: Sets a mask for conditioning with a specified strength and area. (confidence 0.90)
+  - _Rationale:_ Function name and parameters suggest it applies a mask for conditioning with specified attributes.
+- `Hook`: A base class for hooks. (confidence 0.90)
+  - _Rationale:_ Class name suggests it is a base class for hooks, likely inherited by other hook classes.
+- `encode_model_conds`: Encodes model conditions using a given model function and parameters. (confidence 0.90)
+  - _Rationale:_ Function name and parameters suggest it encodes conditions using a specified model function and parameters.
+- `CreateHookKeyframe`: A class for creating hook keyframes. (confidence 0.90)
+  - _Rationale:_ Class name suggests it is used to create hook keyframes.
+- `conditioning_set_values_with_hooks`: Sets values for conditioning using hooks, with options to append hooks. (confidence 0.90)
+  - _Rationale:_ Function name and parameters suggest it sets conditioning values using hooks, with options to append hooks.
+- `calc_mantissa`: Calculates the mantissa for a given absolute value, exponent, and other parameters. (confidence 0.90)
+  - _Rationale:_ Function name and parameters suggest it computes the mantissa for a given absolute value and exponent.
+- `ConditioningSetDefaultAndCombine`: A class for setting default and combining conditioning sets. (confidence 0.90)
+  - _Rationale:_ Class name suggests it is used to set default and combine conditioning sets.
+- `set_timesteps_for_conditioning`: Sets timesteps for conditioning with a specified range. (confidence 0.90)
+  - _Rationale:_ Function name and parameters suggest it applies timesteps for conditioning within a specified range.
+- `set_conds_props`: Sets properties for conditions with a specified strength and area. (confidence 0.90)
+  - _Rationale:_ Function name and parameters suggest it applies properties to conditions with specified attributes.
+- `ObjectPatchHook`: A hook class for patching objects. (confidence 0.90)
+  - _Rationale:_ Class name suggests it is a hook for patching objects.
+- `sampling_function`: A generic sampling function for a model with given parameters. (confidence 0.90)
+  - _Rationale:_ Function name suggests it is a generic sampling function for a model.
+- `cond_equal_size`: Checks if two conditions are of equal size. (confidence 0.90)
+  - _Rationale:_ Function name and parameters suggest it compares the sizes of two conditions.
+
+## Cross-community dependencies
+0, 1, 2, 3, 4, 5, 6, 7, 9, 11
+
+## Unverified / resolved calls
+- unresolved: `model_sampling` from `simple_scheduler` — Used in simple_scheduler function.
+- unresolved: `model_sampling` from `ddim_scheduler` — Used in ddim_scheduler function.

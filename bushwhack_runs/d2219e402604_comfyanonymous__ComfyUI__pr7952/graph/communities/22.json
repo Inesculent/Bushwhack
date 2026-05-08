@@ -1,0 +1,40 @@
+{
+  "community_id": 22,
+  "edges": [
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:comfy/cldm/mmdit.py",
+      "source_file": "comfy/cldm/mmdit.py",
+      "source_location": "L?",
+      "source_ref": "comfy/cldm/mmdit.py",
+      "target": "symbol:21006bc6c14a35f1:ControlNet",
+      "weight": 1.0
+    }
+  ],
+  "nodes": [
+    {
+      "community_id": 22,
+      "file_path": "comfy/cldm/mmdit.py",
+      "id": "file:comfy/cldm/mmdit.py",
+      "language": "Python",
+      "node_type": "file"
+    },
+    {
+      "community_id": 22,
+      "file_path": "comfy/cldm/mmdit.py",
+      "id": "symbol:21006bc6c14a35f1:ControlNet",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "comfy/cldm/mmdit.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class ControlNet(comfy.ldm.modules.diffusionmodules.mmdit.MMDiT):",
+      "symbol_name": "ControlNet",
+      "symbol_type": "class"
+    }
+  ]
+}
