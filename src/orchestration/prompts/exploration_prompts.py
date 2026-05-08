@@ -18,7 +18,7 @@ def _fill_template(template: str, **values: str) -> str:
 
 
 def render_explorer_prompt(*, repo_path: str, user_goals: str, git_diff: str) -> str:
-    """Prompt the first-pass explorer to turn the diff into review planning context."""
+    """Prompt the first-pass explorer to build an initial understanding map from the diff."""
     diff_excerpt = (git_diff or "")[:12000] or "(empty diff)"
     return _fill_template(
         load_exploration_prompt("explorer.md"),
@@ -29,7 +29,7 @@ def render_explorer_prompt(*, repo_path: str, user_goals: str, git_diff: str) ->
 
 
 def render_community_semantic_prompt(*, repo_path: str, item: CommunityWorkItem) -> str:
-    """Prompt a community agent to produce review-oriented semantic summaries."""
+    """Prompt a community agent to summarize observable structure and responsibilities."""
     files = "\n".join(f"- {p}" for p in item.file_paths[:200])
     symbols = "\n\n".join(item.symbol_context_lines[:500])
     outbound = ", ".join(item.outbound_cross_community_targets[:200])
@@ -44,7 +44,7 @@ def render_community_semantic_prompt(*, repo_path: str, item: CommunityWorkItem)
 
 
 def render_unverified_call_resolver_prompt(*, symbol_node_id: str, body_text: str) -> str:
-    """Prompt the resolver to summarize a concrete symbol body."""
+    """Prompt the resolver to describe a symbol's observable behavior from its body."""
     body_excerpt = (body_text or "")[:6000]
     return _fill_template(
         load_exploration_prompt("unverified_call_resolver.md"),
@@ -54,7 +54,7 @@ def render_unverified_call_resolver_prompt(*, symbol_node_id: str, body_text: st
 
 
 def render_semantic_merge_prompt(summaries: Sequence[CommunitySemanticSummary]) -> str:
-    """Prompt the merge node to synthesize repository-level exploration context."""
+    """Prompt the merge node to synthesize a repository-level understanding map."""
     lines = [
         f"- community {s.community_id}: {s.label} - {s.purpose} "
         f"(deps: {', '.join(str(x) for x in s.cross_community_dependencies) or 'none'})"

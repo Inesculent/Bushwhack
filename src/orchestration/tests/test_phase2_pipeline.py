@@ -69,11 +69,11 @@ def test_exploration_prompts_are_role_specific() -> None:
         ]
     )
 
-    assert "changed entry points" in explorer_prompt
+    assert "initial understanding map" in explorer_prompt
     assert "unverified_calls" in community_prompt
     assert "Do not infer hidden implementation details" in community_prompt
     assert "exactly one sentence" in resolver_prompt
-    assert "community boundaries" in merge_prompt
+    assert "repository-level understanding map" in merge_prompt
 
 
 def test_route_semantic_dispatch_empty_queue() -> None:

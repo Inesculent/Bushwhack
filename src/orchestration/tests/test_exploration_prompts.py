@@ -25,6 +25,7 @@ def test_exploration_renderers_substitute_placeholders() -> None:
     assert "/repo" in explorer
     assert "focus on auth" in explorer
     assert "diff --git" in explorer
+    assert "repository-understanding" in explorer
 
     resolver = render_unverified_call_resolver_prompt(
         symbol_node_id="sym:1",
@@ -32,4 +33,5 @@ def test_exploration_renderers_substitute_placeholders() -> None:
     )
     assert "sym:1" in resolver
     assert "def f()" in resolver
+    assert "dependency graph" in resolver
 
