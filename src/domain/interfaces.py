@@ -1,7 +1,16 @@
 from abc import ABC, abstractmethod
 from pydantic import BaseModel
 from typing import List, Optional, Any, Dict, Sequence
-from .schemas import SearchResult, CodeEntity, DiffManifest, PreflightRequest
+from .schemas import (
+    CodeEntity,
+    DiffManifest,
+    GitHubIssueContext,
+    GitHubIssueComment,
+    GitHubPullRequestContext,
+    RepoDocsBundle,
+    SearchResult,
+    PreflightRequest,
+)
 
 """Domain ports.
 
@@ -109,6 +118,58 @@ class IPreflightService(ABC):
     def build_diff_manifest(self, request: PreflightRequest) -> DiffManifest:
         """
         Build a deterministic diff manifest from run metadata and diff payload input.
+        """
+        pass
+
+
+class IGitHubContextProvider(ABC):
+    @abstractmethod
+    def get_repo_docs(
+        self,
+        owner: str,
+        repo: str,
+        ref: str,
+        paths: Sequence[str],
+    ) -> RepoDocsBundle:
+        """
+        Fetch a bounded bundle of documentation files from the repository.
+        """
+        pass
+
+    @abstractmethod
+    def get_pull_request(
+        self,
+        owner: str,
+        repo: str,
+        pull_number: int,
+    ) -> GitHubPullRequestContext | None:
+        """
+        Fetch basic pull request metadata including title, body, and refs.
+        """
+        pass
+
+    @abstractmethod
+    def get_issue(
+        self,
+        owner: str,
+        repo: str,
+        issue_number: int,
+    ) -> GitHubIssueContext | None:
+        """
+        Fetch a linked issue summary (title/body) when available.
+        """
+        pass
+
+    @abstractmethod
+    def get_issue_comments(
+        self,
+        owner: str,
+        repo: str,
+        issue_number: int,
+        limit: int,
+    ) -> List[GitHubIssueComment]:
+        """
+        Fetch a bounded list of comments for a PR or issue.
         """
         pass
 

@@ -3,14 +3,23 @@
 from __future__ import annotations
 
 import logging
+import re
 import threading
+from urllib.parse import urlparse
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Set
 
 from src.config import get_settings
-from src.domain.interfaces import IASTParser, ICodeSearcher
+from src.domain.interfaces import IASTParser, ICodeSearcher, IGitHubContextProvider
 from src.domain.interfaces import IPreflightService
-from src.domain.schemas import CodeEntity, FocusedContextRequest, FocusedContextResult, ReviewTask, SearchResult
+from src.domain.schemas import (
+    CodeEntity,
+    FocusedContextRequest,
+    FocusedContextResult,
+    RepoDocument,
+    ReviewTask,
+    SearchResult,
+)
 from src.domain.state import GraphState
 from src.infrastructure.factory import build_ast_parser, build_cache_service
 from src.infrastructure.sandbox import RepoSandbox
@@ -289,8 +298,14 @@ class LazyReviewContextProvider:
 class BoundedReviewContextFulfiller:
     """Fulfill structured focused-context requests with hard caps (no arbitrary shell)."""
 
-    def __init__(self, provider: LazyReviewContextProvider) -> None:
+    def __init__(
+        self,
+        provider: LazyReviewContextProvider,
+        *,
+        github_provider: IGitHubContextProvider | None = None,
+    ) -> None:
         self._provider = provider
+        self._github_provider = github_provider
 
     def fulfill(
         self,
@@ -308,6 +323,7 @@ class BoundedReviewContextFulfiller:
         file_snippets: Dict[str, str] = {}
         search_hits: Dict[str, List[SearchResult]] = {}
         total_chars = 0
+        missing_files: List[str] = []
 
         file_paths = request.file_paths[:MAX_FILES_PER_REQUEST]
         for fp in file_paths:
@@ -327,6 +343,8 @@ class BoundedReviewContextFulfiller:
                 merged = f"{merged}\n--- ast entities ---\n{ast_block}" if merged else ast_block
                 file_snippets[fp] = merged[:MAX_FILE_SLICE_CHARS]
                 total_chars = sum(len(v) for v in file_snippets.values())
+
+        missing_files = [fp for fp in file_paths if fp not in file_snippets]
 
         focused_paths = request.file_paths[:MAX_FILES_PER_REQUEST] or None
 
@@ -354,6 +372,26 @@ class BoundedReviewContextFulfiller:
                 warnings.append("truncated_total_chars")
                 break
 
+        try:
+            self._apply_github_fallback(
+                state=state,
+                request=request,
+                file_snippets=file_snippets,
+                search_hits=search_hits,
+                warnings=warnings,
+                missing_files=missing_files,
+                total_chars=total_chars,
+            )
+        except Exception as exc:  # noqa: BLE001 - GitHub context is optional enrichment
+            warnings.append(f"github_fallback_failed:{exc.__class__.__name__}: {exc}")
+            logger.warning(
+                "GitHub focused-context fallback failed run_id=%s request_id=%s reason=%s: %s",
+                state.get("run_id", "unknown"),
+                request.request_id,
+                exc.__class__.__name__,
+                exc,
+            )
+
         result = FocusedContextResult(
             request_id=request.request_id,
             candidate_id=request.candidate_id,
@@ -370,3 +408,192 @@ class BoundedReviewContextFulfiller:
                 list(search_hits),
             )
         return result
+
+    def _apply_github_fallback(
+        self,
+        *,
+        state: GraphState,
+        request: FocusedContextRequest,
+        file_snippets: Dict[str, str],
+        search_hits: Dict[str, List[SearchResult]],
+        warnings: List[str],
+        missing_files: List[str],
+        total_chars: int,
+    ) -> None:
+        settings = get_settings()
+        if not settings.github_mcp_enabled or self._github_provider is None:
+            return
+
+        repo_identity = _resolve_repo_identity(state)
+        if repo_identity is None:
+            return
+        owner, repo = repo_identity
+        ref = _resolve_docs_ref(state)
+
+        if missing_files:
+            bundle = self._github_provider.get_repo_docs(owner, repo, ref, missing_files)
+            for doc in bundle.documents:
+                file_snippets[doc.path] = doc.content[:MAX_FILE_SLICE_CHARS]
+            warnings.extend(bundle.warnings)
+            if bundle.documents:
+                warnings.append("github_file_fallback")
+
+        missing_symbols = [
+            sym
+            for sym in request.symbol_queries[:MAX_SYMBOL_QUERIES]
+            if not search_hits.get(sym)
+        ]
+        missing_text = [
+            tq
+            for tq in request.text_queries[:MAX_TEXT_QUERIES]
+            if not search_hits.get(tq)
+        ]
+        if not missing_symbols and not missing_text:
+            return
+
+        doc_paths = settings.github_mcp_doc_paths
+        if not doc_paths:
+            return
+
+        bundle = self._github_provider.get_repo_docs(owner, repo, ref, doc_paths)
+        warnings.extend(bundle.warnings)
+        if not bundle.documents:
+            return
+
+        for sym in missing_symbols:
+            hits = _search_docs_for_symbol(bundle.documents, sym, MAX_SEARCH_RESULTS_PER_QUERY)
+            if hits:
+                search_hits[sym] = hits
+                total_chars += sum(len(h.content) for h in hits)
+            if total_chars > MAX_TOTAL_RESULT_CHARS:
+                warnings.append("truncated_total_chars")
+                return
+
+        for tq in missing_text:
+            hits = _search_docs_for_text(bundle.documents, tq, MAX_SEARCH_RESULTS_PER_QUERY)
+            if hits:
+                search_hits[tq] = hits
+                total_chars += sum(len(h.content) for h in hits)
+            if total_chars > MAX_TOTAL_RESULT_CHARS:
+                warnings.append("truncated_total_chars")
+                return
+
+        if missing_symbols or missing_text:
+            warnings.append("github_docs_fallback")
+
+
+def _resolve_repo_identity(state: GraphState) -> tuple[str, str] | None:
+    metadata = state.get("metadata", {}) or {}
+    candidates = [
+        metadata.get("pr_repo"),
+        metadata.get("review_repo_url"),
+        state.get("repo_path"),
+    ]
+    for value in candidates:
+        if not isinstance(value, str) or not value.strip():
+            continue
+        slug = _parse_repo_slug(value.strip())
+        if slug is not None:
+            return slug
+    return None
+
+
+def _parse_repo_slug(value: str) -> tuple[str, str] | None:
+    if "github.com" in value:
+        parsed = urlparse(value)
+        parts = [p for p in parsed.path.split("/") if p]
+        if len(parts) >= 2:
+            return parts[0], parts[1]
+        return None
+    if ":" in value or "\\" in value or value.startswith("/"):
+        return None
+    if "/" not in value:
+        return None
+    owner, repo = value.split("/", maxsplit=1)
+    if not owner or not repo:
+        return None
+    return owner, repo
+
+
+def _resolve_docs_ref(state: GraphState) -> str:
+    metadata = state.get("metadata", {}) or {}
+    docs_meta = metadata.get("docs_prebrief", {}) if isinstance(metadata, dict) else {}
+    if isinstance(docs_meta, dict):
+        ref = docs_meta.get("ref")
+        if isinstance(ref, str) and ref.strip():
+            return ref.strip()
+    return "main"
+
+
+def _search_docs_for_symbol(
+    docs: Sequence[RepoDocument],
+    symbol: str,
+    max_hits: int,
+) -> List[SearchResult]:
+    if not symbol:
+        return []
+    pattern = re.compile(r"\b" + re.escape(symbol) + r"\b", flags=re.IGNORECASE)
+    return _search_docs_with_pattern(docs, pattern, max_hits)
+
+
+def _search_docs_for_text(
+    docs: Sequence[RepoDocument],
+    query: str,
+    max_hits: int,
+) -> List[SearchResult]:
+    if not query:
+        return []
+    try:
+        pattern = re.compile(query, flags=re.IGNORECASE)
+        return _search_docs_with_pattern(docs, pattern, max_hits)
+    except re.error:
+        return _search_docs_substring(docs, query, max_hits)
+
+
+def _search_docs_with_pattern(
+    docs: Sequence[RepoDocument],
+    pattern: re.Pattern[str],
+    max_hits: int,
+) -> List[SearchResult]:
+    results: List[SearchResult] = []
+    for doc in docs:
+        for index, line in enumerate(doc.content.splitlines(), start=1):
+            if not pattern.search(line):
+                continue
+            line_text = line.strip()
+            results.append(
+                SearchResult(
+                    file_path=doc.path,
+                    line_number=index,
+                    content=line_text,
+                    context_lines=[line_text],
+                )
+            )
+            if len(results) >= max_hits:
+                return results
+    return results
+
+
+def _search_docs_substring(
+    docs: Sequence[RepoDocument],
+    query: str,
+    max_hits: int,
+) -> List[SearchResult]:
+    needle = query.lower()
+    results: List[SearchResult] = []
+    for doc in docs:
+        for index, line in enumerate(doc.content.splitlines(), start=1):
+            if needle not in line.lower():
+                continue
+            line_text = line.strip()
+            results.append(
+                SearchResult(
+                    file_path=doc.path,
+                    line_number=index,
+                    content=line_text,
+                    context_lines=[line_text],
+                )
+            )
+            if len(results) >= max_hits:
+                return results
+    return results

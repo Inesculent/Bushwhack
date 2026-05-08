@@ -57,6 +57,10 @@ class GraphState(TypedDict, total=False):
     next_step: NotRequired[Literal["explore", "plan", "review", "finalize"]]
     global_insights: Annotated[List[str], operator.add]
 
+    # Documentation pre-brief (optional, before semantic scan)
+    docs_prebrief_summary: NotRequired[str]
+    docs_prebrief_sources: NotRequired[List[str]]
+
     # Optional references for externalized payloads (e.g., Redis-backed cache blobs)
     cache_refs: NotRequired[Dict[str, str]]
     diff_manifest_ref: NotRequired[str]

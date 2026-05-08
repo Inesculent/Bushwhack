@@ -28,6 +28,25 @@ def render_explorer_prompt(*, repo_path: str, user_goals: str, git_diff: str) ->
     )
 
 
+def render_docs_prebrief_prompt(
+    *,
+    repo_path: str,
+    docs: str,
+    pr_context: str,
+    issues: str,
+    comments: str,
+) -> str:
+    """Prompt a docs pre-brief summary from README/CONTRIBUTING/PR context."""
+    return _fill_template(
+        load_exploration_prompt("docs_prebrief.md"),
+        repo_path=repo_path or "(unknown)",
+        docs=docs or "(none)",
+        pr_context=pr_context or "(none)",
+        issues=issues or "(none)",
+        comments=comments or "(none)",
+    )
+
+
 def render_community_semantic_prompt(*, repo_path: str, item: CommunityWorkItem) -> str:
     """Prompt a community agent to summarize observable structure and responsibilities."""
     files = "\n".join(f"- {p}" for p in item.file_paths[:200])

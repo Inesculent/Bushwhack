@@ -67,6 +67,10 @@ MODELS = {
         model_name="qwen3-coder",
         provider="local",
     ),
+    "qwen3.5-35b-a3b": LLMConfig(
+        model_name="/lustre/fs1/home/dy828490/bushwhack_dev/qwen-3.5-35b-a3b",
+        provider="local",
+    ),
     "qwen-local": LLMConfig(
         model_name="Qwen/Qwen2.5-Coder-7B-Instruct",
         provider="local",
@@ -80,10 +84,10 @@ class Models:
     """
 
     DEFAULT_ROLE_MODELS = {
-        "explorer": "qwen2.5-coder-32b",
-        "planner": "qwen2.5-coder-32b",
-        "worker": "qwen2.5-coder-32b",
-        "synthesizer": "qwen2.5-coder-32b",
+        "explorer": "qwen3.5-35b-a3b",
+        "planner": "qwen3.5-35b-a3b",
+        "worker": "qwen3.5-35b-a3b",
+        "synthesizer": "qwen3.5-35b-a3b",
     }
 
     @staticmethod

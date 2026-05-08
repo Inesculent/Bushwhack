@@ -23,6 +23,7 @@ from src.infrastructure.remote_review_workflow import collect_structural_entitie
 from src.infrastructure.factory import (
     build_ast_parser,
     build_cache_service,
+    build_github_context_provider,
     build_preflight_service,
     build_snapshot_pointer_store,
     build_snapshot_writer,
@@ -55,6 +56,7 @@ from src.orchestration.nodes.application.reflection import make_adversarial_refl
 from src.orchestration.nodes.application.synthesizer import synthesizer_node
 from src.orchestration.nodes.application.worker import make_specialist_worker_node
 from src.orchestration.nodes.exploration.community_semantic_agent import make_community_semantic_agent_node
+from src.orchestration.nodes.exploration.docs_prebrief import make_docs_prebrief_node
 from src.orchestration.nodes.exploration.phase2_routing import semantic_phase2_should_run
 from src.orchestration.nodes.exploration.semantic_dispatch import (
     make_semantic_dispatch_node,
@@ -195,6 +197,21 @@ def _route_initial_context(state: GraphState) -> str:
             route,
         )
     return route
+
+
+def _docs_prebrief_done(state: GraphState) -> bool:
+    metadata = state.get("metadata", {}) or {}
+    docs_meta = metadata.get("docs_prebrief", {})
+    if isinstance(docs_meta, dict):
+        return bool(docs_meta.get("status"))
+    return False
+
+
+def _route_start(state: GraphState) -> str:
+    settings = get_settings()
+    if settings.docs_prebrief_enabled and not _docs_prebrief_done(state):
+        return "docs_prebrief"
+    return _route_initial_context(state)
 
 
 def _route_after_structural(state: GraphState) -> str:
@@ -371,11 +388,12 @@ def build_graph(
     settings = get_settings()
     context_provider = context_provider or LazyReviewContextProvider()
     preflight_service = build_preflight_service()
+    cache = build_cache_service()
     ast_parser: IASTParser | None = None
 
     if settings.ast_enabled:
         try:
-            ast_parser = build_ast_parser(settings=settings, cache=build_cache_service())
+            ast_parser = build_ast_parser(settings=settings, cache=cache)
         except Exception as exc:
             if not settings.ast_fallback_to_search:
                 raise
@@ -389,10 +407,16 @@ def build_graph(
         ast_parser=ast_parser,
     )
 
+    github_provider = build_github_context_provider(settings=settings, cache=cache)
+
     snapshot_writer = build_snapshot_writer(settings)
     pointer_store = build_snapshot_pointer_store(settings)
 
     builder = StateGraph(GraphState)
+    builder.add_node(
+        "docs_prebrief",
+        make_docs_prebrief_node(github_provider=github_provider, settings=settings),
+    )
     builder.add_node("structural_extractor", structural_extractor_node)
     builder.add_node(
         "sandbox_structural_extractor",
@@ -441,8 +465,14 @@ def build_graph(
             make_general_critiquer_node(context_provider=context_provider),
         )
         builder.add_node("adversarial_reflection", make_adversarial_reflection_node())
-        builder.add_node("initial_focused_context", make_focused_context_node(context_provider))
-        builder.add_node("focused_context", make_focused_context_node(context_provider))
+        builder.add_node(
+            "initial_focused_context",
+            make_focused_context_node(context_provider, github_provider=github_provider),
+        )
+        builder.add_node(
+            "focused_context",
+            make_focused_context_node(context_provider, github_provider=github_provider),
+        )
         builder.add_node("critique_revision_digest", make_critique_revision_digest_node())
         builder.add_node("critique_revision_reduce", make_critique_revision_reduce_node())
         builder.add_node("adversarial_cleanup", make_adversarial_cleanup_node())
@@ -464,6 +494,17 @@ def build_graph(
 
     builder.add_conditional_edges(
         START,
+        _route_start,
+        {
+            "docs_prebrief": "docs_prebrief",
+            "structural_extractor": "structural_extractor",
+            "sandbox_structural_extractor": "sandbox_structural_extractor",
+            "review_planner": "review_planner",
+            "semantic_dispatch": "semantic_dispatch",
+        },
+    )
+    builder.add_conditional_edges(
+        "docs_prebrief",
         _route_initial_context,
         {
             "structural_extractor": "structural_extractor",

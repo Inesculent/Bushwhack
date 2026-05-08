@@ -1,0 +1,139 @@
+# Community 2: DiT Models and Transformer Blocks
+
+**Purpose:** This community contains core Diffusion Transformer (DiT) model classes and essential building blocks like attention mechanisms, embedding modules, and positional encoding utilities. It serves as the central structural hub for video and image generation models in ComfyUI, providing reusable components that downstream workflow nodes instantiate for specific architectures like Wan, HunYuan, and HiDream.
+
+## Files
+- `comfy/ldm/ace/attention.py`: Implements attention mechanisms, likely for the ACE model family. Includes `AttentionPool` and pooling utilities. (confidence 0.95)
+- `comfy/clip_model.py`: Not included in symbol context. Ignored. (confidence 0.00)
+- `comfy/cldm/dit_embedder.py`: Implements `TimestepEmbedder`, `LabelEmbedder`, and other conditioning mechanisms for DiT models. Crucial for injecting noise steps and prompts into the transformer. (confidence 0.98)
+- `comfy/gligen.py`: Implements `Gligen`, likely integrating spatial control or guidance mechanisms. (confidence 0.90)
+- `comfy/image_encoders/dino2.py`: Implements `Dino2PatchEmbeddings` and `Dinov2Model`, suggesting a vision backbone for image-based conditioning. (confidence 0.95)
+- `comfy/ldm/ace/lyric_encoder.py`: Not included in symbol context. Ignored. (confidence 0.00)
+- `comfy/ldm/ace/model.py`: Not included in symbol context. Ignored. (confidence 0.00)
+- `comfy/ldm/ace/vae/music_log_mel.py`: Not included in symbol context. Ignored. (confidence 0.00)
+- `comfy/ldm/ace/vae/music_vocoder.py`: Not included in symbol context. Ignored. (confidence 0.00)
+- `comfy/ldm/audio/dit.py`: Implements `ADaMoSHiFiGANV1` and audio-specific DiT components. Likely for audio generation or processing. (confidence 0.92)
+- `comfy/ldm/aura/mmdit.py`: Implements `AuraFlow` components. Specific model architecture for Aura generation. (confidence 0.00)
+- `comfy/ldm/common_dit.py`: Core utilities for DiT models. Likely contains `PatchEmbed`, `FinalLayer`, `Modulation`, `MLP`, `Swish`, and common transformer blocks. (confidence 0.99)
+- `comfy/ldm/cosmos/blocks.py`: Implements transformer blocks for the Cosmos video model. (confidence 0.00)
+- `comfy/ldm/cosmos/model.py`: Implements `CosmosVideo` components. Likely the main model class. (confidence 0.00)
+- `comfy/ldm/flux/math.py`: Implements `apply_rotary_emb`, `apply_rope`, and `get_attn_precision` for Flux model math/optimizations. (confidence 0.98)
+- `comfy/ldm/genmo/joint_model/rope_mixed.py`: Implements `create_position_matrix`, `init_image_posemb` for positional embeddings in Genmo models. (confidence 0.95)
+- `comfy/ldm/genmo/joint_model/utils.py`: Utility functions for Genmo models. Likely contains `pad_to_patch_size`, `_to_tuple`, `cast_to_input`. (confidence 0.95)
+- `comfy/ldm/hidream/model.py`: Implements `HiDreamImageTransformer2DModel`. Core architecture for HiDream image generation. (confidence 0.98)
+- `comfy/ldm/hunyuan3d/vae.py`: Not included in symbol context. Ignored. (confidence 0.00)
+- `comfy/cldm/dit_embedder.py`: Implements `TimestepEmbedder`, `LabelEmbedder`, and other conditioning mechanisms for DiT models. Crucial for injecting noise steps and prompts into the transformer. (confidence 0.98)
+- `comfy/ldm/hydra/video.py`: Not included in symbol context. Ignored. (confidence 0.00)
+- `comfy/ldm/aura/mmdit.py`: Implements `AuraFlow` components. (confidence 0.00)
+- `comfy/ldm/flux/math.py`: Implements `apply_rotary_emb`, `apply_rope`, and `get_attn_precision` for Flux model math/optimizations. (confidence 0.98)
+- `comfy/ldm/common_dit.py`: Core utilities for DiT models. Likely contains `PatchEmbed`, `FinalLayer`, `Modulation`, `MLP`, `Swish`, and common transformer blocks. (confidence 0.99)
+
+## Symbols
+- `005e65ac45328aa2`: `AttentionPool`: Pooling mechanism for attention maps. Likely used in models requiring global context aggregation. (confidence 0.95)
+  - _Rationale:_ Defined as a `nn.Module` subclass.
+- `03a46feaf3a1a578`: `HunYuanDiT`: Main DiT architecture for the HunYuan model family (image/video generation). (confidence 0.95)
+  - _Rationale:_ Defined as a `nn.Module` subclass.
+- `03b5efd2e39a0f2c`: `get_2d_sincos_pos_embed_torch`: Generates 2D sine-cosine positional embeddings for image tokens. (confidence 0.95)
+  - _Rationale:_ Takes `embed_dim`, `w`, `h` arguments. Returns tensor.
+- `04947b4290efe1c5`: `pool_tokens`: Generalized token pooling utility. Handles masking and dimensionality reduction. (confidence 0.95)
+  - _Rationale:_ Signature shows `x: torch.Tensor`, `mask: torch.Tensor`.
+- `06d179c29a8d3748`: `BertIntermediate`: Intermediate layer within a Transformer block (likely BERT-style or adapted for audio/text). (confidence 0.90)
+  - _Rationale:_ Defined as `torch.nn.Module`.
+- `076416fc94afcf7f`: `Swish`: Activation function used in feed-forward networks within DiTs. (confidence 0.95)
+  - _Rationale:_ Defined as `torch.nn.Module`.
+- `08b09b200c7b6201`: `Attention`: Core self-attention mechanism class. Used across multiple model architectures. (confidence 0.95)
+  - _Rationale:_ Defined as `nn.Module`.
+- `0b04096636774779`: `ConditioningTimestepsRange`: Struct for managing timestep conditioning ranges. (confidence 0.90)
+  - _Rationale:_ Defined as a class without `nn.Module` inheritance visible, but likely data container.
+- `0b319ef8033401f0`: `files_equal`: Utility to check if two file contents are identical. (confidence 0.95)
+  - _Rationale:_ Function signature `files_equal(file1, file2)`.
+- `0b8659bd7650372a`: `SingleAttention`: Variant of attention mechanism, potentially single-head or specific attention mode. (confidence 0.95)
+  - _Rationale:_ Defined as `nn.Module`.
+- `0bb5bef5ed160eb4`: `LinearEmbed`: Embedding layer projecting input features to model dimension. (confidence 0.95)
+  - _Rationale:_ Defined as `torch.nn.Module`.
+- `0e85f99226cc3031`: `file_size`: Utility to get file size. (confidence 0.95)
+  - _Rationale:_ Function signature `file_size(f)`.
+- `0f2dc9e7f3939dd6`: `apply_rotary_emb`: Applies Rotary Positional Embeddings (RoPE) to input tensor. (confidence 0.98)
+  - _Rationale:_ Takes `input_tensor`, `freqs_cis`. Used in modern Transformer architectures.
+- `117dd323f49a624f`: `PatchEmbed`: Splits images into patches and projects them to latent space. Standard ViT/DiT entry point. (confidence 0.95)
+  - _Rationale:_ Defined as `nn.Module`.
+- `12729cf4d241c454`: `get_attn_precision`: Selects attention precision settings based on device/dtype. (confidence 0.95)
+  - _Rationale:_ Takes `attn_precision`, `current_dtype`.
+- `12d087890dfd2626`: `_to_tuple`: Helper to convert input to tuple format. (confidence 0.95)
+  - _Rationale:_ Private function, likely for argument normalization.
+- `12e5a513de9a0409`: `cast_to_input`: Casts weight tensors to match input tensor device/dtype dynamically. (confidence 0.95)
+  - _Rationale:_ Common in flexible model loading to handle mixed precision or device mismatches.
+- `14076c7005837f67`: `MLP`: Multi-Layer Perceptron block (Feed-Forward Network). (confidence 0.95)
+  - _Rationale:_ Standard module name, often used in transformer FFN layers.
+- `15ccfeb47d146102`: `BertOutput`: Output projection layer of a BERT block. (confidence 0.90)
+  - _Rationale:_ Defined as `torch.nn.Module`.
+- `1650bf9de8d24c41`: `WanModel`: Core architecture for the Wan (WAN21) video generation model. (confidence 0.95)
+  - _Rationale:_ Defined as `torch.nn.Module`.
+- `16ac5dd0003cfbef`: `init_image_posemb`: Initializes image positional embeddings for rope mechanisms. (confidence 0.95)
+  - _Rationale:_ Takes `rope_img` as argument.
+- `1718f76b02e130d2`: `ADaMoSHiFiGANV1`: GAN-based audio model architecture. (confidence 0.90)
+  - _Rationale:_ Defined as `nn.Module`.
+- `1a2db0817d7f9776`: `pad_to_patch_size`: Pads image tensor to match patch dimensions (e.g., 16x16). (confidence 0.95)
+  - _Rationale:_ Takes `img`, `patch_size` arguments.
+- `1b27528199311a35`: `apply_rope`: Applies Rotary Positional Embeddings (RoPE) to query and key tensors. (confidence 0.95)
+  - _Rationale:_ Takes `xq`, `xk`, `freqs_cis` arguments. Core for transformer attention.
+- `1c2cc86a442a46db`: `Dino2PatchEmbeddings`: Patch embeddings specifically for DinoV2 model (vision encoder). (confidence 0.95)
+  - _Rationale:_ Defined as `torch.nn.Module`.
+- `1c6bf52ddf80cea9`: `Gligen`: Gligen spatial control mechanism. (confidence 0.90)
+  - _Rationale:_ Defined as `nn.Module`.
+- `1cf89e0f84ef3451`: `WanI2VCrossAttention`: Cross-attention mechanism for Wan I2V (Image-to-Video) models. (confidence 0.95)
+  - _Rationale:_ Inherits from `WanSelfAttention`.
+- `1d0c07e6638d647d`: `modulate`: Adaptive modulation function (e.g., FiLM), used for conditioning inputs with time/labels. (confidence 0.95)
+  - _Rationale:_ Takes `x`, `shift`, `scale` arguments. Common in DiT architectures.
+- `1e2142a2e0914c68`: `FinalLayer`: Final block of a DiT, projecting latent output to image/audio space. (confidence 0.95)
+  - _Rationale:_ Defined as `nn.Module`.
+- `1e73d3273f271f44`: `FourierEmbedder`: Embedding layer using sine/cosine features for time or input conditioning. (confidence 0.95)
+  - _Rationale:_ Defined as `nn.Module`.
+- `1f21cb5849c06a4f`: `RMSNorm`: Root Mean Square Layer Normalization. Efficient normalization for transformers. (confidence 0.95)
+  - _Rationale:_ Defined as `torch.nn.Module`.
+- `20cee9fabe9e6eb5`: `Attention`: Core self-attention mechanism. Appears twice, likely distinct implementations or overloads. (confidence 0.95)
+  - _Rationale:_ Defined as `nn.Module`.
+- `2182bb463ec54a2a`: `TimestepEmbedder`: Embeds timestep tokens into the latent space for diffusion conditioning. (confidence 0.95)
+  - _Rationale:_ Defined as `nn.Module`.
+- `2297c09d60802dfa`: `create_position_matrix`: Creates matrix for positional encodings. (confidence 0.95)
+  - _Rationale:_ Likely used for 2D or 3D positions.
+- `22f0cf1a84daacbb`: `WanSelfAttention`: Self-attention implementation specific to Wan models. (confidence 0.95)
+  - _Rationale:_ Defined as `nn.Module`.
+- `22f1511ee79b2e3f`: `LabelEmbedder`: Embeds class or semantic labels into the latent space. (confidence 0.95)
+  - _Rationale:_ Defined as `nn.Module`.
+- `246b4865a2d43a69`: `MLP`: Multi-Layer Perceptron block. Another MLP instance in the context. (confidence 0.95)
+  - _Rationale:_ Defined as `nn.Module`.
+- `2582be5f9a8d8141`: `DropPath`: Stochastic depth regularization for deep transformer networks. (confidence 0.95)
+  - _Rationale:_ Defined as `nn.Module`.
+- `25f3b93ad49b8841`: `SwiGLUFeedForward`: SwiGLU variant of feed-forward network, often more stable/performant. (confidence 0.95)
+  - _Rationale:_ Defined as `torch.nn.Module`.
+- `269cd7fb97932d49`: `get_same_padding`: Calculates padding for convolutional kernels. (confidence 0.95)
+  - _Rationale:_ Takes `kernel_size` argument.
+- `27d23e5e2e11e19e`: `HiDreamImageTransformer2DModel`: Main transformer for HiDream image generation models. (confidence 0.95)
+  - _Rationale:_ Defined as `nn.Module`.
+- `27e5fc6079a33f24`: `ConformerModule`: Conformer architecture block (mix of Conv and Transformer). (confidence 0.90)
+  - _Rationale:_ Defined as `nn.Module`.
+- `286b8154402302d5`: `SelfAttentionGuidance`: Guidance mechanism using self-attention. (confidence 0.90)
+  - _Rationale:_ Defined as a class without `nn.Module`.
+- `290442b2a68eb1f1`: `BertBlock`: Standard BERT transformer block (encoder-decoder structure). (confidence 0.90)
+  - _Rationale:_ Defined as `torch.nn.Module`.
+- `2b5b07e5dfbe1c1d`: `Dinov2Model`: Main DinoV2 vision encoder model. (confidence 0.95)
+  - _Rationale:_ Defined as `torch.nn.Module`.
+- `2b7bd961e4872496`: `FinalLayer`: Final layer of a model, likely for output projection. (confidence 0.95)
+  - _Rationale:_ Defined as `nn.Module`.
+- `2b96e6cf9535a1cd`: `TransformerBlock`: Generic transformer block structure. (confidence 0.95)
+  - _Rationale:_ Defined as `nn.Module`.
+- `2badcdd9ae24fea2`: `JointBlock`: Joint block combining multiple streams (e.g., text + image). (confidence 0.95)
+  - _Rationale:_ Defined as `nn.Module`.
+- `2c131d3385e81dfd`: `Head`: Output projection head for classification or regression. (confidence 0.95)
+  - _Rationale:_ Defined as `nn.Module`.
+
+## Cross-community dependencies
+0, 1, 3, 4, 5, 6, 7, 8, 10, 11
+
+## Unverified / resolved calls
+- unresolved: `get_attn_precision` from `0fbbe3d4efc94d46` — Used for attention precision control in Flux math
+- unresolved: `HiDream` from `27d23e5e2e11e19e` — HiDreamImageTransformer2DModel implies HiDream framework dependency
+- unresolved: `init_image_posemb` from `2297c09d60802dfa` — Used in RoPE implementations
+- unresolved: `TimestepEmbedding` from `03a46feaf3a1a578` — Used in DiT architecture for time conditioning
+- unresolved: `WAN21` from `1650bf9de8d24c41` — WanModel likely implements WAN21 architecture

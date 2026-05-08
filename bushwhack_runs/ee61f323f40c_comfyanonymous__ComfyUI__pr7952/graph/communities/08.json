@@ -1,0 +1,4233 @@
+{
+  "community_id": 8,
+  "edges": [
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:comfy_execution/caching.py",
+      "source_file": "comfy_execution/caching.py",
+      "source_location": "L?",
+      "source_ref": "comfy_execution/caching.py",
+      "target": "symbol:19d7ab96e9ab17f7:CacheKeySetID",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:comfy_execution/caching.py",
+      "source_file": "comfy_execution/caching.py",
+      "source_location": "L?",
+      "source_ref": "comfy_execution/caching.py",
+      "target": "symbol:7a44fad03b814f2f:to_hashable",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:comfy_execution/caching.py",
+      "source_file": "comfy_execution/caching.py",
+      "source_location": "L?",
+      "source_ref": "comfy_execution/caching.py",
+      "target": "symbol:835cfd4ef43a317d:HierarchicalCache",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:comfy_execution/caching.py",
+      "source_file": "comfy_execution/caching.py",
+      "source_location": "L?",
+      "source_ref": "comfy_execution/caching.py",
+      "target": "symbol:851c307ee8b803fc:Unhashable",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:comfy_execution/caching.py",
+      "source_file": "comfy_execution/caching.py",
+      "source_location": "L?",
+      "source_ref": "comfy_execution/caching.py",
+      "target": "symbol:89b5b8b8ece5109c:CacheKeySet",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:comfy_execution/caching.py",
+      "source_file": "comfy_execution/caching.py",
+      "source_location": "L?",
+      "source_ref": "comfy_execution/caching.py",
+      "target": "symbol:984bd01ed651ce82:BasicCache",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:comfy_execution/caching.py",
+      "source_file": "comfy_execution/caching.py",
+      "source_location": "L?",
+      "source_ref": "comfy_execution/caching.py",
+      "target": "symbol:b9c1bd8af3bd98e0:DependencyAwareCache",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:comfy_execution/caching.py",
+      "source_file": "comfy_execution/caching.py",
+      "source_location": "L?",
+      "source_ref": "comfy_execution/caching.py",
+      "target": "symbol:d83ebe53b9e005d5:LRUCache",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:comfy_execution/caching.py",
+      "source_file": "comfy_execution/caching.py",
+      "source_location": "L?",
+      "source_ref": "comfy_execution/caching.py",
+      "target": "symbol:de24eeaf6233aa7e:CacheKeySetInputSignature",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:comfy_execution/caching.py",
+      "source_file": "comfy_execution/caching.py",
+      "source_location": "L?",
+      "source_ref": "comfy_execution/caching.py",
+      "target": "symbol:e6cb5d8eaa2143c1:include_unique_id_in_input",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:comfy_execution/graph.py",
+      "source_file": "comfy_execution/graph.py",
+      "source_location": "L?",
+      "source_ref": "comfy_execution/graph.py",
+      "target": "symbol:031194ac20408a16:ExecutionList",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:comfy_execution/graph.py",
+      "source_file": "comfy_execution/graph.py",
+      "source_location": "L?",
+      "source_ref": "comfy_execution/graph.py",
+      "target": "symbol:06ca00645e4b6fde:NodeInputError",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:comfy_execution/graph.py",
+      "source_file": "comfy_execution/graph.py",
+      "source_location": "L?",
+      "source_ref": "comfy_execution/graph.py",
+      "target": "symbol:44e4f4b9cc93a011:TopologicalSort",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:comfy_execution/graph.py",
+      "source_file": "comfy_execution/graph.py",
+      "source_location": "L?",
+      "source_ref": "comfy_execution/graph.py",
+      "target": "symbol:604428b858979a88:NodeNotFoundError",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:comfy_execution/graph.py",
+      "source_file": "comfy_execution/graph.py",
+      "source_location": "L?",
+      "source_ref": "comfy_execution/graph.py",
+      "target": "symbol:8d91adb241c6ba1a:DynamicPrompt",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:comfy_execution/graph.py",
+      "source_file": "comfy_execution/graph.py",
+      "source_location": "L?",
+      "source_ref": "comfy_execution/graph.py",
+      "target": "symbol:94880d4757c29348:ExecutionBlocker",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:comfy_execution/graph.py",
+      "source_file": "comfy_execution/graph.py",
+      "source_location": "L?",
+      "source_ref": "comfy_execution/graph.py",
+      "target": "symbol:d6907aad1abaa605:DependencyCycleError",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:comfy_execution/graph_utils.py",
+      "source_file": "comfy_execution/graph_utils.py",
+      "source_location": "L?",
+      "source_ref": "comfy_execution/graph_utils.py",
+      "target": "symbol:04bc14dc4ed29a78:add_graph_prefix",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:comfy_execution/graph_utils.py",
+      "source_file": "comfy_execution/graph_utils.py",
+      "source_location": "L?",
+      "source_ref": "comfy_execution/graph_utils.py",
+      "target": "symbol:08b1935daa2a8555:is_link",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:comfy_execution/graph_utils.py",
+      "source_file": "comfy_execution/graph_utils.py",
+      "source_location": "L?",
+      "source_ref": "comfy_execution/graph_utils.py",
+      "target": "symbol:3aa39a57e88d8177:GraphBuilder",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:comfy_execution/validation.py",
+      "source_file": "comfy_execution/validation.py",
+      "source_location": "L?",
+      "source_ref": "comfy_execution/validation.py",
+      "target": "symbol:3185a61b95d84ee5:validate_node_input",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:execution.py",
+      "source_file": "execution.py",
+      "source_location": "L?",
+      "source_ref": "execution.py",
+      "target": "symbol:25f52464f4100b14:format_value",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:execution.py",
+      "source_file": "execution.py",
+      "source_location": "L?",
+      "source_ref": "execution.py",
+      "target": "symbol:52d2ab54a3493ecb:validate_inputs",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:execution.py",
+      "source_file": "execution.py",
+      "source_location": "L?",
+      "source_ref": "execution.py",
+      "target": "symbol:5bc12c6621400bb4:full_type_name",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:execution.py",
+      "source_file": "execution.py",
+      "source_location": "L?",
+      "source_ref": "execution.py",
+      "target": "symbol:713e6670f6ce1f88:_map_node_over_list",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:execution.py",
+      "source_file": "execution.py",
+      "source_location": "L?",
+      "source_ref": "execution.py",
+      "target": "symbol:8a8bd4913f491255:CacheType",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:execution.py",
+      "source_file": "execution.py",
+      "source_location": "L?",
+      "source_ref": "execution.py",
+      "target": "symbol:9baf817534af3c5f:merge_result_data",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:execution.py",
+      "source_file": "execution.py",
+      "source_location": "L?",
+      "source_ref": "execution.py",
+      "target": "symbol:a674ce25794db4ce:CacheSet",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:execution.py",
+      "source_file": "execution.py",
+      "source_location": "L?",
+      "source_ref": "execution.py",
+      "target": "symbol:bc89b1023a3929c0:DuplicateNodeError",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:execution.py",
+      "source_file": "execution.py",
+      "source_location": "L?",
+      "source_ref": "execution.py",
+      "target": "symbol:ce8666f8db2e906d:IsChangedCache",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:execution.py",
+      "source_file": "execution.py",
+      "source_location": "L?",
+      "source_ref": "execution.py",
+      "target": "symbol:d114f5ca728000e1:get_input_data",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:execution.py",
+      "source_file": "execution.py",
+      "source_location": "L?",
+      "source_ref": "execution.py",
+      "target": "symbol:df10ddee59737e1b:ExecutionResult",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:execution.py",
+      "source_file": "execution.py",
+      "source_location": "L?",
+      "source_ref": "execution.py",
+      "target": "symbol:f3ece0f7a3c085fe:get_output_data",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:script_examples/websockets_api_example_ws_images.py",
+      "source_file": "script_examples/websockets_api_example_ws_images.py",
+      "source_location": "L?",
+      "source_ref": "script_examples/websockets_api_example_ws_images.py",
+      "target": "symbol:08bf7810ee623f36:get_history",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:script_examples/websockets_api_example_ws_images.py",
+      "source_file": "script_examples/websockets_api_example_ws_images.py",
+      "source_location": "L?",
+      "source_ref": "script_examples/websockets_api_example_ws_images.py",
+      "target": "symbol:09e251f8e5a43baa:queue_prompt",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:script_examples/websockets_api_example_ws_images.py",
+      "source_file": "script_examples/websockets_api_example_ws_images.py",
+      "source_location": "L?",
+      "source_ref": "script_examples/websockets_api_example_ws_images.py",
+      "target": "symbol:24596ddceda92c95:get_images",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:script_examples/websockets_api_example_ws_images.py",
+      "source_file": "script_examples/websockets_api_example_ws_images.py",
+      "source_location": "L?",
+      "source_ref": "script_examples/websockets_api_example_ws_images.py",
+      "target": "symbol:6802bf1ddb25cddf:get_image",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:tests-unit/execution_test/validate_node_input_test.py",
+      "source_file": "tests-unit/execution_test/validate_node_input_test.py",
+      "source_location": "L?",
+      "source_ref": "tests-unit/execution_test/validate_node_input_test.py",
+      "target": "symbol:1531174712b40c75:test_parametrized_cases",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:tests-unit/execution_test/validate_node_input_test.py",
+      "source_file": "tests-unit/execution_test/validate_node_input_test.py",
+      "source_location": "L?",
+      "source_ref": "tests-unit/execution_test/validate_node_input_test.py",
+      "target": "symbol:256e71a93892e15e:test_ne_override",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:tests-unit/execution_test/validate_node_input_test.py",
+      "source_file": "tests-unit/execution_test/validate_node_input_test.py",
+      "source_location": "L?",
+      "source_ref": "tests-unit/execution_test/validate_node_input_test.py",
+      "target": "symbol:41ce29c577822a73:test_exact_match",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:tests-unit/execution_test/validate_node_input_test.py",
+      "source_file": "tests-unit/execution_test/validate_node_input_test.py",
+      "source_location": "L?",
+      "source_ref": "tests-unit/execution_test/validate_node_input_test.py",
+      "target": "symbol:791fe0041317abee:test_strict_mode",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:tests-unit/execution_test/validate_node_input_test.py",
+      "source_file": "tests-unit/execution_test/validate_node_input_test.py",
+      "source_location": "L?",
+      "source_ref": "tests-unit/execution_test/validate_node_input_test.py",
+      "target": "symbol:a1814e155cdf0cdb:NotEqualsOverrideTest",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:tests-unit/execution_test/validate_node_input_test.py",
+      "source_file": "tests-unit/execution_test/validate_node_input_test.py",
+      "source_location": "L?",
+      "source_ref": "tests-unit/execution_test/validate_node_input_test.py",
+      "target": "symbol:a38ebd7c87e8e700:test_empty_strings",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:tests-unit/execution_test/validate_node_input_test.py",
+      "source_file": "tests-unit/execution_test/validate_node_input_test.py",
+      "source_location": "L?",
+      "source_ref": "tests-unit/execution_test/validate_node_input_test.py",
+      "target": "symbol:b3812356b9907f8a:test_whitespace_handling",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:tests-unit/execution_test/validate_node_input_test.py",
+      "source_file": "tests-unit/execution_test/validate_node_input_test.py",
+      "source_location": "L?",
+      "source_ref": "tests-unit/execution_test/validate_node_input_test.py",
+      "target": "symbol:bdbc5eafbbb32d13:test_single_vs_multiple",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:tests-unit/execution_test/validate_node_input_test.py",
+      "source_file": "tests-unit/execution_test/validate_node_input_test.py",
+      "source_location": "L?",
+      "source_ref": "tests-unit/execution_test/validate_node_input_test.py",
+      "target": "symbol:c15c485cf0390a90:test_non_string",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:tests-unit/execution_test/validate_node_input_test.py",
+      "source_file": "tests-unit/execution_test/validate_node_input_test.py",
+      "source_location": "L?",
+      "source_ref": "tests-unit/execution_test/validate_node_input_test.py",
+      "target": "symbol:db7171c895340086:test_non_strict_mode",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:tests-unit/execution_test/validate_node_input_test.py",
+      "source_file": "tests-unit/execution_test/validate_node_input_test.py",
+      "source_location": "L?",
+      "source_ref": "tests-unit/execution_test/validate_node_input_test.py",
+      "target": "symbol:f2e82e9a16c3d55f:test_ne_custom_override",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:tests/inference/test_execution.py",
+      "source_file": "tests/inference/test_execution.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/test_execution.py",
+      "target": "symbol:043de6b952f45c2d:RunResult",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:tests/inference/test_execution.py",
+      "source_file": "tests/inference/test_execution.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/test_execution.py",
+      "target": "symbol:9ff3ce2aecedc7ea:TestExecution",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:tests/inference/test_execution.py",
+      "source_file": "tests/inference/test_execution.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/test_execution.py",
+      "target": "symbol:e6b9ad74de0b713e:ComfyClient",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:tests/inference/test_inference.py",
+      "source_file": "tests/inference/test_inference.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/test_inference.py",
+      "target": "symbol:2c8e0d4c29fc862c:ComfyClient",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:tests/inference/test_inference.py",
+      "source_file": "tests/inference/test_inference.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/test_inference.py",
+      "target": "symbol:523cfab984f02f8e:ComfyGraph",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:tests/inference/test_inference.py",
+      "source_file": "tests/inference/test_inference.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/test_inference.py",
+      "target": "symbol:6b5a0879cbf9966f:TestInference",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:tests/inference/testing_nodes/testing-pack/flow_control.py",
+      "source_file": "tests/inference/testing_nodes/testing-pack/flow_control.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/testing_nodes/testing-pack/flow_control.py",
+      "target": "symbol:02cab7f3bd387cdf:TestExecutionBlockerNode",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:tests/inference/testing_nodes/testing-pack/flow_control.py",
+      "source_file": "tests/inference/testing_nodes/testing-pack/flow_control.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/testing_nodes/testing-pack/flow_control.py",
+      "target": "symbol:1d539af4e678e070:TestWhileLoopClose",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:tests/inference/testing_nodes/testing-pack/flow_control.py",
+      "source_file": "tests/inference/testing_nodes/testing-pack/flow_control.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/testing_nodes/testing-pack/flow_control.py",
+      "target": "symbol:e09420d865954553:TestWhileLoopOpen",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:tests/inference/testing_nodes/testing-pack/specific_tests.py",
+      "source_file": "tests/inference/testing_nodes/testing-pack/specific_tests.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/testing_nodes/testing-pack/specific_tests.py",
+      "target": "symbol:06a376086d310d1c:TestCustomIsChanged",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:tests/inference/testing_nodes/testing-pack/specific_tests.py",
+      "source_file": "tests/inference/testing_nodes/testing-pack/specific_tests.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/testing_nodes/testing-pack/specific_tests.py",
+      "target": "symbol:0ac83a5d550f98c3:TestMixedExpansionReturns",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:tests/inference/testing_nodes/testing-pack/specific_tests.py",
+      "source_file": "tests/inference/testing_nodes/testing-pack/specific_tests.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/testing_nodes/testing-pack/specific_tests.py",
+      "target": "symbol:0af43d79639897b8:TestLazyMixImages",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:tests/inference/testing_nodes/testing-pack/specific_tests.py",
+      "source_file": "tests/inference/testing_nodes/testing-pack/specific_tests.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/testing_nodes/testing-pack/specific_tests.py",
+      "target": "symbol:1b90f260209b4e3b:TestDynamicDependencyCycle",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:tests/inference/testing_nodes/testing-pack/specific_tests.py",
+      "source_file": "tests/inference/testing_nodes/testing-pack/specific_tests.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/testing_nodes/testing-pack/specific_tests.py",
+      "target": "symbol:356c95097d480f57:TestCustomValidation2",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:tests/inference/testing_nodes/testing-pack/specific_tests.py",
+      "source_file": "tests/inference/testing_nodes/testing-pack/specific_tests.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/testing_nodes/testing-pack/specific_tests.py",
+      "target": "symbol:35b454d1adc40d3c:TestCustomValidation1",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:tests/inference/testing_nodes/testing-pack/specific_tests.py",
+      "source_file": "tests/inference/testing_nodes/testing-pack/specific_tests.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/testing_nodes/testing-pack/specific_tests.py",
+      "target": "symbol:51c911bb67a04ab5:TestCustomValidation4",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:tests/inference/testing_nodes/testing-pack/specific_tests.py",
+      "source_file": "tests/inference/testing_nodes/testing-pack/specific_tests.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/testing_nodes/testing-pack/specific_tests.py",
+      "target": "symbol:5a2e671d1475792f:TestCustomValidation3",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:tests/inference/testing_nodes/testing-pack/specific_tests.py",
+      "source_file": "tests/inference/testing_nodes/testing-pack/specific_tests.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/testing_nodes/testing-pack/specific_tests.py",
+      "target": "symbol:6b7c040da6579a9c:TestVariadicAverage",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:tests/inference/testing_nodes/testing-pack/specific_tests.py",
+      "source_file": "tests/inference/testing_nodes/testing-pack/specific_tests.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/testing_nodes/testing-pack/specific_tests.py",
+      "target": "symbol:bc30b3cd858000c7:TestIsChangedWithConstants",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:tests/inference/testing_nodes/testing-pack/specific_tests.py",
+      "source_file": "tests/inference/testing_nodes/testing-pack/specific_tests.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/testing_nodes/testing-pack/specific_tests.py",
+      "target": "symbol:f36a7f1953950a08:TestCustomValidation5",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:tests/inference/testing_nodes/testing-pack/stubs.py",
+      "source_file": "tests/inference/testing_nodes/testing-pack/stubs.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/testing_nodes/testing-pack/stubs.py",
+      "target": "symbol:a65c1b5258786e88:StubMask",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:tests/inference/testing_nodes/testing-pack/stubs.py",
+      "source_file": "tests/inference/testing_nodes/testing-pack/stubs.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/testing_nodes/testing-pack/stubs.py",
+      "target": "symbol:c008bb0540d6f5c8:StubImage",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:tests/inference/testing_nodes/testing-pack/stubs.py",
+      "source_file": "tests/inference/testing_nodes/testing-pack/stubs.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/testing_nodes/testing-pack/stubs.py",
+      "target": "symbol:cc86931ea07fcf89:StubInt",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:tests/inference/testing_nodes/testing-pack/stubs.py",
+      "source_file": "tests/inference/testing_nodes/testing-pack/stubs.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/testing_nodes/testing-pack/stubs.py",
+      "target": "symbol:d7eeedc6e3f2b67f:StubConstantImage",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:tests/inference/testing_nodes/testing-pack/stubs.py",
+      "source_file": "tests/inference/testing_nodes/testing-pack/stubs.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/testing_nodes/testing-pack/stubs.py",
+      "target": "symbol:e0d183d617e6e145:StubFloat",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:tests/inference/testing_nodes/testing-pack/tools.py",
+      "source_file": "tests/inference/testing_nodes/testing-pack/tools.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/testing_nodes/testing-pack/tools.py",
+      "target": "symbol:ead56c616ab6048b:SmartType",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:tests/inference/testing_nodes/testing-pack/tools.py",
+      "source_file": "tests/inference/testing_nodes/testing-pack/tools.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/testing_nodes/testing-pack/tools.py",
+      "target": "symbol:fd91898995079e45:VariantSupport",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:tests/inference/testing_nodes/testing-pack/tools.py",
+      "source_file": "tests/inference/testing_nodes/testing-pack/tools.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/testing_nodes/testing-pack/tools.py",
+      "target": "symbol:ffd4ba16a009bcb6:MakeSmartType",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:tests/inference/testing_nodes/testing-pack/util.py",
+      "source_file": "tests/inference/testing_nodes/testing-pack/util.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/testing_nodes/testing-pack/util.py",
+      "target": "symbol:130525c28aba5024:TestAccumulationGetLengthNode",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:tests/inference/testing_nodes/testing-pack/util.py",
+      "source_file": "tests/inference/testing_nodes/testing-pack/util.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/testing_nodes/testing-pack/util.py",
+      "target": "symbol:241302f1194bf5eb:TestListToAccumulationNode",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:tests/inference/testing_nodes/testing-pack/util.py",
+      "source_file": "tests/inference/testing_nodes/testing-pack/util.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/testing_nodes/testing-pack/util.py",
+      "target": "symbol:39143bd24c5819f7:TestForLoopOpen",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:tests/inference/testing_nodes/testing-pack/util.py",
+      "source_file": "tests/inference/testing_nodes/testing-pack/util.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/testing_nodes/testing-pack/util.py",
+      "target": "symbol:3a57c5d796df8d87:TestAccumulationTailNode",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:tests/inference/testing_nodes/testing-pack/util.py",
+      "source_file": "tests/inference/testing_nodes/testing-pack/util.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/testing_nodes/testing-pack/util.py",
+      "target": "symbol:3d4b7102a7beb2c1:TestAccumulationSetItemNode",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:tests/inference/testing_nodes/testing-pack/util.py",
+      "source_file": "tests/inference/testing_nodes/testing-pack/util.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/testing_nodes/testing-pack/util.py",
+      "target": "symbol:4cb94772ac9fab5a:TestAccumulationGetItemNode",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:tests/inference/testing_nodes/testing-pack/util.py",
+      "source_file": "tests/inference/testing_nodes/testing-pack/util.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/testing_nodes/testing-pack/util.py",
+      "target": "symbol:960b9f4c4b1ccdf5:TestForLoopClose",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:tests/inference/testing_nodes/testing-pack/util.py",
+      "source_file": "tests/inference/testing_nodes/testing-pack/util.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/testing_nodes/testing-pack/util.py",
+      "target": "symbol:c4563e5a08df2ea6:TestIntMathOperation",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:tests/inference/testing_nodes/testing-pack/util.py",
+      "source_file": "tests/inference/testing_nodes/testing-pack/util.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/testing_nodes/testing-pack/util.py",
+      "target": "symbol:ec4d78f71c3716f5:TestAccumulationToListNode",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:tests/inference/testing_nodes/testing-pack/util.py",
+      "source_file": "tests/inference/testing_nodes/testing-pack/util.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/testing_nodes/testing-pack/util.py",
+      "target": "symbol:f0d33e4e27341e9c:TestAccumulateNode",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:tests/inference/testing_nodes/testing-pack/util.py",
+      "source_file": "tests/inference/testing_nodes/testing-pack/util.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/testing_nodes/testing-pack/util.py",
+      "target": "symbol:f646abf0d5f92b29:TestAccumulationHeadNode",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:tests/inference/testing_nodes/testing-pack/util.py",
+      "source_file": "tests/inference/testing_nodes/testing-pack/util.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/testing_nodes/testing-pack/util.py",
+      "target": "symbol:f7bef8b8cd0464c5:TestMakeListNode",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:02cab7f3bd387cdf:TestExecutionBlockerNode",
+      "source_file": "tests/inference/testing_nodes/testing-pack/flow_control.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/testing_nodes/testing-pack/flow_control.py",
+      "target": "symbol:94880d4757c29348:ExecutionBlocker",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:031194ac20408a16:ExecutionList",
+      "source_file": "comfy_execution/graph.py",
+      "source_location": "L?",
+      "source_ref": "comfy_execution/graph.py",
+      "target": "symbol:031194ac20408a16:ExecutionList",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "inherits",
+      "provenance": "EXTRACTED",
+      "relation": "inherits",
+      "source": "symbol:031194ac20408a16:ExecutionList",
+      "source_file": "comfy_execution/graph.py",
+      "source_location": "L?",
+      "source_ref": "comfy_execution/graph.py",
+      "target": "symbol:44e4f4b9cc93a011:TopologicalSort",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:031194ac20408a16:ExecutionList",
+      "source_file": "comfy_execution/graph.py",
+      "source_location": "L?",
+      "source_ref": "comfy_execution/graph.py",
+      "target": "symbol:d6907aad1abaa605:DependencyCycleError",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:043de6b952f45c2d:RunResult",
+      "source_file": "tests/inference/test_execution.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/test_execution.py",
+      "target": "symbol:24596ddceda92c95:get_images",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:04bc14dc4ed29a78:add_graph_prefix",
+      "source_file": "comfy_execution/graph_utils.py",
+      "source_location": "L?",
+      "source_ref": "comfy_execution/graph_utils.py",
+      "target": "symbol:04bc14dc4ed29a78:add_graph_prefix",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:04bc14dc4ed29a78:add_graph_prefix",
+      "source_file": "comfy_execution/graph_utils.py",
+      "source_location": "L?",
+      "source_ref": "comfy_execution/graph_utils.py",
+      "target": "symbol:08b1935daa2a8555:is_link",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:06ca00645e4b6fde:NodeInputError",
+      "source_file": "comfy_execution/graph.py",
+      "source_location": "L?",
+      "source_ref": "comfy_execution/graph.py",
+      "target": "symbol:06ca00645e4b6fde:NodeInputError",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:08b1935daa2a8555:is_link",
+      "source_file": "comfy_execution/graph_utils.py",
+      "source_location": "L?",
+      "source_ref": "comfy_execution/graph_utils.py",
+      "target": "symbol:08b1935daa2a8555:is_link",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:08bf7810ee623f36:get_history",
+      "source_file": "script_examples/websockets_api_example.py",
+      "source_location": "L?",
+      "source_ref": "script_examples/websockets_api_example.py",
+      "target": "symbol:08bf7810ee623f36:get_history",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:09e251f8e5a43baa:queue_prompt",
+      "source_file": "script_examples/basic_api_example.py",
+      "source_location": "L?",
+      "source_ref": "script_examples/basic_api_example.py",
+      "target": "symbol:09e251f8e5a43baa:queue_prompt",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "references",
+      "provenance": "EXTRACTED",
+      "relation": "references",
+      "source": "symbol:0ac83a5d550f98c3:TestMixedExpansionReturns",
+      "source_file": "tests/inference/testing_nodes/testing-pack/specific_tests.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/testing_nodes/testing-pack/specific_tests.py",
+      "target": "symbol:0af43d79639897b8:TestLazyMixImages",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:0ac83a5d550f98c3:TestMixedExpansionReturns",
+      "source_file": "tests/inference/testing_nodes/testing-pack/specific_tests.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/testing_nodes/testing-pack/specific_tests.py",
+      "target": "symbol:3aa39a57e88d8177:GraphBuilder",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "references",
+      "provenance": "EXTRACTED",
+      "relation": "references",
+      "source": "symbol:0ac83a5d550f98c3:TestMixedExpansionReturns",
+      "source_file": "tests/inference/testing_nodes/testing-pack/specific_tests.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/testing_nodes/testing-pack/specific_tests.py",
+      "target": "symbol:a65c1b5258786e88:StubMask",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "references",
+      "provenance": "EXTRACTED",
+      "relation": "references",
+      "source": "symbol:0ac83a5d550f98c3:TestMixedExpansionReturns",
+      "source_file": "tests/inference/testing_nodes/testing-pack/specific_tests.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/testing_nodes/testing-pack/specific_tests.py",
+      "target": "symbol:c008bb0540d6f5c8:StubImage",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:1531174712b40c75:test_parametrized_cases",
+      "source_file": "tests-unit/execution_test/validate_node_input_test.py",
+      "source_location": "L?",
+      "source_ref": "tests-unit/execution_test/validate_node_input_test.py",
+      "target": "symbol:1531174712b40c75:test_parametrized_cases",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:1531174712b40c75:test_parametrized_cases",
+      "source_file": "tests-unit/execution_test/validate_node_input_test.py",
+      "source_location": "L?",
+      "source_ref": "tests-unit/execution_test/validate_node_input_test.py",
+      "target": "symbol:3185a61b95d84ee5:validate_node_input",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:19d7ab96e9ab17f7:CacheKeySetID",
+      "source_file": "comfy_execution/caching.py",
+      "source_location": "L?",
+      "source_ref": "comfy_execution/caching.py",
+      "target": "symbol:19d7ab96e9ab17f7:CacheKeySetID",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "inherits",
+      "provenance": "EXTRACTED",
+      "relation": "inherits",
+      "source": "symbol:19d7ab96e9ab17f7:CacheKeySetID",
+      "source_file": "comfy_execution/caching.py",
+      "source_location": "L?",
+      "source_ref": "comfy_execution/caching.py",
+      "target": "symbol:89b5b8b8ece5109c:CacheKeySet",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "references",
+      "provenance": "EXTRACTED",
+      "relation": "references",
+      "source": "symbol:1b90f260209b4e3b:TestDynamicDependencyCycle",
+      "source_file": "tests/inference/testing_nodes/testing-pack/specific_tests.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/testing_nodes/testing-pack/specific_tests.py",
+      "target": "symbol:0af43d79639897b8:TestLazyMixImages",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:1b90f260209b4e3b:TestDynamicDependencyCycle",
+      "source_file": "tests/inference/testing_nodes/testing-pack/specific_tests.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/testing_nodes/testing-pack/specific_tests.py",
+      "target": "symbol:3aa39a57e88d8177:GraphBuilder",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "references",
+      "provenance": "EXTRACTED",
+      "relation": "references",
+      "source": "symbol:1b90f260209b4e3b:TestDynamicDependencyCycle",
+      "source_file": "tests/inference/testing_nodes/testing-pack/specific_tests.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/testing_nodes/testing-pack/specific_tests.py",
+      "target": "symbol:a65c1b5258786e88:StubMask",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:1d539af4e678e070:TestWhileLoopClose",
+      "source_file": "tests/inference/testing_nodes/testing-pack/flow_control.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/testing_nodes/testing-pack/flow_control.py",
+      "target": "symbol:08b1935daa2a8555:is_link",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:1d539af4e678e070:TestWhileLoopClose",
+      "source_file": "tests/inference/testing_nodes/testing-pack/flow_control.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/testing_nodes/testing-pack/flow_control.py",
+      "target": "symbol:3aa39a57e88d8177:GraphBuilder",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:24596ddceda92c95:get_images",
+      "source_file": "script_examples/websockets_api_example.py",
+      "source_location": "L?",
+      "source_ref": "script_examples/websockets_api_example.py",
+      "target": "symbol:08bf7810ee623f36:get_history",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:24596ddceda92c95:get_images",
+      "source_file": "script_examples/websockets_api_example.py",
+      "source_location": "L?",
+      "source_ref": "script_examples/websockets_api_example.py",
+      "target": "symbol:09e251f8e5a43baa:queue_prompt",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:24596ddceda92c95:get_images",
+      "source_file": "script_examples/websockets_api_example.py",
+      "source_location": "L?",
+      "source_ref": "script_examples/websockets_api_example.py",
+      "target": "symbol:24596ddceda92c95:get_images",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:24596ddceda92c95:get_images",
+      "source_file": "script_examples/websockets_api_example.py",
+      "source_location": "L?",
+      "source_ref": "script_examples/websockets_api_example.py",
+      "target": "symbol:6802bf1ddb25cddf:get_image",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:256e71a93892e15e:test_ne_override",
+      "source_file": "tests-unit/execution_test/validate_node_input_test.py",
+      "source_location": "L?",
+      "source_ref": "tests-unit/execution_test/validate_node_input_test.py",
+      "target": "symbol:256e71a93892e15e:test_ne_override",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:256e71a93892e15e:test_ne_override",
+      "source_file": "tests-unit/execution_test/validate_node_input_test.py",
+      "source_location": "L?",
+      "source_ref": "tests-unit/execution_test/validate_node_input_test.py",
+      "target": "symbol:3185a61b95d84ee5:validate_node_input",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:256e71a93892e15e:test_ne_override",
+      "source_file": "tests-unit/execution_test/validate_node_input_test.py",
+      "source_location": "L?",
+      "source_ref": "tests-unit/execution_test/validate_node_input_test.py",
+      "target": "symbol:a1814e155cdf0cdb:NotEqualsOverrideTest",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:25f52464f4100b14:format_value",
+      "source_file": "execution.py",
+      "source_location": "L?",
+      "source_ref": "execution.py",
+      "target": "symbol:25f52464f4100b14:format_value",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:2c8e0d4c29fc862c:ComfyClient",
+      "source_file": "tests/inference/test_execution.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/test_execution.py",
+      "target": "symbol:043de6b952f45c2d:RunResult",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:2c8e0d4c29fc862c:ComfyClient",
+      "source_file": "tests/inference/test_execution.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/test_execution.py",
+      "target": "symbol:08bf7810ee623f36:get_history",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:2c8e0d4c29fc862c:ComfyClient",
+      "source_file": "tests/inference/test_execution.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/test_execution.py",
+      "target": "symbol:09e251f8e5a43baa:queue_prompt",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:2c8e0d4c29fc862c:ComfyClient",
+      "source_file": "tests/inference/test_inference.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/test_inference.py",
+      "target": "symbol:24596ddceda92c95:get_images",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:2c8e0d4c29fc862c:ComfyClient",
+      "source_file": "tests/inference/test_execution.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/test_execution.py",
+      "target": "symbol:6802bf1ddb25cddf:get_image",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:3185a61b95d84ee5:validate_node_input",
+      "source_file": "comfy_execution/validation.py",
+      "source_location": "L?",
+      "source_ref": "comfy_execution/validation.py",
+      "target": "symbol:3185a61b95d84ee5:validate_node_input",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:39143bd24c5819f7:TestForLoopOpen",
+      "source_file": "tests/inference/testing_nodes/testing-pack/util.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/testing_nodes/testing-pack/util.py",
+      "target": "symbol:3aa39a57e88d8177:GraphBuilder",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "references",
+      "provenance": "EXTRACTED",
+      "relation": "references",
+      "source": "symbol:39143bd24c5819f7:TestForLoopOpen",
+      "source_file": "tests/inference/testing_nodes/testing-pack/util.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/testing_nodes/testing-pack/util.py",
+      "target": "symbol:e09420d865954553:TestWhileLoopOpen",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:3aa39a57e88d8177:GraphBuilder",
+      "source_file": "comfy_execution/graph_utils.py",
+      "source_location": "L?",
+      "source_ref": "comfy_execution/graph_utils.py",
+      "target": "symbol:08b1935daa2a8555:is_link",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:41ce29c577822a73:test_exact_match",
+      "source_file": "tests-unit/execution_test/validate_node_input_test.py",
+      "source_location": "L?",
+      "source_ref": "tests-unit/execution_test/validate_node_input_test.py",
+      "target": "symbol:3185a61b95d84ee5:validate_node_input",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:41ce29c577822a73:test_exact_match",
+      "source_file": "tests-unit/execution_test/validate_node_input_test.py",
+      "source_location": "L?",
+      "source_ref": "tests-unit/execution_test/validate_node_input_test.py",
+      "target": "symbol:41ce29c577822a73:test_exact_match",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:44e4f4b9cc93a011:TopologicalSort",
+      "source_file": "comfy_execution/graph.py",
+      "source_location": "L?",
+      "source_ref": "comfy_execution/graph.py",
+      "target": "symbol:06ca00645e4b6fde:NodeInputError",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:44e4f4b9cc93a011:TopologicalSort",
+      "source_file": "comfy_execution/graph.py",
+      "source_location": "L?",
+      "source_ref": "comfy_execution/graph.py",
+      "target": "symbol:08b1935daa2a8555:is_link",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:52d2ab54a3493ecb:validate_inputs",
+      "source_file": "execution.py",
+      "source_location": "L?",
+      "source_ref": "execution.py",
+      "target": "symbol:3185a61b95d84ee5:validate_node_input",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:52d2ab54a3493ecb:validate_inputs",
+      "source_file": "execution.py",
+      "source_location": "L?",
+      "source_ref": "execution.py",
+      "target": "symbol:52d2ab54a3493ecb:validate_inputs",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:52d2ab54a3493ecb:validate_inputs",
+      "source_file": "execution.py",
+      "source_location": "L?",
+      "source_ref": "execution.py",
+      "target": "symbol:5bc12c6621400bb4:full_type_name",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:52d2ab54a3493ecb:validate_inputs",
+      "source_file": "execution.py",
+      "source_location": "L?",
+      "source_ref": "execution.py",
+      "target": "symbol:713e6670f6ce1f88:_map_node_over_list",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "references",
+      "provenance": "EXTRACTED",
+      "relation": "references",
+      "source": "symbol:52d2ab54a3493ecb:validate_inputs",
+      "source_file": "execution.py",
+      "source_location": "L?",
+      "source_ref": "execution.py",
+      "target": "symbol:94880d4757c29348:ExecutionBlocker",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:52d2ab54a3493ecb:validate_inputs",
+      "source_file": "execution.py",
+      "source_location": "L?",
+      "source_ref": "execution.py",
+      "target": "symbol:d114f5ca728000e1:get_input_data",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:5bc12c6621400bb4:full_type_name",
+      "source_file": "execution.py",
+      "source_location": "L?",
+      "source_ref": "execution.py",
+      "target": "symbol:5bc12c6621400bb4:full_type_name",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:604428b858979a88:NodeNotFoundError",
+      "source_file": "comfy_execution/graph.py",
+      "source_location": "L?",
+      "source_ref": "comfy_execution/graph.py",
+      "target": "symbol:604428b858979a88:NodeNotFoundError",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:6802bf1ddb25cddf:get_image",
+      "source_file": "script_examples/websockets_api_example.py",
+      "source_location": "L?",
+      "source_ref": "script_examples/websockets_api_example.py",
+      "target": "symbol:6802bf1ddb25cddf:get_image",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:6b5a0879cbf9966f:TestInference",
+      "source_file": "tests/inference/test_inference.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/test_inference.py",
+      "target": "symbol:24596ddceda92c95:get_images",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:6b5a0879cbf9966f:TestInference",
+      "source_file": "tests/inference/test_inference.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/test_inference.py",
+      "target": "symbol:2c8e0d4c29fc862c:ComfyClient",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "references",
+      "provenance": "EXTRACTED",
+      "relation": "references",
+      "source": "symbol:6b5a0879cbf9966f:TestInference",
+      "source_file": "tests/inference/test_inference.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/test_inference.py",
+      "target": "symbol:523cfab984f02f8e:ComfyGraph",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:6d29b33dadeaaee5:before_node_execution",
+      "source_file": "nodes.py",
+      "source_location": "L?",
+      "source_ref": "nodes.py",
+      "target": "symbol:6d29b33dadeaaee5:before_node_execution",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:713e6670f6ce1f88:_map_node_over_list",
+      "source_file": "execution.py",
+      "source_location": "L?",
+      "source_ref": "execution.py",
+      "target": "symbol:6d29b33dadeaaee5:before_node_execution",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:713e6670f6ce1f88:_map_node_over_list",
+      "source_file": "execution.py",
+      "source_location": "L?",
+      "source_ref": "execution.py",
+      "target": "symbol:713e6670f6ce1f88:_map_node_over_list",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "references",
+      "provenance": "EXTRACTED",
+      "relation": "references",
+      "source": "symbol:713e6670f6ce1f88:_map_node_over_list",
+      "source_file": "execution.py",
+      "source_location": "L?",
+      "source_ref": "execution.py",
+      "target": "symbol:94880d4757c29348:ExecutionBlocker",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:791fe0041317abee:test_strict_mode",
+      "source_file": "tests-unit/execution_test/validate_node_input_test.py",
+      "source_location": "L?",
+      "source_ref": "tests-unit/execution_test/validate_node_input_test.py",
+      "target": "symbol:3185a61b95d84ee5:validate_node_input",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:791fe0041317abee:test_strict_mode",
+      "source_file": "tests-unit/execution_test/validate_node_input_test.py",
+      "source_location": "L?",
+      "source_ref": "tests-unit/execution_test/validate_node_input_test.py",
+      "target": "symbol:791fe0041317abee:test_strict_mode",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:7a44fad03b814f2f:to_hashable",
+      "source_file": "comfy_execution/caching.py",
+      "source_location": "L?",
+      "source_ref": "comfy_execution/caching.py",
+      "target": "symbol:7a44fad03b814f2f:to_hashable",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:7a44fad03b814f2f:to_hashable",
+      "source_file": "comfy_execution/caching.py",
+      "source_location": "L?",
+      "source_ref": "comfy_execution/caching.py",
+      "target": "symbol:851c307ee8b803fc:Unhashable",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:835cfd4ef43a317d:HierarchicalCache",
+      "source_file": "comfy_execution/caching.py",
+      "source_location": "L?",
+      "source_ref": "comfy_execution/caching.py",
+      "target": "symbol:835cfd4ef43a317d:HierarchicalCache",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "inherits",
+      "provenance": "EXTRACTED",
+      "relation": "inherits",
+      "source": "symbol:835cfd4ef43a317d:HierarchicalCache",
+      "source_file": "comfy_execution/caching.py",
+      "source_location": "L?",
+      "source_ref": "comfy_execution/caching.py",
+      "target": "symbol:984bd01ed651ce82:BasicCache",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:8a8bd4913f491255:CacheType",
+      "source_file": "execution.py",
+      "source_location": "L?",
+      "source_ref": "execution.py",
+      "target": "symbol:8a8bd4913f491255:CacheType",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:8d91adb241c6ba1a:DynamicPrompt",
+      "source_file": "comfy_execution/graph.py",
+      "source_location": "L?",
+      "source_ref": "comfy_execution/graph.py",
+      "target": "symbol:604428b858979a88:NodeNotFoundError",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "references",
+      "provenance": "EXTRACTED",
+      "relation": "references",
+      "source": "symbol:960b9f4c4b1ccdf5:TestForLoopClose",
+      "source_file": "tests/inference/testing_nodes/testing-pack/util.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/testing_nodes/testing-pack/util.py",
+      "target": "symbol:1d539af4e678e070:TestWhileLoopClose",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:960b9f4c4b1ccdf5:TestForLoopClose",
+      "source_file": "tests/inference/testing_nodes/testing-pack/util.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/testing_nodes/testing-pack/util.py",
+      "target": "symbol:3aa39a57e88d8177:GraphBuilder",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "references",
+      "provenance": "EXTRACTED",
+      "relation": "references",
+      "source": "symbol:960b9f4c4b1ccdf5:TestForLoopClose",
+      "source_file": "tests/inference/testing_nodes/testing-pack/util.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/testing_nodes/testing-pack/util.py",
+      "target": "symbol:a5e6534ec5a90d56:TestToBoolNode",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "references",
+      "provenance": "EXTRACTED",
+      "relation": "references",
+      "source": "symbol:960b9f4c4b1ccdf5:TestForLoopClose",
+      "source_file": "tests/inference/testing_nodes/testing-pack/util.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/testing_nodes/testing-pack/util.py",
+      "target": "symbol:c4563e5a08df2ea6:TestIntMathOperation",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "references",
+      "provenance": "EXTRACTED",
+      "relation": "references",
+      "source": "symbol:984bd01ed651ce82:BasicCache",
+      "source_file": "comfy_execution/caching.py",
+      "source_location": "L?",
+      "source_ref": "comfy_execution/caching.py",
+      "target": "symbol:89b5b8b8ece5109c:CacheKeySet",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "references",
+      "provenance": "EXTRACTED",
+      "relation": "references",
+      "source": "symbol:984bd01ed651ce82:BasicCache",
+      "source_file": "comfy_execution/caching.py",
+      "source_location": "L?",
+      "source_ref": "comfy_execution/caching.py",
+      "target": "symbol:8d91adb241c6ba1a:DynamicPrompt",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:984bd01ed651ce82:BasicCache",
+      "source_file": "comfy_execution/caching.py",
+      "source_location": "L?",
+      "source_ref": "comfy_execution/caching.py",
+      "target": "symbol:984bd01ed651ce82:BasicCache",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "references",
+      "provenance": "EXTRACTED",
+      "relation": "references",
+      "source": "symbol:9baf817534af3c5f:merge_result_data",
+      "source_file": "execution.py",
+      "source_location": "L?",
+      "source_ref": "execution.py",
+      "target": "symbol:94880d4757c29348:ExecutionBlocker",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:9baf817534af3c5f:merge_result_data",
+      "source_file": "execution.py",
+      "source_location": "L?",
+      "source_ref": "execution.py",
+      "target": "symbol:9baf817534af3c5f:merge_result_data",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "references",
+      "provenance": "EXTRACTED",
+      "relation": "references",
+      "source": "symbol:9ff3ce2aecedc7ea:TestExecution",
+      "source_file": "tests/inference/test_execution.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/test_execution.py",
+      "target": "symbol:06a376086d310d1c:TestCustomIsChanged",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "references",
+      "provenance": "EXTRACTED",
+      "relation": "references",
+      "source": "symbol:9ff3ce2aecedc7ea:TestExecution",
+      "source_file": "tests/inference/test_execution.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/test_execution.py",
+      "target": "symbol:0ac83a5d550f98c3:TestMixedExpansionReturns",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "references",
+      "provenance": "EXTRACTED",
+      "relation": "references",
+      "source": "symbol:9ff3ce2aecedc7ea:TestExecution",
+      "source_file": "tests/inference/test_execution.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/test_execution.py",
+      "target": "symbol:0af43d79639897b8:TestLazyMixImages",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "references",
+      "provenance": "EXTRACTED",
+      "relation": "references",
+      "source": "symbol:9ff3ce2aecedc7ea:TestExecution",
+      "source_file": "tests/inference/test_execution.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/test_execution.py",
+      "target": "symbol:1b90f260209b4e3b:TestDynamicDependencyCycle",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:9ff3ce2aecedc7ea:TestExecution",
+      "source_file": "tests/inference/test_execution.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/test_execution.py",
+      "target": "symbol:24596ddceda92c95:get_images",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:9ff3ce2aecedc7ea:TestExecution",
+      "source_file": "tests/inference/test_execution.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/test_execution.py",
+      "target": "symbol:2c8e0d4c29fc862c:ComfyClient",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "references",
+      "provenance": "EXTRACTED",
+      "relation": "references",
+      "source": "symbol:9ff3ce2aecedc7ea:TestExecution",
+      "source_file": "tests/inference/test_execution.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/test_execution.py",
+      "target": "symbol:356c95097d480f57:TestCustomValidation2",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "references",
+      "provenance": "EXTRACTED",
+      "relation": "references",
+      "source": "symbol:9ff3ce2aecedc7ea:TestExecution",
+      "source_file": "tests/inference/test_execution.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/test_execution.py",
+      "target": "symbol:35b454d1adc40d3c:TestCustomValidation1",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "references",
+      "provenance": "EXTRACTED",
+      "relation": "references",
+      "source": "symbol:9ff3ce2aecedc7ea:TestExecution",
+      "source_file": "tests/inference/test_execution.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/test_execution.py",
+      "target": "symbol:39143bd24c5819f7:TestForLoopOpen",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:9ff3ce2aecedc7ea:TestExecution",
+      "source_file": "tests/inference/test_execution.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/test_execution.py",
+      "target": "symbol:3aa39a57e88d8177:GraphBuilder",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "references",
+      "provenance": "EXTRACTED",
+      "relation": "references",
+      "source": "symbol:9ff3ce2aecedc7ea:TestExecution",
+      "source_file": "tests/inference/test_execution.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/test_execution.py",
+      "target": "symbol:51c911bb67a04ab5:TestCustomValidation4",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "references",
+      "provenance": "EXTRACTED",
+      "relation": "references",
+      "source": "symbol:9ff3ce2aecedc7ea:TestExecution",
+      "source_file": "tests/inference/test_execution.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/test_execution.py",
+      "target": "symbol:5a2e671d1475792f:TestCustomValidation3",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "references",
+      "provenance": "EXTRACTED",
+      "relation": "references",
+      "source": "symbol:9ff3ce2aecedc7ea:TestExecution",
+      "source_file": "tests/inference/test_execution.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/test_execution.py",
+      "target": "symbol:6b7c040da6579a9c:TestVariadicAverage",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "references",
+      "provenance": "EXTRACTED",
+      "relation": "references",
+      "source": "symbol:9ff3ce2aecedc7ea:TestExecution",
+      "source_file": "tests/inference/test_execution.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/test_execution.py",
+      "target": "symbol:94880d4757c29348:ExecutionBlocker",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "references",
+      "provenance": "EXTRACTED",
+      "relation": "references",
+      "source": "symbol:9ff3ce2aecedc7ea:TestExecution",
+      "source_file": "tests/inference/test_execution.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/test_execution.py",
+      "target": "symbol:960b9f4c4b1ccdf5:TestForLoopClose",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "references",
+      "provenance": "EXTRACTED",
+      "relation": "references",
+      "source": "symbol:9ff3ce2aecedc7ea:TestExecution",
+      "source_file": "tests/inference/test_execution.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/test_execution.py",
+      "target": "symbol:a65c1b5258786e88:StubMask",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "references",
+      "provenance": "EXTRACTED",
+      "relation": "references",
+      "source": "symbol:9ff3ce2aecedc7ea:TestExecution",
+      "source_file": "tests/inference/test_execution.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/test_execution.py",
+      "target": "symbol:bc30b3cd858000c7:TestIsChangedWithConstants",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "references",
+      "provenance": "EXTRACTED",
+      "relation": "references",
+      "source": "symbol:9ff3ce2aecedc7ea:TestExecution",
+      "source_file": "tests/inference/test_execution.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/test_execution.py",
+      "target": "symbol:c008bb0540d6f5c8:StubImage",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "references",
+      "provenance": "EXTRACTED",
+      "relation": "references",
+      "source": "symbol:9ff3ce2aecedc7ea:TestExecution",
+      "source_file": "tests/inference/test_execution.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/test_execution.py",
+      "target": "symbol:cc86931ea07fcf89:StubInt",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "references",
+      "provenance": "EXTRACTED",
+      "relation": "references",
+      "source": "symbol:9ff3ce2aecedc7ea:TestExecution",
+      "source_file": "tests/inference/test_execution.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/test_execution.py",
+      "target": "symbol:d7eeedc6e3f2b67f:StubConstantImage",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "references",
+      "provenance": "EXTRACTED",
+      "relation": "references",
+      "source": "symbol:9ff3ce2aecedc7ea:TestExecution",
+      "source_file": "tests/inference/test_execution.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/test_execution.py",
+      "target": "symbol:e0d183d617e6e145:StubFloat",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "references",
+      "provenance": "EXTRACTED",
+      "relation": "references",
+      "source": "symbol:9ff3ce2aecedc7ea:TestExecution",
+      "source_file": "tests/inference/test_execution.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/test_execution.py",
+      "target": "symbol:f36a7f1953950a08:TestCustomValidation5",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "references",
+      "provenance": "EXTRACTED",
+      "relation": "references",
+      "source": "symbol:9ff3ce2aecedc7ea:TestExecution",
+      "source_file": "tests/inference/test_execution.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/test_execution.py",
+      "target": "symbol:f7bef8b8cd0464c5:TestMakeListNode",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:a1814e155cdf0cdb:NotEqualsOverrideTest",
+      "source_file": "tests-unit/execution_test/validate_node_input_test.py",
+      "source_location": "L?",
+      "source_ref": "tests-unit/execution_test/validate_node_input_test.py",
+      "target": "symbol:a1814e155cdf0cdb:NotEqualsOverrideTest",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:a38ebd7c87e8e700:test_empty_strings",
+      "source_file": "tests-unit/execution_test/validate_node_input_test.py",
+      "source_location": "L?",
+      "source_ref": "tests-unit/execution_test/validate_node_input_test.py",
+      "target": "symbol:3185a61b95d84ee5:validate_node_input",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:a38ebd7c87e8e700:test_empty_strings",
+      "source_file": "tests-unit/execution_test/validate_node_input_test.py",
+      "source_location": "L?",
+      "source_ref": "tests-unit/execution_test/validate_node_input_test.py",
+      "target": "symbol:a38ebd7c87e8e700:test_empty_strings",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "references",
+      "provenance": "EXTRACTED",
+      "relation": "references",
+      "source": "symbol:a674ce25794db4ce:CacheSet",
+      "source_file": "execution.py",
+      "source_location": "L?",
+      "source_ref": "execution.py",
+      "target": "symbol:19d7ab96e9ab17f7:CacheKeySetID",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:a674ce25794db4ce:CacheSet",
+      "source_file": "execution.py",
+      "source_location": "L?",
+      "source_ref": "execution.py",
+      "target": "symbol:835cfd4ef43a317d:HierarchicalCache",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "references",
+      "provenance": "EXTRACTED",
+      "relation": "references",
+      "source": "symbol:a674ce25794db4ce:CacheSet",
+      "source_file": "execution.py",
+      "source_location": "L?",
+      "source_ref": "execution.py",
+      "target": "symbol:8a8bd4913f491255:CacheType",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:a674ce25794db4ce:CacheSet",
+      "source_file": "execution.py",
+      "source_location": "L?",
+      "source_ref": "execution.py",
+      "target": "symbol:b9c1bd8af3bd98e0:DependencyAwareCache",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:a674ce25794db4ce:CacheSet",
+      "source_file": "execution.py",
+      "source_location": "L?",
+      "source_ref": "execution.py",
+      "target": "symbol:d83ebe53b9e005d5:LRUCache",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "references",
+      "provenance": "EXTRACTED",
+      "relation": "references",
+      "source": "symbol:a674ce25794db4ce:CacheSet",
+      "source_file": "execution.py",
+      "source_location": "L?",
+      "source_ref": "execution.py",
+      "target": "symbol:de24eeaf6233aa7e:CacheKeySetInputSignature",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:b3812356b9907f8a:test_whitespace_handling",
+      "source_file": "tests-unit/execution_test/validate_node_input_test.py",
+      "source_location": "L?",
+      "source_ref": "tests-unit/execution_test/validate_node_input_test.py",
+      "target": "symbol:3185a61b95d84ee5:validate_node_input",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:b3812356b9907f8a:test_whitespace_handling",
+      "source_file": "tests-unit/execution_test/validate_node_input_test.py",
+      "source_location": "L?",
+      "source_ref": "tests-unit/execution_test/validate_node_input_test.py",
+      "target": "symbol:b3812356b9907f8a:test_whitespace_handling",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:b9c1bd8af3bd98e0:DependencyAwareCache",
+      "source_file": "comfy_execution/caching.py",
+      "source_location": "L?",
+      "source_ref": "comfy_execution/caching.py",
+      "target": "symbol:08b1935daa2a8555:is_link",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "inherits",
+      "provenance": "EXTRACTED",
+      "relation": "inherits",
+      "source": "symbol:b9c1bd8af3bd98e0:DependencyAwareCache",
+      "source_file": "comfy_execution/caching.py",
+      "source_location": "L?",
+      "source_ref": "comfy_execution/caching.py",
+      "target": "symbol:984bd01ed651ce82:BasicCache",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:b9c1bd8af3bd98e0:DependencyAwareCache",
+      "source_file": "comfy_execution/caching.py",
+      "source_location": "L?",
+      "source_ref": "comfy_execution/caching.py",
+      "target": "symbol:b9c1bd8af3bd98e0:DependencyAwareCache",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:bc89b1023a3929c0:DuplicateNodeError",
+      "source_file": "execution.py",
+      "source_location": "L?",
+      "source_ref": "execution.py",
+      "target": "symbol:bc89b1023a3929c0:DuplicateNodeError",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:bdbc5eafbbb32d13:test_single_vs_multiple",
+      "source_file": "tests-unit/execution_test/validate_node_input_test.py",
+      "source_location": "L?",
+      "source_ref": "tests-unit/execution_test/validate_node_input_test.py",
+      "target": "symbol:3185a61b95d84ee5:validate_node_input",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:bdbc5eafbbb32d13:test_single_vs_multiple",
+      "source_file": "tests-unit/execution_test/validate_node_input_test.py",
+      "source_location": "L?",
+      "source_ref": "tests-unit/execution_test/validate_node_input_test.py",
+      "target": "symbol:bdbc5eafbbb32d13:test_single_vs_multiple",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:c15c485cf0390a90:test_non_string",
+      "source_file": "tests-unit/execution_test/validate_node_input_test.py",
+      "source_location": "L?",
+      "source_ref": "tests-unit/execution_test/validate_node_input_test.py",
+      "target": "symbol:3185a61b95d84ee5:validate_node_input",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:c15c485cf0390a90:test_non_string",
+      "source_file": "tests-unit/execution_test/validate_node_input_test.py",
+      "source_location": "L?",
+      "source_ref": "tests-unit/execution_test/validate_node_input_test.py",
+      "target": "symbol:c15c485cf0390a90:test_non_string",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:ce8666f8db2e906d:IsChangedCache",
+      "source_file": "execution.py",
+      "source_location": "L?",
+      "source_ref": "execution.py",
+      "target": "symbol:713e6670f6ce1f88:_map_node_over_list",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "references",
+      "provenance": "EXTRACTED",
+      "relation": "references",
+      "source": "symbol:ce8666f8db2e906d:IsChangedCache",
+      "source_file": "execution.py",
+      "source_location": "L?",
+      "source_ref": "execution.py",
+      "target": "symbol:94880d4757c29348:ExecutionBlocker",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:ce8666f8db2e906d:IsChangedCache",
+      "source_file": "execution.py",
+      "source_location": "L?",
+      "source_ref": "execution.py",
+      "target": "symbol:d114f5ca728000e1:get_input_data",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:d114f5ca728000e1:get_input_data",
+      "source_file": "execution.py",
+      "source_location": "L?",
+      "source_ref": "execution.py",
+      "target": "symbol:08b1935daa2a8555:is_link",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:d114f5ca728000e1:get_input_data",
+      "source_file": "execution.py",
+      "source_location": "L?",
+      "source_ref": "execution.py",
+      "target": "symbol:d114f5ca728000e1:get_input_data",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:d6907aad1abaa605:DependencyCycleError",
+      "source_file": "comfy_execution/graph.py",
+      "source_location": "L?",
+      "source_ref": "comfy_execution/graph.py",
+      "target": "symbol:d6907aad1abaa605:DependencyCycleError",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "inherits",
+      "provenance": "EXTRACTED",
+      "relation": "inherits",
+      "source": "symbol:d83ebe53b9e005d5:LRUCache",
+      "source_file": "comfy_execution/caching.py",
+      "source_location": "L?",
+      "source_ref": "comfy_execution/caching.py",
+      "target": "symbol:984bd01ed651ce82:BasicCache",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:d83ebe53b9e005d5:LRUCache",
+      "source_file": "comfy_execution/caching.py",
+      "source_location": "L?",
+      "source_ref": "comfy_execution/caching.py",
+      "target": "symbol:d83ebe53b9e005d5:LRUCache",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:db7171c895340086:test_non_strict_mode",
+      "source_file": "tests-unit/execution_test/validate_node_input_test.py",
+      "source_location": "L?",
+      "source_ref": "tests-unit/execution_test/validate_node_input_test.py",
+      "target": "symbol:3185a61b95d84ee5:validate_node_input",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:db7171c895340086:test_non_strict_mode",
+      "source_file": "tests-unit/execution_test/validate_node_input_test.py",
+      "source_location": "L?",
+      "source_ref": "tests-unit/execution_test/validate_node_input_test.py",
+      "target": "symbol:db7171c895340086:test_non_strict_mode",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:de24eeaf6233aa7e:CacheKeySetInputSignature",
+      "source_file": "comfy_execution/caching.py",
+      "source_location": "L?",
+      "source_ref": "comfy_execution/caching.py",
+      "target": "symbol:08b1935daa2a8555:is_link",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:de24eeaf6233aa7e:CacheKeySetInputSignature",
+      "source_file": "comfy_execution/caching.py",
+      "source_location": "L?",
+      "source_ref": "comfy_execution/caching.py",
+      "target": "symbol:7a44fad03b814f2f:to_hashable",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "inherits",
+      "provenance": "EXTRACTED",
+      "relation": "inherits",
+      "source": "symbol:de24eeaf6233aa7e:CacheKeySetInputSignature",
+      "source_file": "comfy_execution/caching.py",
+      "source_location": "L?",
+      "source_ref": "comfy_execution/caching.py",
+      "target": "symbol:89b5b8b8ece5109c:CacheKeySet",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:de24eeaf6233aa7e:CacheKeySetInputSignature",
+      "source_file": "comfy_execution/caching.py",
+      "source_location": "L?",
+      "source_ref": "comfy_execution/caching.py",
+      "target": "symbol:de24eeaf6233aa7e:CacheKeySetInputSignature",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:de24eeaf6233aa7e:CacheKeySetInputSignature",
+      "source_file": "comfy_execution/caching.py",
+      "source_location": "L?",
+      "source_ref": "comfy_execution/caching.py",
+      "target": "symbol:e6cb5d8eaa2143c1:include_unique_id_in_input",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:df10ddee59737e1b:ExecutionResult",
+      "source_file": "execution.py",
+      "source_location": "L?",
+      "source_ref": "execution.py",
+      "target": "symbol:df10ddee59737e1b:ExecutionResult",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:e6cb5d8eaa2143c1:include_unique_id_in_input",
+      "source_file": "comfy_execution/caching.py",
+      "source_location": "L?",
+      "source_ref": "comfy_execution/caching.py",
+      "target": "symbol:e6cb5d8eaa2143c1:include_unique_id_in_input",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:ead56c616ab6048b:SmartType",
+      "source_file": "tests/inference/testing_nodes/testing-pack/tools.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/testing_nodes/testing-pack/tools.py",
+      "target": "symbol:ead56c616ab6048b:SmartType",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:f2e82e9a16c3d55f:test_ne_custom_override",
+      "source_file": "tests-unit/execution_test/validate_node_input_test.py",
+      "source_location": "L?",
+      "source_ref": "tests-unit/execution_test/validate_node_input_test.py",
+      "target": "symbol:3185a61b95d84ee5:validate_node_input",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:f2e82e9a16c3d55f:test_ne_custom_override",
+      "source_file": "tests-unit/execution_test/validate_node_input_test.py",
+      "source_location": "L?",
+      "source_ref": "tests-unit/execution_test/validate_node_input_test.py",
+      "target": "symbol:a1814e155cdf0cdb:NotEqualsOverrideTest",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:f2e82e9a16c3d55f:test_ne_custom_override",
+      "source_file": "tests-unit/execution_test/validate_node_input_test.py",
+      "source_location": "L?",
+      "source_ref": "tests-unit/execution_test/validate_node_input_test.py",
+      "target": "symbol:f2e82e9a16c3d55f:test_ne_custom_override",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:f3ece0f7a3c085fe:get_output_data",
+      "source_file": "execution.py",
+      "source_location": "L?",
+      "source_ref": "execution.py",
+      "target": "symbol:713e6670f6ce1f88:_map_node_over_list",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "references",
+      "provenance": "EXTRACTED",
+      "relation": "references",
+      "source": "symbol:f3ece0f7a3c085fe:get_output_data",
+      "source_file": "execution.py",
+      "source_location": "L?",
+      "source_ref": "execution.py",
+      "target": "symbol:94880d4757c29348:ExecutionBlocker",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:f3ece0f7a3c085fe:get_output_data",
+      "source_file": "execution.py",
+      "source_location": "L?",
+      "source_ref": "execution.py",
+      "target": "symbol:9baf817534af3c5f:merge_result_data",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:f3ece0f7a3c085fe:get_output_data",
+      "source_file": "execution.py",
+      "source_location": "L?",
+      "source_ref": "execution.py",
+      "target": "symbol:f3ece0f7a3c085fe:get_output_data",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:fd91898995079e45:VariantSupport",
+      "source_file": "tests/inference/testing_nodes/testing-pack/tools.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/testing_nodes/testing-pack/tools.py",
+      "target": "symbol:52d2ab54a3493ecb:validate_inputs",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "references",
+      "provenance": "EXTRACTED",
+      "relation": "references",
+      "source": "symbol:fd91898995079e45:VariantSupport",
+      "source_file": "tests/inference/testing_nodes/testing-pack/tools.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/testing_nodes/testing-pack/tools.py",
+      "target": "symbol:ead56c616ab6048b:SmartType",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:fd91898995079e45:VariantSupport",
+      "source_file": "tests/inference/testing_nodes/testing-pack/tools.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/testing_nodes/testing-pack/tools.py",
+      "target": "symbol:fd91898995079e45:VariantSupport",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:fd91898995079e45:VariantSupport",
+      "source_file": "tests/inference/testing_nodes/testing-pack/tools.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/testing_nodes/testing-pack/tools.py",
+      "target": "symbol:ffd4ba16a009bcb6:MakeSmartType",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:ffd4ba16a009bcb6:MakeSmartType",
+      "source_file": "tests/inference/testing_nodes/testing-pack/tools.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/testing_nodes/testing-pack/tools.py",
+      "target": "symbol:ead56c616ab6048b:SmartType",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:ffd4ba16a009bcb6:MakeSmartType",
+      "source_file": "tests/inference/testing_nodes/testing-pack/tools.py",
+      "source_location": "L?",
+      "source_ref": "tests/inference/testing_nodes/testing-pack/tools.py",
+      "target": "symbol:ffd4ba16a009bcb6:MakeSmartType",
+      "weight": 1.0
+    }
+  ],
+  "nodes": [
+    {
+      "community_id": 8,
+      "file_path": "comfy_execution/graph.py",
+      "id": "symbol:94880d4757c29348:ExecutionBlocker",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "comfy_execution/graph.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class ExecutionBlocker:",
+      "symbol_name": "ExecutionBlocker",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 8,
+      "file_path": "tests/inference/test_execution.py",
+      "id": "file:tests/inference/test_execution.py",
+      "language": "Python",
+      "node_type": "file"
+    },
+    {
+      "community_id": 8,
+      "file_path": "tests/inference/test_inference.py",
+      "id": "symbol:2c8e0d4c29fc862c:ComfyClient",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "tests/inference/test_inference.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class ComfyClient:",
+      "symbol_name": "ComfyClient",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 8,
+      "file_path": "tests/inference/testing_nodes/testing-pack/specific_tests.py",
+      "id": "symbol:5a2e671d1475792f:TestCustomValidation3",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "tests/inference/testing_nodes/testing-pack/specific_tests.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class TestCustomValidation3:",
+      "symbol_name": "TestCustomValidation3",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 8,
+      "file_path": "tests/inference/testing_nodes/testing-pack/specific_tests.py",
+      "id": "symbol:35b454d1adc40d3c:TestCustomValidation1",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "tests/inference/testing_nodes/testing-pack/specific_tests.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class TestCustomValidation1:",
+      "symbol_name": "TestCustomValidation1",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 8,
+      "file_path": "comfy_execution/graph.py",
+      "id": "symbol:d6907aad1abaa605:DependencyCycleError",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "comfy_execution/graph.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class DependencyCycleError(Exception):",
+      "symbol_name": "DependencyCycleError",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 8,
+      "file_path": "tests/inference/testing_nodes/testing-pack/specific_tests.py",
+      "id": "symbol:356c95097d480f57:TestCustomValidation2",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "tests/inference/testing_nodes/testing-pack/specific_tests.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class TestCustomValidation2:",
+      "symbol_name": "TestCustomValidation2",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 8,
+      "file_path": "script_examples/websockets_api_example_ws_images.py",
+      "id": "symbol:09e251f8e5a43baa:queue_prompt",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "script_examples/websockets_api_example_ws_images.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "def queue_prompt(prompt):",
+      "symbol_name": "queue_prompt",
+      "symbol_type": "function"
+    },
+    {
+      "community_id": 8,
+      "file_path": "execution.py",
+      "id": "symbol:ce8666f8db2e906d:IsChangedCache",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "execution.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class IsChangedCache:",
+      "symbol_name": "IsChangedCache",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 8,
+      "file_path": "tests-unit/execution_test/validate_node_input_test.py",
+      "id": "symbol:a1814e155cdf0cdb:NotEqualsOverrideTest",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "tests-unit/execution_test/validate_node_input_test.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class NotEqualsOverrideTest(str):",
+      "symbol_name": "NotEqualsOverrideTest",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 8,
+      "file_path": "tests/inference/testing_nodes/testing-pack/specific_tests.py",
+      "id": "file:tests/inference/testing_nodes/testing-pack/specific_tests.py",
+      "language": "Python",
+      "node_type": "file"
+    },
+    {
+      "community_id": 8,
+      "file_path": "tests/inference/testing_nodes/testing-pack/flow_control.py",
+      "id": "symbol:e09420d865954553:TestWhileLoopOpen",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "tests/inference/testing_nodes/testing-pack/flow_control.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class TestWhileLoopOpen:",
+      "symbol_name": "TestWhileLoopOpen",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 8,
+      "file_path": "comfy_execution/caching.py",
+      "id": "symbol:89b5b8b8ece5109c:CacheKeySet",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "comfy_execution/caching.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class CacheKeySet:",
+      "symbol_name": "CacheKeySet",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 8,
+      "file_path": "execution.py",
+      "id": "symbol:713e6670f6ce1f88:_map_node_over_list",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "execution.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "def _map_node_over_list(obj, input_data_all, func, allow_interrupt=False, execution_block_cb=None, pre_execute_cb=None):",
+      "symbol_name": "_map_node_over_list",
+      "symbol_type": "function"
+    },
+    {
+      "community_id": 8,
+      "file_path": "comfy_execution/validation.py",
+      "id": "symbol:3185a61b95d84ee5:validate_node_input",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "comfy_execution/validation.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "def validate_node_input(",
+      "symbol_name": "validate_node_input",
+      "symbol_type": "function"
+    },
+    {
+      "community_id": 8,
+      "file_path": "tests-unit/execution_test/validate_node_input_test.py",
+      "id": "symbol:256e71a93892e15e:test_ne_override",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "tests-unit/execution_test/validate_node_input_test.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "def test_ne_override():",
+      "symbol_name": "test_ne_override",
+      "symbol_type": "function"
+    },
+    {
+      "community_id": 8,
+      "file_path": "tests/inference/test_inference.py",
+      "id": "file:tests/inference/test_inference.py",
+      "language": "Python",
+      "node_type": "file"
+    },
+    {
+      "community_id": 8,
+      "file_path": "tests/inference/testing_nodes/testing-pack/tools.py",
+      "id": "symbol:ead56c616ab6048b:SmartType",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "tests/inference/testing_nodes/testing-pack/tools.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class SmartType(str):",
+      "symbol_name": "SmartType",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 8,
+      "file_path": "script_examples/websockets_api_example_ws_images.py",
+      "id": "symbol:6802bf1ddb25cddf:get_image",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "script_examples/websockets_api_example_ws_images.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "def get_image(filename, subfolder, folder_type):",
+      "symbol_name": "get_image",
+      "symbol_type": "function"
+    },
+    {
+      "community_id": 8,
+      "file_path": "script_examples/websockets_api_example_ws_images.py",
+      "id": "file:script_examples/websockets_api_example_ws_images.py",
+      "language": "Python",
+      "node_type": "file"
+    },
+    {
+      "community_id": 8,
+      "file_path": "tests/inference/testing_nodes/testing-pack/specific_tests.py",
+      "id": "symbol:bc30b3cd858000c7:TestIsChangedWithConstants",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "tests/inference/testing_nodes/testing-pack/specific_tests.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class TestIsChangedWithConstants:",
+      "symbol_name": "TestIsChangedWithConstants",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 8,
+      "file_path": "tests-unit/execution_test/validate_node_input_test.py",
+      "id": "symbol:1531174712b40c75:test_parametrized_cases",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "tests-unit/execution_test/validate_node_input_test.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "def test_parametrized_cases(received, input_type, strict, expected):",
+      "symbol_name": "test_parametrized_cases",
+      "symbol_type": "function"
+    },
+    {
+      "community_id": 8,
+      "file_path": "comfy_execution/graph_utils.py",
+      "id": "symbol:3aa39a57e88d8177:GraphBuilder",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "comfy_execution/graph_utils.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class GraphBuilder:",
+      "symbol_name": "GraphBuilder",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 8,
+      "file_path": "tests/inference/testing_nodes/testing-pack/specific_tests.py",
+      "id": "symbol:51c911bb67a04ab5:TestCustomValidation4",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "tests/inference/testing_nodes/testing-pack/specific_tests.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class TestCustomValidation4:",
+      "symbol_name": "TestCustomValidation4",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 8,
+      "file_path": "comfy_execution/graph_utils.py",
+      "id": "symbol:08b1935daa2a8555:is_link",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "comfy_execution/graph_utils.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "def is_link(obj):",
+      "symbol_name": "is_link",
+      "symbol_type": "function"
+    },
+    {
+      "community_id": 8,
+      "file_path": "comfy_execution/graph.py",
+      "id": "symbol:031194ac20408a16:ExecutionList",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "comfy_execution/graph.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class ExecutionList(TopologicalSort):",
+      "symbol_name": "ExecutionList",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 8,
+      "file_path": "tests-unit/execution_test/validate_node_input_test.py",
+      "id": "symbol:db7171c895340086:test_non_strict_mode",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "tests-unit/execution_test/validate_node_input_test.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "def test_non_strict_mode():",
+      "symbol_name": "test_non_strict_mode",
+      "symbol_type": "function"
+    },
+    {
+      "community_id": 8,
+      "file_path": "tests/inference/testing_nodes/testing-pack/util.py",
+      "id": "symbol:3a57c5d796df8d87:TestAccumulationTailNode",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "tests/inference/testing_nodes/testing-pack/util.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class TestAccumulationTailNode:",
+      "symbol_name": "TestAccumulationTailNode",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 8,
+      "file_path": "execution.py",
+      "id": "symbol:bc89b1023a3929c0:DuplicateNodeError",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "execution.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class DuplicateNodeError(Exception):",
+      "symbol_name": "DuplicateNodeError",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 8,
+      "file_path": "tests-unit/execution_test/validate_node_input_test.py",
+      "id": "symbol:f2e82e9a16c3d55f:test_ne_custom_override",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "tests-unit/execution_test/validate_node_input_test.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "def test_ne_custom_override():",
+      "symbol_name": "test_ne_custom_override",
+      "symbol_type": "function"
+    },
+    {
+      "community_id": 8,
+      "file_path": "comfy_execution/graph_utils.py",
+      "id": "file:comfy_execution/graph_utils.py",
+      "language": "Python",
+      "node_type": "file"
+    },
+    {
+      "community_id": 8,
+      "file_path": "tests/inference/testing_nodes/testing-pack/util.py",
+      "id": "symbol:960b9f4c4b1ccdf5:TestForLoopClose",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "tests/inference/testing_nodes/testing-pack/util.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class TestForLoopClose:",
+      "symbol_name": "TestForLoopClose",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 8,
+      "file_path": "tests/inference/testing_nodes/testing-pack/tools.py",
+      "id": "symbol:fd91898995079e45:VariantSupport",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "tests/inference/testing_nodes/testing-pack/tools.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "def VariantSupport():",
+      "symbol_name": "VariantSupport",
+      "symbol_type": "function"
+    },
+    {
+      "community_id": 8,
+      "file_path": "execution.py",
+      "id": "symbol:f3ece0f7a3c085fe:get_output_data",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "execution.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "def get_output_data(obj, input_data_all, execution_block_cb=None, pre_execute_cb=None):",
+      "symbol_name": "get_output_data",
+      "symbol_type": "function"
+    },
+    {
+      "community_id": 8,
+      "file_path": "tests/inference/testing_nodes/testing-pack/stubs.py",
+      "id": "file:tests/inference/testing_nodes/testing-pack/stubs.py",
+      "language": "Python",
+      "node_type": "file"
+    },
+    {
+      "community_id": 8,
+      "file_path": "execution.py",
+      "id": "symbol:25f52464f4100b14:format_value",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "execution.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "def format_value(x):",
+      "symbol_name": "format_value",
+      "symbol_type": "function"
+    },
+    {
+      "community_id": 8,
+      "file_path": "comfy_execution/caching.py",
+      "id": "symbol:984bd01ed651ce82:BasicCache",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "comfy_execution/caching.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class BasicCache:",
+      "symbol_name": "BasicCache",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 8,
+      "file_path": "nodes.py",
+      "id": "symbol:6d29b33dadeaaee5:before_node_execution",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "nodes.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "def before_node_execution():",
+      "symbol_name": "before_node_execution",
+      "symbol_type": "function"
+    },
+    {
+      "community_id": 8,
+      "file_path": "tests-unit/execution_test/validate_node_input_test.py",
+      "id": "symbol:c15c485cf0390a90:test_non_string",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "tests-unit/execution_test/validate_node_input_test.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "def test_non_string():",
+      "symbol_name": "test_non_string",
+      "symbol_type": "function"
+    },
+    {
+      "community_id": 8,
+      "file_path": "tests/inference/test_execution.py",
+      "id": "symbol:043de6b952f45c2d:RunResult",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "tests/inference/test_execution.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class RunResult:",
+      "symbol_name": "RunResult",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 8,
+      "file_path": "tests-unit/execution_test/validate_node_input_test.py",
+      "id": "file:tests-unit/execution_test/validate_node_input_test.py",
+      "language": "Python",
+      "node_type": "file"
+    },
+    {
+      "community_id": 8,
+      "file_path": "execution.py",
+      "id": "symbol:8a8bd4913f491255:CacheType",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "execution.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class CacheType(Enum):",
+      "symbol_name": "CacheType",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 8,
+      "file_path": "comfy_execution/graph.py",
+      "id": "symbol:06ca00645e4b6fde:NodeInputError",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "comfy_execution/graph.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class NodeInputError(Exception):",
+      "symbol_name": "NodeInputError",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 8,
+      "file_path": "comfy_execution/caching.py",
+      "id": "symbol:b9c1bd8af3bd98e0:DependencyAwareCache",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "comfy_execution/caching.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class DependencyAwareCache(BasicCache):",
+      "symbol_name": "DependencyAwareCache",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 8,
+      "file_path": "tests/inference/testing_nodes/testing-pack/stubs.py",
+      "id": "symbol:c008bb0540d6f5c8:StubImage",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "tests/inference/testing_nodes/testing-pack/stubs.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class StubImage:",
+      "symbol_name": "StubImage",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 8,
+      "file_path": "tests/inference/testing_nodes/testing-pack/flow_control.py",
+      "id": "symbol:1d539af4e678e070:TestWhileLoopClose",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "tests/inference/testing_nodes/testing-pack/flow_control.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class TestWhileLoopClose:",
+      "symbol_name": "TestWhileLoopClose",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 8,
+      "file_path": "comfy_execution/caching.py",
+      "id": "symbol:d83ebe53b9e005d5:LRUCache",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "comfy_execution/caching.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class LRUCache(BasicCache):",
+      "symbol_name": "LRUCache",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 8,
+      "file_path": "execution.py",
+      "id": "file:execution.py",
+      "language": "Python",
+      "node_type": "file"
+    },
+    {
+      "community_id": 8,
+      "file_path": "tests/inference/testing_nodes/testing-pack/util.py",
+      "id": "symbol:f7bef8b8cd0464c5:TestMakeListNode",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "tests/inference/testing_nodes/testing-pack/util.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class TestMakeListNode:",
+      "symbol_name": "TestMakeListNode",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 8,
+      "file_path": "execution.py",
+      "id": "symbol:9baf817534af3c5f:merge_result_data",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "execution.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "def merge_result_data(results, obj):",
+      "symbol_name": "merge_result_data",
+      "symbol_type": "function"
+    },
+    {
+      "community_id": 8,
+      "file_path": "tests/inference/test_execution.py",
+      "id": "symbol:9ff3ce2aecedc7ea:TestExecution",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "tests/inference/test_execution.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class TestExecution:",
+      "symbol_name": "TestExecution",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 8,
+      "file_path": "tests/inference/testing_nodes/testing-pack/specific_tests.py",
+      "id": "symbol:06a376086d310d1c:TestCustomIsChanged",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "tests/inference/testing_nodes/testing-pack/specific_tests.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class TestCustomIsChanged:",
+      "symbol_name": "TestCustomIsChanged",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 8,
+      "file_path": "tests/inference/testing_nodes/testing-pack/util.py",
+      "id": "symbol:4cb94772ac9fab5a:TestAccumulationGetItemNode",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "tests/inference/testing_nodes/testing-pack/util.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class TestAccumulationGetItemNode:",
+      "symbol_name": "TestAccumulationGetItemNode",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 8,
+      "file_path": "comfy_execution/caching.py",
+      "id": "symbol:19d7ab96e9ab17f7:CacheKeySetID",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "comfy_execution/caching.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class CacheKeySetID(CacheKeySet):",
+      "symbol_name": "CacheKeySetID",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 8,
+      "file_path": "comfy_execution/graph.py",
+      "id": "symbol:8d91adb241c6ba1a:DynamicPrompt",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "comfy_execution/graph.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class DynamicPrompt:",
+      "symbol_name": "DynamicPrompt",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 8,
+      "file_path": "tests/inference/testing_nodes/testing-pack/stubs.py",
+      "id": "symbol:d7eeedc6e3f2b67f:StubConstantImage",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "tests/inference/testing_nodes/testing-pack/stubs.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class StubConstantImage:",
+      "symbol_name": "StubConstantImage",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 8,
+      "file_path": "tests/inference/testing_nodes/testing-pack/specific_tests.py",
+      "id": "symbol:f36a7f1953950a08:TestCustomValidation5",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "tests/inference/testing_nodes/testing-pack/specific_tests.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class TestCustomValidation5:",
+      "symbol_name": "TestCustomValidation5",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 8,
+      "file_path": "tests/inference/testing_nodes/testing-pack/util.py",
+      "id": "symbol:f646abf0d5f92b29:TestAccumulationHeadNode",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "tests/inference/testing_nodes/testing-pack/util.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class TestAccumulationHeadNode:",
+      "symbol_name": "TestAccumulationHeadNode",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 8,
+      "file_path": "comfy_execution/caching.py",
+      "id": "file:comfy_execution/caching.py",
+      "language": "Python",
+      "node_type": "file"
+    },
+    {
+      "community_id": 8,
+      "file_path": "execution.py",
+      "id": "symbol:a674ce25794db4ce:CacheSet",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "execution.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class CacheSet:",
+      "symbol_name": "CacheSet",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 8,
+      "file_path": "comfy_execution/caching.py",
+      "id": "symbol:de24eeaf6233aa7e:CacheKeySetInputSignature",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "comfy_execution/caching.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class CacheKeySetInputSignature(CacheKeySet):",
+      "symbol_name": "CacheKeySetInputSignature",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 8,
+      "file_path": "comfy_execution/caching.py",
+      "id": "symbol:835cfd4ef43a317d:HierarchicalCache",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "comfy_execution/caching.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class HierarchicalCache(BasicCache):",
+      "symbol_name": "HierarchicalCache",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 8,
+      "file_path": "script_examples/websockets_api_example_ws_images.py",
+      "id": "symbol:24596ddceda92c95:get_images",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "script_examples/websockets_api_example_ws_images.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "def get_images(ws, prompt):",
+      "symbol_name": "get_images",
+      "symbol_type": "function"
+    },
+    {
+      "community_id": 8,
+      "file_path": "tests/inference/testing_nodes/testing-pack/tools.py",
+      "id": "symbol:ffd4ba16a009bcb6:MakeSmartType",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "tests/inference/testing_nodes/testing-pack/tools.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "def MakeSmartType(t):",
+      "symbol_name": "MakeSmartType",
+      "symbol_type": "function"
+    },
+    {
+      "community_id": 8,
+      "file_path": "tests/inference/testing_nodes/testing-pack/specific_tests.py",
+      "id": "symbol:0ac83a5d550f98c3:TestMixedExpansionReturns",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "tests/inference/testing_nodes/testing-pack/specific_tests.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class TestMixedExpansionReturns:",
+      "symbol_name": "TestMixedExpansionReturns",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 8,
+      "file_path": "comfy_execution/caching.py",
+      "id": "symbol:851c307ee8b803fc:Unhashable",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "comfy_execution/caching.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class Unhashable:",
+      "symbol_name": "Unhashable",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 8,
+      "file_path": "comfy_execution/graph_utils.py",
+      "id": "symbol:04bc14dc4ed29a78:add_graph_prefix",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "comfy_execution/graph_utils.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "def add_graph_prefix(graph, outputs, prefix):",
+      "symbol_name": "add_graph_prefix",
+      "symbol_type": "function"
+    },
+    {
+      "community_id": 8,
+      "file_path": "tests-unit/execution_test/validate_node_input_test.py",
+      "id": "symbol:41ce29c577822a73:test_exact_match",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "tests-unit/execution_test/validate_node_input_test.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "def test_exact_match():",
+      "symbol_name": "test_exact_match",
+      "symbol_type": "function"
+    },
+    {
+      "community_id": 8,
+      "file_path": "comfy_execution/caching.py",
+      "id": "symbol:7a44fad03b814f2f:to_hashable",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "comfy_execution/caching.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "def to_hashable(obj):",
+      "symbol_name": "to_hashable",
+      "symbol_type": "function"
+    },
+    {
+      "community_id": 8,
+      "file_path": "tests/inference/testing_nodes/testing-pack/util.py",
+      "id": "symbol:c4563e5a08df2ea6:TestIntMathOperation",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "tests/inference/testing_nodes/testing-pack/util.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class TestIntMathOperation:",
+      "symbol_name": "TestIntMathOperation",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 8,
+      "file_path": "tests/inference/testing_nodes/testing-pack/flow_control.py",
+      "id": "file:tests/inference/testing_nodes/testing-pack/flow_control.py",
+      "language": "Python",
+      "node_type": "file"
+    },
+    {
+      "community_id": 8,
+      "file_path": "tests/inference/testing_nodes/testing-pack/stubs.py",
+      "id": "symbol:e0d183d617e6e145:StubFloat",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "tests/inference/testing_nodes/testing-pack/stubs.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class StubFloat:",
+      "symbol_name": "StubFloat",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 8,
+      "file_path": "tests/inference/testing_nodes/testing-pack/util.py",
+      "id": "symbol:241302f1194bf5eb:TestListToAccumulationNode",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "tests/inference/testing_nodes/testing-pack/util.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class TestListToAccumulationNode:",
+      "symbol_name": "TestListToAccumulationNode",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 8,
+      "file_path": "script_examples/websockets_api_example_ws_images.py",
+      "id": "symbol:08bf7810ee623f36:get_history",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "script_examples/websockets_api_example_ws_images.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "def get_history(prompt_id):",
+      "symbol_name": "get_history",
+      "symbol_type": "function"
+    },
+    {
+      "community_id": 8,
+      "file_path": "tests/inference/testing_nodes/testing-pack/specific_tests.py",
+      "id": "symbol:6b7c040da6579a9c:TestVariadicAverage",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "tests/inference/testing_nodes/testing-pack/specific_tests.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class TestVariadicAverage:",
+      "symbol_name": "TestVariadicAverage",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 8,
+      "file_path": "tests/inference/testing_nodes/testing-pack/util.py",
+      "id": "symbol:f0d33e4e27341e9c:TestAccumulateNode",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "tests/inference/testing_nodes/testing-pack/util.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class TestAccumulateNode:",
+      "symbol_name": "TestAccumulateNode",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 8,
+      "file_path": "comfy_execution/validation.py",
+      "id": "file:comfy_execution/validation.py",
+      "language": "Python",
+      "node_type": "file"
+    },
+    {
+      "community_id": 8,
+      "file_path": "comfy_execution/graph.py",
+      "id": "symbol:604428b858979a88:NodeNotFoundError",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "comfy_execution/graph.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class NodeNotFoundError(Exception):",
+      "symbol_name": "NodeNotFoundError",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 8,
+      "file_path": "comfy_execution/caching.py",
+      "id": "symbol:e6cb5d8eaa2143c1:include_unique_id_in_input",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "comfy_execution/caching.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "def include_unique_id_in_input(class_type: str) -> bool:",
+      "symbol_name": "include_unique_id_in_input",
+      "symbol_type": "function"
+    },
+    {
+      "community_id": 8,
+      "file_path": "comfy_execution/graph.py",
+      "id": "file:comfy_execution/graph.py",
+      "language": "Python",
+      "node_type": "file"
+    },
+    {
+      "community_id": 8,
+      "file_path": "tests/inference/test_inference.py",
+      "id": "symbol:6b5a0879cbf9966f:TestInference",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "tests/inference/test_inference.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class TestInference:",
+      "symbol_name": "TestInference",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 8,
+      "file_path": "tests/inference/testing_nodes/testing-pack/util.py",
+      "id": "symbol:130525c28aba5024:TestAccumulationGetLengthNode",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "tests/inference/testing_nodes/testing-pack/util.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class TestAccumulationGetLengthNode:",
+      "symbol_name": "TestAccumulationGetLengthNode",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 8,
+      "file_path": "execution.py",
+      "id": "symbol:d114f5ca728000e1:get_input_data",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "execution.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "def get_input_data(inputs, class_def, unique_id, outputs=None, dynprompt=None, extra_data={}):",
+      "symbol_name": "get_input_data",
+      "symbol_type": "function"
+    },
+    {
+      "community_id": 8,
+      "file_path": "tests-unit/execution_test/validate_node_input_test.py",
+      "id": "symbol:791fe0041317abee:test_strict_mode",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "tests-unit/execution_test/validate_node_input_test.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "def test_strict_mode():",
+      "symbol_name": "test_strict_mode",
+      "symbol_type": "function"
+    },
+    {
+      "community_id": 8,
+      "file_path": "execution.py",
+      "id": "symbol:5bc12c6621400bb4:full_type_name",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "execution.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "def full_type_name(klass):",
+      "symbol_name": "full_type_name",
+      "symbol_type": "function"
+    },
+    {
+      "community_id": 8,
+      "file_path": "tests/inference/testing_nodes/testing-pack/specific_tests.py",
+      "id": "symbol:1b90f260209b4e3b:TestDynamicDependencyCycle",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "tests/inference/testing_nodes/testing-pack/specific_tests.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class TestDynamicDependencyCycle:",
+      "symbol_name": "TestDynamicDependencyCycle",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 8,
+      "file_path": "execution.py",
+      "id": "symbol:52d2ab54a3493ecb:validate_inputs",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "execution.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "def validate_inputs(prompt, item, validated):",
+      "symbol_name": "validate_inputs",
+      "symbol_type": "function"
+    },
+    {
+      "community_id": 8,
+      "file_path": "tests/inference/testing_nodes/testing-pack/util.py",
+      "id": "file:tests/inference/testing_nodes/testing-pack/util.py",
+      "language": "Python",
+      "node_type": "file"
+    },
+    {
+      "community_id": 8,
+      "file_path": "tests-unit/execution_test/validate_node_input_test.py",
+      "id": "symbol:a38ebd7c87e8e700:test_empty_strings",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "tests-unit/execution_test/validate_node_input_test.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "def test_empty_strings():",
+      "symbol_name": "test_empty_strings",
+      "symbol_type": "function"
+    },
+    {
+      "community_id": 8,
+      "file_path": "tests/inference/testing_nodes/testing-pack/specific_tests.py",
+      "id": "symbol:0af43d79639897b8:TestLazyMixImages",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "tests/inference/testing_nodes/testing-pack/specific_tests.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class TestLazyMixImages:",
+      "symbol_name": "TestLazyMixImages",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 8,
+      "file_path": "tests/inference/test_inference.py",
+      "id": "symbol:523cfab984f02f8e:ComfyGraph",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "tests/inference/test_inference.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class ComfyGraph:",
+      "symbol_name": "ComfyGraph",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 8,
+      "file_path": "tests-unit/execution_test/validate_node_input_test.py",
+      "id": "symbol:b3812356b9907f8a:test_whitespace_handling",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "tests-unit/execution_test/validate_node_input_test.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "def test_whitespace_handling():",
+      "symbol_name": "test_whitespace_handling",
+      "symbol_type": "function"
+    },
+    {
+      "community_id": 8,
+      "file_path": "comfy_execution/graph.py",
+      "id": "symbol:44e4f4b9cc93a011:TopologicalSort",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "comfy_execution/graph.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class TopologicalSort:",
+      "symbol_name": "TopologicalSort",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 8,
+      "file_path": "tests/inference/testing_nodes/testing-pack/flow_control.py",
+      "id": "symbol:02cab7f3bd387cdf:TestExecutionBlockerNode",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "tests/inference/testing_nodes/testing-pack/flow_control.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class TestExecutionBlockerNode:",
+      "symbol_name": "TestExecutionBlockerNode",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 8,
+      "file_path": "tests/inference/testing_nodes/testing-pack/util.py",
+      "id": "symbol:3d4b7102a7beb2c1:TestAccumulationSetItemNode",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "tests/inference/testing_nodes/testing-pack/util.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class TestAccumulationSetItemNode:",
+      "symbol_name": "TestAccumulationSetItemNode",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 8,
+      "file_path": "tests/inference/testing_nodes/testing-pack/stubs.py",
+      "id": "symbol:cc86931ea07fcf89:StubInt",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "tests/inference/testing_nodes/testing-pack/stubs.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class StubInt:",
+      "symbol_name": "StubInt",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 8,
+      "file_path": "tests/inference/testing_nodes/testing-pack/util.py",
+      "id": "symbol:ec4d78f71c3716f5:TestAccumulationToListNode",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "tests/inference/testing_nodes/testing-pack/util.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class TestAccumulationToListNode:",
+      "symbol_name": "TestAccumulationToListNode",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 8,
+      "file_path": "tests/inference/testing_nodes/testing-pack/util.py",
+      "id": "symbol:39143bd24c5819f7:TestForLoopOpen",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "tests/inference/testing_nodes/testing-pack/util.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class TestForLoopOpen:",
+      "symbol_name": "TestForLoopOpen",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 8,
+      "file_path": "tests/inference/testing_nodes/testing-pack/stubs.py",
+      "id": "symbol:a65c1b5258786e88:StubMask",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "tests/inference/testing_nodes/testing-pack/stubs.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class StubMask:",
+      "symbol_name": "StubMask",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 8,
+      "file_path": "tests/inference/testing_nodes/testing-pack/tools.py",
+      "id": "file:tests/inference/testing_nodes/testing-pack/tools.py",
+      "language": "Python",
+      "node_type": "file"
+    },
+    {
+      "community_id": 8,
+      "file_path": "tests/inference/test_execution.py",
+      "id": "symbol:e6b9ad74de0b713e:ComfyClient",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "tests/inference/test_execution.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class ComfyClient:",
+      "symbol_name": "ComfyClient",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 8,
+      "file_path": "tests-unit/execution_test/validate_node_input_test.py",
+      "id": "symbol:bdbc5eafbbb32d13:test_single_vs_multiple",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "tests-unit/execution_test/validate_node_input_test.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "def test_single_vs_multiple():",
+      "symbol_name": "test_single_vs_multiple",
+      "symbol_type": "function"
+    },
+    {
+      "community_id": 8,
+      "file_path": "tests/inference/testing_nodes/testing-pack/conditions.py",
+      "id": "symbol:a5e6534ec5a90d56:TestToBoolNode",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "tests/inference/testing_nodes/testing-pack/conditions.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class TestToBoolNode:",
+      "symbol_name": "TestToBoolNode",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 8,
+      "file_path": "execution.py",
+      "id": "symbol:df10ddee59737e1b:ExecutionResult",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "execution.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class ExecutionResult(Enum):",
+      "symbol_name": "ExecutionResult",
+      "symbol_type": "class"
+    }
+  ]
+}

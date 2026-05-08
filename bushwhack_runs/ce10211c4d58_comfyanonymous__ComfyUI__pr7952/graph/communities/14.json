@@ -1,0 +1,240 @@
+{
+  "community_id": 14,
+  "edges": [
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:comfy_extras/nodes_tomesd.py",
+      "source_file": "comfy_extras/nodes_tomesd.py",
+      "source_location": "L?",
+      "source_ref": "comfy_extras/nodes_tomesd.py",
+      "target": "symbol:0fde711ccb0fc174:mps_gather_workaround",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:comfy_extras/nodes_tomesd.py",
+      "source_file": "comfy_extras/nodes_tomesd.py",
+      "source_location": "L?",
+      "source_ref": "comfy_extras/nodes_tomesd.py",
+      "target": "symbol:6204099911b7af70:do_nothing",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:comfy_extras/nodes_tomesd.py",
+      "source_file": "comfy_extras/nodes_tomesd.py",
+      "source_location": "L?",
+      "source_ref": "comfy_extras/nodes_tomesd.py",
+      "target": "symbol:76ac3e27957b5406:get_functions",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:comfy_extras/nodes_tomesd.py",
+      "source_file": "comfy_extras/nodes_tomesd.py",
+      "source_location": "L?",
+      "source_ref": "comfy_extras/nodes_tomesd.py",
+      "target": "symbol:840f3a50f9de2c84:bipartite_soft_matching_random2d",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:comfy_extras/nodes_tomesd.py",
+      "source_file": "comfy_extras/nodes_tomesd.py",
+      "source_location": "L?",
+      "source_ref": "comfy_extras/nodes_tomesd.py",
+      "target": "symbol:9600ceea760a7ede:TomePatchModel",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:0fde711ccb0fc174:mps_gather_workaround",
+      "source_file": "comfy_extras/nodes_tomesd.py",
+      "source_location": "L?",
+      "source_ref": "comfy_extras/nodes_tomesd.py",
+      "target": "symbol:0fde711ccb0fc174:mps_gather_workaround",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:6204099911b7af70:do_nothing",
+      "source_file": "comfy_extras/nodes_tomesd.py",
+      "source_location": "L?",
+      "source_ref": "comfy_extras/nodes_tomesd.py",
+      "target": "symbol:6204099911b7af70:do_nothing",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:76ac3e27957b5406:get_functions",
+      "source_file": "comfy_extras/nodes_tomesd.py",
+      "source_location": "L?",
+      "source_ref": "comfy_extras/nodes_tomesd.py",
+      "target": "symbol:76ac3e27957b5406:get_functions",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:76ac3e27957b5406:get_functions",
+      "source_file": "comfy_extras/nodes_tomesd.py",
+      "source_location": "L?",
+      "source_ref": "comfy_extras/nodes_tomesd.py",
+      "target": "symbol:840f3a50f9de2c84:bipartite_soft_matching_random2d",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "references",
+      "provenance": "EXTRACTED",
+      "relation": "references",
+      "source": "symbol:840f3a50f9de2c84:bipartite_soft_matching_random2d",
+      "source_file": "comfy_extras/nodes_tomesd.py",
+      "source_location": "L?",
+      "source_ref": "comfy_extras/nodes_tomesd.py",
+      "target": "symbol:0fde711ccb0fc174:mps_gather_workaround",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "references",
+      "provenance": "EXTRACTED",
+      "relation": "references",
+      "source": "symbol:840f3a50f9de2c84:bipartite_soft_matching_random2d",
+      "source_file": "comfy_extras/nodes_tomesd.py",
+      "source_location": "L?",
+      "source_ref": "comfy_extras/nodes_tomesd.py",
+      "target": "symbol:6204099911b7af70:do_nothing",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:840f3a50f9de2c84:bipartite_soft_matching_random2d",
+      "source_file": "comfy_extras/nodes_tomesd.py",
+      "source_location": "L?",
+      "source_ref": "comfy_extras/nodes_tomesd.py",
+      "target": "symbol:840f3a50f9de2c84:bipartite_soft_matching_random2d",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "calls",
+      "provenance": "EXTRACTED",
+      "relation": "calls",
+      "source": "symbol:9600ceea760a7ede:TomePatchModel",
+      "source_file": "comfy_extras/nodes_tomesd.py",
+      "source_location": "L?",
+      "source_ref": "comfy_extras/nodes_tomesd.py",
+      "target": "symbol:76ac3e27957b5406:get_functions",
+      "weight": 1.0
+    }
+  ],
+  "nodes": [
+    {
+      "community_id": 14,
+      "file_path": "comfy_extras/nodes_tomesd.py",
+      "id": "symbol:840f3a50f9de2c84:bipartite_soft_matching_random2d",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "comfy_extras/nodes_tomesd.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "def bipartite_soft_matching_random2d(metric: torch.Tensor,",
+      "symbol_name": "bipartite_soft_matching_random2d",
+      "symbol_type": "function"
+    },
+    {
+      "community_id": 14,
+      "file_path": "comfy_extras/nodes_tomesd.py",
+      "id": "symbol:0fde711ccb0fc174:mps_gather_workaround",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "comfy_extras/nodes_tomesd.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "def mps_gather_workaround(input, dim, index):",
+      "symbol_name": "mps_gather_workaround",
+      "symbol_type": "function"
+    },
+    {
+      "community_id": 14,
+      "file_path": "comfy_extras/nodes_tomesd.py",
+      "id": "symbol:9600ceea760a7ede:TomePatchModel",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "comfy_extras/nodes_tomesd.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "class TomePatchModel:",
+      "symbol_name": "TomePatchModel",
+      "symbol_type": "class"
+    },
+    {
+      "community_id": 14,
+      "file_path": "comfy_extras/nodes_tomesd.py",
+      "id": "symbol:76ac3e27957b5406:get_functions",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "comfy_extras/nodes_tomesd.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "def get_functions(x, ratio, original_shape):",
+      "symbol_name": "get_functions",
+      "symbol_type": "function"
+    },
+    {
+      "community_id": 14,
+      "file_path": "comfy_extras/nodes_tomesd.py",
+      "id": "symbol:6204099911b7af70:do_nothing",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "comfy_extras/nodes_tomesd.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "signature": "def do_nothing(x: torch.Tensor, mode:str=None):",
+      "symbol_name": "do_nothing",
+      "symbol_type": "function"
+    },
+    {
+      "community_id": 14,
+      "file_path": "comfy_extras/nodes_tomesd.py",
+      "id": "file:comfy_extras/nodes_tomesd.py",
+      "language": "Python",
+      "node_type": "file"
+    }
+  ]
+}

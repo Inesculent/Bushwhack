@@ -1,0 +1,130 @@
+{
+  "community_id": 17,
+  "edges": [
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:script_examples/websockets_api_example.py",
+      "source_file": "script_examples/websockets_api_example.py",
+      "source_location": "L?",
+      "source_ref": "script_examples/websockets_api_example.py",
+      "target": "symbol:2a1e235802956bac:get_image",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:script_examples/websockets_api_example.py",
+      "source_file": "script_examples/websockets_api_example.py",
+      "source_location": "L?",
+      "source_ref": "script_examples/websockets_api_example.py",
+      "target": "symbol:8249c7ec8fc6b8f7:get_images",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:script_examples/websockets_api_example.py",
+      "source_file": "script_examples/websockets_api_example.py",
+      "source_location": "L?",
+      "source_ref": "script_examples/websockets_api_example.py",
+      "target": "symbol:977bb20ab0f7627f:queue_prompt",
+      "weight": 1.0
+    },
+    {
+      "confidence": "EXTRACTED",
+      "edge_type": "defines",
+      "provenance": "EXTRACTED",
+      "relation": "defines",
+      "source": "file:script_examples/websockets_api_example.py",
+      "source_file": "script_examples/websockets_api_example.py",
+      "source_location": "L?",
+      "source_ref": "script_examples/websockets_api_example.py",
+      "target": "symbol:b81790956d42aa62:get_history",
+      "weight": 1.0
+    }
+  ],
+  "nodes": [
+    {
+      "community_id": 17,
+      "file_path": "script_examples/websockets_api_example.py",
+      "id": "symbol:8249c7ec8fc6b8f7:get_images",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "script_examples/websockets_api_example.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "semantic_confidence": 1.0,
+      "semantic_purpose": "Batch retrieval function that connects via WebSocket to fetch images associated with a given prompt. Likely processes multiple images from a single generation run.",
+      "semantic_rationale": "Takes WebSocket connection and prompt ID as inputs, suggesting it iterates through results returned from the server for that prompt.",
+      "signature": "def get_images(ws, prompt):",
+      "symbol_name": "get_images",
+      "symbol_type": "function"
+    },
+    {
+      "community_id": 17,
+      "file_path": "script_examples/websockets_api_example.py",
+      "id": "symbol:2a1e235802956bac:get_image",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "script_examples/websockets_api_example.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "semantic_confidence": 1.0,
+      "semantic_purpose": "Utility function to retrieve and save generated images from the server after completion. Takes filename and location parameters to construct the proper request path.",
+      "semantic_rationale": "Function signature indicates it handles file retrieval for images stored in subfolders or custom folder types.",
+      "signature": "def get_image(filename, subfolder, folder_type):",
+      "symbol_name": "get_image",
+      "symbol_type": "function"
+    },
+    {
+      "community_id": 17,
+      "file_path": "script_examples/websockets_api_example.py",
+      "id": "file:script_examples/websockets_api_example.py",
+      "language": "Python",
+      "node_type": "file"
+    },
+    {
+      "community_id": 17,
+      "file_path": "script_examples/websockets_api_example.py",
+      "id": "symbol:977bb20ab0f7627f:queue_prompt",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "script_examples/websockets_api_example.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "semantic_confidence": 1.0,
+      "semantic_purpose": "Core function for submitting generation prompts to the ComfyUI backend via WebSocket. Accepts a prompt dictionary containing the workflow graph and parameters.",
+      "semantic_rationale": "Standard naming convention for API endpoints that initiate background tasks; receives a prompt object as input.",
+      "signature": "def queue_prompt(prompt):",
+      "symbol_name": "queue_prompt",
+      "symbol_type": "function"
+    },
+    {
+      "community_id": 17,
+      "file_path": "script_examples/websockets_api_example.py",
+      "id": "symbol:b81790956d42aa62:get_history",
+      "literal_pointer": {
+        "end_line": null,
+        "file": "script_examples/websockets_api_example.py",
+        "start_line": null
+      },
+      "node_type": "symbol",
+      "semantic_confidence": 1.0,
+      "semantic_purpose": "Retrieves the execution history for a specific prompt ID, including output images and node performance metrics.",
+      "semantic_rationale": "Takes prompt_id parameter and returns historical data about the generation job, likely including status and results.",
+      "signature": "def get_history(prompt_id):",
+      "symbol_name": "get_history",
+      "symbol_type": "function"
+    }
+  ]
+}

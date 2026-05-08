@@ -20,7 +20,61 @@ trace_logger = logging.getLogger("research_pipeline.reviewer_trace")
 EXPECTED_REFLECTORS = {"security", "logic", "performance", "general"}
 DOMAIN_REFLECTORS = {"security", "logic", "performance", "general"}
 PROMOTABLE_CLAIM_TYPES = {"defect", "security_risk", "performance_regression", "missing_test"}
-CONTEXT_REQUIRED_CLAIM_TYPES = {"security_risk", "performance_regression"}
+CONTEXT_REQUIRED_CLAIM_TYPES = frozenset({"security_risk", "performance_regression"})
+
+# Tier 2: claims that typically need cross-file / framework evidence before promotion.
+_TIER2_EXTERNAL_CONTEXT_MARKERS = (
+    "caller",
+    "callers",
+    "calling ",
+    "middleware",
+    "decorator",
+    "upstream",
+    "downstream",
+    "authorization",
+    "authorize",
+    "authenticated",
+    "permission",
+    "tenant ",
+    "tenant_",
+    "isolation",
+    "integration",
+    "external api",
+    "remote ",
+    "framework ",
+    "orm ",
+    "database ",
+    "service ",
+    "contract",
+)
+
+# Tier 1: localized defect signals — do not force focused-context gathers solely for claim_type.
+_TIER1_LOCALIZED_MARKERS = (
+    "redos",
+    "backtrack",
+    "catastrophic backtracking",
+    "regex",
+    "re.search",
+    "re.match",
+    "re.sub",
+    "re.compile",
+    "re.fullmatch",
+    "len(",
+    "nonetype",
+    "attributeerror",
+    "indexerror",
+    "keyerror",
+    "zerodivision",
+    "off-by-one",
+    "group 0",
+    "capture group",
+    "division by zero",
+    "n+1",
+    "nested loop",
+    "quadratic",
+    "o(n^2)",
+    "memory leak",
+)
 
 
 def _trace_enabled(state: GraphState) -> bool:
@@ -110,10 +164,33 @@ def _candidate_has_actionability(candidate: CandidateFinding) -> bool:
     )
 
 
+def _candidate_evidence_blob(candidate: CandidateFinding) -> str:
+    return " ".join(
+        [
+            candidate.content,
+            candidate.failure_mode,
+            candidate.evidence_summary,
+            " ".join(candidate.required_context),
+        ]
+    ).lower()
+
+
+def _high_risk_claim_needs_external_context(candidate: CandidateFinding) -> bool:
+    """When claim_type is security_risk or performance_regression, decide if promotion requires focused hits."""
+    blob = _candidate_evidence_blob(candidate)
+    if any(marker in blob for marker in _TIER2_EXTERNAL_CONTEXT_MARKERS):
+        return True
+    if any(marker in blob for marker in _TIER1_LOCALIZED_MARKERS):
+        return False
+    return True
+
+
 def _candidate_requires_context(candidate: CandidateFinding) -> bool:
     if candidate.required_context:
         return True
-    return candidate.claim_type in CONTEXT_REQUIRED_CLAIM_TYPES
+    if candidate.claim_type not in CONTEXT_REQUIRED_CLAIM_TYPES:
+        return False
+    return _high_risk_claim_needs_external_context(candidate)
 
 
 def make_adversarial_cleanup_node():

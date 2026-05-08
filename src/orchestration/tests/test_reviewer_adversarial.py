@@ -17,11 +17,8 @@ from src.domain.schemas import (
     ReviewTask,
 )
 from src.domain.state import merge_graph_metadata
-from src.orchestration.context.review_context import BoundedReviewContextFulfiller
 from src.orchestration.nodes.application.cleanup import make_adversarial_cleanup_node
-from src.orchestration.nodes.application.critiquer import _auto_focus_requests
 from src.orchestration.nodes.application.reflection import make_adversarial_reflection_node
-from src.orchestration.reviewer_graph import build_graph
 
 
 def test_merge_graph_metadata_deep_merges_parallel_critiquer_shapes() -> None:
@@ -32,12 +29,18 @@ def test_merge_graph_metadata_deep_merges_parallel_critiquer_shapes() -> None:
     assert merged["general_critiquer"]["by_task"]["t2"]["summary"] == "s2"
 
 
-def test_reviewer_graph_compiles_adversarial_path():
+def test_reviewer_graph_compiles_adversarial_path() -> None:
+    pytest.importorskip("langgraph")
+    from src.orchestration.reviewer_graph import build_graph
+
     graph = build_graph()
     assert graph is not None
 
 
 def test_reviewer_graph_compiles_legacy_workers(monkeypatch: pytest.MonkeyPatch) -> None:
+    pytest.importorskip("langgraph")
+    from src.orchestration.reviewer_graph import build_graph
+
     monkeypatch.setenv("REVIEW_REVIEWER_USE_LEGACY_SPECIALIST_WORKERS", "true")
     get_settings.cache_clear()
     try:
@@ -49,6 +52,11 @@ def test_reviewer_graph_compiles_legacy_workers(monkeypatch: pytest.MonkeyPatch)
 
 
 def test_bounded_fulfiller_respects_file_cap() -> None:
+    try:
+        from src.orchestration.context.review_context import BoundedReviewContextFulfiller
+    except ImportError as exc:
+        pytest.skip(f"review context stack unavailable ({exc})")
+
     calls: dict[str, int] = {"reads": 0}
 
     class StubProvider:
@@ -81,6 +89,11 @@ def test_bounded_fulfiller_respects_file_cap() -> None:
 
 
 def test_bounded_fulfiller_scopes_searches_to_requested_files() -> None:
+    try:
+        from src.orchestration.context.review_context import BoundedReviewContextFulfiller
+    except ImportError as exc:
+        pytest.skip(f"review context stack unavailable ({exc})")
+
     calls: list[tuple[str, tuple[str, ...] | None]] = []
 
     class StubProvider:
@@ -241,6 +254,84 @@ def test_adversarial_cleanup_ignores_off_domain_reject() -> None:
     }
 
 
+def test_adversarial_cleanup_promotes_tier1_security_without_focused_context() -> None:
+    """Localized ReDoS-style claims must not be dropped solely for missing repo-wide context."""
+    node = make_adversarial_cleanup_node()
+    cand = CandidateFinding(
+        candidate_id="review-security-redos",
+        patch_task_id="t1",
+        file_path="src/x.py",
+        line_start=1,
+        line_end=5,
+        content="User-controlled pattern compiled without bounds.",
+        claim_type="security_risk",
+        failure_mode="ReDoS via catastrophic regex backtracking.",
+        evidence_summary="Diff applies re.compile(user_input) without timeout.",
+        suspected_category="security",
+        reflection_specialties=["security"],
+        recommendation="Bound or validate regex input.",
+    )
+    reports = [
+        ReflectionReport(
+            candidate_id=cand.candidate_id,
+            reflector_specialty="security",
+            verdict="accept",
+            rationale="Tier 1 localized ReDoS risk.",
+        )
+    ]
+    out = node(
+        {
+            "run_id": "t",
+            "candidate_findings": [cand],
+            "reflection_reports": reports,
+            "focused_context_results": {},
+            "metadata": {},
+        }
+    )
+    assert len(out["findings"]) == 1
+
+
+def test_adversarial_cleanup_drops_tier2_security_without_focused_hits() -> None:
+    """Architectural security claims still require gathered context when not Tier 1 localized."""
+    node = make_adversarial_cleanup_node()
+    cand = CandidateFinding(
+        candidate_id="review-security-tier2",
+        patch_task_id="t1",
+        file_path="src/api.py",
+        line_start=1,
+        line_end=10,
+        content="Delete endpoint may not verify resource ownership.",
+        claim_type="security_risk",
+        failure_mode="Potential IDOR on delete.",
+        evidence_summary="Authorization checks are not visible in this handler.",
+        suspected_category="security",
+        reflection_specialties=["security"],
+        recommendation="Verify tenant and ownership before delete.",
+    )
+    reports = [
+        ReflectionReport(
+            candidate_id=cand.candidate_id,
+            reflector_specialty="security",
+            verdict="accept",
+            rationale="Risk if no middleware auth.",
+        )
+    ]
+    out = node(
+        {
+            "run_id": "t",
+            "candidate_findings": [cand],
+            "reflection_reports": reports,
+            "focused_context_results": {},
+            "metadata": {},
+        }
+    )
+    assert out["findings"] == []
+    assert (
+        out["metadata"]["adversarial_cleanup"]["candidate_lifecycle"][cand.candidate_id]["reason"]
+        == "required_context_not_gathered"
+    )
+
+
 def test_adversarial_cleanup_drops_when_routed_expert_says_not_applicable() -> None:
     node = make_adversarial_cleanup_node()
     cand = CandidateFinding(
@@ -362,6 +453,8 @@ def test_adversarial_cleanup_drops_positive_observation() -> None:
 
 
 def test_auto_focus_request_created_for_security_claim_needing_context() -> None:
+    from src.orchestration.routing.critiquer_focus import auto_focus_requests
+
     task = ReviewTask(
         id="review-security",
         title="Security",
@@ -385,7 +478,7 @@ def test_auto_focus_request_created_for_security_claim_needing_context() -> None
         recommendation="Verify ownership before deletion.",
     )
 
-    requests = _auto_focus_requests(task, [cand])
+    requests = auto_focus_requests(task, [cand])
 
     assert len(requests) == 1
     assert requests[0].candidate_id == cand.candidate_id

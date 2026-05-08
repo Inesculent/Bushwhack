@@ -3,6 +3,7 @@
 .venv/
 .vscode/
 __pycache__/
+opencode.json
 
 # Keep template env files if added.
 !.env.example

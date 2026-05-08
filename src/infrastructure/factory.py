@@ -1,13 +1,21 @@
 import logging
+import os
 from dataclasses import dataclass
 from typing import Optional
 
 from src.config import Settings, get_settings
-from src.domain.interfaces import IASTParser, ICacheService, ICodeSearcher, IPreflightService
+from src.domain.interfaces import (
+    IASTParser,
+    ICacheService,
+    ICodeSearcher,
+    IGitHubContextProvider,
+    IPreflightService,
+)
 from src.infrastructure.ast.native_parser import NativeASTParser
 from src.infrastructure.cache.memory_cache import InMemoryCache
 from src.infrastructure.mcp.ast_parser import MCPASTParser
 from src.infrastructure.mcp.client import MCPClient
+from src.infrastructure.mcp.github_context import GitHubMCPContextProvider
 from src.infrastructure.preflight.service import PreflightManifestService
 from src.infrastructure.snapshot_pointer_store import (
     InMemorySnapshotPointerStore,
@@ -26,6 +34,28 @@ class RepositoryUnderstandingAdapters:
     searcher: ICodeSearcher
     ast_parser: Optional[IASTParser]
     ast_enabled: bool
+
+
+def build_github_context_provider(
+    settings: Settings,
+    cache: ICacheService,
+) -> IGitHubContextProvider | None:
+    if not settings.github_mcp_enabled:
+        return None
+
+    env = None
+    if settings.github_personal_access_token:
+        env = dict(os.environ)
+        env["GITHUB_PERSONAL_ACCESS_TOKEN"] = settings.github_personal_access_token
+
+    mcp_client = MCPClient(
+        command=settings.github_mcp_command,
+        args=settings.github_mcp_args,
+        cwd=settings.github_mcp_cwd,
+        env=env,
+        timeout_seconds=settings.github_mcp_timeout_seconds,
+    )
+    return GitHubMCPContextProvider(mcp_client=mcp_client, cache=cache, settings=settings)
 
 
 def build_cache_service() -> ICacheService:

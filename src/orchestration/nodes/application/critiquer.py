@@ -13,26 +13,11 @@ from src.infrastructure.llm.token_usage import extract_total_tokens_from_llm_res
 from src.orchestration.context.review_context import LazyReviewContextProvider
 from src.orchestration.nodes.application.worker import ReviewTaskContext
 from src.orchestration.prompts.renderer import render_reviewer_prompt
+from src.orchestration.routing.critiquer_focus import auto_focus_requests
+from src.orchestration.routing.normalize_critiquer_candidates import normalize_critiquer_candidates
 
 logger = logging.getLogger(__name__)
 trace_logger = logging.getLogger("research_pipeline.reviewer_trace")
-
-HIGH_RISK_CONTEXT_TERMS = (
-    "auth",
-    "authorization",
-    "permission",
-    "tenant",
-    "injection",
-    "sql",
-    "delete",
-    "unsafe",
-    "caller",
-    "contract",
-    "n+1",
-    "quadratic",
-    "unbounded",
-    "memory",
-)
 
 
 def _trace_enabled(state: GraphState) -> bool:
@@ -49,20 +34,7 @@ def _task_from_state(state: GraphState) -> ReviewTask | None:
 
 
 def _normalize_candidates(task: ReviewTask, candidates: List[CandidateFinding]) -> List[CandidateFinding]:
-    normalized: List[CandidateFinding] = []
-    for index, cand in enumerate(candidates, start=1):
-        cid = cand.candidate_id.strip() or f"{task.id}:c{index}"
-        if not cid.startswith(task.id):
-            cid = f"{task.id}:{cid}"
-        normalized.append(
-            cand.model_copy(
-                update={
-                    "candidate_id": cid,
-                    "patch_task_id": task.id,
-                }
-            )
-        )
-    return normalized
+    return normalize_critiquer_candidates(task, candidates)
 
 
 def _normalize_focus_requests(
@@ -96,69 +68,6 @@ def _normalize_focus_requests(
             )
         )
     return normalized
-
-
-def _candidate_needs_auto_context(candidate: CandidateFinding) -> bool:
-    if candidate.claim_type in {"positive_observation", "uncertain"}:
-        return False
-    text = " ".join(
-        [
-            candidate.content,
-            candidate.failure_mode,
-            candidate.evidence_summary,
-            " ".join(candidate.required_context),
-            candidate.suspected_category,
-        ]
-    ).lower()
-    high_risk = candidate.claim_type in {
-        "security_risk",
-        "performance_regression",
-    } or any(term in text for term in HIGH_RISK_CONTEXT_TERMS)
-    return high_risk and (candidate.required_context or not candidate.evidence_summary.strip())
-
-
-def _auto_focus_requests(task: ReviewTask, candidates: List[CandidateFinding]) -> List[FocusedContextRequest]:
-    requests: List[FocusedContextRequest] = []
-    for index, candidate in enumerate(candidates, start=1):
-        if not _candidate_needs_auto_context(candidate):
-            continue
-        query_seed = " ".join(
-            part
-            for part in [
-                candidate.failure_mode,
-                candidate.content,
-                " ".join(candidate.required_context),
-            ]
-            if part
-        )
-        text_queries = [
-            query
-            for query in [
-                candidate.file_path,
-                candidate.failure_mode[:120],
-                query_seed[:160],
-            ]
-            if query
-        ]
-        requests.append(
-            FocusedContextRequest(
-                request_id=f"{candidate.candidate_id}:auto-context:{index}",
-                candidate_id=candidate.candidate_id,
-                requested_by_specialty=(
-                    candidate.reflection_specialties[0]
-                    if candidate.reflection_specialties
-                    else "general"
-                ),
-                file_paths=[candidate.file_path] + [path for path in task.target_files if path != candidate.file_path],
-                symbol_queries=[],
-                text_queries=text_queries[:3],
-                reason=(
-                    "Deterministic context requirement for a high-risk or externally dependent "
-                    f"{candidate.claim_type} candidate."
-                ),
-            )
-        )
-    return requests
 
 
 def _render_critiquer_prompt(state: GraphState, task: ReviewTask, context_rendered: str) -> str:
@@ -219,7 +128,7 @@ def make_general_critiquer_node(
                 initial_requests = _normalize_focus_requests(
                     task=task,
                     candidates=candidates,
-                    requests=list(response.initial_focus_requests) + _auto_focus_requests(task, candidates),
+                    requests=list(response.initial_focus_requests) + auto_focus_requests(task, candidates),
                 )
             except Exception as exc:  # noqa: BLE001
                 warning = f"critiquer_llm_failed:{exc.__class__.__name__}: {exc}"

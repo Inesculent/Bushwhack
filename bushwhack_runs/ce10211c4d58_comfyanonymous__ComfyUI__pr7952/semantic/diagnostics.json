@@ -1,0 +1,2765 @@
+{
+  "god_nodes": [
+    {
+      "node_id": "symbol:eb90783226600826:BaseModel",
+      "label": "BaseModel",
+      "degree": 363,
+      "community_id": 0
+    },
+    {
+      "node_id": "symbol:d661ec4694ef40ff:default",
+      "label": "default",
+      "degree": 350,
+      "community_id": 1
+    },
+    {
+      "node_id": "symbol:f2316e1b81974482:ModelPatcher",
+      "label": "ModelPatcher",
+      "degree": 197,
+      "community_id": 7
+    },
+    {
+      "node_id": "symbol:cacab859dfe83589:PromptServer",
+      "label": "PromptServer",
+      "degree": 180,
+      "community_id": 6
+    },
+    {
+      "node_id": "symbol:6a0e088f5ccb3191:VAE",
+      "label": "VAE",
+      "degree": 131,
+      "community_id": 1
+    },
+    {
+      "node_id": "symbol:e31576938d62fe2b:execute",
+      "label": "execute",
+      "degree": 119,
+      "community_id": 0
+    },
+    {
+      "node_id": "symbol:d86b2852ea8b360c:IO",
+      "label": "IO",
+      "degree": 119,
+      "community_id": 0
+    },
+    {
+      "node_id": "symbol:3f01cf4c980324f7:ControlNet",
+      "label": "ControlNet",
+      "degree": 116,
+      "community_id": 5
+    },
+    {
+      "node_id": "symbol:d81198940b0c33db:Decoder",
+      "label": "Decoder",
+      "degree": 102,
+      "community_id": 4
+    },
+    {
+      "node_id": "symbol:20cee9fabe9e6eb5:Attention",
+      "label": "Attention",
+      "degree": 102,
+      "community_id": 2
+    }
+  ],
+  "bridge_nodes": [
+    {
+      "node_id": "symbol:f2316e1b81974482:ModelPatcher",
+      "label": "ModelPatcher",
+      "betweenness": 0.09193232994112678,
+      "communities_bridged": [
+        0,
+        1,
+        3,
+        4,
+        5,
+        7,
+        8
+      ]
+    },
+    {
+      "node_id": "symbol:eb90783226600826:BaseModel",
+      "label": "BaseModel",
+      "betweenness": 0.08477303056786713,
+      "communities_bridged": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        10,
+        11
+      ]
+    },
+    {
+      "node_id": "symbol:1a9663355b58fc65:WeightHook",
+      "label": "WeightHook",
+      "betweenness": 0.04257406240472683,
+      "communities_bridged": [
+        3,
+        5,
+        7
+      ]
+    },
+    {
+      "node_id": "symbol:6a0e088f5ccb3191:VAE",
+      "label": "VAE",
+      "betweenness": 0.03327400880808005,
+      "communities_bridged": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "node_id": "symbol:55cf3db5e68cc037:model_lora_keys_unet",
+      "label": "model_lora_keys_unet",
+      "betweenness": 0.029344499403538518,
+      "communities_bridged": [
+        1,
+        2,
+        3,
+        5,
+        7
+      ]
+    }
+  ],
+  "cross_community_edges": [
+    {
+      "edge_type": "defines",
+      "relation": "defines",
+      "provenance": "EXTRACTED",
+      "confidence": "EXTRACTED",
+      "source_ref": "comfy/cldm/cldm.py",
+      "source_file": "comfy/cldm/cldm.py",
+      "source_location": "L?",
+      "weight": 1.0,
+      "source": "file:comfy/cldm/cldm.py",
+      "target": "symbol:949ab7dbefe5c02f:ResBlockUnionControlnet",
+      "score": 1,
+      "source_community": 4,
+      "target_community": 2
+    },
+    {
+      "edge_type": "defines",
+      "relation": "defines",
+      "provenance": "EXTRACTED",
+      "confidence": "EXTRACTED",
+      "source_ref": "comfy/clip_vision.py",
+      "source_file": "comfy/clip_vision.py",
+      "source_location": "L?",
+      "weight": 1.0,
+      "source": "file:comfy/clip_vision.py",
+      "target": "symbol:046cef5c5e9ce3c8:Output",
+      "score": 1,
+      "source_community": 5,
+      "target_community": 11
+    },
+    {
+      "edge_type": "defines",
+      "relation": "defines",
+      "provenance": "EXTRACTED",
+      "confidence": "EXTRACTED",
+      "source_ref": "comfy/comfy_types/node_typing.py",
+      "source_file": "comfy/comfy_types/node_typing.py",
+      "source_location": "L?",
+      "weight": 1.0,
+      "source": "file:comfy/comfy_types/node_typing.py",
+      "target": "symbol:3ba30f87daa38690:FileLocator",
+      "score": 1,
+      "source_community": 0,
+      "target_community": 1
+    },
+    {
+      "edge_type": "defines",
+      "relation": "defines",
+      "provenance": "EXTRACTED",
+      "confidence": "EXTRACTED",
+      "source_ref": "comfy/extra_samplers/uni_pc.py",
+      "source_file": "comfy/extra_samplers/uni_pc.py",
+      "source_location": "L?",
+      "weight": 1.0,
+      "source": "file:comfy/extra_samplers/uni_pc.py",
+      "target": "symbol:32e7ad95b0b91e06:sample_unipc_bh2",
+      "score": 1,
+      "source_community": 8,
+      "target_community": 1
+    },
+    {
+      "edge_type": "defines",
+      "relation": "defines",
+      "provenance": "EXTRACTED",
+      "confidence": "EXTRACTED",
+      "source_ref": "comfy/ldm/audio/dit.py",
+      "source_file": "comfy/ldm/audio/dit.py",
+      "source_location": "L?",
+      "weight": 1.0,
+      "source": "file:comfy/ldm/audio/dit.py",
+      "target": "symbol:72e17c2d42bb8d86:AudioDiffusionTransformer",
+      "score": 1,
+      "source_community": 2,
+      "target_community": 3
+    },
+    {
+      "edge_type": "defines",
+      "relation": "defines",
+      "provenance": "EXTRACTED",
+      "confidence": "EXTRACTED",
+      "source_ref": "comfy/ldm/cosmos/cosmos_tokenizer/utils.py",
+      "source_file": "comfy/ldm/cosmos/cosmos_tokenizer/utils.py",
+      "source_location": "L?",
+      "weight": 1.0,
+      "source": "file:comfy/ldm/cosmos/cosmos_tokenizer/utils.py",
+      "target": "symbol:ef0b2b0112092849:log",
+      "score": 1,
+      "source_community": 4,
+      "target_community": 8
+    },
+    {
+      "edge_type": "defines",
+      "relation": "defines",
+      "provenance": "EXTRACTED",
+      "confidence": "EXTRACTED",
+      "source_ref": "comfy/ldm/genmo/joint_model/asymm_models_joint.py",
+      "source_file": "comfy/ldm/genmo/joint_model/asymm_models_joint.py",
+      "source_location": "L?",
+      "weight": 1.0,
+      "source": "file:comfy/ldm/genmo/joint_model/asymm_models_joint.py",
+      "target": "symbol:b9549d670bd0c313:AsymmDiTJoint",
+      "score": 1,
+      "source_community": 4,
+      "target_community": 3
+    },
+    {
+      "edge_type": "defines",
+      "relation": "defines",
+      "provenance": "EXTRACTED",
+      "confidence": "EXTRACTED",
+      "source_ref": "comfy/ldm/modules/attention.py",
+      "source_file": "comfy/ldm/modules/attention.py",
+      "source_location": "L?",
+      "weight": 1.0,
+      "source": "file:comfy/ldm/modules/attention.py",
+      "target": "symbol:4b8edfbc00855dc0:attention_split",
+      "score": 1,
+      "source_community": 2,
+      "target_community": 5
+    },
+    {
+      "edge_type": "defines",
+      "relation": "defines",
+      "provenance": "EXTRACTED",
+      "confidence": "EXTRACTED",
+      "source_ref": "comfy/ldm/modules/diffusionmodules/util.py",
+      "source_file": "comfy/ldm/modules/diffusionmodules/util.py",
+      "source_location": "L?",
+      "weight": 1.0,
+      "source": "file:comfy/ldm/modules/diffusionmodules/util.py",
+      "target": "symbol:b81f7523aef37f08:HybridConditioner",
+      "score": 1,
+      "source_community": 4,
+      "target_community": 1
+    },
+    {
+      "edge_type": "defines",
+      "relation": "defines",
+      "provenance": "EXTRACTED",
+      "confidence": "EXTRACTED",
+      "source_ref": "comfy/ldm/util.py",
+      "source_file": "comfy/ldm/util.py",
+      "source_location": "L?",
+      "weight": 1.0,
+      "source": "file:comfy/ldm/util.py",
+      "target": "symbol:2e4b0e52e3f8fb2d:exists",
+      "score": 1,
+      "source_community": 1,
+      "target_community": 6
+    }
+  ],
+  "knowledge_gaps": [
+    {
+      "gap_type": "low_cohesion",
+      "description": "Community 0 has low cohesion (0.020) with 584 nodes.",
+      "affected_node_ids": [
+        "file:comfy/comfy_types/__init__.py",
+        "file:comfy/comfy_types/examples/example_nodes.py",
+        "file:comfy/comfy_types/node_typing.py",
+        "file:comfy_api/input/basic_types.py",
+        "file:comfy_api/input/video_types.py",
+        "file:comfy_api/input_impl/video_types.py",
+        "file:comfy_api/util/video_types.py",
+        "file:comfy_api_nodes/apinode_utils.py",
+        "file:comfy_api_nodes/apis/PixverseController.py",
+        "file:comfy_api_nodes/apis/PixverseDto.py",
+        "file:comfy_api_nodes/apis/__init__.py",
+        "file:comfy_api_nodes/apis/client.py",
+        "file:comfy_api_nodes/apis/luma_api.py",
+        "file:comfy_api_nodes/apis/pixverse_api.py",
+        "file:comfy_api_nodes/apis/stability_api.py",
+        "file:comfy_api_nodes/mapper_utils.py",
+        "file:comfy_api_nodes/nodes_bfl.py",
+        "file:comfy_api_nodes/nodes_ideogram.py",
+        "file:comfy_api_nodes/nodes_kling.py",
+        "file:comfy_api_nodes/nodes_luma.py",
+        "file:comfy_api_nodes/nodes_minimax.py",
+        "file:comfy_api_nodes/nodes_openai.py",
+        "file:comfy_api_nodes/nodes_pika.py",
+        "file:comfy_api_nodes/nodes_pixverse.py",
+        "file:comfy_api_nodes/nodes_stability.py",
+        "file:comfy_api_nodes/nodes_veo2.py",
+        "file:comfy_extras/nodes_primitive.py",
+        "file:comfy_extras/nodes_string.py",
+        "file:tests-unit/comfy_api_nodes_test/mapper_utils_test.py",
+        "file:tests-unit/comfy_api_test/input_impl_test.py",
+        "symbol:006580e404eb92c9:BFLFluxProGenerateRequest",
+        "symbol:00c0d2d28d1f6650:PollingOperation",
+        "symbol:018f98283d4a3feb:LumaImageReference",
+        "symbol:01a2b205e9b936c8:StabilityUpscaleFastNode",
+        "symbol:01ad1d2b53ac6860:PikaValidationError",
+        "symbol:0320df1bc44fd9dd:StabilityImageGenrationSD3Request",
+        "symbol:04e56c9681f8b6b1:validate_task_creation_response",
+        "symbol:05054c39515fc09e:LumaConceptObject",
+        "symbol:05466bfda20e57e8:ApiClient",
+        "symbol:05ba8f21f6bca06f:RecraftTextLayoutItem",
+        "symbol:05bd382b6bbc2706:Model1",
+        "symbol:05f4e2ede893a72a:PublisherStatus",
+        "symbol:05fb5f6fd67ae8d3:BFLAsyncResponse",
+        "symbol:062326ed04472be1:MinimaxBaseResponse",
+        "symbol:06478c5c94ed8cc7:RenderingSpeed1",
+        "symbol:06523cb9dc25fc10:StripeRequestInfo",
+        "symbol:06f4ea2859625fca:convert_mask_to_image",
+        "symbol:077c53673ef0ae2d:RecraftUserControls",
+        "symbol:08748aa4121ec27e:PublisherMember",
+        "symbol:08c077f48701e9e4:RegexExtract"
+      ],
+      "community_id": 0,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "low_cohesion",
+      "description": "Community 1 has low cohesion (0.010) with 377 nodes.",
+      "affected_node_ids": [
+        "file:comfy/ldm/models/autoencoder.py",
+        "file:comfy/ldm/modules/distributions/distributions.py",
+        "file:comfy/ldm/modules/ema.py",
+        "file:comfy/ldm/util.py",
+        "file:comfy/sample.py",
+        "file:comfy_extras/nodes_ace.py",
+        "file:comfy_extras/nodes_advanced_samplers.py",
+        "file:comfy_extras/nodes_align_your_steps.py",
+        "file:comfy_extras/nodes_attention_multiply.py",
+        "file:comfy_extras/nodes_audio.py",
+        "file:comfy_extras/nodes_clip_sdxl.py",
+        "file:comfy_extras/nodes_compositing.py",
+        "file:comfy_extras/nodes_controlnet.py",
+        "file:comfy_extras/nodes_cosmos.py",
+        "file:comfy_extras/nodes_custom_sampler.py",
+        "file:comfy_extras/nodes_flux.py",
+        "file:comfy_extras/nodes_freelunch.py",
+        "file:comfy_extras/nodes_fresca.py",
+        "file:comfy_extras/nodes_gits.py",
+        "file:comfy_extras/nodes_hunyuan.py",
+        "file:comfy_extras/nodes_hunyuan3d.py",
+        "file:comfy_extras/nodes_hypertile.py",
+        "file:comfy_extras/nodes_images.py",
+        "file:comfy_extras/nodes_ip2p.py",
+        "file:comfy_extras/nodes_latent.py",
+        "file:comfy_extras/nodes_lora_extract.py",
+        "file:comfy_extras/nodes_lt.py",
+        "file:comfy_extras/nodes_lumina2.py",
+        "file:comfy_extras/nodes_mask.py",
+        "file:comfy_extras/nodes_mochi.py",
+        "file:comfy_extras/nodes_model_downscale.py",
+        "file:comfy_extras/nodes_model_merging.py",
+        "file:comfy_extras/nodes_model_merging_model_specific.py",
+        "file:comfy_extras/nodes_morphology.py",
+        "file:comfy_extras/nodes_optimalsteps.py",
+        "file:comfy_extras/nodes_pixart.py",
+        "file:comfy_extras/nodes_post_processing.py",
+        "file:comfy_extras/nodes_rebatch.py",
+        "file:comfy_extras/nodes_sd3.py",
+        "file:comfy_extras/nodes_sdupscale.py",
+        "file:comfy_extras/nodes_slg.py",
+        "file:comfy_extras/nodes_stable3d.py",
+        "file:comfy_extras/nodes_stable_cascade.py",
+        "file:comfy_extras/nodes_video.py",
+        "file:comfy_extras/nodes_video_model.py",
+        "file:comfy_extras/nodes_wan.py",
+        "file:node_helpers.py",
+        "file:nodes.py",
+        "file:tests/inference/testing_nodes/testing-pack/conditions.py",
+        "file:tests/inference/testing_nodes/testing-pack/flow_control.py"
+      ],
+      "community_id": 1,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "low_cohesion",
+      "description": "Community 2 has low cohesion (0.020) with 348 nodes.",
+      "affected_node_ids": [
+        "file:.ci/update_windows/update.py",
+        "file:comfy/cldm/dit_embedder.py",
+        "file:comfy/clip_model.py",
+        "file:comfy/gligen.py",
+        "file:comfy/image_encoders/dino2.py",
+        "file:comfy/ldm/ace/attention.py",
+        "file:comfy/ldm/ace/lyric_encoder.py",
+        "file:comfy/ldm/ace/model.py",
+        "file:comfy/ldm/ace/vae/music_log_mel.py",
+        "file:comfy/ldm/ace/vae/music_vocoder.py",
+        "file:comfy/ldm/audio/dit.py",
+        "file:comfy/ldm/aura/mmdit.py",
+        "file:comfy/ldm/common_dit.py",
+        "file:comfy/ldm/cosmos/blocks.py",
+        "file:comfy/ldm/cosmos/model.py",
+        "file:comfy/ldm/flux/math.py",
+        "file:comfy/ldm/genmo/joint_model/rope_mixed.py",
+        "file:comfy/ldm/genmo/joint_model/utils.py",
+        "file:comfy/ldm/hidream/model.py",
+        "file:comfy/ldm/hunyuan3d/vae.py",
+        "file:comfy/ldm/hydit/attn_layers.py",
+        "file:comfy/ldm/hydit/controlnet.py",
+        "file:comfy/ldm/hydit/models.py",
+        "file:comfy/ldm/hydit/poolers.py",
+        "file:comfy/ldm/hydit/posemb_layers.py",
+        "file:comfy/ldm/lightricks/model.py",
+        "file:comfy/ldm/lightricks/symmetric_patchifier.py",
+        "file:comfy/ldm/lumina/model.py",
+        "file:comfy/ldm/modules/attention.py",
+        "file:comfy/ldm/modules/diffusionmodules/mmdit.py",
+        "file:comfy/ldm/pixart/blocks.py",
+        "file:comfy/ldm/pixart/pixartms.py",
+        "file:comfy/ldm/wan/model.py",
+        "file:comfy/text_encoders/bert.py",
+        "file:comfy/text_encoders/llama.py",
+        "file:comfy_extras/nodes_photomaker.py",
+        "file:comfy_extras/nodes_sag.py",
+        "symbol:005e65ac45328aa2:AttentionPool",
+        "symbol:03a46feaf3a1a578:HunYuanDiT",
+        "symbol:03b5efd2e39a0f2c:get_2d_sincos_pos_embed_torch",
+        "symbol:04947b4290efe1c5:pool_tokens",
+        "symbol:06d179c29a8d3748:BertIntermediate",
+        "symbol:076416fc94afcf7f:Swish",
+        "symbol:08b09b200c7b6201:Attention",
+        "symbol:0b04096636774779:ConditioningTimestepsRange",
+        "symbol:0b319ef8033401f0:files_equal",
+        "symbol:0b8659bd7650372a:SingleAttention",
+        "symbol:0bb5bef5ed160eb4:LinearEmbed",
+        "symbol:0e85f99226cc3031:file_size",
+        "symbol:0f2dc9e7f3939dd6:Gemma2_2B"
+      ],
+      "community_id": 2,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "low_cohesion",
+      "description": "Community 3 has low cohesion (0.020) with 327 nodes.",
+      "affected_node_ids": [
+        "file:comfy/conds.py",
+        "file:comfy/diffusers_convert.py",
+        "file:comfy/latent_formats.py",
+        "file:comfy/ldm/chroma/layers.py",
+        "file:comfy/ldm/chroma/model.py",
+        "file:comfy/ldm/flux/layers.py",
+        "file:comfy/ldm/flux/model.py",
+        "file:comfy/ldm/hunyuan_video/model.py",
+        "file:comfy/ldm/modules/encoders/noise_aug_modules.py",
+        "file:comfy/lora.py",
+        "file:comfy/lora_convert.py",
+        "file:comfy/model_base.py",
+        "file:comfy/model_detection.py",
+        "file:comfy/sd1_clip.py",
+        "file:comfy/sdxl_clip.py",
+        "file:comfy/supported_models.py",
+        "file:comfy/supported_models_base.py",
+        "file:comfy/text_encoders/ace.py",
+        "file:comfy/text_encoders/aura_t5.py",
+        "file:comfy/text_encoders/cosmos.py",
+        "file:comfy/text_encoders/flux.py",
+        "file:comfy/text_encoders/genmo.py",
+        "file:comfy/text_encoders/hidream.py",
+        "file:comfy/text_encoders/hunyuan_video.py",
+        "file:comfy/text_encoders/hydit.py",
+        "file:comfy/text_encoders/long_clipl.py",
+        "file:comfy/text_encoders/lt.py",
+        "file:comfy/text_encoders/lumina2.py",
+        "file:comfy/text_encoders/pixart_t5.py",
+        "file:comfy/text_encoders/sa_t5.py",
+        "file:comfy/text_encoders/sd2_clip.py",
+        "file:comfy/text_encoders/sd3_clip.py",
+        "file:comfy/text_encoders/spiece_tokenizer.py",
+        "file:comfy/text_encoders/t5.py",
+        "file:comfy/text_encoders/wan.py",
+        "file:comfy/utils.py",
+        "symbol:0197b3a7d8eff401:T5LayerFF",
+        "symbol:01ef097099208ee9:SV3D_u",
+        "symbol:0222e175be30ce8a:ModelType",
+        "symbol:023ed91846271f5f:UMT5XXlTokenizer",
+        "symbol:02905b19cd24a8bc:SDTokenizer",
+        "symbol:032d699bcec7fbbb:PixArtT5XXL",
+        "symbol:044f7a529d8ad3b9:LTXV",
+        "symbol:04c7ff18e88178ee:StableCascadeClipG",
+        "symbol:05988daf6154f6bc:HunyuanVideoSkyreelsI2V",
+        "symbol:061731c3484e73cd:timestep_embedding",
+        "symbol:0704067a90ab3018:Chroma",
+        "symbol:07c58aade35ecc17:PixArtAlpha",
+        "symbol:08718cc6d4d6fb1c:ChromaParams",
+        "symbol:0a72feafd25f568e:llama_detect"
+      ],
+      "community_id": 3,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "low_cohesion",
+      "description": "Community 4 has low cohesion (0.030) with 222 nodes.",
+      "affected_node_ids": [
+        "file:comfy/cldm/cldm.py",
+        "file:comfy/ldm/ace/vae/autoencoder_dc.py",
+        "file:comfy/ldm/ace/vae/music_dcae_pipeline.py",
+        "file:comfy/ldm/cascade/common.py",
+        "file:comfy/ldm/cascade/stage_a.py",
+        "file:comfy/ldm/cascade/stage_b.py",
+        "file:comfy/ldm/cascade/stage_c.py",
+        "file:comfy/ldm/cascade/stage_c_coder.py",
+        "file:comfy/ldm/cosmos/cosmos_tokenizer/layers3d.py",
+        "file:comfy/ldm/cosmos/cosmos_tokenizer/patching.py",
+        "file:comfy/ldm/cosmos/cosmos_tokenizer/utils.py",
+        "file:comfy/ldm/cosmos/position_embedding.py",
+        "file:comfy/ldm/cosmos/vae.py",
+        "file:comfy/ldm/genmo/joint_model/asymm_models_joint.py",
+        "file:comfy/ldm/genmo/joint_model/temporal_rope.py",
+        "file:comfy/ldm/genmo/vae/model.py",
+        "file:comfy/ldm/lightricks/vae/causal_video_autoencoder.py",
+        "file:comfy/ldm/lightricks/vae/conv_nd_factory.py",
+        "file:comfy/ldm/lightricks/vae/dual_conv3d.py",
+        "file:comfy/ldm/lightricks/vae/pixel_norm.py",
+        "file:comfy/ldm/modules/diffusionmodules/model.py",
+        "file:comfy/ldm/modules/diffusionmodules/openaimodel.py",
+        "file:comfy/ldm/modules/diffusionmodules/upscaling.py",
+        "file:comfy/ldm/modules/diffusionmodules/util.py",
+        "file:comfy/ldm/modules/temporal_ae.py",
+        "file:comfy/ldm/wan/vae.py",
+        "file:comfy/rmsnorm.py",
+        "file:comfy/t2i_adapter/adapter.py",
+        "file:comfy/taesd/taesd.py",
+        "symbol:00518cb75b29e6a8:ResBlock",
+        "symbol:018ad13015121f70:Model",
+        "symbol:035bf110fc834f08:make_linear_nd",
+        "symbol:03e64157cb7b125c:norm_fn",
+        "symbol:05d81891a9f74566:partialclass",
+        "symbol:0689710ee3437e36:ResnetBlock",
+        "symbol:0a2c2bfa87837237:AbstractLowScaleModel",
+        "symbol:0aca204443e3aaac:get_block",
+        "symbol:0d4ea160b1b8a2a8:GlobalResponseNorm",
+        "symbol:0e2deedfaff49e68:exists",
+        "symbol:0e96b63ca59d9fb9:LearnablePosEmbAxis",
+        "symbol:0eeca1b6742a42c8:VideoResBlock",
+        "symbol:118aeef034a509c4:Decoder",
+        "symbol:11ce0ecfc0e9903f:StageC_coder",
+        "symbol:142bacb722dcf03a:VideoRopePosition3DEmb",
+        "symbol:14c4aefd19d82365:FourierFeatures",
+        "symbol:15af024775583051:Downsample",
+        "symbol:1a316f4c547eb578:conv_nd",
+        "symbol:1c00491b88a3ae49:ContinuousFormulation",
+        "symbol:1d536d1e5780e4f2:vae_attention",
+        "symbol:1f6cd9eb79d8d327:TimestepBlock"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "low_cohesion",
+      "description": "Community 5 has low cohesion (0.030) with 220 nodes.",
+      "affected_node_ids": [
+        "file:comfy/cli_args.py",
+        "file:comfy/clip_vision.py",
+        "file:comfy/controlnet.py",
+        "file:comfy/diffusers_load.py",
+        "file:comfy/ldm/audio/embedders.py",
+        "file:comfy/ldm/cascade/controlnet.py",
+        "file:comfy/ldm/flux/controlnet.py",
+        "file:comfy/ldm/flux/redux.py",
+        "file:comfy/model_management.py",
+        "file:comfy/ops.py",
+        "file:comfy/sd.py",
+        "file:comfy/weight_adapter/base.py",
+        "file:comfy/weight_adapter/boft.py",
+        "file:comfy/weight_adapter/glora.py",
+        "file:comfy/weight_adapter/loha.py",
+        "file:comfy/weight_adapter/lokr.py",
+        "file:comfy/weight_adapter/lora.py",
+        "file:comfy/weight_adapter/oft.py",
+        "file:comfy_extras/chainner_models/model_loading.py",
+        "file:comfy_extras/nodes_cond.py",
+        "file:comfy_extras/nodes_hidream.py",
+        "file:comfy_extras/nodes_hypernetwork.py",
+        "file:comfy_extras/nodes_lotus.py",
+        "file:comfy_extras/nodes_upscale_model.py",
+        "file:latent_preview.py",
+        "symbol:008d768d2ecf4e48:is_device_cuda",
+        "symbol:02c6d6a029770ec3:ImageOnlyCheckpointLoader",
+        "symbol:066d6aa1adbfdeaa:throw_exception_if_processing_interrupted",
+        "symbol:0707103f4c9b34cc:should_use_fp16",
+        "symbol:07932dfbfd2c230d:OFTAdapter",
+        "symbol:0992c48b42cf12e4:get_tiled_scale_steps",
+        "symbol:09d0f18b34db2593:supports_fp8_compute",
+        "symbol:0b3be87cff1f70e1:processing_interrupted",
+        "symbol:0c32f44c523a9841:LoRAAdapter",
+        "symbol:0f67fe1b4eb56a7a:cast_bias_weight",
+        "symbol:0f73136d68b897fa:CLIPType",
+        "symbol:107f808b65acf3de:convert_to_transformers",
+        "symbol:1217451e785ce532:T2IAdapter",
+        "symbol:12d171964644537e:load",
+        "symbol:12e472f035495bce:extra_reserved_memory",
+        "symbol:131c7a72f8ed1e77:CLIP",
+        "symbol:133eeff66746b1c2:is_nvidia",
+        "symbol:14a98fcfce41973c:GLIGENLoader",
+        "symbol:14aea2b701d4c8cf:EnumAction",
+        "symbol:1552c6a4ffef0071:ImageUpscaleWithModel",
+        "symbol:167d58b4c305b83d:StyleModel",
+        "symbol:1771459a2c222ff6:maximum_vram_for_weights",
+        "symbol:17bd98e607f01999:get_supported_float8_types",
+        "symbol:180aec77ed5e404f:preview_to_image",
+        "symbol:1a17f78f00c929e7:load_state_dict"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "low_cohesion",
+      "description": "Community 6 has low cohesion (0.030) with 201 nodes.",
+      "affected_node_ids": [
+        "file:api_server/routes/internal/internal_routes.py",
+        "file:api_server/services/terminal_service.py",
+        "file:api_server/utils/file_operations.py",
+        "file:app/app_settings.py",
+        "file:app/custom_node_manager.py",
+        "file:app/frontend_management.py",
+        "file:app/logger.py",
+        "file:app/model_manager.py",
+        "file:app/user_manager.py",
+        "file:comfy_extras/nodes_load_3d.py",
+        "file:comfy_extras/nodes_preview_any.py",
+        "file:comfy_extras/nodes_webcam.py",
+        "file:fix_torch.py",
+        "file:folder_paths.py",
+        "file:hook_breaker_ac10a0.py",
+        "file:main.py",
+        "file:new_updater.py",
+        "file:server.py",
+        "file:tests-unit/app_test/custom_node_manager_test.py",
+        "file:tests-unit/app_test/frontend_manager_test.py",
+        "file:tests-unit/app_test/model_manager_test.py",
+        "file:tests-unit/comfy_test/folder_path_test.py",
+        "file:tests-unit/folder_paths_test/filter_by_content_types_test.py",
+        "file:tests-unit/prompt_server_test/user_manager_test.py",
+        "file:tests-unit/server/utils/file_operations_test.py",
+        "file:tests-unit/utils/extra_config_test.py",
+        "file:utils/extra_config.py",
+        "symbol:02d1138d48041849:FileInfo",
+        "symbol:036cd35f0cd52906:temp_dir",
+        "symbol:0560b77ba03b2c0e:LoadAudio",
+        "symbol:065abe6a84b4ede6:log_startup_warning",
+        "symbol:0a2e0e1468d83b78:test_base_path_changes",
+        "symbol:0a38aab9e6f71169:Type",
+        "symbol:0ddc585aa5667203:get_logs",
+        "symbol:0de279232438c949:LoadImageMask",
+        "symbol:0e773dc1d7721df1:test_build_translations_loads_all_files",
+        "symbol:0ece63490e3388ec:patched_mimetype_cache",
+        "symbol:0f70317ad68f05bc:AppSettings",
+        "symbol:101e2530d4972234:pillow",
+        "symbol:112856a43b5c50ab:Release",
+        "symbol:11345f6b04938690:test_listuserdata_v2_nonexistent_subdirectory",
+        "symbol:11fbd28c26aa01a7:LoadVideo",
+        "symbol:13de45360d10d514:model_manager",
+        "symbol:144b46e05238c349:cleanup_temp",
+        "symbol:154671333245e578:cuda_malloc_warning",
+        "symbol:1878e044f3ae9713:test_listuserdata_recursive",
+        "symbol:18acd737bbc6ec08:test_listuserdata_full_info",
+        "symbol:18b18832ef5eec65:test_categorizes_all_correctly",
+        "symbol:18f35d5948b25cc0:DirectoryInfo",
+        "symbol:195746bdcc8d49e7:mock_expandvars_appdata"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "low_cohesion",
+      "description": "Community 7 has low cohesion (0.050) with 145 nodes.",
+      "affected_node_ids": [
+        "file:comfy/float.py",
+        "file:comfy/hooks.py",
+        "file:comfy/model_patcher.py",
+        "file:comfy/patcher_extension.py",
+        "file:comfy/sampler_helpers.py",
+        "file:comfy/samplers.py",
+        "file:comfy_extras/nodes_hooks.py",
+        "file:comfy_extras/nodes_pag.py",
+        "file:comfy_extras/nodes_perpneg.py",
+        "symbol:008495785142c8b6:cfg_function",
+        "symbol:0228851d87c4761d:set_attr",
+        "symbol:035bec0355613b75:resolve_areas_and_cond_masks_multidim",
+        "symbol:062c1ec21e38b6ab:simple_scheduler",
+        "symbol:06b1e5dd67eff966:get_mask_aabb",
+        "symbol:09d2d9b5e2c76da6:calculate_start_end_timesteps",
+        "symbol:0ccfd7cea4912443:default_should_register",
+        "symbol:0f1a328f87807ca5:ConditioningSetProperties",
+        "symbol:1093882007103f7f:ddim_scheduler",
+        "symbol:11cdecd5507835f1:InjectionsHook",
+        "symbol:12af667726a3b379:get_area_and_mult",
+        "symbol:12c554323cf113d8:get_patch_weights_from_model",
+        "symbol:12fd68ce56540c93:manual_stochastic_round_to_float8",
+        "symbol:140c813f9fa5da71:filter_registered_hooks_on_conds",
+        "symbol:14a1df553aca88c4:PerturbedAttentionGuidance",
+        "symbol:1a9663355b58fc65:WeightHook",
+        "symbol:1ab25ab07a014a3c:PerpNegGuider",
+        "symbol:1b8f9dade431a9af:CFGGuider",
+        "symbol:1ba0997f1bd74b35:_prepare_sampling",
+        "symbol:1c961957e165cfba:get_key_weight",
+        "symbol:1d21c7ee5c81e04b:normal_scheduler",
+        "symbol:204b87316eeb3370:get_attr",
+        "symbol:2084802fea48e946:CombineHooks",
+        "symbol:208eea1e99c116ab:CombineHooksEight",
+        "symbol:2097d1e7cb3a9d5a:CombineHooksFour",
+        "symbol:20e4757a9d6f3fec:HookKeyframe",
+        "symbol:240eabecdcf3ecfb:combine_with_new_conds",
+        "symbol:261a694b95cbd1e5:EnumHookMode",
+        "symbol:281b86abc56ad7dc:CreateHookModelAsLoraModelOnly",
+        "symbol:294f5a140f482495:KSampler",
+        "symbol:29d0d29cf61500e7:calc_cond_batch",
+        "symbol:2bdf317f8184fafa:preprocess_conds_hooks",
+        "symbol:2c1fd6c746af96b7:PerpNeg",
+        "symbol:2d3cbef0ddff77da:cond_cat",
+        "symbol:2decc7d5fca07ff6:TransformerOptionsHook",
+        "symbol:2e1e27d879686104:PairConditioningCombine",
+        "symbol:31a4edac5efa421e:add_area_dims",
+        "symbol:31dede927fdce532:calc_cond_uncond_batch",
+        "symbol:334505a930b81d9c:CallbacksMP",
+        "symbol:33a9fc24db5a92e9:PairConditioningSetProperties",
+        "symbol:36f75d425ab79afb:set_mask_for_conditioning"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "low_cohesion",
+      "description": "Community 8 has low cohesion (0.050) with 136 nodes.",
+      "affected_node_ids": [
+        "file:comfy/extra_samplers/uni_pc.py",
+        "file:comfy/k_diffusion/deis.py",
+        "file:comfy/k_diffusion/sampling.py",
+        "file:comfy/k_diffusion/utils.py",
+        "file:comfy/ldm/audio/autoencoder.py",
+        "file:comfy/model_sampling.py",
+        "file:comfy_extras/nodes_differential_diffusion.py",
+        "file:comfy_extras/nodes_model_advanced.py",
+        "symbol:0293a35852276b74:ModelSamplingSD3",
+        "symbol:0699b24cadc24e3f:AudioOobleckVAE",
+        "symbol:0703a444dca94fc1:get_sigmas_polyexponential",
+        "symbol:0a88dfb2d7d0ded0:append_zero",
+        "symbol:0b10d644130656bd:download_file",
+        "symbol:0ff30fd3dacc2512:get_sigmas_vp",
+        "symbol:1285006568b966e7:t2alpha_fn",
+        "symbol:14764c51a30bd3ba:ModelSamplingLTXV",
+        "symbol:14ef4b30816a1802:ModelSamplingContinuousV",
+        "symbol:15769ce0fbbf924b:default_noise_sampler",
+        "symbol:1de5d05606b13429:rescale_zero_terminal_snr_sigmas",
+        "symbol:1dea1262770cfc03:time_snr_shift",
+        "symbol:1e8ee8f81d84e65e:ModelSamplingFlux",
+        "symbol:23d353465ee0340f:sample_er_sde",
+        "symbol:252eb9387baf294f:expand_dims",
+        "symbol:25d03548e37b33ee:IMG_TO_IMG",
+        "symbol:26a2432198dbd299:RescaleCFG",
+        "symbol:27e1344a2de12935:ModelSamplingDiscreteEDM",
+        "symbol:2a1f6e9e0fc56a1b:n_params",
+        "symbol:2a540e3827c60f28:hf_datasets_augs_helper",
+        "symbol:2c600f1743e06a07:sample_gradient_estimation",
+        "symbol:2cebfeb991c97e1b:DecoderBlock",
+        "symbol:2ec366fa935abc41:cal_poly",
+        "symbol:31357a887e924341:append_dims",
+        "symbol:315a2c66c40fbc96:sample_dpmpp_3m_sde",
+        "symbol:31ce966bdc2598d8:res_multistep",
+        "symbol:3746f6d24c3f1090:rand_log_logistic",
+        "symbol:39d870d4b2e88925:generic_step_sampler",
+        "symbol:3c8ae7b839d216c6:NoiseScheduleVP",
+        "symbol:3dd484bb539ff6d6:sample_ipndm_v",
+        "symbol:40c49c2998f56d68:sample_dpm_2_ancestral",
+        "symbol:424153df65889d03:ExponentialLR",
+        "symbol:47047c0a3dc6054b:StableCascadeSampling",
+        "symbol:47557cd2cca53085:get_sigmas_karras",
+        "symbol:49a0aab6c57e137a:sample_dpm_2_ancestral_RF",
+        "symbol:4a96ad2616cb5826:sample_dpm_fast",
+        "symbol:4bc21c865817cdc4:ResidualUnit",
+        "symbol:4df84ee7fb017d56:PIDStepSizeController",
+        "symbol:50406c0653047faa:set_model_options_post_cfg_function",
+        "symbol:55b2c01c2fc73476:EncoderBlock",
+        "symbol:57a539f605e3cc2f:predict_eps_sigma",
+        "symbol:59149430e494c694:OobleckDecoder"
+      ],
+      "community_id": 8,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "low_cohesion",
+      "description": "Community 9 has low cohesion (0.050) with 94 nodes.",
+      "affected_node_ids": [
+        "file:comfy/checkpoint_pickle.py",
+        "file:comfy_execution/caching.py",
+        "file:comfy_execution/graph.py",
+        "file:comfy_execution/graph_utils.py",
+        "file:comfy_execution/validation.py",
+        "file:execution.py",
+        "file:script_examples/websockets_api_example_ws_images.py",
+        "file:tests-unit/execution_test/validate_node_input_test.py",
+        "file:tests/inference/test_execution.py",
+        "file:tests/inference/test_inference.py",
+        "file:tests/inference/testing_nodes/testing-pack/specific_tests.py",
+        "file:tests/inference/testing_nodes/testing-pack/stubs.py",
+        "file:tests/inference/testing_nodes/testing-pack/tools.py",
+        "symbol:031194ac20408a16:ExecutionList",
+        "symbol:043de6b952f45c2d:RunResult",
+        "symbol:04bc14dc4ed29a78:add_graph_prefix",
+        "symbol:060e05aff756dad5:get_input_info",
+        "symbol:06a376086d310d1c:TestCustomIsChanged",
+        "symbol:06ca00645e4b6fde:NodeInputError",
+        "symbol:08b1935daa2a8555:is_link",
+        "symbol:08bf7810ee623f36:get_history",
+        "symbol:09e251f8e5a43baa:queue_prompt",
+        "symbol:0ac83a5d550f98c3:TestMixedExpansionReturns",
+        "symbol:0af43d79639897b8:TestLazyMixImages",
+        "symbol:1531174712b40c75:test_parametrized_cases",
+        "symbol:19d7ab96e9ab17f7:CacheKeySetID",
+        "symbol:1b90f260209b4e3b:TestDynamicDependencyCycle",
+        "symbol:1d539af4e678e070:TestWhileLoopClose",
+        "symbol:24596ddceda92c95:get_images",
+        "symbol:256e71a93892e15e:test_ne_override",
+        "symbol:25f52464f4100b14:format_value",
+        "symbol:2c8e0d4c29fc862c:ComfyClient",
+        "symbol:3185a61b95d84ee5:validate_node_input",
+        "symbol:356c95097d480f57:TestCustomValidation2",
+        "symbol:35b454d1adc40d3c:TestCustomValidation1",
+        "symbol:3aa39a57e88d8177:GraphBuilder",
+        "symbol:3da89f32b0b82f0a:SaveImage",
+        "symbol:41ce29c577822a73:test_exact_match",
+        "symbol:44e4f4b9cc93a011:TopologicalSort",
+        "symbol:51c911bb67a04ab5:TestCustomValidation4",
+        "symbol:521b8bc3d8379bce:PreviewImage",
+        "symbol:523cfab984f02f8e:ComfyGraph",
+        "symbol:52d2ab54a3493ecb:validate_inputs",
+        "symbol:5a2e671d1475792f:TestCustomValidation3",
+        "symbol:5bc12c6621400bb4:full_type_name",
+        "symbol:604428b858979a88:NodeNotFoundError",
+        "symbol:6802bf1ddb25cddf:get_image",
+        "symbol:6b5a0879cbf9966f:TestInference",
+        "symbol:6b7c040da6579a9c:TestVariadicAverage",
+        "symbol:6d29b33dadeaaee5:before_node_execution"
+      ],
+      "community_id": 9,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "low_cohesion",
+      "description": "Community 10 has low cohesion (0.120) with 55 nodes.",
+      "affected_node_ids": [
+        "file:comfy_api_nodes/apis/recraft_api.py",
+        "file:comfy_api_nodes/nodes_recraft.py",
+        "file:custom_nodes/websocket_image_save.py",
+        "file:tests/compare/conftest.py",
+        "file:tests/compare/test_quality.py",
+        "file:tests/conftest.py",
+        "symbol:031cd70978736900:RecraftColor",
+        "symbol:081331d2c32f0fbf:SaveSVGNode",
+        "symbol:0bb0f5df1a46c5d5:ssim_score",
+        "symbol:12f4cef04e085fb6:gather_file_basenames",
+        "symbol:1400361612977df8:RecraftCrispUpscaleNode",
+        "symbol:1a943ff3a5c1122f:RecraftVectorizeImageNode",
+        "symbol:1e14afad4356f977:get_v3_substyles",
+        "symbol:1fd1dea19f24a7d8:args_pytest",
+        "symbol:261587067c3e024f:Controls",
+        "symbol:27380382d4258ca7:RecraftStyleV3LogoRasterNode",
+        "symbol:2bd4e2f479a09236:RecraftReplaceBackgroundNode",
+        "symbol:2ddb52baeae280a3:pytest_collection_modifyitems",
+        "symbol:3497410287ca6fd7:RecraftRemoveBackgroundNode",
+        "symbol:34b58bcee0ef8f37:RecraftStyle",
+        "symbol:3a78881b16aaae5d:RecraftColorChain",
+        "symbol:3dcf587230151889:RecraftColorObject",
+        "symbol:42edb703509d4869:handle_recraft_file_request",
+        "symbol:5116632f8125d278:RecraftImageToImageNode",
+        "symbol:5b4cddbacc173b0b:RecraftModel",
+        "symbol:645de807c97827c4:RecraftImageInpaintingNode",
+        "symbol:70e4dd58cafef3b2:RecraftReturnedObject",
+        "symbol:75a4559f1fbf312d:RecraftTextToVectorNode",
+        "symbol:787524cba234dc81:pytest_addoption",
+        "symbol:7aa0ac2d53015461:RecraftTextToImageNode",
+        "symbol:7c9d485caf319746:RecraftControlsObject",
+        "symbol:8d1d2bc584d1bd07:ProgressBar",
+        "symbol:8f7f338a88585091:RecraftStyleV3DigitalIllustrationNode",
+        "symbol:935feb59388b97b3:pytest_addoption",
+        "symbol:9c8cbd294d2e7601:args_pytest",
+        "symbol:9ce44ecb49d181e8:SaveImageWebsocket",
+        "symbol:a35b1aaab1f177d1:RecraftIO",
+        "symbol:a67c84a047565828:RecraftImageGenerationResponse",
+        "symbol:a7eb47a397faeeeb:RecraftControls",
+        "symbol:b037b6ca0f82db32:TestCompareImageMetrics",
+        "symbol:b2f74e35eb16b791:RecraftImageSize",
+        "symbol:b5defbc1e9f3a060:Datum2",
+        "symbol:b90c0d303b444702:RecraftControlsNode",
+        "symbol:bfcb80a563195d44:RecraftStyleV3RealisticImageNode",
+        "symbol:c12c626fc1c5d3e5:recraft_multipart_parser",
+        "symbol:c4ba8671ab09e7b6:RecraftColorRGBNode",
+        "symbol:c5aa3fbced183368:RecraftCreativeUpscaleNode",
+        "symbol:c9dc1046dbd66252:RecraftImageGenerationRequest",
+        "symbol:ce7f5233d35f7c4c:RecraftStyleV3VectorIllustrationNode",
+        "symbol:d14a4d4e2c9d3f42:RecraftStyleV3"
+      ],
+      "community_id": 10,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:00518cb75b29e6a8:ResBlock has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:00518cb75b29e6a8:ResBlock"
+      ],
+      "community_id": 4,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:005e65ac45328aa2:AttentionPool has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:005e65ac45328aa2:AttentionPool"
+      ],
+      "community_id": 2,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:006580e404eb92c9:BFLFluxProGenerateRequest has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:006580e404eb92c9:BFLFluxProGenerateRequest"
+      ],
+      "community_id": 0,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:018ad13015121f70:Model has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:018ad13015121f70:Model"
+      ],
+      "community_id": 4,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:018f98283d4a3feb:LumaImageReference has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:018f98283d4a3feb:LumaImageReference"
+      ],
+      "community_id": 0,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:02d1138d48041849:FileInfo has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:02d1138d48041849:FileInfo"
+      ],
+      "community_id": 6,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:03b5efd2e39a0f2c:get_2d_sincos_pos_embed_torch has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:03b5efd2e39a0f2c:get_2d_sincos_pos_embed_torch"
+      ],
+      "community_id": 2,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:043bb2b733583b60:cleanup_additional_models has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:043bb2b733583b60:cleanup_additional_models"
+      ],
+      "community_id": 1,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:044f7a529d8ad3b9:LTXV has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:044f7a529d8ad3b9:LTXV"
+      ],
+      "community_id": 3,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:05988daf6154f6bc:HunyuanVideoSkyreelsI2V has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:05988daf6154f6bc:HunyuanVideoSkyreelsI2V"
+      ],
+      "community_id": 3,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:0704067a90ab3018:Chroma has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:0704067a90ab3018:Chroma"
+      ],
+      "community_id": 3,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:08b09b200c7b6201:Attention has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:08b09b200c7b6201:Attention"
+      ],
+      "community_id": 2,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:0e2deedfaff49e68:exists has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:0e2deedfaff49e68:exists"
+      ],
+      "community_id": 4,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:117dd323f49a624f:PatchEmbed has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:117dd323f49a624f:PatchEmbed"
+      ],
+      "community_id": 2,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:118aeef034a509c4:Decoder has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:118aeef034a509c4:Decoder"
+      ],
+      "community_id": 4,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:1355fc76d2aef801:loglinear_interp has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:1355fc76d2aef801:loglinear_interp"
+      ],
+      "community_id": 1,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:13b3bf979c81fd27:T5XXLModel has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:13b3bf979c81fd27:T5XXLModel"
+      ],
+      "community_id": 3,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:14076c7005837f67:MLP has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:14076c7005837f67:MLP"
+      ],
+      "community_id": 2,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:147a68234a2454b6:LumaImageGenerationRequest has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:147a68234a2454b6:LumaImageGenerationRequest"
+      ],
+      "community_id": 0,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:14be8758573f45be:SD3 has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:14be8758573f45be:SD3"
+      ],
+      "community_id": 3,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:14d4238de9ae6f18:PixverseImageUploadResponse has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:14d4238de9ae6f18:PixverseImageUploadResponse"
+      ],
+      "community_id": 0,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:14ef4b30816a1802:ModelSamplingContinuousV has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:14ef4b30816a1802:ModelSamplingContinuousV"
+      ],
+      "community_id": 8,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:15af024775583051:Downsample has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:15af024775583051:Downsample"
+      ],
+      "community_id": 4,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:16efc9dee0b33490:T5XXLTokenizer has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:16efc9dee0b33490:T5XXLTokenizer"
+      ],
+      "community_id": 3,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:193f0cf22996f889:LumaImageModel has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:193f0cf22996f889:LumaImageModel"
+      ],
+      "community_id": 0,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:1a9748ea25cc05e3:StableAudio1 has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:1a9748ea25cc05e3:StableAudio1"
+      ],
+      "community_id": 3,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:1b27528199311a35:apply_rope has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:1b27528199311a35:apply_rope"
+      ],
+      "community_id": 2,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:1d0c07e6638d647d:modulate has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:1d0c07e6638d647d:modulate"
+      ],
+      "community_id": 2,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:1d4155552a2cb761:ACEStep has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:1d4155552a2cb761:ACEStep"
+      ],
+      "community_id": 3,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:1f21cb5849c06a4f:RMSNorm has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:1f21cb5849c06a4f:RMSNorm"
+      ],
+      "community_id": 2,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:1fd1dea19f24a7d8:args_pytest has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:1fd1dea19f24a7d8:args_pytest"
+      ],
+      "community_id": 10,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:21006bc6c14a35f1:ControlNet has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:21006bc6c14a35f1:ControlNet"
+      ],
+      "community_id": 19,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:2182bb463ec54a2a:TimestepEmbedder has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:2182bb463ec54a2a:TimestepEmbedder"
+      ],
+      "community_id": 2,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:221a8dcab0934e29:OptimizedAttention has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:221a8dcab0934e29:OptimizedAttention"
+      ],
+      "community_id": 4,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:22ac2332d22cacc3:Decoder has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:22ac2332d22cacc3:Decoder"
+      ],
+      "community_id": 4,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:2346c712199c26b5:T5XXLTokenizer has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:2346c712199c26b5:T5XXLTokenizer"
+      ],
+      "community_id": 3,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:246b4865a2d43a69:MLP has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:246b4865a2d43a69:MLP"
+      ],
+      "community_id": 2,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:294f5a140f482495:KSampler has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:294f5a140f482495:KSampler"
+      ],
+      "community_id": 7,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:29a5fc058c6ab975:LumaKeyframes has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:29a5fc058c6ab975:LumaKeyframes"
+      ],
+      "community_id": 0,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:2a1e235802956bac:get_image has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:2a1e235802956bac:get_image"
+      ],
+      "community_id": 16,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:2b397f5ad35cab9e:SD15_instructpix2pix has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:2b397f5ad35cab9e:SD15_instructpix2pix"
+      ],
+      "community_id": 3,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:2b49c49180eb7e31:RMSNorm has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:2b49c49180eb7e31:RMSNorm"
+      ],
+      "community_id": 4,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:2b5017021702bd67:AttentionBlock has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:2b5017021702bd67:AttentionBlock"
+      ],
+      "community_id": 4,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:2b7bd961e4872496:FinalLayer has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:2b7bd961e4872496:FinalLayer"
+      ],
+      "community_id": 2,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:2c7431cbc86285d7:ControlNet has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:2c7431cbc86285d7:ControlNet"
+      ],
+      "community_id": 5,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:2e90e56bb22b6b9a:ResBlock has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:2e90e56bb22b6b9a:ResBlock"
+      ],
+      "community_id": 4,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:2f0a8263a571869a:Lumina2 has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:2f0a8263a571869a:Lumina2"
+      ],
+      "community_id": 3,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:30ac940187334dbc:avg_pool_nd has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:30ac940187334dbc:avg_pool_nd"
+      ],
+      "community_id": 4,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:323df14e00d1efa8:LumaModifyImageRef has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:323df14e00d1efa8:LumaModifyImageRef"
+      ],
+      "community_id": 0,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:34c559cd898fc0a2:default has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:34c559cd898fc0a2:default"
+      ],
+      "community_id": 2,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:34d610445a0ade56:get_timestep_embedding has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:34d610445a0ade56:get_timestep_embedding"
+      ],
+      "community_id": 2,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:3754d678f35f8d06:PatchEmbed has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:3754d678f35f8d06:PatchEmbed"
+      ],
+      "community_id": 15,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:39ac92fe188b4ec0:nonlinearity has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:39ac92fe188b4ec0:nonlinearity"
+      ],
+      "community_id": 4,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:39fef8c9c028165e:mean_flat has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:39fef8c9c028165e:mean_flat"
+      ],
+      "community_id": 4,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:3aa66a7b53cb1de5:FeedForward has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:3aa66a7b53cb1de5:FeedForward"
+      ],
+      "community_id": 2,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:3b8aed6043460e10:Stable_Zero123 has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:3b8aed6043460e10:Stable_Zero123"
+      ],
+      "community_id": 3,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:3cdbaf5cf90301b9:loglinear_interp has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:3cdbaf5cf90301b9:loglinear_interp"
+      ],
+      "community_id": 1,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:3d82da5cfeaded6f:DoubleStreamBlock has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:3d82da5cfeaded6f:DoubleStreamBlock"
+      ],
+      "community_id": 3,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:404276fe7abae796:Decoder has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:404276fe7abae796:Decoder"
+      ],
+      "community_id": 4,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:416869349b27d764:Encoder has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:416869349b27d764:Encoder"
+      ],
+      "community_id": 4,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:419fb361f305a390:FourierFeatures has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:419fb361f305a390:FourierFeatures"
+      ],
+      "community_id": 2,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:42026e8106b1e7b8:FinalLayer has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:42026e8106b1e7b8:FinalLayer"
+      ],
+      "community_id": 2,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:42434ef393f72cde:cast_tuple has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:42434ef393f72cde:cast_tuple"
+      ],
+      "community_id": 4,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:42873cba0504042b:Attention has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:42873cba0504042b:Attention"
+      ],
+      "community_id": 2,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:43a9107c2af57d79:T5XXLModel has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:43a9107c2af57d79:T5XXLModel"
+      ],
+      "community_id": 3,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:4433e27330de729a:TimestepEmbedder has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:4433e27330de729a:TimestepEmbedder"
+      ],
+      "community_id": 15,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:450a9db1a0bcbe94:SV3D_p has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:450a9db1a0bcbe94:SV3D_p"
+      ],
+      "community_id": 3,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:45d78e9f25d34ccb:exists has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:45d78e9f25d34ccb:exists"
+      ],
+      "community_id": 2,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:45e720059f74ac8b:SelfAttention has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:45e720059f74ac8b:SelfAttention"
+      ],
+      "community_id": 3,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:45eab81bef537d1e:BasicTransformerBlock has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:45eab81bef537d1e:BasicTransformerBlock"
+      ],
+      "community_id": 2,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:4666232682636ba6:LumaGeneration has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:4666232682636ba6:LumaGeneration"
+      ],
+      "community_id": 0,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:477d9ba73d0e2a79:RecraftImageGenerationResponse has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:477d9ba73d0e2a79:RecraftImageGenerationResponse"
+      ],
+      "community_id": 0,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:481a84406878a8a8:T5XXLTokenizer has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:481a84406878a8a8:T5XXLTokenizer"
+      ],
+      "community_id": 3,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:49332fab1b2b6948:HunyuanVideo has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:49332fab1b2b6948:HunyuanVideo"
+      ],
+      "community_id": 3,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:4a4e3adef03dea70:Encoder has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:4a4e3adef03dea70:Encoder"
+      ],
+      "community_id": 4,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:4be18a082a6072f4:modulate has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:4be18a082a6072f4:modulate"
+      ],
+      "community_id": 2,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:4bf22438d8c2b660:BFLFluxProGenerateResponse has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:4bf22438d8c2b660:BFLFluxProGenerateResponse"
+      ],
+      "community_id": 0,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:4c337db022a20b7b:HunyuanVideo has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:4c337db022a20b7b:HunyuanVideo"
+      ],
+      "community_id": 3,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:4df2760d990b9d55:MLP has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:4df2760d990b9d55:MLP"
+      ],
+      "community_id": 2,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:4ea591c5f3e740d3:LTXV has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:4ea591c5f3e740d3:LTXV"
+      ],
+      "community_id": 3,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:4ec3f7f8a55ed9a3:LumaVideoModel has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:4ec3f7f8a55ed9a3:LumaVideoModel"
+      ],
+      "community_id": 0,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:4f32d904817b74b1:app has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:4f32d904817b74b1:app"
+      ],
+      "community_id": 6,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:500f004be636278f:HunyuanVideoI2V has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:500f004be636278f:HunyuanVideoI2V"
+      ],
+      "community_id": 3,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:51874dec1a70bd36:AuraFlow has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:51874dec1a70bd36:AuraFlow"
+      ],
+      "community_id": 3,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:521d4469bccfc701:PixverseImageVideoRequest has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:521d4469bccfc701:PixverseImageVideoRequest"
+      ],
+      "community_id": 0,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:53f7227968f6750d:T5XXLTokenizer has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:53f7227968f6750d:T5XXLTokenizer"
+      ],
+      "community_id": 3,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:55bf760fefa95a34:attention has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:55bf760fefa95a34:attention"
+      ],
+      "community_id": 2,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:5b0d8b7efcf188e2:FeedForward has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:5b0d8b7efcf188e2:FeedForward"
+      ],
+      "community_id": 2,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:5db9822c6914a105:T5XXLModel has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:5db9822c6914a105:T5XXLModel"
+      ],
+      "community_id": 3,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:5dd4c220be1e313a:Encoder has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:5dd4c220be1e313a:Encoder"
+      ],
+      "community_id": 4,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:5f395e1fb6a22a7d:LayerNorm has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:5f395e1fb6a22a7d:LayerNorm"
+      ],
+      "community_id": 4,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:5f9c8a4c8faf80e4:VideoResBlock has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:5f9c8a4c8faf80e4:VideoResBlock"
+      ],
+      "community_id": 4,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:6052634040ad6352:Flux has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:6052634040ad6352:Flux"
+      ],
+      "community_id": 3,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:609aebdbe16db05a:load_gligen has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:609aebdbe16db05a:load_gligen"
+      ],
+      "community_id": 2,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:63ad90f4bb64ea94:VideoVAE has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:63ad90f4bb64ea94:VideoVAE"
+      ],
+      "community_id": 4,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:64caffea39f61845:queue_prompt has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:64caffea39f61845:queue_prompt"
+      ],
+      "community_id": 25,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:65a6e29cc3416339:SD15 has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:65a6e29cc3416339:SD15"
+      ],
+      "community_id": 3,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:66eef40a77183443:ControlNet has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:66eef40a77183443:ControlNet"
+      ],
+      "community_id": 4,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:6724aadb8a35705f:RMSNorm has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:6724aadb8a35705f:RMSNorm"
+      ],
+      "community_id": 3,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:6771f82e9e0ee293:get_2d_sincos_pos_embed_from_grid has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:6771f82e9e0ee293:get_2d_sincos_pos_embed_from_grid"
+      ],
+      "community_id": 2,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:681f410596d962e8:GenmoMochi has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:681f410596d962e8:GenmoMochi"
+      ],
+      "community_id": 3,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:68766bd7a449dd9d:Node has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:68766bd7a449dd9d:Node"
+      ],
+      "community_id": 0,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:695d3202038a74cf:LumaImageRef has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:695d3202038a74cf:LumaImageRef"
+      ],
+      "community_id": 0,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:6a162935b26bacbd:ResidualAttentionBlock has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:6a162935b26bacbd:ResidualAttentionBlock"
+      ],
+      "community_id": 2,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:6ade01bfb656261c:EmbedND has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:6ade01bfb656261c:EmbedND"
+      ],
+      "community_id": 3,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:6d805face779828a:MMDiT has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:6d805face779828a:MMDiT"
+      ],
+      "community_id": 2,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:6da1310011db549b:SD_X4Upscaler has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:6da1310011db549b:SD_X4Upscaler"
+      ],
+      "community_id": 3,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:6dcda8e62fa00a26:t2i_modulate has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:6dcda8e62fa00a26:t2i_modulate"
+      ],
+      "community_id": 2,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:6e2470217dc81f54:SV3D_u has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:6e2470217dc81f54:SV3D_u"
+      ],
+      "community_id": 3,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:6f4a51a20e19a0f5:default has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:6f4a51a20e19a0f5:default"
+      ],
+      "community_id": 2,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:6f9043660e013d94:SingleStreamBlock has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:6f9043660e013d94:SingleStreamBlock"
+      ],
+      "community_id": 3,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:6fd7c5a19f7cc41f:HiDream has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:6fd7c5a19f7cc41f:HiDream"
+      ],
+      "community_id": 3,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:6fea82b08dd168f5:SDXLRefiner has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:6fea82b08dd168f5:SDXLRefiner"
+      ],
+      "community_id": 3,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:725e5eb8c99a9b38:prepare_sampling has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:725e5eb8c99a9b38:prepare_sampling"
+      ],
+      "community_id": 1,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:72a0aadc3927c160:Attention has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:72a0aadc3927c160:Attention"
+      ],
+      "community_id": 2,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:7369022e8bbeb75b:get_2d_sincos_pos_embed has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:7369022e8bbeb75b:get_2d_sincos_pos_embed"
+      ],
+      "community_id": 2,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:741b822f74616de6:PixverseTransitionVideoRequest has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:741b822f74616de6:PixverseTransitionVideoRequest"
+      ],
+      "community_id": 0,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:760e49ebc0bb47c1:ResBlock has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:760e49ebc0bb47c1:ResBlock"
+      ],
+      "community_id": 4,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:768351dd25434f13:get_activation has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:768351dd25434f13:get_activation"
+      ],
+      "community_id": 4,
+      "severity": "low"
+    },
+    {
+      "gap_type": "isolated_symbol",
+      "description": "Symbol symbol:7696b70167c2ee6b:precompute_freqs_cis has very low structural degree.",
+      "affected_node_ids": [
+        "symbol:7696b70167c2ee6b:precompute_freqs_cis"
+      ],
+      "community_id": 2,
+      "severity": "low"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `ApiClient`.",
+      "affected_node_ids": [
+        "0e3dbebdd304dd1b:LumaConceptsNode"
+      ],
+      "community_id": 0,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `Attention`.",
+      "affected_node_ids": [
+        "VideoResBlock"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `attention_sub_quad`.",
+      "affected_node_ids": [
+        "unknown"
+      ],
+      "community_id": 11,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `BaseModel`.",
+      "affected_node_ids": [
+        "1b8f9dade431a9af:CFGGuider"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `BFLFluxPro11GenerateRequest`.",
+      "affected_node_ids": [
+        "unknown"
+      ],
+      "community_id": 11,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `BFLFluxProExpandInputs`.",
+      "affected_node_ids": [
+        "unknown"
+      ],
+      "community_id": 11,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `calc_cond_batch`.",
+      "affected_node_ids": [
+        "12af667726a3b379:get_area_and_mult"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `calculate_weight`.",
+      "affected_node_ids": [
+        "1b8f9dade431a9af:CFGGuider"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `CaseConverter`.",
+      "affected_node_ids": [
+        "3bd86a68de0d8eb6"
+      ],
+      "community_id": 12,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `CFGGuider`.",
+      "affected_node_ids": [
+        "2b52953d2c7f4b5a:load_checkpoint"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `CLIP`.",
+      "affected_node_ids": [
+        "1b8f9dade431a9af:CFGGuider"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `ClipVisionModel`.",
+      "affected_node_ids": [
+        "unknown"
+      ],
+      "community_id": 11,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `conditioning_set_values`.",
+      "affected_node_ids": [
+        "294f5a140f482495:KSampler"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `ControlNet`.",
+      "affected_node_ids": [
+        "1217451e785ce532:T2IAdapter"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `Conv1x1`.",
+      "affected_node_ids": [
+        "unknown"
+      ],
+      "community_id": 11,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `ConvolutionModule`.",
+      "affected_node_ids": [
+        "unknown"
+      ],
+      "community_id": 11,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `CrossAttention`.",
+      "affected_node_ids": [
+        "AsymmetricJointBlock"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `cuda_malloc_warning`.",
+      "affected_node_ids": [
+        "29339094180ab16e:get_free_memory"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `CustomNodeManager`.",
+      "affected_node_ids": [
+        "0b0c3139e6a19b29"
+      ],
+      "community_id": 13,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `DualCFGGuider`.",
+      "affected_node_ids": [
+        "1b8f9dade431a9af:CFGGuider"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `Encoder`.",
+      "affected_node_ids": [
+        "unknown"
+      ],
+      "community_id": 11,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `EnumHookMode`.",
+      "affected_node_ids": [
+        "0f73136d68b897fa:CLIPType"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `Error`.",
+      "affected_node_ids": [
+        "unknown"
+      ],
+      "community_id": 11,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `execution_block_cb`.",
+      "affected_node_ids": [
+        "713e6670f6ce1f88"
+      ],
+      "community_id": 9,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `ExecutionBlocker`.",
+      "affected_node_ids": [
+        "043de6b952f45c2d"
+      ],
+      "community_id": 9,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `ExecutionList`.",
+      "affected_node_ids": [
+        "2b52953d2c7f4b5a:load_checkpoint"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `ExponentialLR`.",
+      "affected_node_ids": [
+        "40c49c298f56d68"
+      ],
+      "community_id": 8,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `FluxProCannyNode`.",
+      "affected_node_ids": [
+        "unknown"
+      ],
+      "community_id": 11,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `FluxProFillNode`.",
+      "affected_node_ids": [
+        "unknown"
+      ],
+      "community_id": 11,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `FourierFeatures`.",
+      "affected_node_ids": [
+        "unknown"
+      ],
+      "community_id": 11,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `get_attn_precision`.",
+      "affected_node_ids": [
+        "0fbbe3d4efc94d46"
+      ],
+      "community_id": 2,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `get_input_directory`.",
+      "affected_node_ids": [
+        "1b63c52570aa9d08"
+      ],
+      "community_id": 6,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `HiDream`.",
+      "affected_node_ids": [
+        "27d23e5e2e11e19e"
+      ],
+      "community_id": 2,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `HunYuanControlNet`.",
+      "affected_node_ids": [
+        "unknown"
+      ],
+      "community_id": 11,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `Image`.",
+      "affected_node_ids": [
+        "25d87fd18053409b:clip_preprocess"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `init_image_posemb`.",
+      "affected_node_ids": [
+        "2297c09d60802dfa"
+      ],
+      "community_id": 2,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `JointTransformerBlock`.",
+      "affected_node_ids": [
+        "unknown"
+      ],
+      "community_id": 11,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `KSampler`.",
+      "affected_node_ids": [
+        "unknown"
+      ],
+      "community_id": 11,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `LinearEmbed`.",
+      "affected_node_ids": [
+        "unknown"
+      ],
+      "community_id": 11,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `load_gligen`.",
+      "affected_node_ids": [
+        "14a98fcfce41973c:GLIGENLoader"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `load_lora`.",
+      "affected_node_ids": [
+        "294f5a140f482495:KSampler"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `load_models_gpu`.",
+      "affected_node_ids": [
+        "294f5a140f482495:KSampler"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `load_state_dict_guess_config`.",
+      "affected_node_ids": [
+        "12af667726a3b379:get_area_and_mult"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `LTXVModel`.",
+      "affected_node_ids": [
+        "unknown"
+      ],
+      "community_id": 11,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `LumaGenerationRequest`.",
+      "affected_node_ids": [
+        "1091c925bc474f6a:LumaImageToVideoGenerationNode"
+      ],
+      "community_id": 0,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `model_sampling`.",
+      "affected_node_ids": [
+        "294f5a140f482495:KSampler"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `ModelPatcher`.",
+      "affected_node_ids": [
+        "2955fbcdd2f4b657:load_checkpoint"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `modulate`.",
+      "affected_node_ids": [
+        "ResBlock"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `MultiHeadedAttention`.",
+      "affected_node_ids": [
+        "unknown"
+      ],
+      "community_id": 11,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `n_params`.",
+      "affected_node_ids": [
+        "252eb9387baf294f"
+      ],
+      "community_id": 8,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `NodeVersion`.",
+      "affected_node_ids": [
+        "unknown"
+      ],
+      "community_id": 11,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `PikaBodyGenerate22KeyframeGenerate22PikaframesPost`.",
+      "affected_node_ids": [
+        "11c811869e30b2f5:PikaSwapsNode"
+      ],
+      "community_id": 0,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `pre_execute_cb`.",
+      "affected_node_ids": [
+        "713e6670f6ce1f88"
+      ],
+      "community_id": 9,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `prepare_sampling`.",
+      "affected_node_ids": [
+        "272f0d310ad4fccb"
+      ],
+      "community_id": 1,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `Publisher`.",
+      "affected_node_ids": [
+        "3bd86a68de0d8eb6"
+      ],
+      "community_id": 12,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `pytest_addoption`.",
+      "affected_node_ids": [
+        "unknown"
+      ],
+      "community_id": 11,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `RecraftIO`.",
+      "affected_node_ids": [
+        "symbol:a35b1aaab1f177d1"
+      ],
+      "community_id": 10,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `RecraftStyleV3`.",
+      "affected_node_ids": [
+        "symbol:7aa0ac2d53015461"
+      ],
+      "community_id": 10,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `RelPositionMultiHeadedAttention`.",
+      "affected_node_ids": [
+        "unknown"
+      ],
+      "community_id": 11,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `resolve_areas_and_cond_masks_multidim`.",
+      "affected_node_ids": [
+        "12af667726a3b379:get_area_and_mult"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `run`.",
+      "affected_node_ids": [
+        "294f5a140f482495:KSampler"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `sample`.",
+      "affected_node_ids": [
+        "294f5a140f482495:KSampler"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `sample_dpm_adaptive`.",
+      "affected_node_ids": [
+        "272f0d310ad4fccb"
+      ],
+      "community_id": 1,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `sample_dpm_fast`.",
+      "affected_node_ids": [
+        "272f0d310ad4fccb"
+      ],
+      "community_id": 1,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `sample_unipc`.",
+      "affected_node_ids": [
+        "272f0d310ad4fccb"
+      ],
+      "community_id": 1,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `sd1_clip.SDTokenizer`.",
+      "affected_node_ids": [
+        "symbol:023ed91846271f5f:UMT5XXlTokenizer"
+      ],
+      "community_id": 3,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `SDTokenizer`.",
+      "affected_node_ids": [
+        "2955fbcdd2f4b657:load_checkpoint"
+      ],
+      "community_id": 5,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `set_model_options_post_cfg_function`.",
+      "affected_node_ids": [
+        "1b8f9dade431a9af:CFGGuider"
+      ],
+      "community_id": 7,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `SkipLayerGuidanceDiT`.",
+      "affected_node_ids": [
+        "unknown"
+      ],
+      "community_id": 11,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `SkipLayerGuidanceSD3`.",
+      "affected_node_ids": [
+        "unknown"
+      ],
+      "community_id": 11,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `StabilityGenerationID`.",
+      "affected_node_ids": [
+        "04e56c9681f8b6b1:validate_task_creation_response"
+      ],
+      "community_id": 0,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `state_dict_prefix_replace`.",
+      "affected_node_ids": [
+        "043bb2b733583b60"
+      ],
+      "community_id": 1,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `step_function`.",
+      "affected_node_ids": [
+        "39d87c0a3dc6054b"
+      ],
+      "community_id": 8,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `SVG`.",
+      "affected_node_ids": [
+        "symbol:081331d2c32f0fbf"
+      ],
+      "community_id": 10,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `T5XXLModel`.",
+      "affected_node_ids": [
+        "symbol:13b3bf979c81fd27:T5XXLModel"
+      ],
+      "community_id": 3,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `TimestepEmbedding`.",
+      "affected_node_ids": [
+        "03a46feaf3a1a578"
+      ],
+      "community_id": 2,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `TimestepEmbedSequential`.",
+      "affected_node_ids": [
+        "CausalContinuousVideoTokenizer"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `torch.nn.Module`.",
+      "affected_node_ids": [
+        "symbol:18b09443c624d232:FluxClipModel"
+      ],
+      "community_id": 3,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `VAE`.",
+      "affected_node_ids": [
+        "AutoencoderDC"
+      ],
+      "community_id": 4,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `validate_prompt`.",
+      "affected_node_ids": [
+        "unknown"
+      ],
+      "community_id": 11,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `VoiceBpeTokenizer`.",
+      "affected_node_ids": [
+        "3bd86a68de0d8eb6"
+      ],
+      "community_id": 12,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `WAN21`.",
+      "affected_node_ids": [
+        "1650bf9de8d24c41"
+      ],
+      "community_id": 2,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `WanFirstLastFrameToVideo`.",
+      "affected_node_ids": [
+        "unknown"
+      ],
+      "community_id": 11,
+      "severity": "medium"
+    },
+    {
+      "gap_type": "unverified_call",
+      "description": "Could not resolve callee `WanModel`.",
+      "affected_node_ids": [
+        "unknown"
+      ],
+      "community_id": 11,
+      "severity": "medium"
+    }
+  ]
+}

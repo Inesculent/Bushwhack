@@ -92,6 +92,76 @@ class Settings(BaseSettings):
 		),
 		description="GitHub personal access token for PR API enrichment.",
 	)
+	github_mcp_enabled: bool = Field(
+		default=True,
+		description="Enable GitHub MCP for documentation and PR context enrichment.",
+	)
+	github_mcp_command: str = Field(
+		default="python",
+		description="Command used to start the GitHub MCP server process.",
+	)
+	github_mcp_args: List[str] = Field(
+		default_factory=lambda: ["mcp/github-mcp/server.py"],
+		description="Arguments for the GitHub MCP server command.",
+	)
+	github_mcp_cwd: Optional[str] = Field(
+		default=None,
+		description="Optional working directory used when launching the GitHub MCP server.",
+	)
+	github_mcp_timeout_seconds: int = Field(
+		default=30,
+		ge=1,
+		le=300,
+		description="Timeout for GitHub MCP tool calls in seconds.",
+	)
+	github_mcp_cache_ttl_seconds: int = Field(
+		default=3600,
+		ge=60,
+		description="TTL for GitHub MCP cache entries in seconds.",
+	)
+	github_mcp_doc_max_chars: int = Field(
+		default=12000,
+		ge=1000,
+		description="Max characters per documentation file fetched via GitHub MCP.",
+	)
+	github_mcp_doc_max_total_chars: int = Field(
+		default=40000,
+		ge=2000,
+		description="Max total characters across documentation files fetched via GitHub MCP.",
+	)
+	github_mcp_pr_max_comments: int = Field(
+		default=20,
+		ge=0,
+		description="Max PR/issue comments to fetch via GitHub MCP.",
+	)
+	github_mcp_pr_comment_max_chars: int = Field(
+		default=2000,
+		ge=200,
+		description="Max characters per PR/issue comment fetched via GitHub MCP.",
+	)
+	github_mcp_doc_paths: List[str] = Field(
+		default_factory=lambda: [
+			"README.md",
+			"README.rst",
+			"README.txt",
+			"CONTRIBUTING.md",
+			"SECURITY.md",
+			"CHANGELOG.md",
+			"docs/README.md",
+			"docs/index.md",
+			".github/CONTRIBUTING.md",
+			".github/SECURITY.md",
+		],
+		description="Ordered doc paths to attempt for the GitHub MCP pre-brief.",
+	)
+	docs_prebrief_enabled: bool = Field(
+		default=True,
+		description="Generate a documentation-based pre-brief before semantic scanning.",
+	)
+	docs_prebrief_model_key: str = Field(
+		default="qwen3.5-35b-a3b",
+		description="Model key used for the documentation pre-brief summary.",
+	)
 	google_api_key: Optional[str] = Field(
 		default=None,
 		validation_alias=AliasChoices("REVIEW_GOOGLE_API_KEY", "GOOGLE_API_KEY"),
@@ -174,7 +244,7 @@ class Settings(BaseSettings):
 		description="Maximum characters of the unified diff inlined into the solo-agent prompt.",
 	)
 	solo_agent_model_key: str = Field(
-		default="gpt-5.4",
+		default="qwen3.5-35b-a3b",
 		description="Model key (from Models factory) used by the solo-agent worker for free-form tagged output.",
 	)
 	solo_agent_prompt_version: str = Field(
@@ -187,17 +257,17 @@ class Settings(BaseSettings):
 		description="Root directory for reviewer-graph experiment artifacts.",
 	)
 	reviewer_planner_model_key: str = Field(
-		default="qwen2.5-coder-32b",
+		default="qwen3.5-35b-a3b",
 		description=(
 			"Model key (from Models factory) used by the reviewer planner. "
-			"Must match a key in infrastructure.llm.factory.MODELS; for Ollama use e.g. qwen2.5-coder-32b-ollama."
+			"Must match a key in infrastructure.llm.factory.MODELS; for Ollama use the corresponding local model key."
 		),
 	)
 	reviewer_worker_model_key: str = Field(
-		default="qwen2.5-coder-32b",
+		default="qwen3.5-35b-a3b",
 		description=(
 			"Model key (from Models factory) used by reviewer workers, critiquer, reflection, and revision nodes. "
-			"Aligns with Models.DEFAULT_ROLE_MODELS['worker']. For Ollama set to qwen2.5-coder-32b-ollama and "
+			"Aligns with Models.DEFAULT_ROLE_MODELS['worker']. For Ollama set to the corresponding local model key and "
 			"REVIEW_LOCAL_LLM_BASE_URL to your OpenAI-compatible endpoint."
 		),
 	)
@@ -297,14 +367,14 @@ class Settings(BaseSettings):
 		description="Max resolver self-loop rounds for newly surfaced unverified targets.",
 	)
 	semantic_model_key: str = Field(
-		default="qwen2.5-coder-32b",
+		default="qwen3.5-35b-a3b",
 		description=(
 			"Models factory key for community semantic agents (same registry as reviewer_worker_model_key). "
 			"Defaults to the local Qwen stack; set e.g. gemini-pro only if langchain-google-genai is installed."
 		),
 	)
 	semantic_merge_model_key: str = Field(
-		default="qwen2.5-coder-32b",
+		default="qwen3.5-35b-a3b",
 		description=(
 			"Models factory key for global semantic synthesis at merge (same as Models.DEFAULT_ROLE_MODELS['synthesizer']). "
 			"Defaults to local Qwen; override with REVIEW_SEMANTIC_MERGE_MODEL_KEY."

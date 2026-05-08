@@ -198,6 +198,38 @@ All environment variables must be prefixed with `REVIEW_` and can be set in a `.
 
 ---
 
+### GitHub MCP Context Configuration
+
+#### Enable/Disable
+
+| Variable | Type | Default | Description |
+|----------|------|---------|-------------|
+| `REVIEW_GITHUB_MCP_ENABLED` | boolean | `true` | Enable optional GitHub MCP context enrichment for documentation, PR context, linked issues, and focused-context fallback. When disabled, the reviewer preserves the local sandbox, ripgrep, and AST paths. |
+| `REVIEW_DOCS_PREBRIEF_ENABLED` | boolean | `true` | Generate a bounded documentation/PR pre-brief before structural and semantic scanning. Disable to skip only the proposed-understanding stage. |
+
+#### MCP Transport
+
+| Variable | Type | Default | Description |
+|----------|------|---------|-------------|
+| `REVIEW_GITHUB_MCP_COMMAND` | string | `python` | Command used to start the GitHub MCP server process. |
+| `REVIEW_GITHUB_MCP_ARGS` | list | `["mcp/github-mcp/server.py"]` | Arguments for the GitHub MCP server command. Comma-separated or JSON array. |
+| `REVIEW_GITHUB_MCP_CWD` | path | `None` | Optional working directory used when launching the GitHub MCP server. |
+| `REVIEW_GITHUB_MCP_TIMEOUT_SECONDS` | integer | `30` | Timeout for each GitHub MCP request in seconds. Range: 1-300. |
+
+#### Context Bounds And Caching
+
+| Variable | Type | Default | Description |
+|----------|------|---------|-------------|
+| `REVIEW_GITHUB_MCP_CACHE_TTL_SECONDS` | integer | `3600` | TTL for GitHub MCP cache entries. In seconds. |
+| `REVIEW_GITHUB_MCP_DOC_MAX_CHARS` | integer | `12000` | Maximum characters retained from each documentation file fetched via GitHub MCP. |
+| `REVIEW_GITHUB_MCP_DOC_MAX_TOTAL_CHARS` | integer | `40000` | Maximum total characters retained across a documentation bundle fetched via GitHub MCP. |
+| `REVIEW_GITHUB_MCP_PR_MAX_COMMENTS` | integer | `20` | Maximum number of PR or issue comments fetched for the docs pre-brief. |
+| `REVIEW_GITHUB_MCP_PR_COMMENT_MAX_CHARS` | integer | `2000` | Maximum characters retained from each PR or issue comment. |
+| `REVIEW_GITHUB_MCP_DOC_PATHS` | list | common README/CONTRIBUTING/SECURITY/CHANGELOG/docs paths | Ordered documentation paths attempted for docs pre-brief and focused-context fallback. |
+| `REVIEW_DOCS_PREBRIEF_MODEL_KEY` | string | `qwen3.5-35b-a3b` | Model key used to summarize the documentation/PR pre-brief. Must match a key in `infrastructure.llm.factory.MODELS`. |
+
+---
+
 ### Redis Configuration
 
 #### Connection & Checkpointing
@@ -247,8 +279,8 @@ export REVIEW_REDIS_ENABLED=true
 
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
-| `REVIEW_REVIEWER_PLANNER_MODEL_KEY` | string | `qwen2.5-coder-32b` | Model key used by the reviewer planner. Must match a key in `infrastructure.llm.factory.MODELS`. For Ollama: `qwen2.5-coder-32b-ollama`. |
-| `REVIEW_REVIEWER_WORKER_MODEL_KEY` | string | `qwen2.5-coder-32b` | Model key used by reviewer workers, critiquer, reflection, and revision nodes. For Ollama: `qwen2.5-coder-32b-ollama`. |
+| `REVIEW_REVIEWER_PLANNER_MODEL_KEY` | string | `qwen3.5-35b-a3b` | Model key used by the reviewer planner. Must match a key in `infrastructure.llm.factory.MODELS`. For Ollama: use the corresponding local model key. |
+| `REVIEW_REVIEWER_WORKER_MODEL_KEY` | string | `qwen3.5-35b-a3b` | Model key used by reviewer workers, critiquer, reflection, and revision nodes. For Ollama: use the corresponding local model key. |
 
 #### Agent Behavior
 
@@ -302,9 +334,10 @@ export REVIEW_REDIS_ENABLED=true
 # .env file
 REVIEW_REDIS_ENABLED=false
 REVIEW_AST_MCP_ENABLED=false
+REVIEW_GITHUB_MCP_ENABLED=false
 REVIEW_LOCAL_LLM_BASE_URL=http://localhost:8000/v1
-REVIEW_REVIEWER_PLANNER_MODEL_KEY=qwen2.5-coder-32b-ollama
-REVIEW_REVIEWER_WORKER_MODEL_KEY=qwen2.5-coder-32b-ollama
+REVIEW_REVIEWER_PLANNER_MODEL_KEY=qwen3.5-35b-a3b
+REVIEW_REVIEWER_WORKER_MODEL_KEY=qwen3.5-35b-a3b
 ```
 
 ```bash
@@ -319,8 +352,9 @@ reviewer-agent --limit 1 --trace --repo-root /local/repo
 REVIEW_REDIS_ENABLED=true
 REVIEW_REDIS_URL=redis://prod-redis-host:6379/0
 REVIEW_AST_MCP_ENABLED=true
-REVIEW_REVIEWER_PLANNER_MODEL_KEY=qwen2.5-coder-32b
-REVIEW_REVIEWER_WORKER_MODEL_KEY=qwen2.5-coder-32b
+REVIEW_GITHUB_MCP_ENABLED=true
+REVIEW_REVIEWER_PLANNER_MODEL_KEY=qwen3.5-35b-a3b
+REVIEW_REVIEWER_WORKER_MODEL_KEY=qwen3.5-35b-a3b
 ```
 
 ```bash
@@ -377,6 +411,7 @@ reviewer-agent --limit 10
 # Set up minimal local environment
 export REVIEW_REDIS_ENABLED=false
 export REVIEW_AST_MCP_ENABLED=false
+export REVIEW_GITHUB_MCP_ENABLED=false
 
 # Run on a single PR with verbose output
 reviewer-agent \
@@ -468,6 +503,9 @@ export REVIEW_LOCAL_LLM_MAX_RETRIES=3
 # Disable MCP and fall back to in-process parsing
 export REVIEW_AST_MCP_ENABLED=false
 export REVIEW_AST_FALLBACK_TO_SEARCH=true
+
+# Disable optional GitHub context enrichment while preserving local review
+export REVIEW_GITHUB_MCP_ENABLED=false
 ```
 
 #### 4. Out of Memory During AST Parsing
@@ -565,5 +603,5 @@ reviewer-agent
 
 ---
 
-**Last Updated:** 2026-05-04
+**Last Updated:** 2026-05-07
 **Version:** 1.0

@@ -130,7 +130,10 @@ class CandidateFinding(BaseModel):
     suspected_category: ReviewCategory = "other"
     reflection_specialties: List[Literal["security", "performance", "logic", "general"]] = Field(
         default_factory=list,
-        description="One or more reflector specialties that should evaluate this candidate.",
+        description=(
+            "Reflector routing tags. The general critiquer normalizes this to exactly one specialty "
+            "(hardcap: security > logic > performance > general). Legacy runs may still contain multiple entries."
+        ),
     )
     feedback_type: Literal["code_improvement", "defect_detection", "optimization", "other"] = "other"
     severity: Literal["low", "medium", "high"] = "medium"
@@ -272,6 +275,46 @@ class RunMetadata(BaseModel):
     head_sha: str
     run_id: Optional[str] = None
     timestamp: Optional[str] = None
+
+
+class RepoDocument(BaseModel):
+    path: str = Field(description="Repository-relative doc path using '/' separators.")
+    ref: Optional[str] = Field(default=None, description="Git ref used to fetch this document.")
+    content: str = Field(description="Raw document content (bounded by caller).")
+    truncated: bool = Field(default=False, description="True if content was truncated to fit limits.")
+
+
+class RepoDocsBundle(BaseModel):
+    repo: str = Field(description="Repository slug 'owner/repo'.")
+    ref: Optional[str] = Field(default=None, description="Git ref used for the bundle.")
+    documents: List[RepoDocument] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
+
+
+class GitHubPullRequestContext(BaseModel):
+    number: int
+    title: str = ""
+    body: str = ""
+    html_url: Optional[str] = None
+    base_ref: Optional[str] = None
+    head_ref: Optional[str] = None
+    author: Optional[str] = None
+    state: Optional[str] = None
+
+
+class GitHubIssueContext(BaseModel):
+    number: int
+    title: str = ""
+    body: str = ""
+    html_url: Optional[str] = None
+    state: Optional[str] = None
+
+
+class GitHubIssueComment(BaseModel):
+    author: Optional[str] = None
+    body: str = ""
+    html_url: Optional[str] = None
+    created_at: Optional[str] = None
 
 
 DiffChangeType = Literal["A", "M", "D", "R"]
