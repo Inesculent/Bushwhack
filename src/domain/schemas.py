@@ -96,7 +96,14 @@ class ReviewerWorkerReport(BaseModel):
 
 
 ReviewCategory = Literal["security", "logic", "performance", "general", "other"]
-ReflectionVerdict = Literal["accept", "reject", "needs_context", "reclassify", "not_applicable"]
+ReflectionVerdict = Literal[
+    "accept",
+    "reject",
+    "needs_context",
+    "needs_verification",
+    "reclassify",
+    "not_applicable",
+]
 ClaimType = Literal[
     "defect",
     "security_risk",

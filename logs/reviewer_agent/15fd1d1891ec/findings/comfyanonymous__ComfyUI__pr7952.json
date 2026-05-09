@@ -1,0 +1,57 @@
+[
+  {
+    "id": "review-performance-1",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 208,
+    "line_end": 268,
+    "content": "class RegexMatch(): ... class RegexExtract():\n\nPost-context evidence: Digest confirmation shows regex patterns are accepted without validation or timeout limits in the diff. The code directly passes user input to re.search() and re.findall() (lines 208-217 for RegexMatch, 230-268 for RegexExtract). No global timeout or ReDoS mitigation found in execution pipeline. Evidence supports high severity ReDoS risk.",
+    "severity": "high",
+    "feedback_type": "defect_detection",
+    "recommendation": "Implement regex complexity limits (e.g., max pattern length, max recursion depth), add timeout wrappers for regex operations, or pre-compile and validate patterns before execution. Consider using re.RegexFlag limits or third-party libraries like regex-compile-check.",
+    "references": []
+  },
+  {
+    "id": "review-security-1",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 211,
+    "line_end": 230,
+    "content": "class RegexMatch:\n\nPost-context evidence: Digest confirms RegexMatch (lines 211-230) passes regex_pattern directly to re.search() without validation or timeout. No execution timeout or sandboxing exists in ComfyUI's node execution path. The vulnerability is technically valid and unmitigated.",
+    "severity": "high",
+    "feedback_type": "defect_detection",
+    "recommendation": "Add execution timeout with signal (Unix) or threading timeout (cross-platform) to re.search/re.findall calls. Consider implementing regex complexity validation or rate limiting for regex-heavy workflows. Reference: CWE-188 (DoS via ReDoS), CWE-300 (Exposure of Sensitive Information).",
+    "references": []
+  },
+  {
+    "id": "review-security-2",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 237,
+    "line_end": 295,
+    "content": "class RegexExtract:\n\nPost-context evidence: Digest confirms RegexExtract (lines 237-295) uses findall/finditer on user-controlled patterns without safeguards. 'All Groups' mode can amplify memory usage. No timeout or complexity checks present. ReDoS and memory exhaustion risks are confirmed.",
+    "severity": "high",
+    "feedback_type": "defect_detection",
+    "recommendation": "Implement execution timeouts for regex operations. Add pattern complexity checks (e.g., warn or reject patterns with nested quantifiers). Consider a regex safety library like regex-safety or use a sandboxed regex engine. Monitor and limit memory usage for 'All Groups' mode specifically.",
+    "references": []
+  },
+  {
+    "id": "review-general-001",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 244,
+    "line_end": 266,
+    "content": "RegexMatch: Exception re.error is caught and silently returns False without user feedback.",
+    "severity": "medium",
+    "feedback_type": "code_improvement",
+    "recommendation": "Raise an exception or return a tuple indicating error status, or provide an error output port for invalid patterns. Users need to know their regex is broken.",
+    "references": []
+  },
+  {
+    "id": "review-general-002",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 268,
+    "line_end": 303,
+    "content": "RegexExtract: Exception re.error is caught and silently returns empty string without user feedback.",
+    "severity": "medium",
+    "feedback_type": "code_improvement",
+    "recommendation": "Raise an exception or return a tuple indicating error status, or provide an error output port for invalid patterns. Users need to know their regex is broken.",
+    "references": []
+  }
+]

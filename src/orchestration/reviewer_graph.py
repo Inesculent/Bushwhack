@@ -14,7 +14,6 @@ from src.domain.schemas import (
     CodeEntity,
     PreflightRequest,
     PreflightSummary,
-    ReflectionReport,
     RunMetadata,
     StructuralExtractionGap,
 )
@@ -43,11 +42,11 @@ from src.infrastructure.structural_topology import (
 from src.orchestration.context.review_context import LazyReviewContextProvider
 from src.orchestration.nodes.application.cleanup import make_adversarial_cleanup_node
 from src.orchestration.nodes.application.critique_revision import (
-    _has_focused_evidence,
     _needs_revision_candidates,
     make_critique_revision_digest_node,
     make_critique_revision_reduce_node,
     plan_critique_revision_shards,
+    revision_inputs_ready,
 )
 from src.orchestration.nodes.application.critiquer import make_general_critiquer_node
 from src.orchestration.nodes.application.focused_context import make_focused_context_node
@@ -68,6 +67,11 @@ from src.orchestration.nodes.exploration.structural_extractor import make_struct
 from src.orchestration.nodes.exploration.unverified_call_resolver import (
     make_unverified_call_resolver_node,
     route_after_unverified_call_resolver,
+)
+from src.orchestration.routing.adversarial_after_reflection import route_focused_after_reflection
+from src.orchestration.routing.verifier_fanout import (
+    collect_verifier_send_payloads,
+    make_verifier_subgraph_node,
 )
 
 logger = logging.getLogger(__name__)
@@ -111,21 +115,34 @@ def _route_critique_tasks(state: GraphState):
     return sends or "adversarial_reflection"
 
 
-def _route_focused_after_reflection(state: GraphState) -> str:
-    for raw in state.get("reflection_reports", []) or []:
-        report: ReflectionReport | None
-        if isinstance(raw, ReflectionReport):
-            report = raw
-        elif isinstance(raw, dict):
-            try:
-                report = ReflectionReport.model_validate(raw)
-            except Exception:
-                report = None
-        else:
-            report = None
-        if report is not None and report.verdict == "needs_context" and report.focused_request is not None:
-            return "focused_context"
-    return "adversarial_cleanup"
+def _make_post_reflection_evidence_pass_node():
+    """No-op join point so verifier/critique routing runs even when the second focused_context fetch is skipped."""
+
+    node_name = "post_reflection_evidence_pass"
+
+    def post_reflection_evidence_pass_node(state: GraphState) -> Dict[str, Any]:
+        metadata = dict(state.get("metadata") or {})
+        slot = dict(metadata.get(node_name) or {})
+        slot["entered"] = True
+        metadata[node_name] = slot
+        if metadata.get("review_trace_enabled"):
+            trace_logger.info(
+                "TRACE %s run_id=%s needs_revision=%s",
+                node_name,
+                state.get("run_id", "unknown"),
+                _needs_revision_candidates(state),
+            )
+        return {"metadata": metadata, "node_history": [node_name]}
+
+    return post_reflection_evidence_pass_node
+
+
+def _route_after_focused_context(state: GraphState):
+    """Optionally fan out verifier branches, then fall through to critique revision routing."""
+    sends = collect_verifier_send_payloads(state)
+    if sends:
+        return sends
+    return _route_critique_revision(state)
 
 
 def _route_critique_revision(state: GraphState):
@@ -140,12 +157,12 @@ def _route_critique_revision(state: GraphState):
                 "adversarial_cleanup_no_candidates",
             )
         return "adversarial_cleanup"
-    if not _has_focused_evidence(state, candidate_ids):
+    if not revision_inputs_ready(state, candidate_ids):
         if metadata.get("review_trace_enabled"):
             trace_logger.info(
                 "TRACE dispatch_critique_revision run_id=%s route=%s",
                 state.get("run_id", "unknown"),
-                "adversarial_cleanup_no_focused_evidence",
+                "adversarial_cleanup_no_revision_inputs",
             )
         return "adversarial_cleanup"
     settings = get_settings()
@@ -476,18 +493,23 @@ def build_graph(
         builder.add_node("critique_revision_digest", make_critique_revision_digest_node())
         builder.add_node("critique_revision_reduce", make_critique_revision_reduce_node())
         builder.add_node("adversarial_cleanup", make_adversarial_cleanup_node())
+        builder.add_node("verifier_subgraph", make_verifier_subgraph_node())
+        builder.add_node("post_reflection_evidence_pass", _make_post_reflection_evidence_pass_node())
         builder.add_conditional_edges("review_planner", _route_critique_tasks)
         builder.add_edge("general_critiquer", "initial_focused_context")
         builder.add_edge("initial_focused_context", "adversarial_reflection")
         builder.add_conditional_edges(
             "adversarial_reflection",
-            _route_focused_after_reflection,
+            route_focused_after_reflection,
             {
                 "focused_context": "focused_context",
+                "post_reflection_evidence_pass": "post_reflection_evidence_pass",
                 "adversarial_cleanup": "adversarial_cleanup",
             },
         )
-        builder.add_conditional_edges("focused_context", _route_critique_revision)
+        builder.add_conditional_edges("focused_context", _route_after_focused_context)
+        builder.add_conditional_edges("post_reflection_evidence_pass", _route_after_focused_context)
+        builder.add_conditional_edges("verifier_subgraph", _route_critique_revision)
         builder.add_edge("critique_revision_digest", "critique_revision_reduce")
         builder.add_edge("critique_revision_reduce", "adversarial_cleanup")
         builder.add_edge("adversarial_cleanup", "review_synthesizer")

@@ -92,6 +92,14 @@ def parse_args() -> argparse.Namespace:
         help="Optional exact PR URL to run from the processed dataset before applying --limit.",
     )
     parser.add_argument(
+        "--snapshot-id",
+        default=None,
+        help=(
+            "Bushwhack snapshot folder name under snapshot_base_path (e.g. bushwhack_runs/<name>). "
+            "Loads graph/topology/semantic artifacts and reviews the PR diff without re-running Phase 2."
+        ),
+    )
+    parser.add_argument(
         "--output-root",
         type=Path,
         default=None,
@@ -146,6 +154,7 @@ def _cli_flags_for_run_meta(args: argparse.Namespace) -> dict[str, Any]:
             else None
         ),
         "pr_url": args.pr_url,
+        "snapshot_id": args.snapshot_id,
         "output_root": str(args.output_root) if args.output_root is not None else None,
         "repo_root": str(args.repo_root) if args.repo_root is not None else None,
         "trace": args.trace,
@@ -190,6 +199,7 @@ def main() -> None:
         trace=args.trace,
         use_basic_graph=args.basic_graph,
         cli_flags=_cli_flags_for_run_meta(args),
+        snapshot_id=args.snapshot_id,
     )
     logger.info("run_id: %s", artifacts.run_id)
     logger.info("output_dir: %s", artifacts.output_dir)

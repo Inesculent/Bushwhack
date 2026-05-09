@@ -1,0 +1,24 @@
+[
+  {
+    "id": "6-StringCompare",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 183,
+    "line_end": 199,
+    "content": "class StringCompare():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string_a\": (IO.STRING, {\"multiline\": True}),\n                \"string_b\": (IO.STRING, {\"multiline\": True}),\n                \"mode\": (IO.COMBO, {\"options\": [\"Starts With\", \"Ends With\", \"Equal\"]}),\n                \"case_sensitive\": (IO.BOOLEAN, {\"default\": True})\n            }\n        }\n\n    RETURN_TYPES = (IO.BOOLEAN,)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string_a, string_b, mode, case_sensitive, **kwargs):\n        if case_sensitive:\n            a = string_a\n            b = string_b\n        else:\n            a = string_a.lower()\n            b = string_b.lower()\n\n        if mode == \"Equal\":\n            return a == b,\n        elif mode == \"Starts With\":\n            return a.startswith(b),\n        elif mode == \"Ends With\":\n            return a.endswith(b),",
+    "severity": "high",
+    "feedback_type": "defect_detection",
+    "recommendation": "Add an else clause that returns False or raises a validation error for unknown modes. Validate mode against allowed options at the start of execute.",
+    "references": []
+  },
+  {
+    "id": "2-001",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 296,
+    "line_end": 313,
+    "content": "The `RegexExtract.execute` method catches `re.error` but not `IndexError`. If `group_index` exceeds the number of captured groups (e.g., `group_index=5` for a regex with only 2 groups), `match.group(group_index)` raises `IndexError`, causing the node to crash instead of returning an empty string.",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Add `except IndexError:` to the `try` block to handle invalid group indices gracefully, returning an empty string or raising a more descriptive error.",
+    "references": []
+  }
+]

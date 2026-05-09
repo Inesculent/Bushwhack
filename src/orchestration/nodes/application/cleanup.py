@@ -207,6 +207,7 @@ def make_adversarial_cleanup_node():
         reports = list(state.get("reflection_reports", []) or [])
         metadata = dict(state.get("metadata", {}))
         revisions = _revision_map(metadata)
+        verifier_hints: Dict[str, Any] = dict(metadata.get("verifier_hints") or {})
 
         if not candidates:
             return {
@@ -261,6 +262,9 @@ def make_adversarial_cleanup_node():
             relevant_reports = [
                 report for report in cand_reports if report.reflector_specialty in relevant_reflectors
             ]
+            relevant_needs_verification = any(
+                report.verdict == "needs_verification" for report in relevant_reports
+            )
             off_domain_reports = [
                 report for report in cand_reports if report.reflector_specialty not in relevant_reflectors
             ]
@@ -310,7 +314,10 @@ def make_adversarial_cleanup_node():
                 )
                 continue
 
-            if not any(r.verdict in {"accept", "reclassify", "needs_context"} for r in relevant_reports):
+            if not any(
+                r.verdict in {"accept", "reclassify", "needs_context", "needs_verification"}
+                for r in relevant_reports
+            ):
                 drop(
                     candidate,
                     "no_relevant_acceptance",
@@ -345,13 +352,21 @@ def make_adversarial_cleanup_node():
                 drop(candidate, "required_context_not_gathered")
                 continue
 
-            if needs_context:
+            if needs_context or relevant_needs_verification:
                 rev = revisions.get(candidate.candidate_id) or {}
                 verdict = str(rev.get("verdict", "")).lower()
                 if verdict == "reject":
                     drop(candidate, "revision_reject")
                     continue
-                if verdict != "accept" and not _focused_hits_for_candidate(state, candidate.candidate_id):
+                hint = verifier_hints.get(candidate.candidate_id)
+                verified_hint = (
+                    isinstance(hint, dict) and str(hint.get("verdict", "")).lower() == "verified"
+                )
+                if (
+                    verdict != "accept"
+                    and not _focused_hits_for_candidate(state, candidate.candidate_id)
+                    and not (relevant_needs_verification and verified_hint)
+                ):
                     drop(candidate, "needs_context_without_supporting_revision")
                     continue
 
@@ -382,6 +397,8 @@ def make_adversarial_cleanup_node():
                 "relevant_reflectors": sorted(relevant_reflectors),
                 "had_focused_context": _focused_hits_for_candidate(state, candidate.candidate_id),
             }
+            if candidate.candidate_id in verifier_hints:
+                lifecycle[candidate.candidate_id]["verifier_advisory"] = verifier_hints[candidate.candidate_id]
 
         if _trace_enabled(state):
             trace_logger.info(

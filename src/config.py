@@ -1,3 +1,4 @@
+import sys
 from functools import lru_cache
 from pathlib import Path
 from typing import List, Optional
@@ -25,7 +26,7 @@ class Settings(BaseSettings):
 		description="Use MCP transport for AST parsing when enabled; otherwise use native in-process parsing.",
 	)
 	ast_mcp_command: str = Field(
-		default="python",
+		default_factory=lambda: sys.executable,
 		description="Command used to start the AST MCP server process.",
 	)
 	ast_mcp_args: List[str] = Field(
@@ -97,7 +98,7 @@ class Settings(BaseSettings):
 		description="Enable GitHub MCP for documentation and PR context enrichment.",
 	)
 	github_mcp_command: str = Field(
-		default="python",
+		default_factory=lambda: sys.executable,
 		description="Command used to start the GitHub MCP server process.",
 	)
 	github_mcp_args: List[str] = Field(
@@ -302,6 +303,64 @@ class Settings(BaseSettings):
 		description=(
 			"Extra wall-clock budget for adversarial reflectors to keep waiting/retrying local LLM timeouts "
 			"while the model server still answers status probes."
+		),
+	)
+
+	# Self-healing verifier (optional runtime proof in Docker)
+	verifier_enabled: bool = Field(
+		default=True,
+		description=(
+			"Enable verifier after focused_context or post_reflection_evidence_pass for eligible claim types. "
+			"When true, runs only for claim types allowed below; use verifier_skip_if_no_docker to no-op when Docker is absent."
+		),
+	)
+	verifier_image: str = Field(
+		default="verifier-test-env:latest",
+		description="Docker image for verifier script execution (repo mounted at /repo).",
+	)
+	verifier_test_timeout_seconds: int = Field(
+		default=300,
+		ge=10,
+		le=3600,
+		description="Wall-clock timeout per verifier script execution.",
+	)
+	verifier_max_attempts: int = Field(
+		default=3,
+		ge=1,
+		le=5,
+		description="Max test-generation/execute cycles per candidate before inconclusive.",
+	)
+	verifier_run_on_defect: bool = Field(
+		default=True,
+		description="Run verifier for claim_type defect when other gates pass.",
+	)
+	verifier_run_on_security: bool = Field(
+		default=True,
+		description="Run verifier for claim_type security_risk (e.g. ReDoS, crash-on-input probes).",
+	)
+	verifier_run_on_performance: bool = Field(
+		default=False,
+		description="Run verifier for claim_type performance_regression.",
+	)
+	verifier_mock_heavy_deps: bool = Field(
+		default=True,
+		description="Instruct the generator to use sys.modules MagicMock prelude for heavy deps.",
+	)
+	verifier_total_budget_per_pr: int = Field(
+		default=10,
+		ge=1,
+		le=50,
+		description="Max verifier Send branches per focused_context wave.",
+	)
+	verifier_skip_if_no_docker: bool = Field(
+		default=True,
+		description="If Docker is unreachable, skip verifier and continue the reviewer graph.",
+	)
+	verifier_require_focused_evidence: bool = Field(
+		default=True,
+		description=(
+			"When true, only verify candidates that already have focused_context_results with snippets or search hits. "
+			"Set false to allow verifier using candidate JSON + git diff only (e.g. needs_context without a focused_request)."
 		),
 	)
 

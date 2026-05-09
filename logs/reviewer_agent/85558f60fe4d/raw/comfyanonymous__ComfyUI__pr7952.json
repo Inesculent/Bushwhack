@@ -1,0 +1,932 @@
+{
+  "metadata": {
+    "experiment": "reviewer_graph_parallel",
+    "run_id": "85558f60fe4d",
+    "graph_run_id": "85558f60fe4d:comfyanonymous__ComfyUI__pr7952_from_snapshot_febdd274",
+    "pr_started_at": "2026-05-09T04:35:46.227575+00:00",
+    "pr_url": "https://github.com/comfyanonymous/ComfyUI/pull/7952",
+    "pr_title": "Add nodes for basic string operations",
+    "pr_description": "String nodes, requested in RFC https://github.com/Kosinkadink/rfcs/blob/main/rfcs/0000-corenodes.md#string-nodes\r\nDesigned nodes:\r\n1. Concatenate, and input is: \r\n- string_a, \r\n- string_b \r\n- separator\r\n![image](https://github.com/user-attachments/assets/894c0afc-664f-49a2-a0de-ed60c2aacfc5)\r\n2. Substring, and input is:\r\n- string\r\n- start\r\n- end\r\n![image](https://github.com/user-attachments/assets/1ab814a6-f360-43cb-86be-ac61486c9a78)\r\n\r\n3. Length, and input is\r\n- string\r\n![image](https://github.com/user-attachments/assets/eb4f7413-2f59-4faf-aaa7-cc3b0fbf4322)\r\n\r\n4. Case Converter, and input is\r\n- string\r\n- mode, with options are [\"UPPERCASE\", \"lowercase\", \"Capitalize\", \"Title Case\"]\r\n![image](https://github.com/user-attachments/assets/ba1041fd-40f5-4af0-a52b-c0df3ae3d3e4)\r\n\r\n5. Trim, and input is\r\n- string\r\n- mode, with options are [\"BOTH\", \"LEFT\", \"RIGHT\"]\r\n![image](https://github.com/user-attachments/assets/6489d7d8-ab78-4e9e-b172-b4f7e3cbacb2)\r\n\r\n6. Replace, and input is\r\n- string\r\n- find\r\n- replace\r\n![image](https://github.com/user-attachments/assets/997c09d6-75f2-4e71-90d5-6d0f77cfcb09)\r\n\r\n7. Contains, and input is\r\n- string\r\n- substring\r\n- case_sensitive\r\n![image](https://github.com/user-attachments/assets/e66adb5b-02de-4ba8-b848-f9f83215e694)\r\n\r\n8. Compare, and input is\r\n- string_a\r\n- string_b\r\n- mode, with options are [\"StartsWith\", \"EndsWith\", \"Equal\"]\r\n- case_sensitive\r\n![image](https://github.com/user-attachments/assets/4dd3b9ae-f3d8-41bc-90c2-8e459a923840)\r\n\r\n9. Regex Match, and input is\r\n- string\r\n- regex_pattern\r\n- case_insensitive\r\n- multiline\r\n- dotall\r\n![image](https://github.com/user-attachments/assets/a57ea778-009b-4b8e-94d0-e440c6ca235d)\r\n\r\n10. Regex Extract, and input is\r\n- string\r\n- regex_pattern\r\n- mode, with options are [\"First Match\", \"All Matches\", \"First Group\", \"All Groups\"]\r\n- case_insensitive\r\n- multiline\r\n- dotall\r\n- group_index\r\n![image](https://github.com/user-attachments/assets/b4d1fce8-f2a9-422d-8b62-9ac90d50060a)",
+    "pr_repo": "comfyanonymous/ComfyUI",
+    "pr_number": 7952,
+    "review_repo_url": "https://github.com/comfyanonymous/ComfyUI",
+    "review_pr_number": 7952,
+    "review_trace_enabled": true,
+    "snapshot_loaded": true,
+    "snapshot_source": "loaded",
+    "docs_prebrief": {
+      "status": "skipped_snapshot_resume",
+      "reason": "snapshot_resume_uses_precomputed_context"
+    },
+    "review_planner": {
+      "summary": "The task is to review a new file `comfy_extras/nodes_string.py` and update `nodes.py`. The new file adds several string manipulation nodes. The change to `nodes.py` is simply importing the new module. The diff indicates this is a new file (0 additions to 0 deletions is strange, but the diff clearly shows the whole file content as additions). The context shows the file content completely.\n\nI need to analyze the new string manipulation nodes for potential issues:\n\n1. **RegexMatch node**: Returns `False` if `re.error` is caught, but the return type is `(IO.BOOLEAN,)`. This is acceptable behavior.\n\n2. **RegexExtract node**: Has a `group_index` parameter with `min: 0, max: 100`. However, there's a potential issue - if no groups are captured but `mode` tries to access `group(group_index)`, it could cause an IndexError.\n\n3. **All Groups mode**: The implementation has a bug - it creates a local variable `results` and `result` but if `results` is empty, `result` remains undefined. Let me check the code again.\n\nLooking at `RegexExtract.execute()` - when `mode == \"All Groups\"`:\n```python\nelif mode == \"All Groups\":\n    matches = re.finditer(regex_pattern, string, flags)\n    results = []\n    for match in matches:\n        if match.groups() and len(match.groups()) >= group_index:\n            results.append(match.group(group_index))\n    result = join_delimiter.join(results)\n```\n\nThis looks correct - `result` is assigned in each branch, including the `All Groups` branch.\n\n4. **StringCompare node**: When `mode` is \"Ends With\" but no else clause returns anything, it would return `None`. Let me check - the code shows:\n```python\n        if mode == \"Equal\":\n            return a == b,  \n        elif mode == \"Starts With\":\n            return a.startswith(b),  \n        elif mode == \"Ends With\":\n            return a.endswith(b),\n```\n\nThis looks fine - all modes are covered.\n\n5. **Input type consistency**: Some nodes accept multiline strings for inputs like `find` and `replace` in `StringReplace`. This might be unnecessary but not necessarily wrong.\n\n6. **Performance**: `re.finditer` and `re.findall` can be expensive on large strings, but this is expected for regex operations.\n\n7. **The diff shows 0 additions/deletions** but clearly shows the entire new file. This seems like a metadata issue with the diff parsing, not a real issue.\n\nLet me create a focused review plan for the specialists.\n\n**Potential findings to investigate:**\n1. Security: Regex nodes could potentially allow DoS with malicious patterns (ReDoS attacks)\n2. Logic: Edge cases in string operations (empty strings, None values)\n3. Performance: Regex operations on large strings could be slow\n4. General: Input type consistency (multiline for single-line string inputs)",
+      "task_count": 4,
+      "specialties": [
+        "general",
+        "logic",
+        "performance",
+        "security"
+      ],
+      "tasks": [
+        {
+          "id": "security_review",
+          "title": "Security Review: Regex DoS Vulnerability",
+          "description": "Investigate potential ReDoS vulnerabilities in RegexMatch and RegexExtract nodes. Check if regex pattern inputs are validated/sanitized or if users could craft malicious patterns causing exponential backtracking attacks.",
+          "target_files": [
+            "comfy_extras/nodes_string.py"
+          ],
+          "subtasks": [],
+          "specialty": "security",
+          "depth": 3,
+          "assigned_model": "general"
+        },
+        {
+          "id": "logic_review",
+          "title": "Logic Review: String Operation Edge Cases",
+          "description": "Verify behavior of string operations with edge cases: empty strings, None values, special characters, unicode handling. Check if missing group accessors properly handle index out of bounds.",
+          "target_files": [
+            "comfy_extras/nodes_string.py"
+          ],
+          "subtasks": [],
+          "specialty": "logic",
+          "depth": 3,
+          "assigned_model": "general"
+        },
+        {
+          "id": "performance_review",
+          "title": "Performance Review: Regex Performance",
+          "description": "Analyze regex operation complexity and potential performance issues with large inputs. Check if findall/finditer could block threads during regex matching.",
+          "target_files": [
+            "comfy_extras/nodes_string.py"
+          ],
+          "subtasks": [],
+          "specialty": "performance",
+          "depth": 3,
+          "assigned_model": "general"
+        },
+        {
+          "id": "general_review",
+          "title": "General Review: Node Consistency and Integration",
+          "description": "Verify integration with nodes.py, check input type consistency (multiline=True for simple string ops), and ensure all return types match expected schemas.",
+          "target_files": [
+            "comfy_extras/nodes_string.py",
+            "nodes.py"
+          ],
+          "subtasks": [],
+          "specialty": "general",
+          "depth": 3,
+          "assigned_model": "general"
+        }
+      ],
+      "warnings": []
+    },
+    "general_critiquer": {
+      "by_task": {
+        "general_review": {
+          "summary": "Task: General Review of string nodes integration and type consistency.\n\n## Changes Overview\n\n1. **Added `nodes_string.py`**: New file containing 10 string manipulation node classes (`StringConcatenate`, `StringSubstring`, `StringLength`, `CaseConverter`, `StringTrim`, `StringReplace`, `StringContains`, `StringCompare`, `RegexMatch`, `RegexExtract`).\n\n2. **Updated `nodes.py`**: Added `nodes_string.py` to the list of extra nodes imported in `init_builtin_extra_nodes()`.\n\n## Potential Issues Identified\n\n### 1. Logic Bug: Missing `else` branch handling in `StringCompare.execute()`\n\n**Issue**: In `StringCompare.execute()`, when `mode != \"Equal\"`, `mode != \"Starts With\"`, and `mode != \"Ends With\"`, the method falls through without returning anything, causing Python to implicitly return `None`.\n\n**Evidence**: In `comfy_extras/nodes_string.py` lines 237-245:\n```python\nif mode == \"Equal\":\n    return a == b,\nelif mode == \"Starts With\":\n    return a.startswith(b),\nelif mode == \"Ends With\":\n    return a.endswith(b),\n# No else branch or return statement\n```\n\nThe `RETURN_TYPES` is declared as `(IO.BOOLEAN,)`, but if an invalid mode is passed, the method returns `None` instead of a boolean.\n\n**Severity**: Medium (logic bug, incorrect return type for edge cases).\n\n### 2. Performance Risk: Regex operations without input validation\n\n**Issue**: `RegexMatch.execute()` and `RegexExtract.execute()` perform regex operations without validating the `regex_pattern` parameter for potential catastrophic backtracking or ReDoS vulnerabilities.\n\n**Evidence**: In `comfy_extras/nodes_string.py` lines 249-278 and 281-317, regex patterns are compiled and used directly without any validation or timeout mechanisms.\n\n**Severity**: Medium (security/performance risk for malicious user inputs).\n\n### 3. Missing Test Coverage: No test file for new string nodes\n\n**Issue**: The new `nodes_string.py` file contains 10 node classes with various logic paths but no corresponding test file is shown or referenced.\n\n**Evidence**: The task requires \"ensure all return types match expected schemas\" and \"Verify integration with nodes.py\", but no tests are visible.\n\n**Severity**: Low (maintainability gap, but important for reliability).\n\n## Integration Verification\n\n- `nodes_string.py` is added to the import list in `nodes.py` line 2265.\n- All nodes define `INPUT_TYPES` with proper `IO.STRING` types and `multiline: True` for text inputs.\n- All nodes define `RETURN_TYPES` matching their outputs.\n- `NODE_CLASS_MAPPINGS` and `NODE_DISPLAY_NAME_MAPPINGS` are properly defined.\n\nNo critical integration defects found.",
+          "candidate_count": 3,
+          "warnings": [
+            "Confidence is moderate for security findings (ReDoS risk) without seeing COMFYUI framework-level protections",
+            "Test file verification incomplete - need to check if test files exist for string nodes",
+            "Integration verification assumed correct based on code structure, but runtime behavior needs verification"
+          ],
+          "initial_focus_requests": [
+            {
+              "request_id": "focus-1",
+              "candidate_id": "general_review-1",
+              "requested_by_specialty": "logic",
+              "file_paths": [
+                "comfy_extras/nodes_string.py"
+              ],
+              "symbol_queries": [
+                "StringCompare.execute"
+              ],
+              "text_queries": [
+                "mode options validation",
+                "return type for invalid mode"
+              ],
+              "reason": "Verify if mode validation exists and how invalid modes are handled in the UI or node framework"
+            },
+            {
+              "request_id": "focus-2",
+              "candidate_id": "general_review-2",
+              "requested_by_specialty": "security",
+              "file_paths": [
+                "comfy_extras/nodes_string.py",
+                "nodes.py"
+              ],
+              "symbol_queries": [],
+              "text_queries": [
+                "ReDoS protection",
+                "regex timeout mechanism",
+                "input validation"
+              ],
+              "reason": "Determine if COMFYUI has built-in protections against malicious regex patterns"
+            },
+            {
+              "request_id": "focus-3",
+              "candidate_id": "general_review-3",
+              "requested_by_specialty": "security",
+              "file_paths": [
+                "comfy_extras/nodes_string.py"
+              ],
+              "symbol_queries": [
+                "RegexExtract.execute"
+              ],
+              "text_queries": [
+                "findall",
+                "finditer",
+                "regex complexity limits"
+              ],
+              "reason": "Verify if ReDoS risks are mitigated in the regex extraction implementation"
+            },
+            {
+              "request_id": "general_review-2:auto-context:2",
+              "candidate_id": "general_review-2",
+              "requested_by_specialty": "security",
+              "file_paths": [
+                "comfy_extras/nodes_string.py",
+                "nodes.py"
+              ],
+              "symbol_queries": [],
+              "text_queries": [
+                "comfy_extras/nodes_string.py",
+                "Malicious regex patterns could cause ReDoS (Regular Expression Denial of Service) or excessive memory usage",
+                "Malicious regex patterns could cause ReDoS (Regular Expression Denial of Service) or excessive memory usage def execute(self, string, regex_pattern, case_insens"
+              ],
+              "reason": "Deterministic context requirement for a high-risk or externally dependent security_risk candidate."
+            },
+            {
+              "request_id": "general_review-3:auto-context:3",
+              "candidate_id": "general_review-3",
+              "requested_by_specialty": "security",
+              "file_paths": [
+                "comfy_extras/nodes_string.py",
+                "nodes.py"
+              ],
+              "symbol_queries": [],
+              "text_queries": [
+                "comfy_extras/nodes_string.py",
+                "All Matches and All Groups modes use findall/finditer which can cause exponential backtracking on malicious patterns",
+                "All Matches and All Groups modes use findall/finditer which can cause exponential backtracking on malicious patterns def execute(self, string, regex_pattern, mo"
+              ],
+              "reason": "Deterministic context requirement for a high-risk or externally dependent security_risk candidate."
+            }
+          ]
+        },
+        "logic_review": {
+          "summary": "I need to review the string operation edge cases in `comfy_extras/nodes_string.py`. The file implements various string manipulation nodes. Key areas to check: None handling, empty string handling, special characters, unicode handling, regex group index out of bounds. Looking at the diff, this is a new file, so I need to check for defensive programming practices.",
+          "candidate_count": 0,
+          "warnings": [
+            "Input validation: String operations assume inputs are proper string types. Python's len(), slicing, and string methods will handle empty strings fine but may fail or produce unexpected results with None values. Need to check if the framework guarantees string inputs or if this node needs defensive validation.",
+            "Regex group bounds: RegexExtract has group_index with min:0 max:100, but len(match.groups()) check should guard against index out of bounds even if the UI shows different values.",
+            "Empty string handling: Empty strings should work fine with most operations but edge cases like RegexExtract with mode='First Match' returning empty string is appropriate."
+          ],
+          "initial_focus_requests": [
+            {
+              "request_id": "string_validation_check",
+              "candidate_id": "logic_review",
+              "requested_by_specialty": "logic",
+              "file_paths": [
+                "comfy_extras/nodes_string.py"
+              ],
+              "symbol_queries": [],
+              "text_queries": [
+                "Check if string inputs are validated for None/null",
+                "Check if string inputs are validated for proper type",
+                "Check how None or non-string inputs are handled"
+              ],
+              "reason": "Need to verify if inputs are validated before string operations like len(), slicing, or method calls."
+            }
+          ]
+        },
+        "performance_review": {
+          "summary": "The user wants me to perform a performance review on the newly added `comfy_extras/nodes_string.py` file, specifically focusing on regex operations (`RegexMatch`, `RegexExtract`) and potential blocking issues with `findall`/`finditer` during large input processing.\n\nI need to:\n1.  Identify regex usage in `RegexMatch` and `RegexExtract` classes.\n2.  Analyze the complexity of regex operations, especially with unvalidated user input.\n3.  Check for ReDoS (Regular Expression Denial of Service) vulnerabilities.\n4.  Evaluate if `re.findall` or `re.finditer` could block the thread.\n5.  Generate findings with evidence-backed claims, severity, and actionable recommendations.\n6.  Route findings to the correct specialty (Security or Performance).\n\nKey areas to look at:\n- `RegexMatch.execute`: Uses `re.search`.\n- `RegexExtract.execute`: Uses `re.search`, `re.findall`, `re.finditer`.\n- Input validation: `regex_pattern` comes from user input (string). Is it sanitized?\n- Recursion depth limits (Python's default regex engine limits recursion but not always against malicious patterns).\n- `group_index` max: `max: 100` in `INPUT_TYPES`. This is reasonable but worth noting.\n- `mode == \"All Groups\"`: Uses `finditer` and iterates.\n\nPotential issues:\n1.  **ReDoS / Denial of Service**: User-provided `regex_pattern` without complexity checks. Malicious patterns like `(a+)+`, `(a*)*`, `(a|a*)*` can cause exponential backtracking. Python's `re` module is susceptible to this unless a safety mechanism (like `pcre2` or `regex` library with timeouts) or input validation is used. Standard `re` does not have a timeout.\n2.  **Blocking Thread**: `re.findall` and `re.finditer` run synchronously. If the regex matches many times or has high complexity, it blocks the execution thread (likely the main UI thread or a worker thread in ComfyUI). Without a timeout mechanism, this can hang the application.\n3.  **Large Inputs**: `multiline: True` combined with large strings could lead to performance issues, though the regex engine usually handles large strings okay unless the pattern is catastrophic.\n\nEvidence from context:\n- The file imports `re`.\n- `RegexExtract.execute` handles `\"All Matches\"` with `re.findall` and `\"All Groups\"` with `re.finditer`.\n- `regex_pattern` is user input `(IO.STRING)`.\n- No complexity check or timeout is implemented in the `execute` methods.\n- Python's `re` module is the standard library implementation, known to be vulnerable to ReDoS on untrusted input.\n\nSeverity: High (Security/Performance). ReDoS is a security risk (DoS). Blocking can be a performance regression causing UI freeze.\n\nI should prioritize finding a High severity security finding regarding ReDoS, and potentially a Medium/Low performance finding regarding thread blocking without timeout.\n\nPlan:\n1.  Formulate a High severity finding for ReDoS/DoS in `RegexExtract` (and `RegexMatch`).\n2.  Formulate a Medium severity finding for thread blocking without timeout in `RegexExtract`.\n3.  Check if there are any other issues.\n4.  Write the output in the requested schema.",
+          "candidate_count": 2,
+          "warnings": [
+            "No explicit timeout configuration found in `comfy_extras/nodes_string.py` for regex operations. Standard `re` module does not support timeouts."
+          ],
+          "initial_focus_requests": []
+        },
+        "security_review": {
+          "summary": "Reviewing the `RegexMatch` and `RegexExtract` nodes for ReDoS vulnerability.",
+          "candidate_count": 2,
+          "warnings": [],
+          "initial_focus_requests": [
+            {
+              "request_id": "security_review_1:auto-context:1",
+              "candidate_id": "security_review_1",
+              "requested_by_specialty": "security",
+              "file_paths": [
+                "comfy_extras/nodes_string.py"
+              ],
+              "symbol_queries": [],
+              "text_queries": [
+                "comfy_extras/nodes_string.py",
+                "Users can provide malicious regex patterns that cause exponential backtracking (ReDoS), leading to denial-of-service or ",
+                "Users can provide malicious regex patterns that cause exponential backtracking (ReDoS), leading to denial-of-service or hangs. Both `string` and `regex_pattern`"
+              ],
+              "reason": "Deterministic context requirement for a high-risk or externally dependent security_risk candidate."
+            },
+            {
+              "request_id": "security_review_2:auto-context:2",
+              "candidate_id": "security_review_2",
+              "requested_by_specialty": "security",
+              "file_paths": [
+                "comfy_extras/nodes_string.py"
+              ],
+              "symbol_queries": [],
+              "text_queries": [
+                "comfy_extras/nodes_string.py",
+                "Users can provide malicious regex patterns that cause exponential backtracking (ReDoS), leading to denial-of-service or ",
+                "Users can provide malicious regex patterns that cause exponential backtracking (ReDoS), leading to denial-of-service or hangs. This node uses multiple regex fun"
+              ],
+              "reason": "Deterministic context requirement for a high-risk or externally dependent security_risk candidate."
+            }
+          ]
+        }
+      }
+    },
+    "focused_context": {
+      "fulfilled_ids": [
+        "focus-1",
+        "focus-2",
+        "focus-3",
+        "general_review-2:auto-context:2",
+        "general_review-3:auto-context:3",
+        "security_review_1:auto-context:1",
+        "security_review_2:auto-context:2",
+        "string_validation_check"
+      ],
+      "warnings": []
+    },
+    "adversarial_reflection": {
+      "report_count": 2,
+      "focused_request_count": 0,
+      "routed_candidate_counts": {
+        "security": 5,
+        "logic": 1,
+        "performance": 1,
+        "general": 0
+      },
+      "total_routed_candidate_reviews": 7,
+      "warnings": []
+    },
+    "adversarial_cleanup": {
+      "promoted_count": 1,
+      "dropped_candidate_ids": [
+        "general_review-2",
+        "general_review-3",
+        "performance_review_001",
+        "performance_review_002",
+        "security_review_1",
+        "security_review_2"
+      ],
+      "ignored_off_domain_rejections": {},
+      "ignored_off_domain_context_requests": {},
+      "missing_required_reflections": {
+        "general_review-2": [
+          "security"
+        ],
+        "general_review-3": [
+          "security"
+        ],
+        "performance_review_001": [
+          "security"
+        ],
+        "security_review_1": [
+          "security"
+        ],
+        "security_review_2": [
+          "security"
+        ]
+      },
+      "misrouted_candidate_ids": {},
+      "candidate_lifecycle": {
+        "general_review-1": {
+          "decision": "promoted",
+          "reason": "accepted_by_relevant_reflectors",
+          "claim_type": "defect",
+          "final_category": "logic",
+          "relevant_reflectors": [
+            "logic"
+          ],
+          "had_focused_context": true
+        },
+        "general_review-2": {
+          "decision": "dropped",
+          "reason": "missing_required_reflection",
+          "claim_type": "security_risk",
+          "suspected_category": "security",
+          "expected_reflectors": [
+            "security"
+          ]
+        },
+        "general_review-3": {
+          "decision": "dropped",
+          "reason": "missing_required_reflection",
+          "claim_type": "security_risk",
+          "suspected_category": "security",
+          "expected_reflectors": [
+            "security"
+          ]
+        },
+        "performance_review_001": {
+          "decision": "dropped",
+          "reason": "missing_required_reflection",
+          "claim_type": "security_risk",
+          "suspected_category": "security",
+          "expected_reflectors": [
+            "security"
+          ]
+        },
+        "performance_review_002": {
+          "decision": "dropped",
+          "reason": "needs_context_without_supporting_revision",
+          "claim_type": "performance_regression",
+          "suspected_category": "performance"
+        },
+        "security_review_1": {
+          "decision": "dropped",
+          "reason": "missing_required_reflection",
+          "claim_type": "security_risk",
+          "suspected_category": "security",
+          "expected_reflectors": [
+            "security"
+          ]
+        },
+        "security_review_2": {
+          "decision": "dropped",
+          "reason": "missing_required_reflection",
+          "claim_type": "security_risk",
+          "suspected_category": "security",
+          "expected_reflectors": [
+            "security"
+          ]
+        }
+      }
+    },
+    "review_synthesizer": {
+      "worker_count": 0,
+      "reflection_report_count": 2,
+      "raw_finding_count": 1,
+      "final_finding_count": 1,
+      "dropped_duplicate_ids": [],
+      "worker_reports": [],
+      "reflection_reports": [
+        {
+          "candidate_id": "general_review-1",
+          "reflector_specialty": "logic",
+          "verdict": "accept",
+          "rationale": "The StringCompare.execute() method defines an explicit if/elif chain for three valid mode values ('Equal', 'Starts With', 'Ends With') but lacks a final else branch or default return statement. In Python, if none of the conditions match, the function implicitly returns None. However, the node's RETURN_TYPES declares (IO.BOOLEAN,), which contracts with a boolean return value. Passing None to a downstream node expecting a boolean will likely cause type checking failures or unexpected behavior in the ComfyUI runtime. Other similar nodes in the same file (CaseConverter, StringTrim, RegexExtract) handle invalid/unknown modes by providing fallback behavior (returning original value or empty string), indicating a missing safety pattern here.",
+          "reclassified_category": null,
+          "focused_request": null
+        },
+        {
+          "candidate_id": "performance_review_002",
+          "reflector_specialty": "performance",
+          "verdict": "needs_context",
+          "rationale": "The candidate claims that `re.findall` on user input could block the thread. While technically true that `re.findall` is synchronous and runs on the calling thread, the severity and impact depend on:\n\n1. **ComfyUI Execution Model:** Does ComfyUI execute nodes on a main thread (blocking UI) or use an async/event loop/thread pool? Without this context, we cannot confirm if 'thread freezing' is a real user-facing regression or a theoretical concern.\n\n2. **Default Input Size:** Are there implicit size limits on `IO.STRING` inputs in ComfyUI? If the default UI editor has a reasonable limit (e.g., 10-100KB), `re.findall` is unlikely to cause performance issues. The candidate notes `multiline: True` allows large inputs, but we lack evidence of production data sizes.\n\n3. **Comparison with Existing Nodes:** Other nodes in this same diff (e.g., `StringReplace`, `CaseConverter`, `StringContains`) also operate synchronously on user strings. If those don't raise concerns, `RegexExtract`'s `re.findall` shouldn't be singled out without evidence of disproportionate cost.\n\n4. **Failure Mode Specificity:** The candidate mentions 'UI freeze,' but `re.findall` complexity varies wildly based on regex pattern (e.g., catastrophic backtracking). Without a specific malicious pattern example or complexity analysis, this is speculative.\n\n**Verdict:** `needs_context` — bounded evidence (ComfyUI thread model, input size limits, or comparative execution metrics) is required to confirm the performance regression is actionable.",
+          "reclassified_category": null,
+          "focused_request": null
+        }
+      ]
+    },
+    "pr_finished_at": "2026-05-09T04:37:42.793569+00:00",
+    "llm_total_tokens": 49399
+  },
+  "node_history": [
+    "review_planner",
+    "general_critiquer",
+    "general_critiquer",
+    "general_critiquer",
+    "general_critiquer",
+    "focused_context",
+    "adversarial_reflection",
+    "adversarial_cleanup",
+    "review_synthesizer"
+  ],
+  "worker_reports": [],
+  "candidate_findings": [
+    {
+      "candidate_id": "general_review-1",
+      "patch_task_id": "general_review",
+      "file_path": "comfy_extras/nodes_string.py",
+      "line_start": 237,
+      "line_end": 245,
+      "content": "if mode == \"Equal\":\n    return a == b,\nelif mode == \"Starts With\":\n    return a.startswith(b),\nelif mode == \"Ends With\":\n    return a.endswith(b),",
+      "claim_type": "defect",
+      "failure_mode": "Returns None instead of boolean when mode is not one of the three valid options, causing downstream schema validation errors",
+      "evidence_summary": "StringCompare.execute() lacks an else branch or default return for invalid mode values, despite RETURN_TYPES declaring IO.BOOLEAN",
+      "required_context": [
+        "Verify if COMFYUI has schema validation that would catch None return types",
+        "Check if mode options in UI prevent invalid inputs"
+      ],
+      "confidence": 0.9,
+      "suspected_category": "logic",
+      "reflection_specialties": [
+        "logic"
+      ],
+      "feedback_type": "defect_detection",
+      "severity": "medium",
+      "recommendation": "Add an else branch returning False or raise ValueError for invalid mode inputs"
+    },
+    {
+      "candidate_id": "general_review-2",
+      "patch_task_id": "general_review",
+      "file_path": "comfy_extras/nodes_string.py",
+      "line_start": 249,
+      "line_end": 278,
+      "content": "def execute(self, string, regex_pattern, case_insensitive, multiline, dotall, **kwargs):\n    flags = 0\n    if case_insensitive:\n        flags |= re.IGNORECASE\n    if multiline:\n        flags |= re.MULTILINE\n    if dotall:\n        flags |= re.DOTALL\n    try:\n        match = re.search(regex_pattern, string, flags)\n        result = match is not None",
+      "claim_type": "security_risk",
+      "failure_mode": "Malicious regex patterns could cause ReDoS (Regular Expression Denial of Service) or excessive memory usage",
+      "evidence_summary": "Regex operations use user-provided patterns without validation or timeout mechanisms",
+      "required_context": [
+        "Check if input validation exists in COMFYUI node framework",
+        "Verify if regex patterns can be controlled by malicious users"
+      ],
+      "confidence": 0.7,
+      "suspected_category": "security",
+      "reflection_specialties": [
+        "security"
+      ],
+      "feedback_type": "defect_detection",
+      "severity": "medium",
+      "recommendation": "Add regex pattern validation or timeout wrapper for regex operations"
+    },
+    {
+      "candidate_id": "general_review-3",
+      "patch_task_id": "general_review",
+      "file_path": "comfy_extras/nodes_string.py",
+      "line_start": 281,
+      "line_end": 317,
+      "content": "def execute(self, string, regex_pattern, mode, case_insensitive, multiline, dotall, group_index, **kwargs):\n    # ... regex handling for multiple modes\n    except re.error:\n        result = \"\"",
+      "claim_type": "security_risk",
+      "failure_mode": "All Matches and All Groups modes use findall/finditer which can cause exponential backtracking on malicious patterns",
+      "evidence_summary": "RegexExtract uses findall/finditer without safeguards against ReDoS patterns",
+      "required_context": [
+        "Verify if COMFYUI framework prevents malicious pattern execution"
+      ],
+      "confidence": 0.7,
+      "suspected_category": "security",
+      "reflection_specialties": [
+        "security"
+      ],
+      "feedback_type": "defect_detection",
+      "severity": "medium",
+      "recommendation": "Add regex pattern complexity validation or use regex compilation with timeout"
+    },
+    {
+      "candidate_id": "performance_review_001",
+      "patch_task_id": "performance_review",
+      "file_path": "comfy_extras/nodes_string.py",
+      "line_start": 258,
+      "line_end": 310,
+      "content": "### Finding 1: Regular Expression Denial of Service (ReDoS) Vulnerability in `RegexExtract`\n\n- **Summary**: The `RegexExtract` class allows user-defined `regex_pattern` input to be passed directly to Python's `re` module (`re.search`, `re.findall`, `re.finditer`) without complexity validation or timeout enforcement. Malicious patterns using nested quantifiers (e.g., `(a+)+`, `(a*)*`) can cause exponential backtracking, leading to CPU exhaustion (DoS) or application hangs.\n\n- **Evidence**: \n  - Lines 276-299 (`RegexExtract.execute`): The `regex_pattern` argument is user-controlled (`IO.STRING` input type at line 264).\n  - Line 276-280: Flags are built from user input (`case_insensitive`, `multiline`, `dotall`).\n  - Line 284-286, 288-294, 296-299: `re.findall` and `re.finditer` are called directly on the user pattern.\n  - No timeout or recursion limit is enforced in the `execute` method or input configuration.\n\n- **Severity**: high\n\n- **Failure Mode**: An attacker or user could input a crafted regex pattern that causes the node execution to hang indefinitely or consume 100% CPU, effectively denying service to other users or blocking the UI.\n\n- **Recommendation**: \n  1. Implement a timeout mechanism (e.g., `signal.alarm` on Unix, or `concurrent.futures` timeout wrapper) around regex execution.\n  2. Validate regex complexity or use a library like `regex` (which supports timeout) instead of standard `re`.\n  3. Reject patterns with known catastrophic backtracking structures.\n\n- **Reflection Specialties**: security\n",
+      "claim_type": "security_risk",
+      "failure_mode": "Exponential time complexity on crafted regex patterns causing application hang/DoS.",
+      "evidence_summary": "User input `regex_pattern` passed directly to `re.findall`/`re.finditer` without timeout or complexity validation.",
+      "required_context": [],
+      "confidence": 0.95,
+      "suspected_category": "security",
+      "reflection_specialties": [
+        "security"
+      ],
+      "feedback_type": "defect_detection",
+      "severity": "high",
+      "recommendation": "Add timeout mechanism or use regex library with built-in timeout support."
+    },
+    {
+      "candidate_id": "performance_review_002",
+      "patch_task_id": "performance_review",
+      "file_path": "comfy_extras/nodes_string.py",
+      "line_start": 288,
+      "line_end": 294,
+      "content": "### Finding 2: Potential Thread Blocking via Synchronous Regex Matching in `RegexExtract` \"All Matches\" Mode\n\n- **Summary**: The `All Matches` mode in `RegexExtract` uses `re.findall` synchronously. For large input strings with many potential matches, this operation blocks the execution thread until completion. In a ComfyUI workflow, this could freeze the UI or worker thread if the pattern matches frequently or takes long to process.\n\n- **Evidence**:\n  - Lines 288-294 (`RegexExtract.execute`): `re.findall(regex_pattern, string, flags)` is executed.\n  - No asynchronous handling or progress indication is provided.\n  - Line 263-268: `string` input is also user-provided (`IO.STRING`, multiline: True), allowing for large inputs.\n\n- **Severity**: medium\n\n- **Failure Mode**: Long-running or complex regex operations block the thread, preventing other nodes from processing or freezing the frontend if executed in the main thread.\n\n- **Recommendation**: \n  1. Consider implementing a maximum character limit for the input `string` to prevent OOM issues or excessive processing time.\n  2. If possible, use async regex matching libraries or break large matches into batches.\n  3. Ensure the execution environment can handle blocking calls without freezing the UI (e.g., offload to a separate process/thread).\n\n- **Reflection Specialties**: performance\n",
+      "claim_type": "performance_regression",
+      "failure_mode": "Synchronous blocking regex matching causing thread/UI freeze on large inputs.",
+      "evidence_summary": "`re.findall` called synchronously on user input string without timeout or batching.",
+      "required_context": [],
+      "confidence": 0.8,
+      "suspected_category": "performance",
+      "reflection_specialties": [
+        "performance"
+      ],
+      "feedback_type": "defect_detection",
+      "severity": "medium",
+      "recommendation": "Limit input size or offload regex execution to prevent blocking."
+    },
+    {
+      "candidate_id": "security_review_1",
+      "patch_task_id": "security_review",
+      "file_path": "comfy_extras/nodes_string.py",
+      "line_start": 212,
+      "line_end": 237,
+      "content": "class RegexMatch():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True}),\n                \"regex_pattern\": (IO.STRING, {\"multiline\": True}),\n                \"case_insensitive\": (IO.BOOLEAN, {\"default\": True}),\n                \"multiline\": (IO.BOOLEAN, {\"default\": False}),\n                \"dotall\": (IO.BOOLEAN, {\"default\": False})\n            }\n        }\n\n    RETURN_TYPES = (IO.BOOLEAN,)\n    RETURN_NAMES = (\"matches\",)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string, regex_pattern, case_insensitive, multiline, dotall, **kwargs):\n        flags = 0\n\n        if case_insensitive:\n            flags |= re.IGNORECASE\n        if multiline:\n            flags |= re.MULTILINE\n        if dotall:\n            flags |= re.DOTALL\n\n        try:\n            match = re.search(regex_pattern, string, flags)\n            result = match is not None\n\n        except re.error:\n            result = False\n\n        return result,",
+      "claim_type": "security_risk",
+      "failure_mode": "Users can provide malicious regex patterns that cause exponential backtracking (ReDoS), leading to denial-of-service or hangs. Both `string` and `regex_pattern` inputs are user-controllable without validation or complexity limits.",
+      "evidence_summary": "RegexMatch.execute at lines 228-237 uses `re.search(regex_pattern, string, flags)` directly with user-provided `regex_pattern`. No pattern validation, timeout, or complexity checking is present. The input `regex_pattern` accepts multiline text (line 221), meaning users can supply complex patterns.",
+      "required_context": [
+        "Whether user inputs to these nodes come from external sources (e.g., API clients) that could trigger DoS.",
+        "Whether the ComfyUI execution context has timeouts configured globally.",
+        "Whether similar nodes exist in other nodes.py files that have pattern validation."
+      ],
+      "confidence": 0.9,
+      "suspected_category": "security",
+      "reflection_specialties": [
+        "security"
+      ],
+      "feedback_type": "defect_detection",
+      "severity": "high",
+      "recommendation": "Add input validation to restrict regex complexity, implement execution timeout using signal/timeout wrapper, or replace with safer matching mechanisms. Limit regex length and reject known malicious patterns."
+    },
+    {
+      "candidate_id": "security_review_2",
+      "patch_task_id": "security_review",
+      "file_path": "comfy_extras/nodes_string.py",
+      "line_start": 239,
+      "line_end": 299,
+      "content": "class RegexExtract():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True}),\n                \"regex_pattern\": (IO.STRING, {\"multiline\": True}),\n                \"mode\": (IO.COMBO, {\"options\": [\"First Match\", \"All Matches\", \"First Group\", \"All Groups\"]}),\n                \"case_insensitive\": (IO.BOOLEAN, {\"default\": True}),\n                \"multiline\": (IO.BOOLEAN, {\"default\": False}),\n                \"dotall\": (IO.BOOLEAN, {\"default\": False}),\n                \"group_index\": (IO.INT, {\"default\": 1, \"min\": 0, \"max\": 100})\n            }\n        }\n\n    RETURN_TYPES = (IO.STRING,)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string, regex_pattern, mode, case_insensitive, multiline, dotall, group_index, **kwargs):\n        join_delimiter = \"\\n\"\n\n        flags = 0\n        if case_insensitive:\n            flags |= re.IGNORECASE\n        if multiline:\n            flags |= re.MULTILINE\n        if dotall:\n            flags |= re.DOTALL\n\n        try:\n            if mode == \"First Match\":\n                match = re.search(regex_pattern, string, flags)\n                if match:\n                    result = match.group(0)\n                else:\n                    result = \"\"\n\n            elif mode == \"All Matches\":\n                matches = re.findall(regex_pattern, string, flags)\n                if matches:\n                    if isinstance(matches[0], tuple):\n                        result = join_delimiter.join([m[0] for m in matches])\n                    else:\n                        result = join_delimiter.join(matches)\n                else:\n                    result = \"\"\n\n            elif mode == \"First Group\":\n                match = re.search(regex_pattern, string, flags)\n                if match and len(match.groups()) >= group_index:\n                    result = match.group(group_index)\n                else:\n                    result = \"\"\n\n            elif mode == \"All Groups\":\n                matches = re.finditer(regex_pattern, string, flags)\n                results = []\n                for match in matches:\n                    if match.groups() and len(match.groups()) >= group_index:\n                        results.append(match.group(group_index))\n                result = join_delimiter.join(results)\n            else:\n                result = \"\"\n\n        except re.error:\n            result = \"\"\n\n        return result,",
+      "claim_type": "security_risk",
+      "failure_mode": "Users can provide malicious regex patterns that cause exponential backtracking (ReDoS), leading to denial-of-service or hangs. This node uses multiple regex functions (search, findall, finditer) with user-provided patterns without safety checks.",
+      "evidence_summary": "RegexExtract.execute at lines 256-299 uses `re.search`, `re.findall`, and `re.finditer` with user-provided `regex_pattern` at lines 267, 275, 282, 290. No validation or timeout protection is present. `mode` input allows repeated iteration (lines 274-281, 288-295) amplifying impact.",
+      "required_context": [
+        "Whether user inputs to these nodes come from external sources (e.g., API clients) that could trigger DoS.",
+        "Whether the ComfyUI execution context has timeouts configured globally.",
+        "Whether similar nodes exist in other nodes.py files that have pattern validation."
+      ],
+      "confidence": 0.9,
+      "suspected_category": "security",
+      "reflection_specialties": [
+        "security"
+      ],
+      "feedback_type": "defect_detection",
+      "severity": "high",
+      "recommendation": "Add input validation to restrict regex complexity, implement execution timeout using signal/timeout wrapper, or replace with safer matching mechanisms. Limit regex length and reject known malicious patterns."
+    }
+  ],
+  "reflection_reports": [
+    {
+      "candidate_id": "general_review-1",
+      "reflector_specialty": "logic",
+      "verdict": "accept",
+      "rationale": "The StringCompare.execute() method defines an explicit if/elif chain for three valid mode values ('Equal', 'Starts With', 'Ends With') but lacks a final else branch or default return statement. In Python, if none of the conditions match, the function implicitly returns None. However, the node's RETURN_TYPES declares (IO.BOOLEAN,), which contracts with a boolean return value. Passing None to a downstream node expecting a boolean will likely cause type checking failures or unexpected behavior in the ComfyUI runtime. Other similar nodes in the same file (CaseConverter, StringTrim, RegexExtract) handle invalid/unknown modes by providing fallback behavior (returning original value or empty string), indicating a missing safety pattern here.",
+      "reclassified_category": null,
+      "focused_request": null
+    },
+    {
+      "candidate_id": "performance_review_002",
+      "reflector_specialty": "performance",
+      "verdict": "needs_context",
+      "rationale": "The candidate claims that `re.findall` on user input could block the thread. While technically true that `re.findall` is synchronous and runs on the calling thread, the severity and impact depend on:\n\n1. **ComfyUI Execution Model:** Does ComfyUI execute nodes on a main thread (blocking UI) or use an async/event loop/thread pool? Without this context, we cannot confirm if 'thread freezing' is a real user-facing regression or a theoretical concern.\n\n2. **Default Input Size:** Are there implicit size limits on `IO.STRING` inputs in ComfyUI? If the default UI editor has a reasonable limit (e.g., 10-100KB), `re.findall` is unlikely to cause performance issues. The candidate notes `multiline: True` allows large inputs, but we lack evidence of production data sizes.\n\n3. **Comparison with Existing Nodes:** Other nodes in this same diff (e.g., `StringReplace`, `CaseConverter`, `StringContains`) also operate synchronously on user strings. If those don't raise concerns, `RegexExtract`'s `re.findall` shouldn't be singled out without evidence of disproportionate cost.\n\n4. **Failure Mode Specificity:** The candidate mentions 'UI freeze,' but `re.findall` complexity varies wildly based on regex pattern (e.g., catastrophic backtracking). Without a specific malicious pattern example or complexity analysis, this is speculative.\n\n**Verdict:** `needs_context` — bounded evidence (ComfyUI thread model, input size limits, or comparative execution metrics) is required to confirm the performance regression is actionable.",
+      "reclassified_category": null,
+      "focused_request": null
+    }
+  ],
+  "focused_context_requests": [
+    {
+      "request_id": "focus-1",
+      "candidate_id": "general_review-1",
+      "requested_by_specialty": "logic",
+      "file_paths": [
+        "comfy_extras/nodes_string.py"
+      ],
+      "symbol_queries": [
+        "StringCompare.execute"
+      ],
+      "text_queries": [
+        "mode options validation",
+        "return type for invalid mode"
+      ],
+      "reason": "Verify if mode validation exists and how invalid modes are handled in the UI or node framework"
+    },
+    {
+      "request_id": "focus-2",
+      "candidate_id": "general_review-2",
+      "requested_by_specialty": "security",
+      "file_paths": [
+        "comfy_extras/nodes_string.py",
+        "nodes.py"
+      ],
+      "symbol_queries": [],
+      "text_queries": [
+        "ReDoS protection",
+        "regex timeout mechanism",
+        "input validation"
+      ],
+      "reason": "Determine if COMFYUI has built-in protections against malicious regex patterns"
+    },
+    {
+      "request_id": "focus-3",
+      "candidate_id": "general_review-3",
+      "requested_by_specialty": "security",
+      "file_paths": [
+        "comfy_extras/nodes_string.py"
+      ],
+      "symbol_queries": [
+        "RegexExtract.execute"
+      ],
+      "text_queries": [
+        "findall",
+        "finditer",
+        "regex complexity limits"
+      ],
+      "reason": "Verify if ReDoS risks are mitigated in the regex extraction implementation"
+    },
+    {
+      "request_id": "general_review-2:auto-context:2",
+      "candidate_id": "general_review-2",
+      "requested_by_specialty": "security",
+      "file_paths": [
+        "comfy_extras/nodes_string.py",
+        "nodes.py"
+      ],
+      "symbol_queries": [],
+      "text_queries": [
+        "comfy_extras/nodes_string.py",
+        "Malicious regex patterns could cause ReDoS (Regular Expression Denial of Service) or excessive memory usage",
+        "Malicious regex patterns could cause ReDoS (Regular Expression Denial of Service) or excessive memory usage def execute(self, string, regex_pattern, case_insens"
+      ],
+      "reason": "Deterministic context requirement for a high-risk or externally dependent security_risk candidate."
+    },
+    {
+      "request_id": "general_review-3:auto-context:3",
+      "candidate_id": "general_review-3",
+      "requested_by_specialty": "security",
+      "file_paths": [
+        "comfy_extras/nodes_string.py",
+        "nodes.py"
+      ],
+      "symbol_queries": [],
+      "text_queries": [
+        "comfy_extras/nodes_string.py",
+        "All Matches and All Groups modes use findall/finditer which can cause exponential backtracking on malicious patterns",
+        "All Matches and All Groups modes use findall/finditer which can cause exponential backtracking on malicious patterns def execute(self, string, regex_pattern, mo"
+      ],
+      "reason": "Deterministic context requirement for a high-risk or externally dependent security_risk candidate."
+    },
+    {
+      "request_id": "string_validation_check",
+      "candidate_id": "logic_review",
+      "requested_by_specialty": "logic",
+      "file_paths": [
+        "comfy_extras/nodes_string.py"
+      ],
+      "symbol_queries": [],
+      "text_queries": [
+        "Check if string inputs are validated for None/null",
+        "Check if string inputs are validated for proper type",
+        "Check how None or non-string inputs are handled"
+      ],
+      "reason": "Need to verify if inputs are validated before string operations like len(), slicing, or method calls."
+    },
+    {
+      "request_id": "security_review_1:auto-context:1",
+      "candidate_id": "security_review_1",
+      "requested_by_specialty": "security",
+      "file_paths": [
+        "comfy_extras/nodes_string.py"
+      ],
+      "symbol_queries": [],
+      "text_queries": [
+        "comfy_extras/nodes_string.py",
+        "Users can provide malicious regex patterns that cause exponential backtracking (ReDoS), leading to denial-of-service or ",
+        "Users can provide malicious regex patterns that cause exponential backtracking (ReDoS), leading to denial-of-service or hangs. Both `string` and `regex_pattern`"
+      ],
+      "reason": "Deterministic context requirement for a high-risk or externally dependent security_risk candidate."
+    },
+    {
+      "request_id": "security_review_2:auto-context:2",
+      "candidate_id": "security_review_2",
+      "requested_by_specialty": "security",
+      "file_paths": [
+        "comfy_extras/nodes_string.py"
+      ],
+      "symbol_queries": [],
+      "text_queries": [
+        "comfy_extras/nodes_string.py",
+        "Users can provide malicious regex patterns that cause exponential backtracking (ReDoS), leading to denial-of-service or ",
+        "Users can provide malicious regex patterns that cause exponential backtracking (ReDoS), leading to denial-of-service or hangs. This node uses multiple regex fun"
+      ],
+      "reason": "Deterministic context requirement for a high-risk or externally dependent security_risk candidate."
+    }
+  ],
+  "focused_context_results": {
+    "focus-1": {
+      "request_id": "focus-1",
+      "candidate_id": "general_review-1",
+      "file_snippets": {
+        "comfy_extras/nodes_string.py": "import re\n\nfrom comfy.comfy_types.node_typing import IO\n\nclass StringConcatenate():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string_a\": (IO.STRING, {\"multiline\": True}),\n                \"string_b\": (IO.STRING, {\"multiline\": True})\n            }\n        }\n\n    RETURN_TYPES = (IO.STRING,)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string_a, string_b, **kwargs):\n        return string_a + string_b,\n\nclass StringSubstring():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True}),\n                \"start\": (IO.INT, {}),\n                \"end\": (IO.INT, {}),\n            }\n        }\n\n    RETURN_TYPES = (IO.STRING,)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string, start, end, **kwargs):\n        return string[start:end],\n\nclass StringLength():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True})\n            }\n        }\n\n    RETURN_TYPES = (IO.INT,)\n    RETURN_NAMES = (\"length\",)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string, **kwargs):\n        length = len(string)\n\n        return length,\n\nclass CaseConverter():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True}),\n                \"mode\": (IO.COMBO, {\"options\": [\"UPPERCASE\", \"lowercase\", \"Capitalize\", \"Title Case\"]})\n            }\n        }\n\n    RETURN_TYPES = (IO.STRING,)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string, mode, **kwargs):\n        if mode == \"UPPERCASE\":\n            result = string.upper()\n        elif mode == \"lowercase\":\n            result = string.lower()\n        elif mode == \"Capitalize\":\n            result = string.capitalize()\n        elif mode == \"Title Case\":\n            result = string.title()\n        else:\n            result = string\n\n        return result,\n\n\nclass StringTrim():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True}),\n                \"mode\": (IO.COMBO, {\"options\": [\"Both\", \"Left\", \"Right\"]})\n            }\n        }\n\n    RETURN_TYPES = (IO.STRING,)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string, mode, **kwargs):\n        if mode == \"Both\":\n            result = string.strip()\n        elif mode == \"Left\":\n            result = string.lstrip()\n        elif mode == \"Right\":\n            result = string.rstrip()\n        else:\n            result = string\n\n        return result,\n\nclass StringReplace():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True}),\n                \"find\": (IO.STRING, {\"multiline\": True}),\n                \"replace\": (IO.STRING, {\"multiline\": True})\n            }\n        }\n\n    RETURN_TYPES = (IO.STRING,)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string, find, replace, **kwargs):\n        result = string.replace(find, replace)\n        return result,\n\n\nclass StringContains():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True}),\n                \"substring\": (IO.STRING, {\"multiline\": True}),\n                \"case_sensitive\": (IO.BOOLEAN, {\"default\": True})\n            }\n        }\n\n    RETURN_TYPES = (IO.BOOLEAN,)\n    RETURN_NAMES = (\"contains\",)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string, substring, case_sensitive, **kwargs):\n        if case_sensitive:\n            contains = substring in string\n        else:\n            contains = substring.lower() in string.lower()\n\n        return contains,\n\n\nclass StringCompare():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string_a\": (IO.STRING, {\"multiline\": True}),\n                \"string_b\": (IO.STRING, {\"multiline\": True}),\n                \"mode\": (IO.COMBO, {\"options\": [\"Starts With\", \"Ends With\", \"Equal\"]}),\n                \"case_sensitive\": (IO.BOOLEAN, {\"default\": True})\n            }\n        }\n\n    RETURN_TYPES = (IO.BOOLEAN,)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string_a, string_b, mode, case_sensitive, **kwargs):\n        if case_sensitive:\n            a = string_a\n            b = string_b\n        else:\n            a = string_a.lower()\n            b = string_b.lower()\n\n        if mode == \"Equal\":\n            return a == b,\n        elif mode == \"Starts With\":\n            return a.startswith(b),\n        elif mode == \"Ends With\":\n            return a.endswith(b),\n\nclass RegexMatch():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True}),\n                \"regex_pattern\": (IO.STRING, {\"multiline\": True}),\n                \"case_insensitive\": (IO.BOOLEAN, {\"default\": True}),\n                \"multiline\": (IO.BOOLEAN, {\"default\": False}),\n                \"dotall\": (IO.BOOLEAN, {\"default\": False})\n            }\n        }\n\n    RETURN_TYPES = (IO.BOOLEAN,)\n    RETURN_NAMES = (\"matches\",)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string, regex_pattern, case_insensitive, multiline, dotall, **kwargs):\n        flags = 0\n\n        if case_insensitive:\n            flags |= re.IGNORECASE\n        if multiline:\n            flags |= re.MULTILINE\n        if dotall:\n            flags |= re.DOTALL\n\n        try:\n            match = re.search(regex_pattern, string, flags)\n            result = match is not None\n\n--- structural neighbors ---\nsymbol:7631d25e785d192c:StringSubstring (symbol, comfy_extras/nodes_string.py); symbol:3920a91d898bdea5:RegexMatch (symbol, comfy_extras/nodes_string.py); symbol:cae507105b38425f:CaseConverter (symbol, comfy_extras/nodes_string.py); symbol:50918d1b3edb5df0:StringCompare (symbol, comfy_extras/nodes_string.py); symbol:08c077f48701e9e4:RegexExtract (symbol, comfy_extras/nodes_string.py); symbol:3c396851af4f4a9d:StringLength (symbol, comfy_extras/nodes_string.py); symbol:ecb7331464c1c593:StringReplace (symbol, comfy_extras/nodes_string.py); symbol:09972d71483fcd2e:StringTrim (symbol, comfy_extras/nodes_string.py); symbol:171362dbee90c108:StringContains (symbol, comfy_extras/nodes_string.py); symbol:61e53fc5c3c72279:StringConcatenate (symbol, comfy_extras/nodes_string.py)"
+      },
+      "search_hits": {
+        "StringCompare.execute": [],
+        "mode options validation": [],
+        "return type for invalid mode": []
+      },
+      "warnings": [
+        "doc_fetch_failed:README.md:HTTP 404",
+        "doc_fetch_failed:README.rst:HTTP 404",
+        "doc_fetch_failed:README.txt:HTTP 404",
+        "doc_fetch_failed:CONTRIBUTING.md:HTTP 404",
+        "doc_fetch_failed:SECURITY.md:HTTP 404",
+        "doc_fetch_failed:CHANGELOG.md:HTTP 404",
+        "doc_fetch_failed:docs/README.md:HTTP 404",
+        "doc_fetch_failed:docs/index.md:HTTP 404",
+        "doc_fetch_failed:.github/CONTRIBUTING.md:HTTP 404",
+        "doc_fetch_failed:.github/SECURITY.md:HTTP 404"
+      ]
+    },
+    "focus-2": {
+      "request_id": "focus-2",
+      "candidate_id": "general_review-2",
+      "file_snippets": {
+        "comfy_extras/nodes_string.py": "import re\n\nfrom comfy.comfy_types.node_typing import IO\n\nclass StringConcatenate():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string_a\": (IO.STRING, {\"multiline\": True}),\n                \"string_b\": (IO.STRING, {\"multiline\": True})\n            }\n        }\n\n    RETURN_TYPES = (IO.STRING,)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string_a, string_b, **kwargs):\n        return string_a + string_b,\n\nclass StringSubstring():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True}),\n                \"start\": (IO.INT, {}),\n                \"end\": (IO.INT, {}),\n            }\n        }\n\n    RETURN_TYPES = (IO.STRING,)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string, start, end, **kwargs):\n        return string[start:end],\n\nclass StringLength():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True})\n            }\n        }\n\n    RETURN_TYPES = (IO.INT,)\n    RETURN_NAMES = (\"length\",)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string, **kwargs):\n        length = len(string)\n\n        return length,\n\nclass CaseConverter():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True}),\n                \"mode\": (IO.COMBO, {\"options\": [\"UPPERCASE\", \"lowercase\", \"Capitalize\", \"Title Case\"]})\n            }\n        }\n\n    RETURN_TYPES = (IO.STRING,)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string, mode, **kwargs):\n        if mode == \"UPPERCASE\":\n            result = string.upper()\n        elif mode == \"lowercase\":\n            result = string.lower()\n        elif mode == \"Capitalize\":\n            result = string.capitalize()\n        elif mode == \"Title Case\":\n            result = string.title()\n        else:\n            result = string\n\n        return result,\n\n\nclass StringTrim():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True}),\n                \"mode\": (IO.COMBO, {\"options\": [\"Both\", \"Left\", \"Right\"]})\n            }\n        }\n\n    RETURN_TYPES = (IO.STRING,)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string, mode, **kwargs):\n        if mode == \"Both\":\n            result = string.strip()\n        elif mode == \"Left\":\n            result = string.lstrip()\n        elif mode == \"Right\":\n            result = string.rstrip()\n        else:\n            result = string\n\n        return result,\n\nclass StringReplace():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True}),\n                \"find\": (IO.STRING, {\"multiline\": True}),\n                \"replace\": (IO.STRING, {\"multiline\": True})\n            }\n        }\n\n    RETURN_TYPES = (IO.STRING,)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string, find, replace, **kwargs):\n        result = string.replace(find, replace)\n        return result,\n\n\nclass StringContains():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True}),\n                \"substring\": (IO.STRING, {\"multiline\": True}),\n                \"case_sensitive\": (IO.BOOLEAN, {\"default\": True})\n            }\n        }\n\n    RETURN_TYPES = (IO.BOOLEAN,)\n    RETURN_NAMES = (\"contains\",)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string, substring, case_sensitive, **kwargs):\n        if case_sensitive:\n            contains = substring in string\n        else:\n            contains = substring.lower() in string.lower()\n\n        return contains,\n\n\nclass StringCompare():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string_a\": (IO.STRING, {\"multiline\": True}),\n                \"string_b\": (IO.STRING, {\"multiline\": True}),\n                \"mode\": (IO.COMBO, {\"options\": [\"Starts With\", \"Ends With\", \"Equal\"]}),\n                \"case_sensitive\": (IO.BOOLEAN, {\"default\": True})\n            }\n        }\n\n    RETURN_TYPES = (IO.BOOLEAN,)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string_a, string_b, mode, case_sensitive, **kwargs):\n        if case_sensitive:\n            a = string_a\n            b = string_b\n        else:\n            a = string_a.lower()\n            b = string_b.lower()\n\n        if mode == \"Equal\":\n            return a == b,\n        elif mode == \"Starts With\":\n            return a.startswith(b),\n        elif mode == \"Ends With\":\n            return a.endswith(b),\n\nclass RegexMatch():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True}),\n                \"regex_pattern\": (IO.STRING, {\"multiline\": True}),\n                \"case_insensitive\": (IO.BOOLEAN, {\"default\": True}),\n                \"multiline\": (IO.BOOLEAN, {\"default\": False}),\n                \"dotall\": (IO.BOOLEAN, {\"default\": False})\n            }\n        }\n\n    RETURN_TYPES = (IO.BOOLEAN,)\n    RETURN_NAMES = (\"matches\",)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string, regex_pattern, case_insensitive, multiline, dotall, **kwargs):\n        flags = 0\n\n        if case_insensitive:\n            flags |= re.IGNORECASE\n        if multiline:\n            flags |= re.MULTILINE\n        if dotall:\n            flags |= re.DOTALL\n\n        try:\n            match = re.search(regex_pattern, string, flags)\n            result = match is not None\n\n--- structural neighbors ---\nsymbol:7631d25e785d192c:StringSubstring (symbol, comfy_extras/nodes_string.py); symbol:3920a91d898bdea5:RegexMatch (symbol, comfy_extras/nodes_string.py); symbol:cae507105b38425f:CaseConverter (symbol, comfy_extras/nodes_string.py); symbol:50918d1b3edb5df0:StringCompare (symbol, comfy_extras/nodes_string.py); symbol:08c077f48701e9e4:RegexExtract (symbol, comfy_extras/nodes_string.py); symbol:3c396851af4f4a9d:StringLength (symbol, comfy_extras/nodes_string.py); symbol:ecb7331464c1c593:StringReplace (symbol, comfy_extras/nodes_string.py); symbol:09972d71483fcd2e:StringTrim (symbol, comfy_extras/nodes_string.py); symbol:171362dbee90c108:StringContains (symbol, comfy_extras/nodes_string.py); symbol:61e53fc5c3c72279:StringConcatenate (symbol, comfy_extras/nodes_string.py)",
+        "nodes.py": "from __future__ import annotations\nimport torch\n\nimport os\nimport sys\nimport json\nimport hashlib\nimport traceback\nimport math\nimport time\nimport random\nimport logging\n\nfrom PIL import Image, ImageOps, ImageSequence\nfrom PIL.PngImagePlugin import PngInfo\n\nimport numpy as np\nimport safetensors.torch\n\nsys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), \"comfy\"))\n\nimport comfy.diffusers_load\nimport comfy.samplers\nimport comfy.sample\nimport comfy.sd\nimport comfy.utils\nimport comfy.controlnet\nfrom comfy.comfy_types import IO, ComfyNodeABC, InputTypeDict, FileLocator\n\nimport comfy.clip_vision\n\nimport comfy.model_management\nfrom comfy.cli_args import args\n\nimport importlib\n\nimport folder_paths\nimport latent_preview\nimport node_helpers\n\ndef before_node_execution():\n    comfy.model_management.throw_exception_if_processing_interrupted()\n\ndef interrupt_processing(value=True):\n    comfy.model_management.interrupt_current_processing(value)\n\nMAX_RESOLUTION=16384\n\nclass CLIPTextEncode(ComfyNodeABC):\n    @classmethod\n    def INPUT_TYPES(s) -> InputTypeDict:\n        return {\n            \"required\": {\n                \"text\": (IO.STRING, {\"multiline\": True, \"dynamicPrompts\": True, \"tooltip\": \"The text to be encoded.\"}),\n                \"clip\": (IO.CLIP, {\"tooltip\": \"The CLIP model used for encoding the text.\"})\n            }\n        }\n    RETURN_TYPES = (IO.CONDITIONING,)\n    OUTPUT_TOOLTIPS = (\"A conditioning containing the embedded text used to guide the diffusion model.\",)\n    FUNCTION = \"encode\"\n\n    CATEGORY = \"conditioning\"\n    DESCRIPTION = \"Encodes a text prompt using a CLIP model into an embedding that can be used to guide the diffusion model towards generating specific images.\"\n\n    def encode(self, clip, text):\n        if clip is None:\n            raise RuntimeError(\"ERROR: clip input is invalid: None\\n\\nIf the clip is from a checkpoint loader node your checkpoint does not contain a valid clip or text encoder model.\")\n        tokens = clip.tokenize(text)\n        return (clip.encode_from_tokens_scheduled(tokens), )\n\n\nclass ConditioningCombine:\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\"required\": {\"conditioning_1\": (\"CONDITIONING\", ), \"conditioning_2\": (\"CONDITIONING\", )}}\n    RETURN_TYPES = (\"CONDITIONING\",)\n    FUNCTION = \"combine\"\n\n    CATEGORY = \"conditioning\"\n\n    def combine(self, conditioning_1, conditioning_2):\n        return (conditioning_1 + conditioning_2, )\n\nclass ConditioningAverage :\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\"required\": {\"conditioning_to\": (\"CONDITIONING\", ), \"conditioning_from\": (\"CONDITIONING\", ),\n                              \"conditioning_to_strength\": (\"FLOAT\", {\"default\": 1.0, \"min\": 0.0, \"max\": 1.0, \"step\": 0.01})\n                             }}\n    RETURN_TYPES = (\"CONDITIONING\",)\n    FUNCTION = \"addWeighted\"\n\n    CATEGORY = \"conditioning\"\n\n    def addWeighted(self, conditioning_to, conditioning_from, conditioning_to_strength):\n        out = []\n\n        if len(conditioning_from) > 1:\n            logging.warning(\"Warning: ConditioningAverage conditioning_from contains more than 1 cond, only the first one will actually be applied to conditioning_to.\")\n\n        cond_from = conditioning_from[0][0]\n        pooled_output_from = conditioning_from[0][1].get(\"pooled_output\", None)\n\n        for i in range(len(conditioning_to)):\n            t1 = conditioning_to[i][0]\n            pooled_output_to = conditioning_to[i][1].get(\"pooled_output\", pooled_output_from)\n            t0 = cond_from[:,:t1.shape[1]]\n            if t0.shape[1] < t1.shape[1]:\n                t0 = torch.cat([t0] + [torch.zeros((1, (t1.shape[1] - t0.shape[1]), t1.shape[2]))], dim=1)\n\n            tw = torch.mul(t1, conditioning_to_strength) + torch.mul(t0, (1.0 - conditioning_to_strength))\n            t_to = conditioning_to[i][1].copy()\n            if pooled_output_from is not None and pooled_output_to is not None:\n                t_to[\"pooled_output\"] = torch.mul(pooled_output_to, conditioning_to_strength) + torch.mul(pooled_output_from, (1.0 - conditioning_to_strength))\n            elif pooled_output_from is not None:\n                t_to[\"pooled_output\"] = pooled_output_from\n\n            n = [tw, t_to]\n            out.append(n)\n        return (out, )\n\nclass ConditioningConcat:\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\"required\": {\n            \"conditioning_to\": (\"CONDITIONING\",),\n            \"conditioning_from\": (\"CONDITIONING\",),\n            }}\n    RETURN_TYPES = (\"CONDITIONING\",)\n    FUNCTION = \"concat\"\n\n    CATEGORY = \"conditioning\"\n\n    def concat(self, conditioning_to, conditioning_from):\n        out = []\n\n        if len(conditioning_from) > 1:\n            logging.warning(\"Warning: ConditioningConcat conditioning_from contains more than 1 cond, only the first one will actually be applied to conditioning_to.\")\n\n        cond_from = conditioning_from[0][0]\n\n        for i in range(len(conditioning_to)):\n            t1 = conditioning_to[i][0]\n            tw = torch.cat((t1, cond_from),1)\n            n = [tw, conditioning_to[i][1].copy()]\n            out.append(n)\n\n        return (out, )\n\nclass ConditioningSetArea:\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\"required\": {\"conditioning\": (\"CONDITIONING\", ),\n                              \"width\": (\"INT\", {\"default\": 64, \"min\": 64, \"max\": MAX_RESOLUTION, \"step\": 8}),\n                              \"height\": (\"INT\", {\"default\": 64, \"min\": 64, \"max\": MAX_RESOLUTION, \"step\": 8}),\n                              \"x\": (\"INT\", {\"default\": 0, \"min\": 0, \"max\": MAX_RESOLUTION, \"step\": 8}),\n                              \"y\": (\"INT\", {\"default\": 0, \"min\": 0, \"max\": MAX_RESOLUTION, \"step\": 8}),\n                              \"strength\": (\"FLOAT\", {\"default\": 1.0, \"min\": 0.0, \"max\": 10.0, \"step\": 0.01}),\n                             }}\n    RETURN_TYPES = (\"CONDITIONING\",)\n    FUNCTION = \"append\"\n\n    CATEGORY = \"conditioning\"\n\n    def append(self, conditioning, width, height, x, y, strength):\n        c = node_helpers.conditioning_set_values(conditioning, {\"area\": (height // 8, width // 8, y // 8, x // 8),\n                                                                \"strength\": strength,\n                                                                \"set_area_to_bounds\": False})\n        return (c, )\n\nclass ConditioningSetAreaPercentage:\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\"required\": {\"conditioning\": (\"CONDITIONING\", ),\n                              \"width\": (\"FLOAT\", {\"default\": 1.0, \"min\": 0, \"max\": 1.0, \"step\": 0.01}),\n                              \"height\": (\"FLOAT\", {\"default\": 1.0, \"min\": 0, \"max\": 1.0, \"step\": 0.01}),\n                              \"x\": (\"FLOAT\", {\"default\": 0, \"min\": 0, \"max\": 1.0, \"step\": 0.01}),\n                              \"y\": (\"FLOAT\", {\"default\": 0, \"min\": 0, \"max\": 1.0, \"step\": 0.01}),\n                              \"strength\": (\"FLOAT\", {\"default\": 1.0, \"min\": 0.0, \"max\": 10.0, \"step\": 0.01}),\n                             }}\n    RETURN_TYPES = (\"CONDITIONING\",)\n    FUNCTION = \"append\"\n\n    CATEGORY = \"conditioning\"\n\n    def append(self, conditioning, width, height, x, y, strength):\n        c = node_helpers.conditioning_set_values(conditioning, {\"area\": (\"percentage\", height, width, y, x),\n                                                                \"strength\": strength,\n                                                                \"set_area_to_bounds\": False})\n        return (c, )\n\nclass ConditioningSetAreaStrength:\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\"required\": {\"conditioning\": (\"CONDITIONING\", ),\n                              \"strength\": (\"FLOAT\", {\"default\": 1.0, \"min\": 0.0, \"max\": 10.0, \"step\": 0.01}),\n                             }}\n    RETURN_TYPES = (\"CONDITIONING\",)\n    FUNCTION = \"append\"\n\n    CATEGORY = \"conditioning\"\n\n    def append(self, conditioning, strength):\n        c = node_helpers.conditioning_set_values(conditioning, {\"strength\": strength})\n        ret\n--- structural neighbors ---\nsymbol:6ff27eaf1449cf28:get_module_name (symbol, nodes.py); symbol:9b21306a69851d41:LoraLoaderModelOnly (symbol, nodes.py); symbol:010222ac6f99e674:init_extra_nodes (symbol, nodes.py); symbol:14a98fcfce41973c:GLIGENLoader (symbol, nodes.py); symbol:cbab92002e64bbbe:SaveLatent (symbol, nodes.py); symbol:f9e928eece714e56:EmptyImage (symbol, nodes.py); symbol:f0a80611aed5e78f:ConditioningSetArea (symbol, nodes.py); symbol:5a4b91dd11e7eb06:LatentComposite (symbol, nodes.py); symbol:e4b148ff8b1ac4a5:LatentFlip (symbol, nodes.py); symbol:5e2c66b8b452dd16:ConditioningSetMask (symbol, nodes.py); symbol:988fbef4fa2705b3:VAEDecodeTiled (symbol, nodes.py); symbol:da5e3e8578a71e82:CheckpointLoader (symbol, nodes.py)"
+      },
+      "search_hits": {
+        "ReDoS protection": [],
+        "regex timeout mechanism": [],
+        "input validation": []
+      },
+      "warnings": [
+        "doc_fetch_failed:README.md:HTTP 404",
+        "doc_fetch_failed:README.rst:HTTP 404",
+        "doc_fetch_failed:README.txt:HTTP 404",
+        "doc_fetch_failed:CONTRIBUTING.md:HTTP 404",
+        "doc_fetch_failed:SECURITY.md:HTTP 404",
+        "doc_fetch_failed:CHANGELOG.md:HTTP 404",
+        "doc_fetch_failed:docs/README.md:HTTP 404",
+        "doc_fetch_failed:docs/index.md:HTTP 404",
+        "doc_fetch_failed:.github/CONTRIBUTING.md:HTTP 404",
+        "doc_fetch_failed:.github/SECURITY.md:HTTP 404"
+      ]
+    },
+    "focus-3": {
+      "request_id": "focus-3",
+      "candidate_id": "general_review-3",
+      "file_snippets": {
+        "comfy_extras/nodes_string.py": "import re\n\nfrom comfy.comfy_types.node_typing import IO\n\nclass StringConcatenate():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string_a\": (IO.STRING, {\"multiline\": True}),\n                \"string_b\": (IO.STRING, {\"multiline\": True})\n            }\n        }\n\n    RETURN_TYPES = (IO.STRING,)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string_a, string_b, **kwargs):\n        return string_a + string_b,\n\nclass StringSubstring():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True}),\n                \"start\": (IO.INT, {}),\n                \"end\": (IO.INT, {}),\n            }\n        }\n\n    RETURN_TYPES = (IO.STRING,)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string, start, end, **kwargs):\n        return string[start:end],\n\nclass StringLength():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True})\n            }\n        }\n\n    RETURN_TYPES = (IO.INT,)\n    RETURN_NAMES = (\"length\",)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string, **kwargs):\n        length = len(string)\n\n        return length,\n\nclass CaseConverter():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True}),\n                \"mode\": (IO.COMBO, {\"options\": [\"UPPERCASE\", \"lowercase\", \"Capitalize\", \"Title Case\"]})\n            }\n        }\n\n    RETURN_TYPES = (IO.STRING,)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string, mode, **kwargs):\n        if mode == \"UPPERCASE\":\n            result = string.upper()\n        elif mode == \"lowercase\":\n            result = string.lower()\n        elif mode == \"Capitalize\":\n            result = string.capitalize()\n        elif mode == \"Title Case\":\n            result = string.title()\n        else:\n            result = string\n\n        return result,\n\n\nclass StringTrim():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True}),\n                \"mode\": (IO.COMBO, {\"options\": [\"Both\", \"Left\", \"Right\"]})\n            }\n        }\n\n    RETURN_TYPES = (IO.STRING,)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string, mode, **kwargs):\n        if mode == \"Both\":\n            result = string.strip()\n        elif mode == \"Left\":\n            result = string.lstrip()\n        elif mode == \"Right\":\n            result = string.rstrip()\n        else:\n            result = string\n\n        return result,\n\nclass StringReplace():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True}),\n                \"find\": (IO.STRING, {\"multiline\": True}),\n                \"replace\": (IO.STRING, {\"multiline\": True})\n            }\n        }\n\n    RETURN_TYPES = (IO.STRING,)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string, find, replace, **kwargs):\n        result = string.replace(find, replace)\n        return result,\n\n\nclass StringContains():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True}),\n                \"substring\": (IO.STRING, {\"multiline\": True}),\n                \"case_sensitive\": (IO.BOOLEAN, {\"default\": True})\n            }\n        }\n\n    RETURN_TYPES = (IO.BOOLEAN,)\n    RETURN_NAMES = (\"contains\",)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string, substring, case_sensitive, **kwargs):\n        if case_sensitive:\n            contains = substring in string\n        else:\n            contains = substring.lower() in string.lower()\n\n        return contains,\n\n\nclass StringCompare():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string_a\": (IO.STRING, {\"multiline\": True}),\n                \"string_b\": (IO.STRING, {\"multiline\": True}),\n                \"mode\": (IO.COMBO, {\"options\": [\"Starts With\", \"Ends With\", \"Equal\"]}),\n                \"case_sensitive\": (IO.BOOLEAN, {\"default\": True})\n            }\n        }\n\n    RETURN_TYPES = (IO.BOOLEAN,)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string_a, string_b, mode, case_sensitive, **kwargs):\n        if case_sensitive:\n            a = string_a\n            b = string_b\n        else:\n            a = string_a.lower()\n            b = string_b.lower()\n\n        if mode == \"Equal\":\n            return a == b,\n        elif mode == \"Starts With\":\n            return a.startswith(b),\n        elif mode == \"Ends With\":\n            return a.endswith(b),\n\nclass RegexMatch():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True}),\n                \"regex_pattern\": (IO.STRING, {\"multiline\": True}),\n                \"case_insensitive\": (IO.BOOLEAN, {\"default\": True}),\n                \"multiline\": (IO.BOOLEAN, {\"default\": False}),\n                \"dotall\": (IO.BOOLEAN, {\"default\": False})\n            }\n        }\n\n    RETURN_TYPES = (IO.BOOLEAN,)\n    RETURN_NAMES = (\"matches\",)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string, regex_pattern, case_insensitive, multiline, dotall, **kwargs):\n        flags = 0\n\n        if case_insensitive:\n            flags |= re.IGNORECASE\n        if multiline:\n            flags |= re.MULTILINE\n        if dotall:\n            flags |= re.DOTALL\n\n        try:\n            match = re.search(regex_pattern, string, flags)\n            result = match is not None\n\n--- structural neighbors ---\nsymbol:7631d25e785d192c:StringSubstring (symbol, comfy_extras/nodes_string.py); symbol:3920a91d898bdea5:RegexMatch (symbol, comfy_extras/nodes_string.py); symbol:cae507105b38425f:CaseConverter (symbol, comfy_extras/nodes_string.py); symbol:50918d1b3edb5df0:StringCompare (symbol, comfy_extras/nodes_string.py); symbol:08c077f48701e9e4:RegexExtract (symbol, comfy_extras/nodes_string.py); symbol:3c396851af4f4a9d:StringLength (symbol, comfy_extras/nodes_string.py); symbol:ecb7331464c1c593:StringReplace (symbol, comfy_extras/nodes_string.py); symbol:09972d71483fcd2e:StringTrim (symbol, comfy_extras/nodes_string.py); symbol:171362dbee90c108:StringContains (symbol, comfy_extras/nodes_string.py); symbol:61e53fc5c3c72279:StringConcatenate (symbol, comfy_extras/nodes_string.py)"
+      },
+      "search_hits": {
+        "RegexExtract.execute": [],
+        "findall": [
+          {
+            "file_path": "comfy_extras/nodes_string.py",
+            "line_number": 267,
+            "content": "matches = re.findall(regex_pattern, string, flags)",
+            "context_lines": [
+              "matches = re.findall(regex_pattern, string, flags)"
+            ]
+          }
+        ],
+        "finditer": [
+          {
+            "file_path": "comfy_extras/nodes_string.py",
+            "line_number": 284,
+            "content": "matches = re.finditer(regex_pattern, string, flags)",
+            "context_lines": [
+              "matches = re.finditer(regex_pattern, string, flags)"
+            ]
+          }
+        ],
+        "regex complexity limits": []
+      },
+      "warnings": [
+        "doc_fetch_failed:README.md:HTTP 404",
+        "doc_fetch_failed:README.rst:HTTP 404",
+        "doc_fetch_failed:README.txt:HTTP 404",
+        "doc_fetch_failed:CONTRIBUTING.md:HTTP 404",
+        "doc_fetch_failed:SECURITY.md:HTTP 404",
+        "doc_fetch_failed:CHANGELOG.md:HTTP 404",
+        "doc_fetch_failed:docs/README.md:HTTP 404",
+        "doc_fetch_failed:docs/index.md:HTTP 404",
+        "doc_fetch_failed:.github/CONTRIBUTING.md:HTTP 404",
+        "doc_fetch_failed:.github/SECURITY.md:HTTP 404"
+      ]
+    },
+    "general_review-2:auto-context:2": {
+      "request_id": "general_review-2:auto-context:2",
+      "candidate_id": "general_review-2",
+      "file_snippets": {
+        "comfy_extras/nodes_string.py": "import re\n\nfrom comfy.comfy_types.node_typing import IO\n\nclass StringConcatenate():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string_a\": (IO.STRING, {\"multiline\": True}),\n                \"string_b\": (IO.STRING, {\"multiline\": True})\n            }\n        }\n\n    RETURN_TYPES = (IO.STRING,)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string_a, string_b, **kwargs):\n        return string_a + string_b,\n\nclass StringSubstring():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True}),\n                \"start\": (IO.INT, {}),\n                \"end\": (IO.INT, {}),\n            }\n        }\n\n    RETURN_TYPES = (IO.STRING,)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string, start, end, **kwargs):\n        return string[start:end],\n\nclass StringLength():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True})\n            }\n        }\n\n    RETURN_TYPES = (IO.INT,)\n    RETURN_NAMES = (\"length\",)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string, **kwargs):\n        length = len(string)\n\n        return length,\n\nclass CaseConverter():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True}),\n                \"mode\": (IO.COMBO, {\"options\": [\"UPPERCASE\", \"lowercase\", \"Capitalize\", \"Title Case\"]})\n            }\n        }\n\n    RETURN_TYPES = (IO.STRING,)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string, mode, **kwargs):\n        if mode == \"UPPERCASE\":\n            result = string.upper()\n        elif mode == \"lowercase\":\n            result = string.lower()\n        elif mode == \"Capitalize\":\n            result = string.capitalize()\n        elif mode == \"Title Case\":\n            result = string.title()\n        else:\n            result = string\n\n        return result,\n\n\nclass StringTrim():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True}),\n                \"mode\": (IO.COMBO, {\"options\": [\"Both\", \"Left\", \"Right\"]})\n            }\n        }\n\n    RETURN_TYPES = (IO.STRING,)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string, mode, **kwargs):\n        if mode == \"Both\":\n            result = string.strip()\n        elif mode == \"Left\":\n            result = string.lstrip()\n        elif mode == \"Right\":\n            result = string.rstrip()\n        else:\n            result = string\n\n        return result,\n\nclass StringReplace():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True}),\n                \"find\": (IO.STRING, {\"multiline\": True}),\n                \"replace\": (IO.STRING, {\"multiline\": True})\n            }\n        }\n\n    RETURN_TYPES = (IO.STRING,)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string, find, replace, **kwargs):\n        result = string.replace(find, replace)\n        return result,\n\n\nclass StringContains():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True}),\n                \"substring\": (IO.STRING, {\"multiline\": True}),\n                \"case_sensitive\": (IO.BOOLEAN, {\"default\": True})\n            }\n        }\n\n    RETURN_TYPES = (IO.BOOLEAN,)\n    RETURN_NAMES = (\"contains\",)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string, substring, case_sensitive, **kwargs):\n        if case_sensitive:\n            contains = substring in string\n        else:\n            contains = substring.lower() in string.lower()\n\n        return contains,\n\n\nclass StringCompare():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string_a\": (IO.STRING, {\"multiline\": True}),\n                \"string_b\": (IO.STRING, {\"multiline\": True}),\n                \"mode\": (IO.COMBO, {\"options\": [\"Starts With\", \"Ends With\", \"Equal\"]}),\n                \"case_sensitive\": (IO.BOOLEAN, {\"default\": True})\n            }\n        }\n\n    RETURN_TYPES = (IO.BOOLEAN,)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string_a, string_b, mode, case_sensitive, **kwargs):\n        if case_sensitive:\n            a = string_a\n            b = string_b\n        else:\n            a = string_a.lower()\n            b = string_b.lower()\n\n        if mode == \"Equal\":\n            return a == b,\n        elif mode == \"Starts With\":\n            return a.startswith(b),\n        elif mode == \"Ends With\":\n            return a.endswith(b),\n\nclass RegexMatch():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True}),\n                \"regex_pattern\": (IO.STRING, {\"multiline\": True}),\n                \"case_insensitive\": (IO.BOOLEAN, {\"default\": True}),\n                \"multiline\": (IO.BOOLEAN, {\"default\": False}),\n                \"dotall\": (IO.BOOLEAN, {\"default\": False})\n            }\n        }\n\n    RETURN_TYPES = (IO.BOOLEAN,)\n    RETURN_NAMES = (\"matches\",)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string, regex_pattern, case_insensitive, multiline, dotall, **kwargs):\n        flags = 0\n\n        if case_insensitive:\n            flags |= re.IGNORECASE\n        if multiline:\n            flags |= re.MULTILINE\n        if dotall:\n            flags |= re.DOTALL\n\n        try:\n            match = re.search(regex_pattern, string, flags)\n            result = match is not None\n\n--- structural neighbors ---\nsymbol:7631d25e785d192c:StringSubstring (symbol, comfy_extras/nodes_string.py); symbol:3920a91d898bdea5:RegexMatch (symbol, comfy_extras/nodes_string.py); symbol:cae507105b38425f:CaseConverter (symbol, comfy_extras/nodes_string.py); symbol:50918d1b3edb5df0:StringCompare (symbol, comfy_extras/nodes_string.py); symbol:08c077f48701e9e4:RegexExtract (symbol, comfy_extras/nodes_string.py); symbol:3c396851af4f4a9d:StringLength (symbol, comfy_extras/nodes_string.py); symbol:ecb7331464c1c593:StringReplace (symbol, comfy_extras/nodes_string.py); symbol:09972d71483fcd2e:StringTrim (symbol, comfy_extras/nodes_string.py); symbol:171362dbee90c108:StringContains (symbol, comfy_extras/nodes_string.py); symbol:61e53fc5c3c72279:StringConcatenate (symbol, comfy_extras/nodes_string.py)",
+        "nodes.py": "from __future__ import annotations\nimport torch\n\nimport os\nimport sys\nimport json\nimport hashlib\nimport traceback\nimport math\nimport time\nimport random\nimport logging\n\nfrom PIL import Image, ImageOps, ImageSequence\nfrom PIL.PngImagePlugin import PngInfo\n\nimport numpy as np\nimport safetensors.torch\n\nsys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), \"comfy\"))\n\nimport comfy.diffusers_load\nimport comfy.samplers\nimport comfy.sample\nimport comfy.sd\nimport comfy.utils\nimport comfy.controlnet\nfrom comfy.comfy_types import IO, ComfyNodeABC, InputTypeDict, FileLocator\n\nimport comfy.clip_vision\n\nimport comfy.model_management\nfrom comfy.cli_args import args\n\nimport importlib\n\nimport folder_paths\nimport latent_preview\nimport node_helpers\n\ndef before_node_execution():\n    comfy.model_management.throw_exception_if_processing_interrupted()\n\ndef interrupt_processing(value=True):\n    comfy.model_management.interrupt_current_processing(value)\n\nMAX_RESOLUTION=16384\n\nclass CLIPTextEncode(ComfyNodeABC):\n    @classmethod\n    def INPUT_TYPES(s) -> InputTypeDict:\n        return {\n            \"required\": {\n                \"text\": (IO.STRING, {\"multiline\": True, \"dynamicPrompts\": True, \"tooltip\": \"The text to be encoded.\"}),\n                \"clip\": (IO.CLIP, {\"tooltip\": \"The CLIP model used for encoding the text.\"})\n            }\n        }\n    RETURN_TYPES = (IO.CONDITIONING,)\n    OUTPUT_TOOLTIPS = (\"A conditioning containing the embedded text used to guide the diffusion model.\",)\n    FUNCTION = \"encode\"\n\n    CATEGORY = \"conditioning\"\n    DESCRIPTION = \"Encodes a text prompt using a CLIP model into an embedding that can be used to guide the diffusion model towards generating specific images.\"\n\n    def encode(self, clip, text):\n        if clip is None:\n            raise RuntimeError(\"ERROR: clip input is invalid: None\\n\\nIf the clip is from a checkpoint loader node your checkpoint does not contain a valid clip or text encoder model.\")\n        tokens = clip.tokenize(text)\n        return (clip.encode_from_tokens_scheduled(tokens), )\n\n\nclass ConditioningCombine:\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\"required\": {\"conditioning_1\": (\"CONDITIONING\", ), \"conditioning_2\": (\"CONDITIONING\", )}}\n    RETURN_TYPES = (\"CONDITIONING\",)\n    FUNCTION = \"combine\"\n\n    CATEGORY = \"conditioning\"\n\n    def combine(self, conditioning_1, conditioning_2):\n        return (conditioning_1 + conditioning_2, )\n\nclass ConditioningAverage :\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\"required\": {\"conditioning_to\": (\"CONDITIONING\", ), \"conditioning_from\": (\"CONDITIONING\", ),\n                              \"conditioning_to_strength\": (\"FLOAT\", {\"default\": 1.0, \"min\": 0.0, \"max\": 1.0, \"step\": 0.01})\n                             }}\n    RETURN_TYPES = (\"CONDITIONING\",)\n    FUNCTION = \"addWeighted\"\n\n    CATEGORY = \"conditioning\"\n\n    def addWeighted(self, conditioning_to, conditioning_from, conditioning_to_strength):\n        out = []\n\n        if len(conditioning_from) > 1:\n            logging.warning(\"Warning: ConditioningAverage conditioning_from contains more than 1 cond, only the first one will actually be applied to conditioning_to.\")\n\n        cond_from = conditioning_from[0][0]\n        pooled_output_from = conditioning_from[0][1].get(\"pooled_output\", None)\n\n        for i in range(len(conditioning_to)):\n            t1 = conditioning_to[i][0]\n            pooled_output_to = conditioning_to[i][1].get(\"pooled_output\", pooled_output_from)\n            t0 = cond_from[:,:t1.shape[1]]\n            if t0.shape[1] < t1.shape[1]:\n                t0 = torch.cat([t0] + [torch.zeros((1, (t1.shape[1] - t0.shape[1]), t1.shape[2]))], dim=1)\n\n            tw = torch.mul(t1, conditioning_to_strength) + torch.mul(t0, (1.0 - conditioning_to_strength))\n            t_to = conditioning_to[i][1].copy()\n            if pooled_output_from is not None and pooled_output_to is not None:\n                t_to[\"pooled_output\"] = torch.mul(pooled_output_to, conditioning_to_strength) + torch.mul(pooled_output_from, (1.0 - conditioning_to_strength))\n            elif pooled_output_from is not None:\n                t_to[\"pooled_output\"] = pooled_output_from\n\n            n = [tw, t_to]\n            out.append(n)\n        return (out, )\n\nclass ConditioningConcat:\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\"required\": {\n            \"conditioning_to\": (\"CONDITIONING\",),\n            \"conditioning_from\": (\"CONDITIONING\",),\n            }}\n    RETURN_TYPES = (\"CONDITIONING\",)\n    FUNCTION = \"concat\"\n\n    CATEGORY = \"conditioning\"\n\n    def concat(self, conditioning_to, conditioning_from):\n        out = []\n\n        if len(conditioning_from) > 1:\n            logging.warning(\"Warning: ConditioningConcat conditioning_from contains more than 1 cond, only the first one will actually be applied to conditioning_to.\")\n\n        cond_from = conditioning_from[0][0]\n\n        for i in range(len(conditioning_to)):\n            t1 = conditioning_to[i][0]\n            tw = torch.cat((t1, cond_from),1)\n            n = [tw, conditioning_to[i][1].copy()]\n            out.append(n)\n\n        return (out, )\n\nclass ConditioningSetArea:\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\"required\": {\"conditioning\": (\"CONDITIONING\", ),\n                              \"width\": (\"INT\", {\"default\": 64, \"min\": 64, \"max\": MAX_RESOLUTION, \"step\": 8}),\n                              \"height\": (\"INT\", {\"default\": 64, \"min\": 64, \"max\": MAX_RESOLUTION, \"step\": 8}),\n                              \"x\": (\"INT\", {\"default\": 0, \"min\": 0, \"max\": MAX_RESOLUTION, \"step\": 8}),\n                              \"y\": (\"INT\", {\"default\": 0, \"min\": 0, \"max\": MAX_RESOLUTION, \"step\": 8}),\n                              \"strength\": (\"FLOAT\", {\"default\": 1.0, \"min\": 0.0, \"max\": 10.0, \"step\": 0.01}),\n                             }}\n    RETURN_TYPES = (\"CONDITIONING\",)\n    FUNCTION = \"append\"\n\n    CATEGORY = \"conditioning\"\n\n    def append(self, conditioning, width, height, x, y, strength):\n        c = node_helpers.conditioning_set_values(conditioning, {\"area\": (height // 8, width // 8, y // 8, x // 8),\n                                                                \"strength\": strength,\n                                                                \"set_area_to_bounds\": False})\n        return (c, )\n\nclass ConditioningSetAreaPercentage:\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\"required\": {\"conditioning\": (\"CONDITIONING\", ),\n                              \"width\": (\"FLOAT\", {\"default\": 1.0, \"min\": 0, \"max\": 1.0, \"step\": 0.01}),\n                              \"height\": (\"FLOAT\", {\"default\": 1.0, \"min\": 0, \"max\": 1.0, \"step\": 0.01}),\n                              \"x\": (\"FLOAT\", {\"default\": 0, \"min\": 0, \"max\": 1.0, \"step\": 0.01}),\n                              \"y\": (\"FLOAT\", {\"default\": 0, \"min\": 0, \"max\": 1.0, \"step\": 0.01}),\n                              \"strength\": (\"FLOAT\", {\"default\": 1.0, \"min\": 0.0, \"max\": 10.0, \"step\": 0.01}),\n                             }}\n    RETURN_TYPES = (\"CONDITIONING\",)\n    FUNCTION = \"append\"\n\n    CATEGORY = \"conditioning\"\n\n    def append(self, conditioning, width, height, x, y, strength):\n        c = node_helpers.conditioning_set_values(conditioning, {\"area\": (\"percentage\", height, width, y, x),\n                                                                \"strength\": strength,\n                                                                \"set_area_to_bounds\": False})\n        return (c, )\n\nclass ConditioningSetAreaStrength:\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\"required\": {\"conditioning\": (\"CONDITIONING\", ),\n                              \"strength\": (\"FLOAT\", {\"default\": 1.0, \"min\": 0.0, \"max\": 10.0, \"step\": 0.01}),\n                             }}\n    RETURN_TYPES = (\"CONDITIONING\",)\n    FUNCTION = \"append\"\n\n    CATEGORY = \"conditioning\"\n\n    def append(self, conditioning, strength):\n        c = node_helpers.conditioning_set_values(conditioning, {\"strength\": strength})\n        ret\n--- structural neighbors ---\nsymbol:6ff27eaf1449cf28:get_module_name (symbol, nodes.py); symbol:9b21306a69851d41:LoraLoaderModelOnly (symbol, nodes.py); symbol:010222ac6f99e674:init_extra_nodes (symbol, nodes.py); symbol:14a98fcfce41973c:GLIGENLoader (symbol, nodes.py); symbol:cbab92002e64bbbe:SaveLatent (symbol, nodes.py); symbol:f9e928eece714e56:EmptyImage (symbol, nodes.py); symbol:f0a80611aed5e78f:ConditioningSetArea (symbol, nodes.py); symbol:5a4b91dd11e7eb06:LatentComposite (symbol, nodes.py); symbol:e4b148ff8b1ac4a5:LatentFlip (symbol, nodes.py); symbol:5e2c66b8b452dd16:ConditioningSetMask (symbol, nodes.py); symbol:988fbef4fa2705b3:VAEDecodeTiled (symbol, nodes.py); symbol:da5e3e8578a71e82:CheckpointLoader (symbol, nodes.py)"
+      },
+      "search_hits": {
+        "comfy_extras/nodes_string.py": [],
+        "Malicious regex patterns could cause ReDoS (Regular Expression Denial of Service) or excessive memory usage": [],
+        "Malicious regex patterns could cause ReDoS (Regular Expression Denial of Service) or excessive memory usage def execute(self, string, regex_pattern, case_insens": []
+      },
+      "warnings": [
+        "doc_fetch_failed:README.md:HTTP 404",
+        "doc_fetch_failed:README.rst:HTTP 404",
+        "doc_fetch_failed:README.txt:HTTP 404",
+        "doc_fetch_failed:CONTRIBUTING.md:HTTP 404",
+        "doc_fetch_failed:SECURITY.md:HTTP 404",
+        "doc_fetch_failed:CHANGELOG.md:HTTP 404",
+        "doc_fetch_failed:docs/README.md:HTTP 404",
+        "doc_fetch_failed:docs/index.md:HTTP 404",
+        "doc_fetch_failed:.github/CONTRIBUTING.md:HTTP 404",
+        "doc_fetch_failed:.github/SECURITY.md:HTTP 404"
+      ]
+    },
+    "general_review-3:auto-context:3": {
+      "request_id": "general_review-3:auto-context:3",
+      "candidate_id": "general_review-3",
+      "file_snippets": {
+        "comfy_extras/nodes_string.py": "import re\n\nfrom comfy.comfy_types.node_typing import IO\n\nclass StringConcatenate():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string_a\": (IO.STRING, {\"multiline\": True}),\n                \"string_b\": (IO.STRING, {\"multiline\": True})\n            }\n        }\n\n    RETURN_TYPES = (IO.STRING,)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string_a, string_b, **kwargs):\n        return string_a + string_b,\n\nclass StringSubstring():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True}),\n                \"start\": (IO.INT, {}),\n                \"end\": (IO.INT, {}),\n            }\n        }\n\n    RETURN_TYPES = (IO.STRING,)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string, start, end, **kwargs):\n        return string[start:end],\n\nclass StringLength():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True})\n            }\n        }\n\n    RETURN_TYPES = (IO.INT,)\n    RETURN_NAMES = (\"length\",)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string, **kwargs):\n        length = len(string)\n\n        return length,\n\nclass CaseConverter():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True}),\n                \"mode\": (IO.COMBO, {\"options\": [\"UPPERCASE\", \"lowercase\", \"Capitalize\", \"Title Case\"]})\n            }\n        }\n\n    RETURN_TYPES = (IO.STRING,)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string, mode, **kwargs):\n        if mode == \"UPPERCASE\":\n            result = string.upper()\n        elif mode == \"lowercase\":\n            result = string.lower()\n        elif mode == \"Capitalize\":\n            result = string.capitalize()\n        elif mode == \"Title Case\":\n            result = string.title()\n        else:\n            result = string\n\n        return result,\n\n\nclass StringTrim():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True}),\n                \"mode\": (IO.COMBO, {\"options\": [\"Both\", \"Left\", \"Right\"]})\n            }\n        }\n\n    RETURN_TYPES = (IO.STRING,)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string, mode, **kwargs):\n        if mode == \"Both\":\n            result = string.strip()\n        elif mode == \"Left\":\n            result = string.lstrip()\n        elif mode == \"Right\":\n            result = string.rstrip()\n        else:\n            result = string\n\n        return result,\n\nclass StringReplace():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True}),\n                \"find\": (IO.STRING, {\"multiline\": True}),\n                \"replace\": (IO.STRING, {\"multiline\": True})\n            }\n        }\n\n    RETURN_TYPES = (IO.STRING,)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string, find, replace, **kwargs):\n        result = string.replace(find, replace)\n        return result,\n\n\nclass StringContains():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True}),\n                \"substring\": (IO.STRING, {\"multiline\": True}),\n                \"case_sensitive\": (IO.BOOLEAN, {\"default\": True})\n            }\n        }\n\n    RETURN_TYPES = (IO.BOOLEAN,)\n    RETURN_NAMES = (\"contains\",)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string, substring, case_sensitive, **kwargs):\n        if case_sensitive:\n            contains = substring in string\n        else:\n            contains = substring.lower() in string.lower()\n\n        return contains,\n\n\nclass StringCompare():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string_a\": (IO.STRING, {\"multiline\": True}),\n                \"string_b\": (IO.STRING, {\"multiline\": True}),\n                \"mode\": (IO.COMBO, {\"options\": [\"Starts With\", \"Ends With\", \"Equal\"]}),\n                \"case_sensitive\": (IO.BOOLEAN, {\"default\": True})\n            }\n        }\n\n    RETURN_TYPES = (IO.BOOLEAN,)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string_a, string_b, mode, case_sensitive, **kwargs):\n        if case_sensitive:\n            a = string_a\n            b = string_b\n        else:\n            a = string_a.lower()\n            b = string_b.lower()\n\n        if mode == \"Equal\":\n            return a == b,\n        elif mode == \"Starts With\":\n            return a.startswith(b),\n        elif mode == \"Ends With\":\n            return a.endswith(b),\n\nclass RegexMatch():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True}),\n                \"regex_pattern\": (IO.STRING, {\"multiline\": True}),\n                \"case_insensitive\": (IO.BOOLEAN, {\"default\": True}),\n                \"multiline\": (IO.BOOLEAN, {\"default\": False}),\n                \"dotall\": (IO.BOOLEAN, {\"default\": False})\n            }\n        }\n\n    RETURN_TYPES = (IO.BOOLEAN,)\n    RETURN_NAMES = (\"matches\",)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string, regex_pattern, case_insensitive, multiline, dotall, **kwargs):\n        flags = 0\n\n        if case_insensitive:\n            flags |= re.IGNORECASE\n        if multiline:\n            flags |= re.MULTILINE\n        if dotall:\n            flags |= re.DOTALL\n\n        try:\n            match = re.search(regex_pattern, string, flags)\n            result = match is not None\n\n--- structural neighbors ---\nsymbol:7631d25e785d192c:StringSubstring (symbol, comfy_extras/nodes_string.py); symbol:3920a91d898bdea5:RegexMatch (symbol, comfy_extras/nodes_string.py); symbol:cae507105b38425f:CaseConverter (symbol, comfy_extras/nodes_string.py); symbol:50918d1b3edb5df0:StringCompare (symbol, comfy_extras/nodes_string.py); symbol:08c077f48701e9e4:RegexExtract (symbol, comfy_extras/nodes_string.py); symbol:3c396851af4f4a9d:StringLength (symbol, comfy_extras/nodes_string.py); symbol:ecb7331464c1c593:StringReplace (symbol, comfy_extras/nodes_string.py); symbol:09972d71483fcd2e:StringTrim (symbol, comfy_extras/nodes_string.py); symbol:171362dbee90c108:StringContains (symbol, comfy_extras/nodes_string.py); symbol:61e53fc5c3c72279:StringConcatenate (symbol, comfy_extras/nodes_string.py)",
+        "nodes.py": "from __future__ import annotations\nimport torch\n\nimport os\nimport sys\nimport json\nimport hashlib\nimport traceback\nimport math\nimport time\nimport random\nimport logging\n\nfrom PIL import Image, ImageOps, ImageSequence\nfrom PIL.PngImagePlugin import PngInfo\n\nimport numpy as np\nimport safetensors.torch\n\nsys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), \"comfy\"))\n\nimport comfy.diffusers_load\nimport comfy.samplers\nimport comfy.sample\nimport comfy.sd\nimport comfy.utils\nimport comfy.controlnet\nfrom comfy.comfy_types import IO, ComfyNodeABC, InputTypeDict, FileLocator\n\nimport comfy.clip_vision\n\nimport comfy.model_management\nfrom comfy.cli_args import args\n\nimport importlib\n\nimport folder_paths\nimport latent_preview\nimport node_helpers\n\ndef before_node_execution():\n    comfy.model_management.throw_exception_if_processing_interrupted()\n\ndef interrupt_processing(value=True):\n    comfy.model_management.interrupt_current_processing(value)\n\nMAX_RESOLUTION=16384\n\nclass CLIPTextEncode(ComfyNodeABC):\n    @classmethod\n    def INPUT_TYPES(s) -> InputTypeDict:\n        return {\n            \"required\": {\n                \"text\": (IO.STRING, {\"multiline\": True, \"dynamicPrompts\": True, \"tooltip\": \"The text to be encoded.\"}),\n                \"clip\": (IO.CLIP, {\"tooltip\": \"The CLIP model used for encoding the text.\"})\n            }\n        }\n    RETURN_TYPES = (IO.CONDITIONING,)\n    OUTPUT_TOOLTIPS = (\"A conditioning containing the embedded text used to guide the diffusion model.\",)\n    FUNCTION = \"encode\"\n\n    CATEGORY = \"conditioning\"\n    DESCRIPTION = \"Encodes a text prompt using a CLIP model into an embedding that can be used to guide the diffusion model towards generating specific images.\"\n\n    def encode(self, clip, text):\n        if clip is None:\n            raise RuntimeError(\"ERROR: clip input is invalid: None\\n\\nIf the clip is from a checkpoint loader node your checkpoint does not contain a valid clip or text encoder model.\")\n        tokens = clip.tokenize(text)\n        return (clip.encode_from_tokens_scheduled(tokens), )\n\n\nclass ConditioningCombine:\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\"required\": {\"conditioning_1\": (\"CONDITIONING\", ), \"conditioning_2\": (\"CONDITIONING\", )}}\n    RETURN_TYPES = (\"CONDITIONING\",)\n    FUNCTION = \"combine\"\n\n    CATEGORY = \"conditioning\"\n\n    def combine(self, conditioning_1, conditioning_2):\n        return (conditioning_1 + conditioning_2, )\n\nclass ConditioningAverage :\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\"required\": {\"conditioning_to\": (\"CONDITIONING\", ), \"conditioning_from\": (\"CONDITIONING\", ),\n                              \"conditioning_to_strength\": (\"FLOAT\", {\"default\": 1.0, \"min\": 0.0, \"max\": 1.0, \"step\": 0.01})\n                             }}\n    RETURN_TYPES = (\"CONDITIONING\",)\n    FUNCTION = \"addWeighted\"\n\n    CATEGORY = \"conditioning\"\n\n    def addWeighted(self, conditioning_to, conditioning_from, conditioning_to_strength):\n        out = []\n\n        if len(conditioning_from) > 1:\n            logging.warning(\"Warning: ConditioningAverage conditioning_from contains more than 1 cond, only the first one will actually be applied to conditioning_to.\")\n\n        cond_from = conditioning_from[0][0]\n        pooled_output_from = conditioning_from[0][1].get(\"pooled_output\", None)\n\n        for i in range(len(conditioning_to)):\n            t1 = conditioning_to[i][0]\n            pooled_output_to = conditioning_to[i][1].get(\"pooled_output\", pooled_output_from)\n            t0 = cond_from[:,:t1.shape[1]]\n            if t0.shape[1] < t1.shape[1]:\n                t0 = torch.cat([t0] + [torch.zeros((1, (t1.shape[1] - t0.shape[1]), t1.shape[2]))], dim=1)\n\n            tw = torch.mul(t1, conditioning_to_strength) + torch.mul(t0, (1.0 - conditioning_to_strength))\n            t_to = conditioning_to[i][1].copy()\n            if pooled_output_from is not None and pooled_output_to is not None:\n                t_to[\"pooled_output\"] = torch.mul(pooled_output_to, conditioning_to_strength) + torch.mul(pooled_output_from, (1.0 - conditioning_to_strength))\n            elif pooled_output_from is not None:\n                t_to[\"pooled_output\"] = pooled_output_from\n\n            n = [tw, t_to]\n            out.append(n)\n        return (out, )\n\nclass ConditioningConcat:\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\"required\": {\n            \"conditioning_to\": (\"CONDITIONING\",),\n            \"conditioning_from\": (\"CONDITIONING\",),\n            }}\n    RETURN_TYPES = (\"CONDITIONING\",)\n    FUNCTION = \"concat\"\n\n    CATEGORY = \"conditioning\"\n\n    def concat(self, conditioning_to, conditioning_from):\n        out = []\n\n        if len(conditioning_from) > 1:\n            logging.warning(\"Warning: ConditioningConcat conditioning_from contains more than 1 cond, only the first one will actually be applied to conditioning_to.\")\n\n        cond_from = conditioning_from[0][0]\n\n        for i in range(len(conditioning_to)):\n            t1 = conditioning_to[i][0]\n            tw = torch.cat((t1, cond_from),1)\n            n = [tw, conditioning_to[i][1].copy()]\n            out.append(n)\n\n        return (out, )\n\nclass ConditioningSetArea:\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\"required\": {\"conditioning\": (\"CONDITIONING\", ),\n                              \"width\": (\"INT\", {\"default\": 64, \"min\": 64, \"max\": MAX_RESOLUTION, \"step\": 8}),\n                              \"height\": (\"INT\", {\"default\": 64, \"min\": 64, \"max\": MAX_RESOLUTION, \"step\": 8}),\n                              \"x\": (\"INT\", {\"default\": 0, \"min\": 0, \"max\": MAX_RESOLUTION, \"step\": 8}),\n                              \"y\": (\"INT\", {\"default\": 0, \"min\": 0, \"max\": MAX_RESOLUTION, \"step\": 8}),\n                              \"strength\": (\"FLOAT\", {\"default\": 1.0, \"min\": 0.0, \"max\": 10.0, \"step\": 0.01}),\n                             }}\n    RETURN_TYPES = (\"CONDITIONING\",)\n    FUNCTION = \"append\"\n\n    CATEGORY = \"conditioning\"\n\n    def append(self, conditioning, width, height, x, y, strength):\n        c = node_helpers.conditioning_set_values(conditioning, {\"area\": (height // 8, width // 8, y // 8, x // 8),\n                                                                \"strength\": strength,\n                                                                \"set_area_to_bounds\": False})\n        return (c, )\n\nclass ConditioningSetAreaPercentage:\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\"required\": {\"conditioning\": (\"CONDITIONING\", ),\n                              \"width\": (\"FLOAT\", {\"default\": 1.0, \"min\": 0, \"max\": 1.0, \"step\": 0.01}),\n                              \"height\": (\"FLOAT\", {\"default\": 1.0, \"min\": 0, \"max\": 1.0, \"step\": 0.01}),\n                              \"x\": (\"FLOAT\", {\"default\": 0, \"min\": 0, \"max\": 1.0, \"step\": 0.01}),\n                              \"y\": (\"FLOAT\", {\"default\": 0, \"min\": 0, \"max\": 1.0, \"step\": 0.01}),\n                              \"strength\": (\"FLOAT\", {\"default\": 1.0, \"min\": 0.0, \"max\": 10.0, \"step\": 0.01}),\n                             }}\n    RETURN_TYPES = (\"CONDITIONING\",)\n    FUNCTION = \"append\"\n\n    CATEGORY = \"conditioning\"\n\n    def append(self, conditioning, width, height, x, y, strength):\n        c = node_helpers.conditioning_set_values(conditioning, {\"area\": (\"percentage\", height, width, y, x),\n                                                                \"strength\": strength,\n                                                                \"set_area_to_bounds\": False})\n        return (c, )\n\nclass ConditioningSetAreaStrength:\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\"required\": {\"conditioning\": (\"CONDITIONING\", ),\n                              \"strength\": (\"FLOAT\", {\"default\": 1.0, \"min\": 0.0, \"max\": 10.0, \"step\": 0.01}),\n                             }}\n    RETURN_TYPES = (\"CONDITIONING\",)\n    FUNCTION = \"append\"\n\n    CATEGORY = \"conditioning\"\n\n    def append(self, conditioning, strength):\n        c = node_helpers.conditioning_set_values(conditioning, {\"strength\": strength})\n        ret\n--- structural neighbors ---\nsymbol:6ff27eaf1449cf28:get_module_name (symbol, nodes.py); symbol:9b21306a69851d41:LoraLoaderModelOnly (symbol, nodes.py); symbol:010222ac6f99e674:init_extra_nodes (symbol, nodes.py); symbol:14a98fcfce41973c:GLIGENLoader (symbol, nodes.py); symbol:cbab92002e64bbbe:SaveLatent (symbol, nodes.py); symbol:f9e928eece714e56:EmptyImage (symbol, nodes.py); symbol:f0a80611aed5e78f:ConditioningSetArea (symbol, nodes.py); symbol:5a4b91dd11e7eb06:LatentComposite (symbol, nodes.py); symbol:e4b148ff8b1ac4a5:LatentFlip (symbol, nodes.py); symbol:5e2c66b8b452dd16:ConditioningSetMask (symbol, nodes.py); symbol:988fbef4fa2705b3:VAEDecodeTiled (symbol, nodes.py); symbol:da5e3e8578a71e82:CheckpointLoader (symbol, nodes.py)"
+      },
+      "search_hits": {
+        "comfy_extras/nodes_string.py": [],
+        "All Matches and All Groups modes use findall/finditer which can cause exponential backtracking on malicious patterns": [],
+        "All Matches and All Groups modes use findall/finditer which can cause exponential backtracking on malicious patterns def execute(self, string, regex_pattern, mo": []
+      },
+      "warnings": [
+        "doc_fetch_failed:README.md:HTTP 404",
+        "doc_fetch_failed:README.rst:HTTP 404",
+        "doc_fetch_failed:README.txt:HTTP 404",
+        "doc_fetch_failed:CONTRIBUTING.md:HTTP 404",
+        "doc_fetch_failed:SECURITY.md:HTTP 404",
+        "doc_fetch_failed:CHANGELOG.md:HTTP 404",
+        "doc_fetch_failed:docs/README.md:HTTP 404",
+        "doc_fetch_failed:docs/index.md:HTTP 404",
+        "doc_fetch_failed:.github/CONTRIBUTING.md:HTTP 404",
+        "doc_fetch_failed:.github/SECURITY.md:HTTP 404"
+      ]
+    },
+    "string_validation_check": {
+      "request_id": "string_validation_check",
+      "candidate_id": "logic_review",
+      "file_snippets": {
+        "comfy_extras/nodes_string.py": "import re\n\nfrom comfy.comfy_types.node_typing import IO\n\nclass StringConcatenate():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string_a\": (IO.STRING, {\"multiline\": True}),\n                \"string_b\": (IO.STRING, {\"multiline\": True})\n            }\n        }\n\n    RETURN_TYPES = (IO.STRING,)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string_a, string_b, **kwargs):\n        return string_a + string_b,\n\nclass StringSubstring():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True}),\n                \"start\": (IO.INT, {}),\n                \"end\": (IO.INT, {}),\n            }\n        }\n\n    RETURN_TYPES = (IO.STRING,)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string, start, end, **kwargs):\n        return string[start:end],\n\nclass StringLength():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True})\n            }\n        }\n\n    RETURN_TYPES = (IO.INT,)\n    RETURN_NAMES = (\"length\",)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string, **kwargs):\n        length = len(string)\n\n        return length,\n\nclass CaseConverter():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True}),\n                \"mode\": (IO.COMBO, {\"options\": [\"UPPERCASE\", \"lowercase\", \"Capitalize\", \"Title Case\"]})\n            }\n        }\n\n    RETURN_TYPES = (IO.STRING,)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string, mode, **kwargs):\n        if mode == \"UPPERCASE\":\n            result = string.upper()\n        elif mode == \"lowercase\":\n            result = string.lower()\n        elif mode == \"Capitalize\":\n            result = string.capitalize()\n        elif mode == \"Title Case\":\n            result = string.title()\n        else:\n            result = string\n\n        return result,\n\n\nclass StringTrim():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True}),\n                \"mode\": (IO.COMBO, {\"options\": [\"Both\", \"Left\", \"Right\"]})\n            }\n        }\n\n    RETURN_TYPES = (IO.STRING,)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string, mode, **kwargs):\n        if mode == \"Both\":\n            result = string.strip()\n        elif mode == \"Left\":\n            result = string.lstrip()\n        elif mode == \"Right\":\n            result = string.rstrip()\n        else:\n            result = string\n\n        return result,\n\nclass StringReplace():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True}),\n                \"find\": (IO.STRING, {\"multiline\": True}),\n                \"replace\": (IO.STRING, {\"multiline\": True})\n            }\n        }\n\n    RETURN_TYPES = (IO.STRING,)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string, find, replace, **kwargs):\n        result = string.replace(find, replace)\n        return result,\n\n\nclass StringContains():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True}),\n                \"substring\": (IO.STRING, {\"multiline\": True}),\n                \"case_sensitive\": (IO.BOOLEAN, {\"default\": True})\n            }\n        }\n\n    RETURN_TYPES = (IO.BOOLEAN,)\n    RETURN_NAMES = (\"contains\",)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string, substring, case_sensitive, **kwargs):\n        if case_sensitive:\n            contains = substring in string\n        else:\n            contains = substring.lower() in string.lower()\n\n        return contains,\n\n\nclass StringCompare():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string_a\": (IO.STRING, {\"multiline\": True}),\n                \"string_b\": (IO.STRING, {\"multiline\": True}),\n                \"mode\": (IO.COMBO, {\"options\": [\"Starts With\", \"Ends With\", \"Equal\"]}),\n                \"case_sensitive\": (IO.BOOLEAN, {\"default\": True})\n            }\n        }\n\n    RETURN_TYPES = (IO.BOOLEAN,)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string_a, string_b, mode, case_sensitive, **kwargs):\n        if case_sensitive:\n            a = string_a\n            b = string_b\n        else:\n            a = string_a.lower()\n            b = string_b.lower()\n\n        if mode == \"Equal\":\n            return a == b,\n        elif mode == \"Starts With\":\n            return a.startswith(b),\n        elif mode == \"Ends With\":\n            return a.endswith(b),\n\nclass RegexMatch():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True}),\n                \"regex_pattern\": (IO.STRING, {\"multiline\": True}),\n                \"case_insensitive\": (IO.BOOLEAN, {\"default\": True}),\n                \"multiline\": (IO.BOOLEAN, {\"default\": False}),\n                \"dotall\": (IO.BOOLEAN, {\"default\": False})\n            }\n        }\n\n    RETURN_TYPES = (IO.BOOLEAN,)\n    RETURN_NAMES = (\"matches\",)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string, regex_pattern, case_insensitive, multiline, dotall, **kwargs):\n        flags = 0\n\n        if case_insensitive:\n            flags |= re.IGNORECASE\n        if multiline:\n            flags |= re.MULTILINE\n        if dotall:\n            flags |= re.DOTALL\n\n        try:\n            match = re.search(regex_pattern, string, flags)\n            result = match is not None\n\n--- structural neighbors ---\nsymbol:7631d25e785d192c:StringSubstring (symbol, comfy_extras/nodes_string.py); symbol:3920a91d898bdea5:RegexMatch (symbol, comfy_extras/nodes_string.py); symbol:cae507105b38425f:CaseConverter (symbol, comfy_extras/nodes_string.py); symbol:50918d1b3edb5df0:StringCompare (symbol, comfy_extras/nodes_string.py); symbol:08c077f48701e9e4:RegexExtract (symbol, comfy_extras/nodes_string.py); symbol:3c396851af4f4a9d:StringLength (symbol, comfy_extras/nodes_string.py); symbol:ecb7331464c1c593:StringReplace (symbol, comfy_extras/nodes_string.py); symbol:09972d71483fcd2e:StringTrim (symbol, comfy_extras/nodes_string.py); symbol:171362dbee90c108:StringContains (symbol, comfy_extras/nodes_string.py); symbol:61e53fc5c3c72279:StringConcatenate (symbol, comfy_extras/nodes_string.py)"
+      },
+      "search_hits": {
+        "Check if string inputs are validated for None/null": [],
+        "Check if string inputs are validated for proper type": [],
+        "Check how None or non-string inputs are handled": []
+      },
+      "warnings": [
+        "doc_fetch_failed:README.md:HTTP 404",
+        "doc_fetch_failed:README.rst:HTTP 404",
+        "doc_fetch_failed:README.txt:HTTP 404",
+        "doc_fetch_failed:CONTRIBUTING.md:HTTP 404",
+        "doc_fetch_failed:SECURITY.md:HTTP 404",
+        "doc_fetch_failed:CHANGELOG.md:HTTP 404",
+        "doc_fetch_failed:docs/README.md:HTTP 404",
+        "doc_fetch_failed:docs/index.md:HTTP 404",
+        "doc_fetch_failed:.github/CONTRIBUTING.md:HTTP 404",
+        "doc_fetch_failed:.github/SECURITY.md:HTTP 404"
+      ]
+    },
+    "security_review_1:auto-context:1": {
+      "request_id": "security_review_1:auto-context:1",
+      "candidate_id": "security_review_1",
+      "file_snippets": {
+        "comfy_extras/nodes_string.py": "import re\n\nfrom comfy.comfy_types.node_typing import IO\n\nclass StringConcatenate():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string_a\": (IO.STRING, {\"multiline\": True}),\n                \"string_b\": (IO.STRING, {\"multiline\": True})\n            }\n        }\n\n    RETURN_TYPES = (IO.STRING,)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string_a, string_b, **kwargs):\n        return string_a + string_b,\n\nclass StringSubstring():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True}),\n                \"start\": (IO.INT, {}),\n                \"end\": (IO.INT, {}),\n            }\n        }\n\n    RETURN_TYPES = (IO.STRING,)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string, start, end, **kwargs):\n        return string[start:end],\n\nclass StringLength():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True})\n            }\n        }\n\n    RETURN_TYPES = (IO.INT,)\n    RETURN_NAMES = (\"length\",)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string, **kwargs):\n        length = len(string)\n\n        return length,\n\nclass CaseConverter():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True}),\n                \"mode\": (IO.COMBO, {\"options\": [\"UPPERCASE\", \"lowercase\", \"Capitalize\", \"Title Case\"]})\n            }\n        }\n\n    RETURN_TYPES = (IO.STRING,)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string, mode, **kwargs):\n        if mode == \"UPPERCASE\":\n            result = string.upper()\n        elif mode == \"lowercase\":\n            result = string.lower()\n        elif mode == \"Capitalize\":\n            result = string.capitalize()\n        elif mode == \"Title Case\":\n            result = string.title()\n        else:\n            result = string\n\n        return result,\n\n\nclass StringTrim():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True}),\n                \"mode\": (IO.COMBO, {\"options\": [\"Both\", \"Left\", \"Right\"]})\n            }\n        }\n\n    RETURN_TYPES = (IO.STRING,)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string, mode, **kwargs):\n        if mode == \"Both\":\n            result = string.strip()\n        elif mode == \"Left\":\n            result = string.lstrip()\n        elif mode == \"Right\":\n            result = string.rstrip()\n        else:\n            result = string\n\n        return result,\n\nclass StringReplace():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True}),\n                \"find\": (IO.STRING, {\"multiline\": True}),\n                \"replace\": (IO.STRING, {\"multiline\": True})\n            }\n        }\n\n    RETURN_TYPES = (IO.STRING,)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string, find, replace, **kwargs):\n        result = string.replace(find, replace)\n        return result,\n\n\nclass StringContains():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True}),\n                \"substring\": (IO.STRING, {\"multiline\": True}),\n                \"case_sensitive\": (IO.BOOLEAN, {\"default\": True})\n            }\n        }\n\n    RETURN_TYPES = (IO.BOOLEAN,)\n    RETURN_NAMES = (\"contains\",)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string, substring, case_sensitive, **kwargs):\n        if case_sensitive:\n            contains = substring in string\n        else:\n            contains = substring.lower() in string.lower()\n\n        return contains,\n\n\nclass StringCompare():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string_a\": (IO.STRING, {\"multiline\": True}),\n                \"string_b\": (IO.STRING, {\"multiline\": True}),\n                \"mode\": (IO.COMBO, {\"options\": [\"Starts With\", \"Ends With\", \"Equal\"]}),\n                \"case_sensitive\": (IO.BOOLEAN, {\"default\": True})\n            }\n        }\n\n    RETURN_TYPES = (IO.BOOLEAN,)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string_a, string_b, mode, case_sensitive, **kwargs):\n        if case_sensitive:\n            a = string_a\n            b = string_b\n        else:\n            a = string_a.lower()\n            b = string_b.lower()\n\n        if mode == \"Equal\":\n            return a == b,\n        elif mode == \"Starts With\":\n            return a.startswith(b),\n        elif mode == \"Ends With\":\n            return a.endswith(b),\n\nclass RegexMatch():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True}),\n                \"regex_pattern\": (IO.STRING, {\"multiline\": True}),\n                \"case_insensitive\": (IO.BOOLEAN, {\"default\": True}),\n                \"multiline\": (IO.BOOLEAN, {\"default\": False}),\n                \"dotall\": (IO.BOOLEAN, {\"default\": False})\n            }\n        }\n\n    RETURN_TYPES = (IO.BOOLEAN,)\n    RETURN_NAMES = (\"matches\",)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string, regex_pattern, case_insensitive, multiline, dotall, **kwargs):\n        flags = 0\n\n        if case_insensitive:\n            flags |= re.IGNORECASE\n        if multiline:\n            flags |= re.MULTILINE\n        if dotall:\n            flags |= re.DOTALL\n\n        try:\n            match = re.search(regex_pattern, string, flags)\n            result = match is not None\n\n--- structural neighbors ---\nsymbol:7631d25e785d192c:StringSubstring (symbol, comfy_extras/nodes_string.py); symbol:3920a91d898bdea5:RegexMatch (symbol, comfy_extras/nodes_string.py); symbol:cae507105b38425f:CaseConverter (symbol, comfy_extras/nodes_string.py); symbol:50918d1b3edb5df0:StringCompare (symbol, comfy_extras/nodes_string.py); symbol:08c077f48701e9e4:RegexExtract (symbol, comfy_extras/nodes_string.py); symbol:3c396851af4f4a9d:StringLength (symbol, comfy_extras/nodes_string.py); symbol:ecb7331464c1c593:StringReplace (symbol, comfy_extras/nodes_string.py); symbol:09972d71483fcd2e:StringTrim (symbol, comfy_extras/nodes_string.py); symbol:171362dbee90c108:StringContains (symbol, comfy_extras/nodes_string.py); symbol:61e53fc5c3c72279:StringConcatenate (symbol, comfy_extras/nodes_string.py)"
+      },
+      "search_hits": {
+        "comfy_extras/nodes_string.py": [],
+        "Users can provide malicious regex patterns that cause exponential backtracking (ReDoS), leading to denial-of-service or ": [],
+        "Users can provide malicious regex patterns that cause exponential backtracking (ReDoS), leading to denial-of-service or hangs. Both `string` and `regex_pattern`": []
+      },
+      "warnings": [
+        "doc_fetch_failed:README.md:HTTP 404",
+        "doc_fetch_failed:README.rst:HTTP 404",
+        "doc_fetch_failed:README.txt:HTTP 404",
+        "doc_fetch_failed:CONTRIBUTING.md:HTTP 404",
+        "doc_fetch_failed:SECURITY.md:HTTP 404",
+        "doc_fetch_failed:CHANGELOG.md:HTTP 404",
+        "doc_fetch_failed:docs/README.md:HTTP 404",
+        "doc_fetch_failed:docs/index.md:HTTP 404",
+        "doc_fetch_failed:.github/CONTRIBUTING.md:HTTP 404",
+        "doc_fetch_failed:.github/SECURITY.md:HTTP 404"
+      ]
+    },
+    "security_review_2:auto-context:2": {
+      "request_id": "security_review_2:auto-context:2",
+      "candidate_id": "security_review_2",
+      "file_snippets": {
+        "comfy_extras/nodes_string.py": "import re\n\nfrom comfy.comfy_types.node_typing import IO\n\nclass StringConcatenate():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string_a\": (IO.STRING, {\"multiline\": True}),\n                \"string_b\": (IO.STRING, {\"multiline\": True})\n            }\n        }\n\n    RETURN_TYPES = (IO.STRING,)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string_a, string_b, **kwargs):\n        return string_a + string_b,\n\nclass StringSubstring():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True}),\n                \"start\": (IO.INT, {}),\n                \"end\": (IO.INT, {}),\n            }\n        }\n\n    RETURN_TYPES = (IO.STRING,)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string, start, end, **kwargs):\n        return string[start:end],\n\nclass StringLength():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True})\n            }\n        }\n\n    RETURN_TYPES = (IO.INT,)\n    RETURN_NAMES = (\"length\",)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string, **kwargs):\n        length = len(string)\n\n        return length,\n\nclass CaseConverter():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True}),\n                \"mode\": (IO.COMBO, {\"options\": [\"UPPERCASE\", \"lowercase\", \"Capitalize\", \"Title Case\"]})\n            }\n        }\n\n    RETURN_TYPES = (IO.STRING,)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string, mode, **kwargs):\n        if mode == \"UPPERCASE\":\n            result = string.upper()\n        elif mode == \"lowercase\":\n            result = string.lower()\n        elif mode == \"Capitalize\":\n            result = string.capitalize()\n        elif mode == \"Title Case\":\n            result = string.title()\n        else:\n            result = string\n\n        return result,\n\n\nclass StringTrim():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True}),\n                \"mode\": (IO.COMBO, {\"options\": [\"Both\", \"Left\", \"Right\"]})\n            }\n        }\n\n    RETURN_TYPES = (IO.STRING,)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string, mode, **kwargs):\n        if mode == \"Both\":\n            result = string.strip()\n        elif mode == \"Left\":\n            result = string.lstrip()\n        elif mode == \"Right\":\n            result = string.rstrip()\n        else:\n            result = string\n\n        return result,\n\nclass StringReplace():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True}),\n                \"find\": (IO.STRING, {\"multiline\": True}),\n                \"replace\": (IO.STRING, {\"multiline\": True})\n            }\n        }\n\n    RETURN_TYPES = (IO.STRING,)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string, find, replace, **kwargs):\n        result = string.replace(find, replace)\n        return result,\n\n\nclass StringContains():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True}),\n                \"substring\": (IO.STRING, {\"multiline\": True}),\n                \"case_sensitive\": (IO.BOOLEAN, {\"default\": True})\n            }\n        }\n\n    RETURN_TYPES = (IO.BOOLEAN,)\n    RETURN_NAMES = (\"contains\",)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string, substring, case_sensitive, **kwargs):\n        if case_sensitive:\n            contains = substring in string\n        else:\n            contains = substring.lower() in string.lower()\n\n        return contains,\n\n\nclass StringCompare():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string_a\": (IO.STRING, {\"multiline\": True}),\n                \"string_b\": (IO.STRING, {\"multiline\": True}),\n                \"mode\": (IO.COMBO, {\"options\": [\"Starts With\", \"Ends With\", \"Equal\"]}),\n                \"case_sensitive\": (IO.BOOLEAN, {\"default\": True})\n            }\n        }\n\n    RETURN_TYPES = (IO.BOOLEAN,)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string_a, string_b, mode, case_sensitive, **kwargs):\n        if case_sensitive:\n            a = string_a\n            b = string_b\n        else:\n            a = string_a.lower()\n            b = string_b.lower()\n\n        if mode == \"Equal\":\n            return a == b,\n        elif mode == \"Starts With\":\n            return a.startswith(b),\n        elif mode == \"Ends With\":\n            return a.endswith(b),\n\nclass RegexMatch():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True}),\n                \"regex_pattern\": (IO.STRING, {\"multiline\": True}),\n                \"case_insensitive\": (IO.BOOLEAN, {\"default\": True}),\n                \"multiline\": (IO.BOOLEAN, {\"default\": False}),\n                \"dotall\": (IO.BOOLEAN, {\"default\": False})\n            }\n        }\n\n    RETURN_TYPES = (IO.BOOLEAN,)\n    RETURN_NAMES = (\"matches\",)\n    FUNCTION = \"execute\"\n    CATEGORY = \"utils/string\"\n\n    def execute(self, string, regex_pattern, case_insensitive, multiline, dotall, **kwargs):\n        flags = 0\n\n        if case_insensitive:\n            flags |= re.IGNORECASE\n        if multiline:\n            flags |= re.MULTILINE\n        if dotall:\n            flags |= re.DOTALL\n\n        try:\n            match = re.search(regex_pattern, string, flags)\n            result = match is not None\n\n--- structural neighbors ---\nsymbol:7631d25e785d192c:StringSubstring (symbol, comfy_extras/nodes_string.py); symbol:3920a91d898bdea5:RegexMatch (symbol, comfy_extras/nodes_string.py); symbol:cae507105b38425f:CaseConverter (symbol, comfy_extras/nodes_string.py); symbol:50918d1b3edb5df0:StringCompare (symbol, comfy_extras/nodes_string.py); symbol:08c077f48701e9e4:RegexExtract (symbol, comfy_extras/nodes_string.py); symbol:3c396851af4f4a9d:StringLength (symbol, comfy_extras/nodes_string.py); symbol:ecb7331464c1c593:StringReplace (symbol, comfy_extras/nodes_string.py); symbol:09972d71483fcd2e:StringTrim (symbol, comfy_extras/nodes_string.py); symbol:171362dbee90c108:StringContains (symbol, comfy_extras/nodes_string.py); symbol:61e53fc5c3c72279:StringConcatenate (symbol, comfy_extras/nodes_string.py)"
+      },
+      "search_hits": {
+        "comfy_extras/nodes_string.py": [],
+        "Users can provide malicious regex patterns that cause exponential backtracking (ReDoS), leading to denial-of-service or ": [],
+        "Users can provide malicious regex patterns that cause exponential backtracking (ReDoS), leading to denial-of-service or hangs. This node uses multiple regex fun": []
+      },
+      "warnings": [
+        "doc_fetch_failed:README.md:HTTP 404",
+        "doc_fetch_failed:README.rst:HTTP 404",
+        "doc_fetch_failed:README.txt:HTTP 404",
+        "doc_fetch_failed:CONTRIBUTING.md:HTTP 404",
+        "doc_fetch_failed:SECURITY.md:HTTP 404",
+        "doc_fetch_failed:CHANGELOG.md:HTTP 404",
+        "doc_fetch_failed:docs/README.md:HTTP 404",
+        "doc_fetch_failed:docs/index.md:HTTP 404",
+        "doc_fetch_failed:.github/CONTRIBUTING.md:HTTP 404",
+        "doc_fetch_failed:.github/SECURITY.md:HTTP 404"
+      ]
+    }
+  },
+  "critique_revision_digests": {},
+  "verifier_reports": []
+}

@@ -1,2 +1,0 @@
-pr_url,slug,started_at,finished_at,status,raw_path,findings_path,finding_count,elapsed_ms,error,redis_checkpoints_cleaned,token_usage
-https://github.com/comfyanonymous/ComfyUI/pull/7952,comfyanonymous__ComfyUI__pr7952,2026-05-07T22:25:50.001050+00:00,2026-05-07T22:26:29.722547+00:00,error,,,0,38581,"OSError: [WinError 123] The filename, directory name, or volume label syntax is incorrect: 'C:\\Users\\inesc\\Bushwhack\\bushwhack_runs\\2f9c06cdb6da:comfyanonymous__ComfyUI__pr7952\\graph\\communities'",True,0

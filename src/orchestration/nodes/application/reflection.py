@@ -101,6 +101,7 @@ def _normalize_reports(batch: ReflectionBatchOutput, specialty: str) -> tuple[Li
     for index, raw in enumerate(batch.reports):
         report = raw.model_copy(update={"reflector_specialty": specialty})
         reports.append(report)
+        # Only needs_context queues graph/search work; needs_verification uses the runtime verifier.
         if report.verdict == "needs_context" and report.focused_request is not None:
             normalized = _normalize_focus_request(report, specialty, index)
             if normalized is not None:

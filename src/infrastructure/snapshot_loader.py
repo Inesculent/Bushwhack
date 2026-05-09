@@ -52,7 +52,9 @@ class SnapshotLoader:
             if field not in data:
                 raise ValueError(f"Missing required field: {field}")
 
-        return ExplorationSnapshot.model_validate(data)
+        # The ExplorationSnapshot model is nested inside the 'exploration_snapshot' key
+        snapshot_data = data.get("exploration_snapshot", data)
+        return ExplorationSnapshot.model_validate(snapshot_data)
 
     def load_graph_payload(self, snapshot_root: str) -> Dict[str, Any]:
         """

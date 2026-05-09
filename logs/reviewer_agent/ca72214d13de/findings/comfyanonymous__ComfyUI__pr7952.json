@@ -1,0 +1,35 @@
+[
+  {
+    "id": "security_review-1",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 240,
+    "line_end": 245,
+    "content": "class RegexMatch():\n\nPost-context evidence: RegexMatch class at lines 220-262 accepts regex_pattern from user input without timeout or complexity validation. The digest confirms re.search() is called at line 227 without protection. ReDoS is a genuine risk - malicious patterns with nested quantifiers can cause exponential backtracking. No timeout mechanism exists in the execution flow. This is a high-severity security defect with concrete evidence from the diff.",
+    "severity": "high",
+    "feedback_type": "defect_detection",
+    "recommendation": "Implement timeout mechanism for regex execution using signal-based timeout or watchdog pattern. Add pattern complexity validation to detect potentially dangerous patterns (nested quantifiers, excessive backtracking potential). Consider limiting maximum pattern length or precompiling patterns with size limits.",
+    "references": []
+  },
+  {
+    "id": "general_review_002",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 310,
+    "line_end": 322,
+    "content": "NODE_CLASS_MAPPINGS = {\n    \"StringConcatenate\": StringConcatenate,\n    \"StringSubstring\": StringSubstring,\n    \"StringLength\": StringLength,\n    \"CaseConverter\": CaseConverter,\n    \"StringTrim\": StringTrim,\n    \"StringReplace\": StringReplace,\n    \"StringContains\": StringContains,\n    \"StringCompare\": StringCompare,\n    \"RegexMatch\": RegexMatch,\n    \"RegexExtract\": RegexExtract\n}\n\nNODE_DISPLAY_NAME_MAPPINGS = {\n    \"StringConcatenate\": \"Concatenate\",\n    \"StringSubstring\": \"Substring\",\n    \"StringLength\": \"Length\",\n    \"CaseConverter\": \"Case Converter\",\n    \"StringTrim\": \"Trim\",\n    \"StringReplace\": \"Replace\",\n    \"StringContains\": \"Contains\",\n    \"StringCompare\": \"Compare\",\n    \"RegexMatch\": \"Regex Match\",\n    \"RegexExtract\": \"Regex Extract\"\n}",
+    "severity": "high",
+    "feedback_type": "defect_detection",
+    "recommendation": "Ensure that nodes_string.py's NODE_CLASS_MAPPINGS and NODE_DISPLAY_NAME_MAPPINGS are properly imported and merged into nodes.py's global mappings. The current diff only shows the file is added to the import list, but doesn't show the mappings being integrated.",
+    "references": []
+  },
+  {
+    "id": "logic_review-4",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 64,
+    "line_end": 76,
+    "content": "The `CaseConverter.execute` method calls `.upper()`, `.lower()`, `.capitalize()`, `.title()` without `None` validation.\n\n```python\ndef execute(self, string, mode, **kwargs):\n    if mode == \"UPPERCASE\":\n        result = string.upper()\n    elif mode == \"lowercase\":\n        result = string.lower()\n    elif mode == \"Capitalize\":\n        result = string.capitalize()\n    elif mode == \"Title Case\":\n        result = string.title()\n```\n\nIf `string` is `None`, these method calls will raise `AttributeError`.\n\nPost-context evidence: Lines 64-76 (CaseConverter.execute) call .upper(), .lower(), etc. on string without null checks. The else clause at line 75 returns string as-is, but if string is None, this also fails. The digest confirms STRING inputs can accept None if not connected or explicitly set. This is a concrete defect - if any upstream node passes None, all CaseConverter operations crash. Recommendation to add null check is valid.",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Add null check: `if string is None: string = \"\"` before method calls. Consider adding a default fallback for unmatched mode values.",
+    "references": []
+  }
+]

@@ -291,6 +291,57 @@ def test_adversarial_cleanup_promotes_tier1_security_without_focused_context() -
     assert len(out["findings"]) == 1
 
 
+def test_adversarial_cleanup_promotes_needs_verification_with_runtime_verified() -> None:
+    """Verifier verified satisfies the revision gate for needs_verification without focused hits."""
+    node = make_adversarial_cleanup_node()
+    cand = CandidateFinding(
+        candidate_id="t1:nv1",
+        patch_task_id="t1",
+        file_path="src/nodes.py",
+        line_start=10,
+        line_end=20,
+        content="Possible None dereference in new node.",
+        claim_type="defect",
+        failure_mode="AttributeError when input string is None.",
+        evidence_summary="Diff calls .strip() on input without a guard.",
+        suspected_category="logic",
+        reflection_specialties=["logic"],
+        recommendation="Handle None before calling str methods.",
+    )
+    reports = [
+        ReflectionReport(
+            candidate_id=cand.candidate_id,
+            reflector_specialty="logic",
+            verdict="needs_verification",
+            rationale="Runtime repro needed.",
+        )
+    ]
+    out = node(
+        {
+            "run_id": "t",
+            "candidate_findings": [cand],
+            "reflection_reports": reports,
+            "focused_context_results": {},
+            "metadata": {
+                "verifier_hints": {
+                    cand.candidate_id: {
+                        "verdict": "verified",
+                        "verification_scope": "concrete_behavior",
+                        "updated_evidence_summary": "Runtime verifier: verified",
+                        "final_rationale": "STATUS: CRASHED",
+                        "attempts": 1,
+                        "skipped_reason": "",
+                    }
+                }
+            },
+        }
+    )
+    assert len(out["findings"]) == 1
+    life = out["metadata"]["adversarial_cleanup"]["candidate_lifecycle"][cand.candidate_id]
+    assert life["decision"] == "promoted"
+    assert "verifier_advisory" in life
+
+
 def test_adversarial_cleanup_drops_tier2_security_without_focused_hits() -> None:
     """Architectural security claims still require gathered context when not Tier 1 localized."""
     node = make_adversarial_cleanup_node()

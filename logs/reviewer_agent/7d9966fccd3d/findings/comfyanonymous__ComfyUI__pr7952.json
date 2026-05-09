@@ -1,0 +1,13 @@
+[
+  {
+    "id": "security_review_regex_1",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 230,
+    "line_end": 265,
+    "content": "Class RegexMatch definition and execute method showing unvalidated regex_pattern input.\n\nPost-context evidence: Confirms RegexMatch class accepts unvalidated regex_pattern via IO.STRING without length/complexity limits. Pattern passed directly to re.search() with no timeout or backtracking protection. Multiline flag increases attack surface. No upstream validation found. ReDoS risk remains valid.",
+    "severity": "high",
+    "feedback_type": "defect_detection",
+    "recommendation": "Add input validation for regex_pattern length and string length. Consider using a library like regex with timeout support or implementing a regex complexity limit (e.g., maximum recursion depth or pattern length).",
+    "references": []
+  }
+]

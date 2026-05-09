@@ -17,7 +17,8 @@ Verdicts:
 - `reject` — the candidate is performance-relevant but the evidence is false, contradicted, or too weak to surface.
 - `not_applicable` — the candidate may be valid, but it is outside performance. Use this instead of `reject` for off-domain findings such as security, correctness, or test coverage.
 - `reclassify` — belongs under another category; set `reclassified_category`.
-- `needs_context` — use when bounded extra context is required to compare old/new complexity, query count, memory use, batch size limits, or caller behavior.
+- `needs_context` — use when bounded extra **static** context is required to compare old/new complexity, query count, memory use, batch size limits, or caller behavior.
+- `needs_verification` — use when runtime execution (verifier) is needed to confirm performance characteristics not visible from the diff alone.
 
 Do not veto a finding merely because it is outside your specialty. Off-domain findings should usually be `not_applicable` or `reclassify`, not `reject`.
 

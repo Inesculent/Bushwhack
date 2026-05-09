@@ -19,6 +19,7 @@ from .schemas import (
     TaskStatus,
     UnverifiedCallTarget,
 )
+from .verifier_schemas import VerifierReport
 
 
 def merge_graph_metadata(
@@ -102,6 +103,10 @@ class GraphState(TypedDict, total=False):
     focused_context_results: Annotated[Dict[str, FocusedContextResult], operator.or_]
     critique_revision_digests: Annotated[Dict[str, CritiqueRevisionDigest], operator.or_]
     critique_revision_shard: NotRequired[Dict[str, Any]]
+
+    # Optional runtime verification (parallel Send branches carry verifier_candidate)
+    verifier_candidate: NotRequired[Dict[str, Any]]
+    verifier_reports: Annotated[List[VerifierReport], operator.add]
 
     # Data for debugging and analysis
     current_task_id: NotRequired[str]

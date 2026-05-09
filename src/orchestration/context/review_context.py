@@ -193,9 +193,10 @@ class LazyReviewContextProvider:
             settings = get_settings()
             repo_path = str(state.get("repo_path", "") or "")
             metadata = state.get("metadata", {}) or {}
-            sandbox = RepoSandbox()
+            sandbox: RepoSandbox | None = None
 
             try:
+                sandbox = RepoSandbox()
                 if Path(repo_path).is_dir():
                     self._host_repo_path = str(Path(repo_path).resolve())
                     sandbox.start(self._host_repo_path)
@@ -235,7 +236,8 @@ class LazyReviewContextProvider:
                 self._sandbox = sandbox
                 self._searcher = RipgrepSearcher(sandbox=sandbox)
             except Exception as exc:
-                sandbox.stop()
+                if sandbox is not None:
+                    sandbox.stop()
                 self._startup_warnings.append(
                     f"sandbox_startup_failed:{exc.__class__.__name__}: {exc}"
                 )

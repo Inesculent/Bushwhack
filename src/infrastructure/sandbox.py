@@ -1,7 +1,21 @@
-import docker
+import io
 import os
+import tarfile
+from dataclasses import dataclass
 from uuid import uuid4
 from typing import List, Optional
+
+import docker
+
+
+@dataclass(frozen=True)
+class SandboxExecResult:
+    """Result of a container exec with exit code and split streams."""
+
+    exit_code: int
+    stdout: str
+    stderr: str
+
 
 class RepoSandbox:
     def __init__(self, image_name: str = "agent-fs-sandbox"):
@@ -150,6 +164,48 @@ class RepoSandbox:
         
         # In a real review, we'd want to handle exit_code != 0
         return decoded_output
+
+    def execute_result(
+        self,
+        cmd: List[str],
+        workdir: Optional[str] = None,
+    ) -> SandboxExecResult:
+        """Run a command and return exit code plus stdout/stderr (demux)."""
+        if not self.container:
+            raise RuntimeError("Sandbox not started.")
+
+        exit_code, output = self.container.exec_run(cmd, workdir=workdir, demux=True)
+        if output is None:
+            stdout_b, stderr_b = b"", b""
+        else:
+            stdout_b, stderr_b = output
+            stdout_b = stdout_b or b""
+            stderr_b = stderr_b or b""
+        return SandboxExecResult(
+            exit_code=int(exit_code),
+            stdout=stdout_b.decode("utf-8", errors="replace"),
+            stderr=stderr_b.decode("utf-8", errors="replace"),
+        )
+
+    def write_file_in_container(self, dest_path: str, content: bytes) -> None:
+        """Write bytes to ``dest_path`` inside the running container (e.g. /tmp/script.py)."""
+        if not self.container:
+            raise RuntimeError("Sandbox not started.")
+
+        dest_path = dest_path.replace("\\", "/")
+        parent = os.path.dirname(dest_path) or "/"
+        base = os.path.basename(dest_path)
+
+        tar_stream = io.BytesIO()
+        with tarfile.open(fileobj=tar_stream, mode="w") as tar:
+            data = io.BytesIO(content)
+            info = tarfile.TarInfo(name=base)
+            info.size = len(content)
+            tar.addfile(info, fileobj=data)
+        tar_stream.seek(0)
+        ok = self.container.put_archive(parent, tar_stream.read())
+        if not ok:
+            raise RuntimeError(f"put_archive failed for {dest_path}")
 
     def stop(self):
         """Cleans up the container."""
