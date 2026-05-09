@@ -67,6 +67,7 @@ def make_structural_extractor_node(
             "gap_count": len(build_result.gaps),
             "node_count": build_result.graph.number_of_nodes(),
             "edge_count": build_result.graph.number_of_edges(),
+            "ast_capability_state": build_result.ast_capability_state,
         }
         if topology_summary is not None:
             structural_meta["topology_algorithm"] = topology_summary.algorithm

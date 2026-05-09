@@ -18,6 +18,24 @@ class CodeEntity(BaseModel):
     signature: str
     body: str
     dependencies: List[str] = Field(default_factory=list)
+    definition_line: Optional[int] = Field(
+        default=None,
+        description="1-based line number of the definition signature when known (AST).",
+    )
+
+
+SymbolDefinitionSource = Literal["jedi", "tree_sitter", "regex", "mcp"]
+
+
+class SymbolDefinition(BaseModel):
+    """Resolved definition site for a symbol name (repo-relative)."""
+
+    file_path: str = Field(description="Repository-relative path using '/' separators.")
+    line_start: int = Field(ge=1, description="1-based line of the definition.")
+    entity_name: str
+    entity_type: str = "unknown"
+    signature: str = ""
+    source: SymbolDefinitionSource = "tree_sitter"
 
 
 class CodeSnippet(BaseModel):
@@ -96,7 +114,14 @@ class ReviewerWorkerReport(BaseModel):
 
 
 ReviewCategory = Literal["security", "logic", "performance", "general", "other"]
-ReflectionVerdict = Literal["accept", "reject", "needs_context", "reclassify", "not_applicable"]
+ReflectionVerdict = Literal[
+    "accept",
+    "reject",
+    "needs_context",
+    "needs_verification",
+    "reclassify",
+    "not_applicable",
+]
 ClaimType = Literal[
     "defect",
     "security_risk",
@@ -130,7 +155,10 @@ class CandidateFinding(BaseModel):
     suspected_category: ReviewCategory = "other"
     reflection_specialties: List[Literal["security", "performance", "logic", "general"]] = Field(
         default_factory=list,
-        description="One or more reflector specialties that should evaluate this candidate.",
+        description=(
+            "Reflector routing tags. The general critiquer normalizes this to exactly one specialty "
+            "(hardcap: security > logic > performance > general). Legacy runs may still contain multiple entries."
+        ),
     )
     feedback_type: Literal["code_improvement", "defect_detection", "optimization", "other"] = "other"
     severity: Literal["low", "medium", "high"] = "medium"
@@ -149,6 +177,10 @@ class FocusedContextRequest(BaseModel):
     request_id: str
     candidate_id: str
     requested_by_specialty: Literal["security", "performance", "logic", "style", "general"]
+    file_read_mode: Literal["slice", "full"] = Field(
+        default="slice",
+        description="slice: bounded excerpts; full: whole file up to review_full_file_max_chars per path.",
+    )
     file_paths: List[str] = Field(default_factory=list, description="Max few paths to read slices from.")
     symbol_queries: List[str] = Field(default_factory=list, description="Symbols to resolve via search.")
     text_queries: List[str] = Field(default_factory=list, description="Ripgrep patterns or plain search strings.")
@@ -161,6 +193,10 @@ class FocusedContextResult(BaseModel):
     request_id: str
     candidate_id: str
     file_snippets: Dict[str, str] = Field(default_factory=dict)
+    file_contents_full: Dict[str, str] = Field(
+        default_factory=dict,
+        description="Full file bodies when file_read_mode was 'full' (separate from snippets).",
+    )
     search_hits: Dict[str, List[SearchResult]] = Field(default_factory=dict)
     warnings: List[str] = Field(default_factory=list)
 
@@ -272,6 +308,46 @@ class RunMetadata(BaseModel):
     head_sha: str
     run_id: Optional[str] = None
     timestamp: Optional[str] = None
+
+
+class RepoDocument(BaseModel):
+    path: str = Field(description="Repository-relative doc path using '/' separators.")
+    ref: Optional[str] = Field(default=None, description="Git ref used to fetch this document.")
+    content: str = Field(description="Raw document content (bounded by caller).")
+    truncated: bool = Field(default=False, description="True if content was truncated to fit limits.")
+
+
+class RepoDocsBundle(BaseModel):
+    repo: str = Field(description="Repository slug 'owner/repo'.")
+    ref: Optional[str] = Field(default=None, description="Git ref used for the bundle.")
+    documents: List[RepoDocument] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
+
+
+class GitHubPullRequestContext(BaseModel):
+    number: int
+    title: str = ""
+    body: str = ""
+    html_url: Optional[str] = None
+    base_ref: Optional[str] = None
+    head_ref: Optional[str] = None
+    author: Optional[str] = None
+    state: Optional[str] = None
+
+
+class GitHubIssueContext(BaseModel):
+    number: int
+    title: str = ""
+    body: str = ""
+    html_url: Optional[str] = None
+    state: Optional[str] = None
+
+
+class GitHubIssueComment(BaseModel):
+    author: Optional[str] = None
+    body: str = ""
+    html_url: Optional[str] = None
+    created_at: Optional[str] = None
 
 
 DiffChangeType = Literal["A", "M", "D", "R"]
@@ -432,5 +508,111 @@ class StructuralTopologySummary(BaseModel):
     config: Dict[str, Any] = Field(default_factory=dict)
 
 
+# --- Phase 2: semantic bubble-up ---
 
+
+class SymbolSemanticSummary(BaseModel):
+    symbol_node_id: str
+    purpose: str
+    rationale: Optional[str] = None
+    confidence: float = Field(ge=0.0, le=1.0)
+
+
+class FileSemanticSummary(BaseModel):
+    file_node_id: str
+    purpose: str
+    key_symbols: List[str] = Field(default_factory=list)
+    confidence: float = Field(ge=0.0, le=1.0)
+
+
+class UnverifiedCallTarget(BaseModel):
+    source_symbol_id: str
+    target_name: str
+    source_community_id: int
+    context_hint: str = ""
+    resolved: bool = False
+    resolved_target_id: Optional[str] = None
+    resolution_summary: Optional[str] = None
+
+
+class CommunitySemanticSummary(BaseModel):
+    community_id: int
+    label: str
+    purpose: str
+    file_summaries: List[FileSemanticSummary] = Field(default_factory=list)
+    symbol_summaries: List[SymbolSemanticSummary] = Field(default_factory=list)
+    unverified_calls: List[UnverifiedCallTarget] = Field(default_factory=list)
+    cross_community_dependencies: List[int] = Field(default_factory=list)
+    confidence: float = Field(ge=0.0, le=1.0)
+
+
+KnowledgeGapType = Literal["isolated_symbol", "low_cohesion", "ambiguous_heavy", "extraction_gap", "unverified_call"]
+
+
+class KnowledgeGap(BaseModel):
+    gap_type: KnowledgeGapType
+    description: str
+    affected_node_ids: List[str] = Field(default_factory=list)
+    community_id: Optional[int] = None
+    severity: Literal["low", "medium", "high"] = "medium"
+
+
+class SnapshotDiagnostics(BaseModel):
+    god_nodes: List[Dict[str, Any]] = Field(default_factory=list)
+    bridge_nodes: List[Dict[str, Any]] = Field(default_factory=list)
+    cross_community_edges: List[Dict[str, Any]] = Field(default_factory=list)
+    knowledge_gaps: List[KnowledgeGap] = Field(default_factory=list)
+
+
+ExplorationSnapshotStatus = Literal["exploration_complete", "partial", "failed"]
+
+
+class ExplorationSnapshot(BaseModel):
+    snapshot_id: str
+    run_id: str
+    snapshot_root: str
+    status: ExplorationSnapshotStatus
+    community_count: int = Field(ge=0)
+    total_nodes: int = Field(ge=0)
+    total_edges: int = Field(ge=0)
+    unresolved_call_count: int = Field(ge=0)
+    extraction_gap_count: int = Field(ge=0)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class CommunityWorkItem(BaseModel):
+    """Payload for ``Send()`` to ``community_semantic_agent``."""
+
+    community_id: int
+    file_paths: List[str] = Field(default_factory=list)
+    symbol_context_lines: List[str] = Field(
+        default_factory=list,
+        description="Pre-rendered lines: node id, name, signature, truncated body.",
+    )
+    outbound_cross_community_targets: List[str] = Field(
+        default_factory=list,
+        description="Callee symbol names referenced across community boundaries (no summaries).",
+    )
+    target_communities_hint: List[int] = Field(
+        default_factory=list,
+        description="Community ids of outbound cross-boundary targets (same order as targets when possible).",
+    )
+
+
+class CommunityAgentOutput(BaseModel):
+    """Structured LLM output for one community."""
+
+    summary: CommunitySemanticSummary
+    warnings: List[str] = Field(default_factory=list)
+
+
+class GlobalSemanticSynthesisOutput(BaseModel):
+    global_summary: str = Field(default="", description="Repository-level synthesis from community summaries.")
+
+
+class ResolverSymbolSummaryOutput(BaseModel):
+    """One-shot summary when resolving a symbol via AST in the resolver tier."""
+
+    symbol_node_id: str
+    one_line_summary: str = Field(default="", description="Single-sentence purpose summary.")
 

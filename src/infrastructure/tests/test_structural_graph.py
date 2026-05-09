@@ -1,8 +1,8 @@
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Sequence
 
 from src.domain.interfaces import IASTParser
-from src.domain.schemas import CodeEntity, DiffFileManifestEntry, DiffManifest, DiffManifestAggregateMetrics, RunMetadata
+from src.domain.schemas import CodeEntity, DiffFileManifestEntry, DiffManifest, DiffManifestAggregateMetrics, RunMetadata, SymbolDefinition
 from src.infrastructure.structural_graph import StructuralGraphBuilder
 
 
@@ -26,6 +26,32 @@ class _FakeASTParser(IASTParser):
             if item.name == entity_name:
                 return item
         return None
+
+    def find_symbol_definitions(
+        self,
+        repository_path: str,
+        symbol_name: str,
+        *,
+        candidate_file_paths: Sequence[str] | None = None,
+        max_results: int = 50,
+    ) -> List[SymbolDefinition]:
+        del repository_path, max_results
+        paths = list(candidate_file_paths) if candidate_file_paths else list(self.by_file.keys())
+        out: List[SymbolDefinition] = []
+        for fp in paths:
+            for item in self.by_file.get(fp, []):
+                if item.name == symbol_name:
+                    out.append(
+                        SymbolDefinition(
+                            file_path=fp,
+                            line_start=item.definition_line or 1,
+                            entity_name=item.name,
+                            entity_type=item.type,
+                            signature=item.signature,
+                            source="tree_sitter",
+                        )
+                    )
+        return out
 
 
 def _manifest() -> DiffManifest:

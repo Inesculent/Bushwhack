@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field
 from src.domain.state import GraphState
 from src.infrastructure.llm.factory import Models
 from src.infrastructure.llm.token_usage import extract_total_tokens_from_llm_result, parse_structured_output
+from src.orchestration.prompts.exploration_prompts import render_explorer_prompt
 
 
 class ExplorerOutput(BaseModel):
@@ -27,14 +28,7 @@ def explorer_node(state: GraphState) -> Dict[str, Any]:
 	git_diff = state.get("git_diff", "")
 	user_goals = state.get("user_goals", "")
 
-	prompt = (
-		"You are the explorer node for a code-review orchestrator. "
-		"Summarize the change context and produce concise planning insights.\n\n"
-		f"Repository path: {repo_path}\n"
-		f"User goals: {user_goals}\n\n"
-		"Git diff:\n"
-		f"{git_diff[:12000]}"
-	)
+	prompt = render_explorer_prompt(repo_path=repo_path, user_goals=user_goals, git_diff=git_diff)
 
 	invoke_result = llm.invoke(prompt)
 	response = parse_structured_output(invoke_result, ExplorerOutput)

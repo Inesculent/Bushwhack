@@ -1,13 +1,13 @@
 import re
 from hashlib import sha256
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import List, Optional, Sequence, Set, Tuple
 
 from tree_sitter import Node
 from tree_sitter_language_pack import get_parser
 
 from src.domain.interfaces import IASTParser, ICacheService
-from src.domain.schemas import CodeEntity
+from src.domain.schemas import CodeEntity, SymbolDefinition
 
 
 class NativeASTParser(IASTParser):
@@ -44,6 +44,20 @@ class NativeASTParser(IASTParser):
     }
 
     _IMPORT_PATTERN = re.compile(r"^\s*(?:from|import)\s+([A-Za-z0-9_\.]+)", re.MULTILINE)
+
+    _SKIP_PATH_SEGMENTS = {
+        ".git",
+        ".venv",
+        "node_modules",
+        "vendor",
+        "third_party",
+        "external",
+        "deps",
+        "__pycache__",
+        ".pytest_cache",
+        ".mypy_cache",
+        ".ruff_cache",
+    }
 
     def __init__(
         self,
@@ -99,6 +113,64 @@ class NativeASTParser(IASTParser):
             expire=self.cache_ttl_seconds,
         )
         return matched
+
+    def find_symbol_definitions(
+        self,
+        repository_path: str,
+        symbol_name: str,
+        *,
+        candidate_file_paths: Sequence[str] | None = None,
+        max_results: int = 50,
+    ) -> List[SymbolDefinition]:
+        repo_root = Path(repository_path).resolve()
+        if not repo_root.is_dir():
+            return []
+
+        results: List[SymbolDefinition] = []
+        seen: Set[Tuple[str, int, str]] = set()
+
+        for definition in self._jedi_symbol_definitions(str(repo_root), symbol_name, max_results=max_results):
+            key = (definition.file_path, definition.line_start, definition.entity_name)
+            if key in seen:
+                continue
+            seen.add(key)
+            results.append(definition)
+            if len(results) >= max_results:
+                return results
+
+        for rel_path in self._iter_candidate_relative_paths(repo_root, candidate_file_paths):
+            if len(results) >= max_results:
+                break
+            try:
+                language = self._detect_language(rel_path)
+            except ValueError:
+                continue
+            try:
+                source = self._safe_file_read(str(repo_root), rel_path)
+            except (OSError, FileNotFoundError, ValueError):
+                continue
+            for entity in self._collect_entities(source=source, language=language):
+                if not self._symbol_matches(entity.name, symbol_name):
+                    continue
+                line_start = entity.definition_line or 1
+                key = (rel_path.replace("\\", "/"), line_start, entity.name)
+                if key in seen:
+                    continue
+                seen.add(key)
+                results.append(
+                    SymbolDefinition(
+                        file_path=rel_path.replace("\\", "/"),
+                        line_start=line_start,
+                        entity_name=entity.name,
+                        entity_type=entity.type,
+                        signature=entity.signature,
+                        source="tree_sitter",
+                    )
+                )
+                if len(results) >= max_results:
+                    return results
+
+        return results
 
     def _build_cache_key(self, repository_path: str, file_path: str, purpose: str) -> str:
         seed = f"{self.parser_version}|{repository_path}|{file_path}|{purpose}"
@@ -193,6 +265,7 @@ class NativeASTParser(IASTParser):
             signature = lines[start_line].strip() if 0 <= start_line < len(lines) else ""
             body = source_bytes[node.start_byte : node.end_byte].decode("utf-8", errors="replace")
 
+            definition_line = int(node.start_point[0]) + 1
             entities.append(
                 CodeEntity(
                     name=cls._node_name(node, source_bytes),
@@ -200,7 +273,120 @@ class NativeASTParser(IASTParser):
                     signature=signature,
                     body=body,
                     dependencies=cls._extract_dependencies(body),
+                    definition_line=definition_line,
                 )
             )
 
         return entities
+
+    @staticmethod
+    def _symbol_matches(entity_name: str, symbol_name: str) -> bool:
+        if entity_name == symbol_name:
+            return True
+        if entity_name.endswith(f".{symbol_name}"):
+            return True
+        if "." in symbol_name:
+            return NativeASTParser._symbol_matches(entity_name, symbol_name.split(".")[-1])
+        return False
+
+    def _iter_candidate_relative_paths(
+        self,
+        repo_root: Path,
+        candidate_file_paths: Sequence[str] | None,
+        *,
+        max_files: int = 8000,
+    ) -> List[str]:
+        extensions = set(self._LANGUAGE_BY_EXTENSION.keys())
+        collected: List[str] = []
+
+        if candidate_file_paths:
+            for raw in candidate_file_paths:
+                normalized = raw.replace("\\", "/").lstrip("/")
+                if not normalized or ".." in normalized.split("/"):
+                    continue
+                target = (repo_root / normalized).resolve()
+                try:
+                    target.relative_to(repo_root)
+                except ValueError:
+                    continue
+                if target.is_file() and target.suffix.lower() in extensions:
+                    collected.append(normalized.replace("\\", "/"))
+            return collected
+
+        count = 0
+        for path in repo_root.rglob("*"):
+            if count >= max_files:
+                break
+            if not path.is_file():
+                continue
+            try:
+                path.relative_to(repo_root)
+            except ValueError:
+                continue
+            if path.suffix.lower() not in extensions:
+                continue
+            if any(seg in self._SKIP_PATH_SEGMENTS for seg in path.parts):
+                continue
+            collected.append(path.relative_to(repo_root).as_posix())
+            count += 1
+        collected.sort()
+        return collected
+
+    @staticmethod
+    def _jedi_symbol_definitions(repo_root: str, symbol_name: str, *, max_results: int) -> List[SymbolDefinition]:
+        try:
+            from jedi import Project  # type: ignore[import-untyped]
+        except ImportError:
+            return []
+
+        root_path = Path(repo_root).resolve()
+        try:
+            project = Project(str(root_path))
+        except Exception:
+            return []
+
+        out: List[SymbolDefinition] = []
+        seen: Set[Tuple[str, int, str]] = set()
+        try:
+            for completion in project.complete_search(symbol_name, all_scopes=True):
+                if len(out) >= max_results:
+                    break
+                try:
+                    for definition in completion.goto():
+                        module_path = definition.module_path
+                        if module_path is None:
+                            continue
+                        abs_path = Path(str(module_path)).resolve()
+                        try:
+                            rel = abs_path.relative_to(root_path).as_posix()
+                        except ValueError:
+                            continue
+                        line_start = int(definition.line or 1)
+                        name = str(definition.name or symbol_name)
+                        typ = str(definition.type or "unknown")
+                        try:
+                            signature = definition.get_line_code().strip()
+                        except Exception:
+                            signature = ""
+                        key = (rel, line_start, name)
+                        if key in seen:
+                            continue
+                        seen.add(key)
+                        out.append(
+                            SymbolDefinition(
+                                file_path=rel,
+                                line_start=line_start,
+                                entity_name=name,
+                                entity_type=typ,
+                                signature=signature,
+                                source="jedi",
+                            )
+                        )
+                        if len(out) >= max_results:
+                            return out
+                except Exception:
+                    continue
+        except Exception:
+            return []
+
+        return out

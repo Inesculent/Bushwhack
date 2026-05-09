@@ -20,7 +20,61 @@ trace_logger = logging.getLogger("research_pipeline.reviewer_trace")
 EXPECTED_REFLECTORS = {"security", "logic", "performance", "general"}
 DOMAIN_REFLECTORS = {"security", "logic", "performance", "general"}
 PROMOTABLE_CLAIM_TYPES = {"defect", "security_risk", "performance_regression", "missing_test"}
-CONTEXT_REQUIRED_CLAIM_TYPES = {"security_risk", "performance_regression"}
+CONTEXT_REQUIRED_CLAIM_TYPES = frozenset({"security_risk", "performance_regression"})
+
+# Tier 2: claims that typically need cross-file / framework evidence before promotion.
+_TIER2_EXTERNAL_CONTEXT_MARKERS = (
+    "caller",
+    "callers",
+    "calling ",
+    "middleware",
+    "decorator",
+    "upstream",
+    "downstream",
+    "authorization",
+    "authorize",
+    "authenticated",
+    "permission",
+    "tenant ",
+    "tenant_",
+    "isolation",
+    "integration",
+    "external api",
+    "remote ",
+    "framework ",
+    "orm ",
+    "database ",
+    "service ",
+    "contract",
+)
+
+# Tier 1: localized defect signals — do not force focused-context gathers solely for claim_type.
+_TIER1_LOCALIZED_MARKERS = (
+    "redos",
+    "backtrack",
+    "catastrophic backtracking",
+    "regex",
+    "re.search",
+    "re.match",
+    "re.sub",
+    "re.compile",
+    "re.fullmatch",
+    "len(",
+    "nonetype",
+    "attributeerror",
+    "indexerror",
+    "keyerror",
+    "zerodivision",
+    "off-by-one",
+    "group 0",
+    "capture group",
+    "division by zero",
+    "n+1",
+    "nested loop",
+    "quadratic",
+    "o(n^2)",
+    "memory leak",
+)
 
 
 def _trace_enabled(state: GraphState) -> bool:
@@ -110,10 +164,33 @@ def _candidate_has_actionability(candidate: CandidateFinding) -> bool:
     )
 
 
+def _candidate_evidence_blob(candidate: CandidateFinding) -> str:
+    return " ".join(
+        [
+            candidate.content,
+            candidate.failure_mode,
+            candidate.evidence_summary,
+            " ".join(candidate.required_context),
+        ]
+    ).lower()
+
+
+def _high_risk_claim_needs_external_context(candidate: CandidateFinding) -> bool:
+    """When claim_type is security_risk or performance_regression, decide if promotion requires focused hits."""
+    blob = _candidate_evidence_blob(candidate)
+    if any(marker in blob for marker in _TIER2_EXTERNAL_CONTEXT_MARKERS):
+        return True
+    if any(marker in blob for marker in _TIER1_LOCALIZED_MARKERS):
+        return False
+    return True
+
+
 def _candidate_requires_context(candidate: CandidateFinding) -> bool:
     if candidate.required_context:
         return True
-    return candidate.claim_type in CONTEXT_REQUIRED_CLAIM_TYPES
+    if candidate.claim_type not in CONTEXT_REQUIRED_CLAIM_TYPES:
+        return False
+    return _high_risk_claim_needs_external_context(candidate)
 
 
 def make_adversarial_cleanup_node():
@@ -130,6 +207,7 @@ def make_adversarial_cleanup_node():
         reports = list(state.get("reflection_reports", []) or [])
         metadata = dict(state.get("metadata", {}))
         revisions = _revision_map(metadata)
+        verifier_hints: Dict[str, Any] = dict(metadata.get("verifier_hints") or {})
 
         if not candidates:
             return {
@@ -143,6 +221,7 @@ def make_adversarial_cleanup_node():
         dropped: List[str] = []
         ignored_rejections: Dict[str, List[str]] = {}
         ignored_context_requests: Dict[str, List[str]] = {}
+        missing_required_reflections: Dict[str, List[str]] = {}
         misrouted_candidates: Dict[str, List[Dict[str, str]]] = {}
         lifecycle: Dict[str, Dict[str, Any]] = {}
 
@@ -170,9 +249,22 @@ def make_adversarial_cleanup_node():
 
             category = _final_category(candidate, cand_reports)
             relevant_reflectors = _relevant_reflectors(candidate, category)
+            missing_relevant = relevant_reflectors - specialties
+            if missing_relevant:
+                missing_required_reflections[candidate.candidate_id] = sorted(missing_relevant)
+                drop(
+                    candidate,
+                    "missing_required_reflection",
+                    {"expected_reflectors": sorted(relevant_reflectors)},
+                )
+                continue
+
             relevant_reports = [
                 report for report in cand_reports if report.reflector_specialty in relevant_reflectors
             ]
+            relevant_needs_verification = any(
+                report.verdict == "needs_verification" for report in relevant_reports
+            )
             off_domain_reports = [
                 report for report in cand_reports if report.reflector_specialty not in relevant_reflectors
             ]
@@ -222,7 +314,10 @@ def make_adversarial_cleanup_node():
                 )
                 continue
 
-            if not any(r.verdict in {"accept", "reclassify", "needs_context"} for r in relevant_reports):
+            if not any(
+                r.verdict in {"accept", "reclassify", "needs_context", "needs_verification"}
+                for r in relevant_reports
+            ):
                 drop(
                     candidate,
                     "no_relevant_acceptance",
@@ -257,13 +352,21 @@ def make_adversarial_cleanup_node():
                 drop(candidate, "required_context_not_gathered")
                 continue
 
-            if needs_context:
+            if needs_context or relevant_needs_verification:
                 rev = revisions.get(candidate.candidate_id) or {}
                 verdict = str(rev.get("verdict", "")).lower()
                 if verdict == "reject":
                     drop(candidate, "revision_reject")
                     continue
-                if verdict != "accept" and not _focused_hits_for_candidate(state, candidate.candidate_id):
+                hint = verifier_hints.get(candidate.candidate_id)
+                verified_hint = (
+                    isinstance(hint, dict) and str(hint.get("verdict", "")).lower() == "verified"
+                )
+                if (
+                    verdict != "accept"
+                    and not _focused_hits_for_candidate(state, candidate.candidate_id)
+                    and not (relevant_needs_verification and verified_hint)
+                ):
                     drop(candidate, "needs_context_without_supporting_revision")
                     continue
 
@@ -294,6 +397,8 @@ def make_adversarial_cleanup_node():
                 "relevant_reflectors": sorted(relevant_reflectors),
                 "had_focused_context": _focused_hits_for_candidate(state, candidate.candidate_id),
             }
+            if candidate.candidate_id in verifier_hints:
+                lifecycle[candidate.candidate_id]["verifier_advisory"] = verifier_hints[candidate.candidate_id]
 
         if _trace_enabled(state):
             trace_logger.info(
@@ -308,6 +413,7 @@ def make_adversarial_cleanup_node():
             "dropped_candidate_ids": dropped,
             "ignored_off_domain_rejections": ignored_rejections,
             "ignored_off_domain_context_requests": ignored_context_requests,
+            "missing_required_reflections": missing_required_reflections,
             "misrouted_candidate_ids": misrouted_candidates,
             "candidate_lifecycle": lifecycle,
         }

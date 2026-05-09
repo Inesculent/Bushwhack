@@ -24,6 +24,25 @@ def test_reviewer_prompt_files_exist_for_all_roles():
         assert load_reviewer_prompt(prompt_path)
 
 
+def test_critiquer_prompt_contains_routing_hardcap() -> None:
+    text = load_reviewer_prompt("critiquer.md")
+    assert "Single-Specialty Hardcap" in text
+    assert "Hierarchy of Needs" in text
+
+
+def test_reflection_prompts_contain_adversarial_two_tier_protocol() -> None:
+    for rel in (
+        "reflection/security.md",
+        "reflection/logic.md",
+        "reflection/performance.md",
+        "reflection/general.md",
+    ):
+        text = load_reviewer_prompt(rel)
+        assert "ADVERSARIAL REVIEW" in text
+        assert "Two-Tier" in text
+        assert "Invisible safeguard" in text or "invisible" in text.lower()
+
+
 def test_renderer_combines_global_role_and_runtime_sections():
     rendered = render_reviewer_prompt(
         "workers/security.md",

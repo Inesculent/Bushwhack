@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List
 
+from src.domain.interfaces import IGitHubContextProvider
 from src.domain.schemas import FocusedContextRequest, FocusedContextResult, ReflectionReport
 from src.domain.state import GraphState
 from src.orchestration.context.review_context import BoundedReviewContextFulfiller, LazyReviewContextProvider
@@ -69,9 +70,15 @@ def _pending_requests(state: GraphState) -> List[FocusedContextRequest]:
     return pending
 
 
-def make_focused_context_node(context_provider: LazyReviewContextProvider):
+def make_focused_context_node(
+    context_provider: LazyReviewContextProvider,
+    github_provider: IGitHubContextProvider | None = None,
+):
     node_name = "focused_context"
-    fulfiller = BoundedReviewContextFulfiller(context_provider)
+    fulfiller = BoundedReviewContextFulfiller(
+        context_provider,
+        github_provider=github_provider,
+    )
 
     def focused_context_node(state: GraphState) -> Dict[str, Any]:
         run_id = state.get("run_id", "unknown")

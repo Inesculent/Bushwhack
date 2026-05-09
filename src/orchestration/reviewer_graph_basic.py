@@ -20,9 +20,17 @@ from src.domain.schemas import (
 )
 from src.domain.state import GraphState
 from src.infrastructure.remote_review_workflow import collect_structural_entities
-from src.infrastructure.factory import build_ast_parser, build_cache_service, build_preflight_service
+from src.infrastructure.factory import (
+    build_ast_parser,
+    build_cache_service,
+    build_github_context_provider,
+    build_preflight_service,
+    build_snapshot_pointer_store,
+    build_snapshot_writer,
+)
 from src.infrastructure.redis_checkpoint import (
     assert_redis_checkpoint_writable,
+    delete_checkpoint_thread,
     redis_checkpoint_saver,
 )
 from src.infrastructure.sandbox import RepoSandbox
@@ -36,7 +44,20 @@ from src.orchestration.context.review_context import LazyReviewContextProvider
 from src.orchestration.nodes.application.planner import make_review_planner_node
 from src.orchestration.nodes.application.synthesizer import synthesizer_node
 from src.orchestration.nodes.application.worker import make_specialist_worker_node
+from src.orchestration.nodes.exploration.community_semantic_agent import make_community_semantic_agent_node
+from src.orchestration.nodes.exploration.docs_prebrief import make_docs_prebrief_node
+from src.orchestration.nodes.exploration.phase2_routing import semantic_phase2_should_run
+from src.orchestration.nodes.exploration.semantic_dispatch import (
+    make_semantic_dispatch_node,
+    route_semantic_dispatch,
+)
+from src.orchestration.nodes.exploration.semantic_merge import make_semantic_merge_node
+from src.orchestration.nodes.exploration.snapshot_pin import make_snapshot_pin_node
 from src.orchestration.nodes.exploration.structural_extractor import make_structural_extractor_node
+from src.orchestration.nodes.exploration.unverified_call_resolver import (
+    make_unverified_call_resolver_node,
+    route_after_unverified_call_resolver,
+)
 
 logger = logging.getLogger(__name__)
 trace_logger = logging.getLogger("research_pipeline.reviewer_trace")
@@ -52,8 +73,12 @@ WORKER_NODE_BY_SPECIALTY = {
 def _route_initial_context(state: GraphState) -> str:
     metadata = state.get("metadata", {}) or {}
     repo_path = str(state.get("repo_path", "") or "")
+    settings = get_settings()
     if state.get("preflight_summary") and state.get("structural_graph_node_link"):
-        route = "review_planner"
+        if semantic_phase2_should_run(state, settings):
+            route = "semantic_dispatch"
+        else:
+            route = "review_planner"
     elif Path(repo_path).is_dir():
         route = "structural_extractor"
     else:
@@ -65,6 +90,27 @@ def _route_initial_context(state: GraphState) -> str:
             route,
         )
     return route
+
+
+def _docs_prebrief_done(state: GraphState) -> bool:
+    metadata = state.get("metadata", {}) or {}
+    docs_meta = metadata.get("docs_prebrief", {})
+    if isinstance(docs_meta, dict):
+        return bool(docs_meta.get("status"))
+    return False
+
+
+def _route_start(state: GraphState) -> str:
+    settings = get_settings()
+    if settings.docs_prebrief_enabled and not _docs_prebrief_done(state):
+        return "docs_prebrief"
+    return _route_initial_context(state)
+
+
+def _route_after_structural(state: GraphState) -> str:
+    if semantic_phase2_should_run(state):
+        return "semantic_dispatch"
+    return "review_planner"
 
 
 def _make_sandbox_structural_extractor_node(
@@ -235,11 +281,12 @@ def build_graph(
     settings = get_settings()
     context_provider = context_provider or LazyReviewContextProvider()
     preflight_service = build_preflight_service()
+    cache = build_cache_service()
     ast_parser: IASTParser | None = None
 
     if settings.ast_enabled:
         try:
-            ast_parser = build_ast_parser(settings=settings, cache=build_cache_service())
+            ast_parser = build_ast_parser(settings=settings, cache=cache)
         except Exception as exc:
             if not settings.ast_fallback_to_search:
                 raise
@@ -253,7 +300,16 @@ def build_graph(
         ast_parser=ast_parser,
     )
 
+    github_provider = build_github_context_provider(settings=settings, cache=cache)
+
+    snapshot_writer = build_snapshot_writer(settings)
+    pointer_store = build_snapshot_pointer_store(settings)
+
     builder = StateGraph(GraphState)
+    builder.add_node(
+        "docs_prebrief",
+        make_docs_prebrief_node(github_provider=github_provider, settings=settings),
+    )
     builder.add_node("structural_extractor", structural_extractor_node)
     builder.add_node(
         "sandbox_structural_extractor",
@@ -261,6 +317,17 @@ def build_graph(
             context_provider=context_provider,
             preflight_service=preflight_service,
         ),
+    )
+    builder.add_node("semantic_dispatch", make_semantic_dispatch_node(settings))
+    builder.add_node("community_semantic_agent", make_community_semantic_agent_node(settings=settings))
+    builder.add_node(
+        "unverified_call_resolver",
+        make_unverified_call_resolver_node(ast_parser=ast_parser, settings=settings),
+    )
+    builder.add_node("semantic_merge", make_semantic_merge_node(settings=settings))
+    builder.add_node(
+        "snapshot_pin",
+        make_snapshot_pin_node(snapshot_writer, pointer_store, settings=settings),
     )
     builder.add_node("review_planner", make_review_planner_node())
     builder.add_node("review_synthesizer", _make_cleanup_synthesizer(context_provider))
@@ -287,15 +354,53 @@ def build_graph(
 
     builder.add_conditional_edges(
         START,
+        _route_start,
+        {
+            "docs_prebrief": "docs_prebrief",
+            "structural_extractor": "structural_extractor",
+            "sandbox_structural_extractor": "sandbox_structural_extractor",
+            "review_planner": "review_planner",
+            "semantic_dispatch": "semantic_dispatch",
+        },
+    )
+    builder.add_conditional_edges(
+        "docs_prebrief",
         _route_initial_context,
         {
             "structural_extractor": "structural_extractor",
             "sandbox_structural_extractor": "sandbox_structural_extractor",
             "review_planner": "review_planner",
+            "semantic_dispatch": "semantic_dispatch",
         },
     )
-    builder.add_edge("structural_extractor", "review_planner")
-    builder.add_edge("sandbox_structural_extractor", "review_planner")
+    builder.add_conditional_edges(
+        "structural_extractor",
+        _route_after_structural,
+        {
+            "semantic_dispatch": "semantic_dispatch",
+            "review_planner": "review_planner",
+        },
+    )
+    builder.add_conditional_edges(
+        "sandbox_structural_extractor",
+        _route_after_structural,
+        {
+            "semantic_dispatch": "semantic_dispatch",
+            "review_planner": "review_planner",
+        },
+    )
+    builder.add_conditional_edges("semantic_dispatch", route_semantic_dispatch)
+    builder.add_edge("community_semantic_agent", "semantic_dispatch")
+    builder.add_conditional_edges(
+        "unverified_call_resolver",
+        route_after_unverified_call_resolver,
+        {
+            "unverified_call_resolver": "unverified_call_resolver",
+            "semantic_merge": "semantic_merge",
+        },
+    )
+    builder.add_edge("semantic_merge", "snapshot_pin")
+    builder.add_edge("snapshot_pin", "review_planner")
     builder.add_edge("review_synthesizer", END)
 
     if checkpointer is None:
@@ -331,6 +436,15 @@ def run_reviewer_basic(state: GraphState) -> Dict[str, Any]:
             )
     except Exception as exc:
         context_provider.stop()
+        try:
+            delete_checkpoint_thread(settings, thread_id)
+        except Exception as cleanup_exc:  # noqa: BLE001
+            logger.warning(
+                "Checkpoint cleanup before retry failed for thread_id=%s: %s: %s",
+                thread_id,
+                cleanup_exc.__class__.__name__,
+                cleanup_exc,
+            )
         logger.warning(
             "Checkpointed reviewer run failed; retrying without checkpointing: %s: %s",
             exc.__class__.__name__,

@@ -14,15 +14,22 @@ from src.domain.schemas import (
     CodeEntity,
     PreflightRequest,
     PreflightSummary,
-    ReflectionReport,
     RunMetadata,
     StructuralExtractionGap,
 )
 from src.domain.state import GraphState
 from src.infrastructure.remote_review_workflow import collect_structural_entities
-from src.infrastructure.factory import build_ast_parser, build_cache_service, build_preflight_service
+from src.infrastructure.factory import (
+    build_ast_parser,
+    build_cache_service,
+    build_github_context_provider,
+    build_preflight_service,
+    build_snapshot_pointer_store,
+    build_snapshot_writer,
+)
 from src.infrastructure.redis_checkpoint import (
     assert_redis_checkpoint_writable,
+    delete_checkpoint_thread,
     redis_checkpoint_saver,
 )
 from src.infrastructure.sandbox import RepoSandbox
@@ -35,11 +42,11 @@ from src.infrastructure.structural_topology import (
 from src.orchestration.context.review_context import LazyReviewContextProvider
 from src.orchestration.nodes.application.cleanup import make_adversarial_cleanup_node
 from src.orchestration.nodes.application.critique_revision import (
-    _has_focused_evidence,
     _needs_revision_candidates,
     make_critique_revision_digest_node,
     make_critique_revision_reduce_node,
     plan_critique_revision_shards,
+    revision_inputs_ready,
 )
 from src.orchestration.nodes.application.critiquer import make_general_critiquer_node
 from src.orchestration.nodes.application.focused_context import make_focused_context_node
@@ -47,7 +54,25 @@ from src.orchestration.nodes.application.planner import make_review_planner_node
 from src.orchestration.nodes.application.reflection import make_adversarial_reflection_node
 from src.orchestration.nodes.application.synthesizer import synthesizer_node
 from src.orchestration.nodes.application.worker import make_specialist_worker_node
+from src.orchestration.nodes.exploration.community_semantic_agent import make_community_semantic_agent_node
+from src.orchestration.nodes.exploration.docs_prebrief import make_docs_prebrief_node
+from src.orchestration.nodes.exploration.phase2_routing import semantic_phase2_should_run
+from src.orchestration.nodes.exploration.semantic_dispatch import (
+    make_semantic_dispatch_node,
+    route_semantic_dispatch,
+)
+from src.orchestration.nodes.exploration.semantic_merge import make_semantic_merge_node
+from src.orchestration.nodes.exploration.snapshot_pin import make_snapshot_pin_node
 from src.orchestration.nodes.exploration.structural_extractor import make_structural_extractor_node
+from src.orchestration.nodes.exploration.unverified_call_resolver import (
+    make_unverified_call_resolver_node,
+    route_after_unverified_call_resolver,
+)
+from src.orchestration.routing.adversarial_after_reflection import route_focused_after_reflection
+from src.orchestration.routing.verifier_fanout import (
+    collect_verifier_send_payloads,
+    make_verifier_subgraph_node,
+)
 
 logger = logging.getLogger(__name__)
 trace_logger = logging.getLogger("research_pipeline.reviewer_trace")
@@ -90,21 +115,34 @@ def _route_critique_tasks(state: GraphState):
     return sends or "adversarial_reflection"
 
 
-def _route_focused_after_reflection(state: GraphState) -> str:
-    for raw in state.get("reflection_reports", []) or []:
-        report: ReflectionReport | None
-        if isinstance(raw, ReflectionReport):
-            report = raw
-        elif isinstance(raw, dict):
-            try:
-                report = ReflectionReport.model_validate(raw)
-            except Exception:
-                report = None
-        else:
-            report = None
-        if report is not None and report.verdict == "needs_context" and report.focused_request is not None:
-            return "focused_context"
-    return "adversarial_cleanup"
+def _make_post_reflection_evidence_pass_node():
+    """No-op join point so verifier/critique routing runs even when the second focused_context fetch is skipped."""
+
+    node_name = "post_reflection_evidence_pass"
+
+    def post_reflection_evidence_pass_node(state: GraphState) -> Dict[str, Any]:
+        metadata = dict(state.get("metadata") or {})
+        slot = dict(metadata.get(node_name) or {})
+        slot["entered"] = True
+        metadata[node_name] = slot
+        if metadata.get("review_trace_enabled"):
+            trace_logger.info(
+                "TRACE %s run_id=%s needs_revision=%s",
+                node_name,
+                state.get("run_id", "unknown"),
+                _needs_revision_candidates(state),
+            )
+        return {"metadata": metadata, "node_history": [node_name]}
+
+    return post_reflection_evidence_pass_node
+
+
+def _route_after_focused_context(state: GraphState):
+    """Optionally fan out verifier branches, then fall through to critique revision routing."""
+    sends = collect_verifier_send_payloads(state)
+    if sends:
+        return sends
+    return _route_critique_revision(state)
 
 
 def _route_critique_revision(state: GraphState):
@@ -119,12 +157,12 @@ def _route_critique_revision(state: GraphState):
                 "adversarial_cleanup_no_candidates",
             )
         return "adversarial_cleanup"
-    if not _has_focused_evidence(state, candidate_ids):
+    if not revision_inputs_ready(state, candidate_ids):
         if metadata.get("review_trace_enabled"):
             trace_logger.info(
                 "TRACE dispatch_critique_revision run_id=%s route=%s",
                 state.get("run_id", "unknown"),
-                "adversarial_cleanup_no_focused_evidence",
+                "adversarial_cleanup_no_revision_inputs",
             )
         return "adversarial_cleanup"
     settings = get_settings()
@@ -159,8 +197,12 @@ def _route_critique_revision(state: GraphState):
 def _route_initial_context(state: GraphState) -> str:
     metadata = state.get("metadata", {}) or {}
     repo_path = str(state.get("repo_path", "") or "")
+    settings = get_settings()
     if state.get("preflight_summary") and state.get("structural_graph_node_link"):
-        route = "review_planner"
+        if semantic_phase2_should_run(state, settings):
+            route = "semantic_dispatch"
+        else:
+            route = "review_planner"
     elif Path(repo_path).is_dir():
         route = "structural_extractor"
     else:
@@ -172,6 +214,27 @@ def _route_initial_context(state: GraphState) -> str:
             route,
         )
     return route
+
+
+def _docs_prebrief_done(state: GraphState) -> bool:
+    metadata = state.get("metadata", {}) or {}
+    docs_meta = metadata.get("docs_prebrief", {})
+    if isinstance(docs_meta, dict):
+        return bool(docs_meta.get("status"))
+    return False
+
+
+def _route_start(state: GraphState) -> str:
+    settings = get_settings()
+    if settings.docs_prebrief_enabled and not _docs_prebrief_done(state):
+        return "docs_prebrief"
+    return _route_initial_context(state)
+
+
+def _route_after_structural(state: GraphState) -> str:
+    if semantic_phase2_should_run(state):
+        return "semantic_dispatch"
+    return "review_planner"
 
 
 def _make_sandbox_structural_extractor_node(
@@ -342,11 +405,12 @@ def build_graph(
     settings = get_settings()
     context_provider = context_provider or LazyReviewContextProvider()
     preflight_service = build_preflight_service()
+    cache = build_cache_service()
     ast_parser: IASTParser | None = None
 
     if settings.ast_enabled:
         try:
-            ast_parser = build_ast_parser(settings=settings, cache=build_cache_service())
+            ast_parser = build_ast_parser(settings=settings, cache=cache)
         except Exception as exc:
             if not settings.ast_fallback_to_search:
                 raise
@@ -360,7 +424,16 @@ def build_graph(
         ast_parser=ast_parser,
     )
 
+    github_provider = build_github_context_provider(settings=settings, cache=cache)
+
+    snapshot_writer = build_snapshot_writer(settings)
+    pointer_store = build_snapshot_pointer_store(settings)
+
     builder = StateGraph(GraphState)
+    builder.add_node(
+        "docs_prebrief",
+        make_docs_prebrief_node(github_provider=github_provider, settings=settings),
+    )
     builder.add_node("structural_extractor", structural_extractor_node)
     builder.add_node(
         "sandbox_structural_extractor",
@@ -368,6 +441,17 @@ def build_graph(
             context_provider=context_provider,
             preflight_service=preflight_service,
         ),
+    )
+    builder.add_node("semantic_dispatch", make_semantic_dispatch_node(settings))
+    builder.add_node("community_semantic_agent", make_community_semantic_agent_node(settings=settings))
+    builder.add_node(
+        "unverified_call_resolver",
+        make_unverified_call_resolver_node(ast_parser=ast_parser, settings=settings),
+    )
+    builder.add_node("semantic_merge", make_semantic_merge_node(settings=settings))
+    builder.add_node(
+        "snapshot_pin",
+        make_snapshot_pin_node(snapshot_writer, pointer_store, settings=settings),
     )
     builder.add_node("review_planner", make_review_planner_node())
     builder.add_node("review_synthesizer", _make_cleanup_synthesizer(context_provider))
@@ -398,38 +482,87 @@ def build_graph(
             make_general_critiquer_node(context_provider=context_provider),
         )
         builder.add_node("adversarial_reflection", make_adversarial_reflection_node())
-        builder.add_node("initial_focused_context", make_focused_context_node(context_provider))
-        builder.add_node("focused_context", make_focused_context_node(context_provider))
+        builder.add_node(
+            "initial_focused_context",
+            make_focused_context_node(context_provider, github_provider=github_provider),
+        )
+        builder.add_node(
+            "focused_context",
+            make_focused_context_node(context_provider, github_provider=github_provider),
+        )
         builder.add_node("critique_revision_digest", make_critique_revision_digest_node())
         builder.add_node("critique_revision_reduce", make_critique_revision_reduce_node())
         builder.add_node("adversarial_cleanup", make_adversarial_cleanup_node())
+        builder.add_node("verifier_subgraph", make_verifier_subgraph_node())
+        builder.add_node("post_reflection_evidence_pass", _make_post_reflection_evidence_pass_node())
         builder.add_conditional_edges("review_planner", _route_critique_tasks)
         builder.add_edge("general_critiquer", "initial_focused_context")
         builder.add_edge("initial_focused_context", "adversarial_reflection")
         builder.add_conditional_edges(
             "adversarial_reflection",
-            _route_focused_after_reflection,
+            route_focused_after_reflection,
             {
                 "focused_context": "focused_context",
+                "post_reflection_evidence_pass": "post_reflection_evidence_pass",
                 "adversarial_cleanup": "adversarial_cleanup",
             },
         )
-        builder.add_conditional_edges("focused_context", _route_critique_revision)
+        builder.add_conditional_edges("focused_context", _route_after_focused_context)
+        builder.add_conditional_edges("post_reflection_evidence_pass", _route_after_focused_context)
+        builder.add_conditional_edges("verifier_subgraph", _route_critique_revision)
         builder.add_edge("critique_revision_digest", "critique_revision_reduce")
         builder.add_edge("critique_revision_reduce", "adversarial_cleanup")
         builder.add_edge("adversarial_cleanup", "review_synthesizer")
 
     builder.add_conditional_edges(
         START,
+        _route_start,
+        {
+            "docs_prebrief": "docs_prebrief",
+            "structural_extractor": "structural_extractor",
+            "sandbox_structural_extractor": "sandbox_structural_extractor",
+            "review_planner": "review_planner",
+            "semantic_dispatch": "semantic_dispatch",
+        },
+    )
+    builder.add_conditional_edges(
+        "docs_prebrief",
         _route_initial_context,
         {
             "structural_extractor": "structural_extractor",
             "sandbox_structural_extractor": "sandbox_structural_extractor",
             "review_planner": "review_planner",
+            "semantic_dispatch": "semantic_dispatch",
         },
     )
-    builder.add_edge("structural_extractor", "review_planner")
-    builder.add_edge("sandbox_structural_extractor", "review_planner")
+    builder.add_conditional_edges(
+        "structural_extractor",
+        _route_after_structural,
+        {
+            "semantic_dispatch": "semantic_dispatch",
+            "review_planner": "review_planner",
+        },
+    )
+    builder.add_conditional_edges(
+        "sandbox_structural_extractor",
+        _route_after_structural,
+        {
+            "semantic_dispatch": "semantic_dispatch",
+            "review_planner": "review_planner",
+        },
+    )
+    builder.add_conditional_edges("semantic_dispatch", route_semantic_dispatch)
+    builder.add_edge("community_semantic_agent", "semantic_dispatch")
+    builder.add_conditional_edges(
+        "unverified_call_resolver",
+        route_after_unverified_call_resolver,
+        {
+            "unverified_call_resolver": "unverified_call_resolver",
+            "semantic_merge": "semantic_merge",
+        },
+    )
+    builder.add_edge("semantic_merge", "snapshot_pin")
+    builder.add_edge("snapshot_pin", "review_planner")
     builder.add_edge("review_synthesizer", END)
 
     if checkpointer is None:
@@ -465,6 +598,15 @@ def run_reviewer(state: GraphState) -> Dict[str, Any]:
             )
     except Exception as exc:
         context_provider.stop()
+        try:
+            delete_checkpoint_thread(settings, thread_id)
+        except Exception as cleanup_exc:  # noqa: BLE001
+            logger.warning(
+                "Checkpoint cleanup before retry failed for thread_id=%s: %s: %s",
+                thread_id,
+                cleanup_exc.__class__.__name__,
+                cleanup_exc,
+            )
         logger.warning(
             "Checkpointed reviewer run failed; retrying without checkpointing: %s: %s",
             exc.__class__.__name__,

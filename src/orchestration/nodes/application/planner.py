@@ -6,7 +6,7 @@ from typing import Any, Dict, Iterable, List
 from pydantic import BaseModel, Field
 
 from src.config import get_settings
-from src.domain.schemas import ReviewTask
+from src.domain.schemas import ReviewTask, StructuralTopologySummary
 from src.domain.state import GraphState
 from src.infrastructure.llm.factory import Models
 from src.infrastructure.llm.token_usage import extract_total_tokens_from_llm_result, parse_structured_output
@@ -155,6 +155,8 @@ def _structural_routing_hints(state: GraphState, changed_files: List[str]) -> Di
     """Summarize only changed-file structural signals useful for task routing."""
     graph_payload = state.get("structural_graph_node_link") or {}
     topology = state.get("structural_topology")
+    if topology is not None and not isinstance(topology, StructuralTopologySummary):
+        topology = StructuralTopologySummary.model_validate(topology)
     if not isinstance(graph_payload, dict):
         return {"changed_files": changed_files}
 
@@ -283,8 +285,16 @@ def make_review_planner_node(model_key: str | None = None, use_llm: bool = True)
         if use_llm:
             selected_model = model_key or getattr(get_settings(), "reviewer_planner_model_key", None)
             try:
+                prompt = _render_planner_prompt(state)
+                if _trace_enabled(state):
+                    trace_logger.info(
+                        "TRACE planner_prompt run_id=%s model=%s prompt_chars=%s",
+                        run_id,
+                        selected_model,
+                        len(prompt),
+                    )
                 llm = Models.planner(ReviewPlanOutput, model_key=selected_model)
-                invoke_result = llm.invoke(_render_planner_prompt(state))
+                invoke_result = llm.invoke(prompt)
                 response = parse_structured_output(invoke_result, ReviewPlanOutput)
                 llm_tokens = extract_total_tokens_from_llm_result(invoke_result)
                 tasks = _normalize_tasks(response.tasks, state)
