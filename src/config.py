@@ -281,7 +281,7 @@ class Settings(BaseSettings):
 		),
 	)
 	reviewer_planner_max_completion_tokens: int = Field(
-		default=2048,
+		default=8192,
 		ge=256,
 		le=32768,
 		description="Maximum completion tokens for reviewer planner LLM calls.",

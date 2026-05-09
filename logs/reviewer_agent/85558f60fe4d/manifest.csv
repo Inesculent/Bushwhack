@@ -1,2 +1,0 @@
-pr_url,slug,started_at,finished_at,status,raw_path,findings_path,finding_count,elapsed_ms,error,redis_checkpoints_cleaned,token_usage
-https://github.com/comfyanonymous/ComfyUI/pull/7952,comfyanonymous__ComfyUI__pr7952,2026-05-09T04:35:46.227575+00:00,2026-05-09T04:37:42.793569+00:00,ok,raw\comfyanonymous__ComfyUI__pr7952.json,findings\comfyanonymous__ComfyUI__pr7952.json,1,115415,,True,49399
