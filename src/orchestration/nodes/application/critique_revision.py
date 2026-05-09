@@ -120,7 +120,7 @@ def _has_focused_evidence(state: GraphState, candidate_ids: Sequence[str]) -> bo
         res = _coerce_focused_result(raw)
         if res is None:
             continue
-        if res.candidate_id in want and (res.file_snippets or res.search_hits):
+        if res.candidate_id in want and (res.file_snippets or res.search_hits or res.file_contents_full):
             return True
     return False
 

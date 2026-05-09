@@ -109,7 +109,14 @@ def parse_args() -> argparse.Namespace:
         "--repo-root",
         type=Path,
         default=None,
-        help="Optional local repository root for direct context smoke runs.",
+        help=(
+            "Local git checkout root (absolute path). Overrides automatic snapshot resume behavior: when "
+            "--snapshot-id is used and metadata repo_path is a GitHub URL, the harness may fetch "
+            "pull/<PR>/head under <snapshot_root>/_reviewer_worktree using host git if available. "
+            "--repo-root skips that and mounts your checkout read-only (recommended when you already "
+            "have the PR checked out). Without either, the verifier image may run "
+            "`git clone` (needs git in the image)."
+        ),
     )
     parser.add_argument(
         "--trace",

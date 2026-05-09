@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -56,6 +57,7 @@ def test_snapshot_resume_marks_docs_prebrief_done(tmp_path: Path) -> None:
         started_at="2026-05-08T00:00:00+00:00",
         run_reviewer_fn=fake_run_reviewer,
         experiment_tag="test",
+        logger=logging.getLogger("test_snapshot_resume"),
         snapshot_data=snapshot_data,
     )
 

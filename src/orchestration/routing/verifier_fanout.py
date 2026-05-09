@@ -11,6 +11,7 @@ from langgraph.types import Send
 from src.config import get_settings
 from src.domain.schemas import CandidateFinding, FocusedContextResult
 from src.domain.state import GraphState
+from src.domain.verifier_schemas import VerifierReport
 from src.orchestration.nodes.application.critique_revision import (
     _candidate_ids_needs_verification,
     _has_focused_evidence,
@@ -19,6 +20,23 @@ from src.orchestration.nodes.application.critique_revision import (
 from src.orchestration.nodes.verifier.verifier_runner import invoke_verifier_for_candidate
 
 logger = logging.getLogger(__name__)
+
+
+def _lint_advisory_from_report(report: VerifierReport) -> str:
+    if not report.attempts:
+        return ""
+    last = report.attempts[-1]
+    if not last.lint_runs:
+        return ""
+    parts: List[str] = []
+    for lr in last.lint_runs:
+        parts.append(
+            f"[{lr.tool}] exit={lr.exit_code}\nstdout:\n{lr.stdout}\nstderr:\n{lr.stderr}".strip()
+        )
+    text = "\n\n---\n\n".join(parts)
+    if len(text) > 8000:
+        return text[:8000] + "\n... [truncated]"
+    return text
 
 
 def _coerce_candidate(raw: object) -> CandidateFinding | None:
@@ -50,8 +68,11 @@ def _claim_type_eligible(candidate: CandidateFinding, settings) -> bool:
     return False
 
 
-def focused_context_text_for_candidate(state: GraphState, candidate_id: str, *, max_chars: int = 24_000) -> str:
+def focused_context_text_for_candidate(state: GraphState, candidate_id: str, *, max_chars: int | None = None) -> str:
     """Concat focused JSON blobs for one candidate (bounded)."""
+    settings = get_settings()
+    if max_chars is None:
+        max_chars = min(120_000, max(24_000, int(settings.review_full_file_max_total_chars)))
     chunks: List[str] = []
     for raw in (state.get("focused_context_results", {}) or {}).values():
         res: FocusedContextResult | None
@@ -138,6 +159,7 @@ def make_verifier_subgraph_node():
             candidate=cand,
             focused_context_snippets=fc,
             git_diff_excerpt=git_excerpt,
+            graph_state=state,
         )
 
         meta = dict(state.get("metadata") or {})
@@ -149,6 +171,7 @@ def make_verifier_subgraph_node():
             "final_rationale": report.final_rationale,
             "attempts": len(report.attempts),
             "skipped_reason": report.skipped_reason,
+            "lint_advisory": _lint_advisory_from_report(report),
         }
         meta["verifier_hints"] = hints
         vrun = dict(meta.get("verifier") or {})

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
+from pathlib import Path
 from typing import Any, Dict, List, Set, Tuple
 
 from src.config import Settings, get_settings
@@ -12,11 +13,13 @@ from src.domain.schemas import (
     CommunitySemanticSummary,
     KnowledgeGap,
     ResolverSymbolSummaryOutput,
+    SymbolDefinition,
     UnverifiedCallTarget,
 )
 from src.domain.state import GraphState
 from src.infrastructure.llm.factory import Models
 from src.infrastructure.llm.token_usage import extract_total_tokens_from_llm_result, parse_structured_output
+from src.infrastructure.search.definition_fallback import find_symbol_definitions_regex
 from src.infrastructure.structural_graph import StructuralGraphBuilder
 from src.orchestration.prompts.exploration_prompts import render_unverified_call_resolver_prompt
 
@@ -168,6 +171,84 @@ def make_unverified_call_resolver_node(
                             resolution_summary = parsed.one_line_summary
                         except Exception as exc:  # noqa: BLE001
                             logger.warning("resolver LLM failed run_id=%s sym=%s err=%s", run_id, entity_name, exc)
+
+            # Tier 2b: repo-wide definition lookup (AST / Jedi / regex fallback)
+            if not resolved_flag:
+                repo = str(state.get("repo_path", "") or "").strip()
+                defs: List[SymbolDefinition] = []
+                if ast_parser is not None and repo and Path(repo).is_dir():
+                    try:
+                        defs = ast_parser.find_symbol_definitions(
+                            repository_path=repo,
+                            symbol_name=representative.target_name,
+                            max_results=5,
+                        )
+                    except Exception as exc:  # noqa: BLE001
+                        logger.debug(
+                            "resolver find_symbol_definitions failed run_id=%s name=%s err=%s",
+                            run_id,
+                            representative.target_name,
+                            exc,
+                        )
+                if not defs and repo and Path(repo).is_dir():
+                    defs = find_symbol_definitions_regex(
+                        repository_path=repo,
+                        symbol_name=representative.target_name,
+                        max_results=5,
+                    )
+
+                if defs:
+                    best = defs[0]
+                    body_text = ""
+                    if ast_parser is not None and repo:
+                        try:
+                            ent = ast_parser.get_entity_details(repo, best.file_path, best.entity_name)
+                            body_text = ent.body if ent is not None else ""
+                        except Exception as exc:  # noqa: BLE001
+                            logger.debug("resolver ast body fetch failed run_id=%s err=%s", run_id, exc)
+                    if not body_text and repo and Path(repo).is_dir():
+                        try:
+                            body_text = (Path(repo) / best.file_path).read_text(encoding="utf-8", errors="replace")
+                        except OSError:
+                            body_text = ""
+
+                    synthetic_id = f"defn:{best.file_path}:{best.line_start}"
+                    if body_text and use_llm:
+                        try:
+                            llm = Models.worker(ResolverSymbolSummaryOutput, model_key=selected_model)
+                            prompt = render_unverified_call_resolver_prompt(
+                                symbol_node_id=synthetic_id,
+                                body_text=body_text[:120_000],
+                            )
+                            invoke_result = llm.invoke(prompt)
+                            parsed = parse_structured_output(invoke_result, ResolverSymbolSummaryOutput)
+                            llm_tokens += extract_total_tokens_from_llm_result(invoke_result)
+                            resolved_flag = True
+                            resolved_id = synthetic_id
+                            resolution_summary = (
+                                f"{parsed.one_line_summary} "
+                                f"(definition {best.file_path}:{best.line_start} via {best.source})"
+                            )
+                        except Exception as exc:  # noqa: BLE001
+                            logger.warning(
+                                "resolver LLM failed after definition lookup run_id=%s name=%s err=%s",
+                                run_id,
+                                representative.target_name,
+                                exc,
+                            )
+                    elif not use_llm:
+                        resolved_flag = True
+                        resolved_id = synthetic_id
+                        resolution_summary = (
+                            f"Resolved to {best.file_path}:{best.line_start} ({best.entity_type}, source={best.source})"
+                        )
+                    if not resolved_flag:
+                        resolved_flag = True
+                        resolved_id = synthetic_id
+                        resolution_summary = (
+                            f"Definition at {best.file_path}:{best.line_start} "
+                            f"({best.entity_name}, source={best.source})"
+                        )
 
             # Tier 3: unresolved external
             if not resolved_flag:

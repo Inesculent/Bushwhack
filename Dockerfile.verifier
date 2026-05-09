@@ -7,8 +7,13 @@ RUN pip install --no-cache-dir \
     pytest==8.0.0 \
     pytest-xdist==3.5.0 \
     hypothesis==6.98.0 \
+    ruff==0.9.5 \
+    flake8==7.1.1 \
+    flake8-bugbear==24.12.12 \
     && rm -rf /root/.cache/pip
 
 WORKDIR /workspace
 
-CMD ["python", "--version"]
+# Keep the container running so `docker exec` (via API exec_run) works. A one-shot CMD like
+# `python --version` exits immediately and causes: APIError 409 "container is not running".
+CMD ["sleep", "infinity"]

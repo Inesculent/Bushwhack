@@ -39,7 +39,7 @@ for mod in heavy_deps:
 
 3. Import **only** what you need from the repo; avoid `pytest` / `unittest` test runners.
 
-4. Exercise the code path around `{file_path}` near lines `{line_start}`–`line_end}` using the **failure_mode** field as guidance.
+4. Exercise the code path around `{file_path}` near lines `{line_start}`–`{line_end}` using the **failure_mode** field as guidance.
 
 5. **Exit protocol** (no other frameworks):
    - On success / no exception: print `STATUS: SAFE` and `sys.exit(0)`.

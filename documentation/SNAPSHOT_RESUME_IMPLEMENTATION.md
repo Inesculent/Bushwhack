@@ -13,11 +13,12 @@ Added `--snapshot-id` flag to `src/reviewer_agent/main.py` to load exploration s
 ### 2. `src/reviewer_agent/harness/aacr.py`
 - Added import: `from src.infrastructure.snapshot_loader import SnapshotLoader`
 - Added `_load_snapshot_for_resume()` helper function to load snapshot data
+- Snapshot resume **repo_path**: when metadata holds an `https://` URL (typical), host `git` can populate `<snapshot_root>/_reviewer_worktree` via `git fetch origin pull/<n>/head` so downstream nodes match a full run’s on-disk repo (still skips preflight clone into the read sandbox when routing bypasses that phase).
 - Updated `_invoke_for_pr()` to:
-  - Accept `snapshot_data` parameter
+  - Accept `snapshot_data` and `logger` parameters
   - Inject snapshot data into GraphState when provided
   - Generate run_id with `_from_snapshot_{id[:8]}` suffix
-  - Add trace logging when snapshot is loaded
+  - Add trace logging when snapshot is loaded (includes resolved `repo_path`)
 - Updated `run_aacr_reviewer()` to:
   - Accept `snapshot_id` parameter
   - Load snapshot once before the PR loop
@@ -47,6 +48,7 @@ python -m src.reviewer_agent.main --snapshot-id 28d358fa3aaf_comfyanonymous__Com
 2. For each PR in dataset:
    - Fetch PR context from GitHub API (including diff)
    - Validate snapshot repo matches PR repo (error if mismatch)
+   - **Resolve `repo_path` for on-disk features** (review sandbox, verifier bind-mount, AST): snapshot metadata often stores the canonical GitHub URL. Without `--repo-root`, if host `git` is available, the harness fetches `pull/<pr>/head` into `<snapshot_root>/_reviewer_worktree` (reused when a marker file matches URL + PR). With `--repo-root`, that path is used instead. Skipping preflight still means you need a real directory for anything that reads files from disk—snapshot resume only skips graph building and semantic fan-out/summarize, not repo checkout semantics.
    - Construct GraphState with:
      - Existing Phase 2 outputs from snapshot
      - NEW diff from current PR

@@ -9,6 +9,7 @@ import docker
 
 from src.config import Settings, get_settings
 from src.domain.schemas import CandidateFinding
+from src.domain.state import GraphState
 from src.domain.verifier_schemas import VerifierReport
 from src.orchestration.nodes.verifier.result_judge import (
     build_retry_feedback,
@@ -44,6 +45,7 @@ def invoke_verifier_for_candidate(
     git_diff_excerpt: str,
     settings: Optional[Settings] = None,
     use_llm: bool = True,
+    graph_state: GraphState | None = None,
 ) -> VerifierReport:
     """Run up to ``verifier_max_attempts`` generate/execute/judge cycles for one candidate."""
     settings = settings or get_settings()
@@ -98,6 +100,7 @@ def invoke_verifier_for_candidate(
             attempt_number=attempt_idx,
             test_code=code,
             settings=settings,
+            graph_state=graph_state,
         )
         verdict, rationale = judge_attempt(record)
         last_rationale = rationale

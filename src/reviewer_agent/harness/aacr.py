@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import json
 import logging
+import shutil
+import subprocess
 import sys
 import time
 import uuid
@@ -220,6 +222,91 @@ def _load_pr_urls(
     return urls
 
 
+def _git_cli_available() -> bool:
+    try:
+        subprocess.run(
+            ["git", "--version"],
+            capture_output=True,
+            check=True,
+            timeout=15,
+        )
+        return True
+    except Exception:
+        return False
+
+
+def _ensure_snapshot_pr_worktree(
+    *,
+    snapshot_root: str,
+    canonical_repo_url: str,
+    pr_number: int,
+    logger: logging.Logger,
+) -> str:
+    """Fetch PR head into ``<snapshot_root>/_reviewer_worktree`` (host git).
+
+    Matches full-graph runs that bind-mount a real directory: review sandbox, verifier,
+    and AST see files on disk instead of a bare GitHub URL.
+    """
+    root = Path(snapshot_root).resolve()
+    worktree = root / "_reviewer_worktree"
+    marker = worktree / ".bw_snapshot_pr_worktree"
+    marker_payload = f"{canonical_repo_url}\npull/{pr_number}/head\n"
+
+    if worktree.is_dir() and marker.is_file():
+        try:
+            if marker.read_text(encoding="utf-8") == marker_payload:
+                logger.info("Snapshot resume: reusing PR worktree %s", worktree)
+                return str(worktree.resolve())
+        except OSError:
+            pass
+
+    if worktree.exists():
+        shutil.rmtree(worktree)
+
+    worktree.mkdir(parents=True)
+    logger.info(
+        "Snapshot resume: fetching pull/%s/head into %s (host git)",
+        pr_number,
+        worktree,
+    )
+    subprocess.run(
+        ["git", "init"],
+        cwd=worktree,
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    subprocess.run(
+        ["git", "remote", "add", "origin", canonical_repo_url],
+        cwd=worktree,
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    fetch = subprocess.run(
+        ["git", "fetch", "--depth", "1", "origin", f"pull/{pr_number}/head"],
+        cwd=worktree,
+        capture_output=True,
+        text=True,
+        timeout=1200,
+    )
+    if fetch.returncode != 0:
+        raise RuntimeError(fetch.stderr or fetch.stdout or "git fetch failed")
+    checkout = subprocess.run(
+        ["git", "checkout", "FETCH_HEAD"],
+        cwd=worktree,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    if checkout.returncode != 0:
+        raise RuntimeError(checkout.stderr or checkout.stdout or "git checkout failed")
+    marker.write_text(marker_payload, encoding="utf-8")
+    return str(worktree.resolve())
+
+
 def _invoke_for_pr(
     run_id: str,
     pr_url: str,
@@ -229,18 +316,57 @@ def _invoke_for_pr(
     started_at: str,
     run_reviewer_fn: Callable[[GraphState], dict[str, Any]],
     experiment_tag: str,
+    logger: logging.Logger,
     snapshot_data: Optional[Dict[str, Any]] = None,
 ) -> dict[str, Any]:
     # Determine repo_path and graph_run_id
     graph_run_id = _graph_thread_id(run_id, pr_url, snapshot_data)
     repo_url = f"https://github.com/{context.repo}"
+    snapshot_repo_extra: Dict[str, Any] = {}
+
     if snapshot_data:
-        repo_path = str(repo_root.resolve()) if repo_root is not None else snapshot_data["repo_path"]
+        if repo_root is not None:
+            repo_path = str(repo_root.resolve())
+        else:
+            meta_rp = (snapshot_data.get("repo_path") or "").strip()
+            if meta_rp and Path(meta_rp).is_dir():
+                repo_path = str(Path(meta_rp).resolve())
+            elif meta_rp.startswith("http://") or meta_rp.startswith("https://"):
+                if _git_cli_available():
+                    try:
+                        repo_path = _ensure_snapshot_pr_worktree(
+                            snapshot_root=snapshot_data["snapshot_root"],
+                            canonical_repo_url=repo_url,
+                            pr_number=context.number,
+                            logger=logger,
+                        )
+                        snapshot_repo_extra["snapshot_pr_worktree_auto_cloned"] = True
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning(
+                            "Snapshot resume: could not prepare local PR worktree (%s: %s); "
+                            "using URL repo_path (review sandbox will clone remotely; verifier "
+                            "needs git in its image or pass --repo-root).",
+                            exc.__class__.__name__,
+                            exc,
+                        )
+                        repo_path = meta_rp
+                else:
+                    logger.warning(
+                        "Snapshot resume: host git not found; cannot auto-fetch PR head into "
+                        "snapshot worktree. Install git or pass --repo-root <checkout>."
+                    )
+                    repo_path = meta_rp
+            else:
+                repo_path = meta_rp or repo_url
+
         if trace:
             trace_logger = logging.getLogger("research_pipeline.reviewer_trace")
             trace_logger.info(
-                "TRACE snapshot_load run_id=%s snapshot=%s repo=%s",
-                graph_run_id, snapshot_data["snapshot_id"][:8], snapshot_data["repo_path"]
+                "TRACE snapshot_load run_id=%s snapshot=%s snapshot_meta_repo=%s resolved_repo_path=%s",
+                graph_run_id,
+                snapshot_data["snapshot_id"][:8],
+                snapshot_data["repo_path"],
+                repo_path,
             )
     else:
         repo_path = str(repo_root.resolve()) if repo_root is not None else repo_url
@@ -303,6 +429,7 @@ def _invoke_for_pr(
             "knowledge_gaps": [],
             "metadata": {
                 **initial_state["metadata"],
+                **snapshot_repo_extra,
                 "snapshot_loaded": True,
                 "snapshot_source": "loaded",
                 "docs_prebrief": {
@@ -451,6 +578,7 @@ def run_aacr_reviewer(
                 started_at=pr_started_at,
                 run_reviewer_fn=run_reviewer_fn,
                 experiment_tag=experiment_tag,
+                logger=logger,
                 snapshot_data=snapshot_data,
             )
         except Exception as exc:  # noqa: BLE001 - per-PR isolation; harness continues

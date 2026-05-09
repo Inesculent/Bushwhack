@@ -1,0 +1,24 @@
+[
+  {
+    "id": "security-regex-001",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 200,
+    "line_end": 280,
+    "content": "No findings found.",
+    "severity": "high",
+    "feedback_type": "defect_detection",
+    "recommendation": "Add regex pattern validation before execution (e.g., max quantifier depth, disallow nested quantifiers), or use a sandboxed regex engine with execution-time limits. Consider rejecting patterns with known DoS characteristics or imposing strict length/time limits.",
+    "references": []
+  },
+  {
+    "id": "security-regex-001",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 200,
+    "line_end": 280,
+    "content": "No findings found.\n\nPost-context evidence: Diff confirms RegexMatch (lines 228-246) and RegexExtract (lines 248-322) both accept `regex_pattern` as IO.STRING without validation. Lines 239 (`re.search(regex_pattern, string, flags)`) and 260/277 show direct usage of user-provided patterns with no complexity validation, length limits, or timeout mechanisms. Only re.error catches syntax errors (line 243, 271). Search results confirmed no existing DoS protections in file. The pattern `^(a+)+$` or similar can cause exponential backtracking. This is a valid high-severity security risk as user workflows can inject malicious patterns causing server hangs.",
+    "severity": "high",
+    "feedback_type": "defect_detection",
+    "recommendation": "Add regex pattern validation before execution (e.g., max quantifier depth, disallow nested quantifiers), or use a sandboxed regex engine with execution-time limits. Consider rejecting patterns with known DoS characteristics or imposing strict length/time limits.",
+    "references": []
+  }
+]

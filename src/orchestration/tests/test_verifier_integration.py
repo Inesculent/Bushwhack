@@ -88,6 +88,21 @@ def test_collect_verifier_send_payloads_eligible() -> None:
     assert sends[0].arg["verifier_candidate"]["candidate_id"] == cid
 
 
+def test_has_focused_evidence_accepts_full_file_payload() -> None:
+    from src.orchestration.nodes.application.critique_revision import _has_focused_evidence
+
+    cid = "c-full"
+    fc = FocusedContextResult(
+        request_id="r1",
+        candidate_id=cid,
+        file_contents_full={"nodes_string.py": "def f(): ..."},
+        file_snippets={},
+        search_hits={},
+    )
+    state = _minimal_state(focused_context_results={"r1": fc})
+    assert _has_focused_evidence(state, [cid]) is True
+
+
 def test_focused_context_text_for_candidate() -> None:
     cid = "c2"
     fc = FocusedContextResult(
@@ -395,3 +410,49 @@ def test_revision_inputs_ready_accepts_verifier_without_focused() -> None:
         verifier_reports=[vr],
     )
     assert revision_inputs_ready(state, [cid]) is True
+
+
+def test_start_verifier_sandbox_clones_when_repo_path_is_remote_url() -> None:
+    from src.orchestration.nodes.verifier.sandbox_executor import _start_verifier_sandbox
+
+    class StubSb:
+        def __init__(self) -> None:
+            self.calls: list[tuple] = []
+
+        def start(self, p: str) -> None:
+            self.calls.append(("start", p))
+
+        def start_from_remote_ref(self, repo_url: str, ref: str) -> None:
+            self.calls.append(("remote", repo_url, ref))
+
+    sb = StubSb()
+    state = {
+        "metadata": {
+            "review_repo_url": "https://github.com/o/r",
+            "review_pr_number": 99,
+        }
+    }
+    _start_verifier_sandbox(sb, "https://github.com/other/repo", state)  # type: ignore[arg-type]
+    assert sb.calls[0] == ("remote", "https://github.com/o/r", "pull/99/head")
+
+    sb2 = StubSb()
+    _start_verifier_sandbox(sb2, "https://github.com/o/r", None)  # type: ignore[arg-type]
+    assert sb2.calls[0] == ("remote", "https://github.com/o/r", "HEAD")
+
+
+def test_build_test_generator_prompt_str_format_succeeds() -> None:
+    """Regression: markdown must use balanced {{}} placeholders for str.format."""
+    from src.orchestration.nodes.verifier.test_generator import build_test_generator_prompt
+    from src.orchestration.prompts.renderer import load_reviewer_prompt
+
+    load_reviewer_prompt.cache_clear()
+    text = build_test_generator_prompt(
+        candidate={"file_path": "pkg/x.py", "line_start": 1, "line_end": 3, "failure_mode": "x"},
+        focused_context_snippets="ctx",
+        git_diff_excerpt="diff",
+        retry_feedback="",
+        mock_heavy_deps=True,
+        timeout_seconds=60,
+    )
+    assert "pkg/x.py" in text
+    assert "1" in text and "3" in text

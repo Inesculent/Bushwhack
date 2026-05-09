@@ -29,6 +29,94 @@ def test_merge_graph_metadata_deep_merges_parallel_critiquer_shapes() -> None:
     assert merged["general_critiquer"]["by_task"]["t2"]["summary"] == "s2"
 
 
+def test_merge_graph_metadata_unions_ast_included_files() -> None:
+    a = {"ast_included_files": ["src/a.py"]}
+    b = {"ast_included_files": ["src/b.py"]}
+    merged = merge_graph_metadata(a, b)
+    assert merged["ast_included_files"] == ["src/a.py", "src/b.py"]
+
+    dup = merge_graph_metadata(
+        {"ast_included_files": ["src/a.py"]},
+        {"ast_included_files": ["src\\a.py"]},
+    )
+    assert dup["ast_included_files"] == ["src/a.py"]
+
+
+def test_structural_critiquer_context_excerpt_neighbors_and_peers() -> None:
+    from src.orchestration.context.review_context import structural_critiquer_context_excerpt
+
+    state = {
+        "structural_graph_node_link": {
+            "nodes": [
+                {"id": "file:a.py", "node_type": "file", "file_path": "a.py", "community_id": 0},
+                {"id": "file:b.py", "node_type": "file", "file_path": "b.py", "community_id": 0},
+                {
+                    "id": "sym:x",
+                    "node_type": "symbol",
+                    "file_path": "a.py",
+                    "symbol_name": "foo",
+                    "label": "foo",
+                },
+            ],
+            "edges": [
+                {"source": "file:a.py", "target": "sym:x", "edge_type": "defines"},
+            ],
+        },
+        "structural_topology": {
+            "algorithm": "test",
+            "community_count": 1,
+            "communities": [
+                {
+                    "community_id": 0,
+                    "node_ids": ["file:a.py", "file:b.py"],
+                    "cohesion": 0.5,
+                    "file_count": 2,
+                    "symbol_count": 1,
+                }
+            ],
+            "node_to_community": {"file:a.py": 0, "file:b.py": 0, "sym:x": 0},
+            "splits_applied": 0,
+            "config": {},
+        },
+    }
+    out = structural_critiquer_context_excerpt(state, ["a.py"])  # type: ignore[arg-type]
+    assert "Structural context" in out
+    assert "a.py" in out
+    assert "neighbors (1-hop)" in out
+    assert "[defines]" in out
+    assert "b.py" in out
+
+
+def test_entities_for_file_from_structural_graph_maps_symbols_and_imports() -> None:
+    from src.orchestration.context.review_context import entities_for_file_from_structural_graph
+
+    state = {
+        "structural_graph_node_link": {
+            "nodes": [
+                {"id": "file:a.py", "node_type": "file", "file_path": "a.py"},
+                {
+                    "id": "symbol:abc:foo",
+                    "node_type": "symbol",
+                    "file_path": "a.py",
+                    "symbol_name": "foo",
+                    "symbol_type": "function",
+                    "signature": "def foo():",
+                },
+                {"id": "module:os", "node_type": "module", "module_name": "os"},
+            ],
+            "edges": [
+                {"source": "file:a.py", "target": "symbol:abc:foo", "edge_type": "defines"},
+                {"source": "symbol:abc:foo", "target": "module:os", "edge_type": "imports"},
+            ],
+        }
+    }
+    ents = entities_for_file_from_structural_graph(state, "a.py")  # type: ignore[arg-type]
+    assert len(ents) == 1
+    assert ents[0].name == "foo"
+    assert ents[0].type == "function"
+    assert "os" in ents[0].dependencies
+
+
 def test_reviewer_graph_compiles_adversarial_path() -> None:
     pytest.importorskip("langgraph")
     from src.orchestration.reviewer_graph import build_graph
@@ -70,7 +158,7 @@ def test_bounded_fulfiller_respects_file_cap() -> None:
         def search_bounded(self, query: str, *, max_hits: int, file_paths=None):
             return []
 
-        def ast_entities_for_file(self, file_path: str):
+        def ast_entities_for_file(self, file_path: str, **kwargs):
             return [], []
 
     fulfiller = BoundedReviewContextFulfiller(StubProvider())  # type: ignore[arg-type]
@@ -114,7 +202,7 @@ def test_bounded_fulfiller_scopes_searches_to_requested_files() -> None:
                 )
             ]
 
-        def ast_entities_for_file(self, file_path: str):
+        def ast_entities_for_file(self, file_path: str, **kwargs):
             return [], []
 
     fulfiller = BoundedReviewContextFulfiller(StubProvider())  # type: ignore[arg-type]
@@ -134,6 +222,54 @@ def test_bounded_fulfiller_scopes_searches_to_requested_files() -> None:
         ("cache_control", ("middleware/cache_middleware.py",)),
         ("fragments", ("middleware/cache_middleware.py",)),
     ]
+
+
+def test_bounded_fulfiller_skips_ast_when_ast_included_in_metadata() -> None:
+    try:
+        from src.domain.schemas import CodeEntity
+        from src.orchestration.context.review_context import BoundedReviewContextFulfiller
+    except ImportError as exc:
+        pytest.skip(f"review context stack unavailable ({exc})")
+
+    class StubProvider:
+        def _ensure_started(self, state: dict) -> None:
+            return None
+
+        def read_file_slice(self, file_path: str, *, max_chars: int = 20000) -> str:
+            return f"body-{file_path}"
+
+        def search_bounded(self, query: str, *, max_hits: int, file_paths=None):
+            return []
+
+        def ast_entities_for_file(self, file_path: str, **kwargs):
+            return (
+                [
+                    CodeEntity(
+                        name="n",
+                        type="def",
+                        signature="()",
+                        body="",
+                        dependencies=[],
+                    )
+                ],
+                [],
+            )
+
+    fulfiller = BoundedReviewContextFulfiller(StubProvider())  # type: ignore[arg-type]
+    fp = "middleware/cache_middleware.py"
+    req = FocusedContextRequest(
+        request_id="r1",
+        candidate_id="c1",
+        requested_by_specialty="general",
+        file_paths=[fp],
+        symbol_queries=[],
+        text_queries=[],
+    )
+    state: dict = {"run_id": "t", "metadata": {"ast_included_files": [fp]}}
+    result = fulfiller.fulfill(state, req)  # type: ignore[arg-type]
+    snippet = result.file_snippets.get(fp, "")
+    assert "--- ast entities ---" not in snippet
+    assert "body-" in snippet
 
 
 def test_adversarial_cleanup_promotes_on_unanimous_accept() -> None:

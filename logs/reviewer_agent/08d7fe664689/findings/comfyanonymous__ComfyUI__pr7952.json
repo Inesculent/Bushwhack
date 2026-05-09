@@ -1,0 +1,46 @@
+[
+  {
+    "id": "security-review-nodes_string.py-1",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 228,
+    "line_end": 264,
+    "content": "RegexMatch class\n\nPost-context evidence: Evidence confirms the RegexMatch class (lines 228-264) accepts arbitrary user input for `regex_pattern` and passes it directly to `re.search()` without timeout, complexity limits, or recursion depth protection. The `re.error` exception handler is insufficient against catastrophic backtracking (ReDoS). No global regex safeguards were found in `comfy/settings.json` or `comfy/config.json`. Runtime verification failed due to environment constraints, but the code structure alone is sufficient to classify this as a high-severity security risk. The `RegexExtract` class (starting line 266) exhibits the same vulnerability pattern.",
+    "severity": "high",
+    "feedback_type": "defect_detection",
+    "recommendation": "Implement a pattern complexity check (e.g., limit quantifier nesting, backtracking depth) or wrap regex execution with a timeout mechanism (e.g., using `signal` on Unix or `concurrent.futures.TimeoutError` on Windows) before calling `re.search`/`re.findall`/`re.finditer`. Also consider sanitizing the input pattern to prevent known ReDoS patterns.",
+    "references": []
+  },
+  {
+    "id": "performance-review-nodes_string.py:perf-review-nodes_string.py-1",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 228,
+    "line_end": 282,
+    "content": "class RegexMatch(): ... def execute(self, string, regex_pattern, case_insensitive, multiline, dotall, **kwargs): ... flags = 0 ... try: match = re.search(regex_pattern, string, flags) ... except re.error: result = False ... return result,",
+    "severity": "medium",
+    "feedback_type": "optimization",
+    "recommendation": "Add input size limits or timeout protection for regex operations. Consider using a regex compiler that detects catastrophic backtracking patterns or validate patterns before execution.",
+    "references": []
+  },
+  {
+    "id": "logic-review-nodes_string.py-1",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 256,
+    "line_end": 259,
+    "content": "if match and len(match.groups()) >= group_index:",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Change condition to `group_index < len(match.groups()) + 1` to include group 0 (full match), or document that group_index=1+ only for capturing groups.",
+    "references": []
+  },
+  {
+    "id": "performance-review-nodes_string.py:perf-review-nodes_string.py-2",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 283,
+    "line_end": 331,
+    "content": "class RegexExtract(): ... def execute(self, string, regex_pattern, mode, case_insensitive, multiline, dotall, group_index, **kwargs): ... elif mode == \"All Groups\": matches = re.finditer(regex_pattern, string, flags) ... for match in matches: results.append(match.group(group_index)) ... result = join_delimiter.join(results)",
+    "severity": "medium",
+    "feedback_type": "optimization",
+    "recommendation": "Consider limiting the number of matches processed or streaming output for 'All Groups' mode. Add a match count limit or timeout.",
+    "references": []
+  }
+]

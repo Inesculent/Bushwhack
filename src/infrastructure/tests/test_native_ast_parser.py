@@ -61,6 +61,18 @@ def test_get_file_structure_rejects_path_escape(tmp_path: Path) -> None:
         parser.get_file_structure(str(tmp_path), "../outside.py")
 
 
+def test_find_symbol_definitions_finds_function(tmp_path: Path) -> None:
+    (tmp_path / "mod.py").write_text(
+        "def outer():\n    pass\n\n\ndef target():\n    return 1\n",
+        encoding="utf-8",
+    )
+    parser = NativeASTParser(cache=InMemoryCache())
+    defs = parser.find_symbol_definitions(str(tmp_path), "target", max_results=10)
+    assert defs
+    assert defs[0].file_path.replace("\\", "/") == "mod.py"
+    assert defs[0].entity_name == "target"
+
+
 def test_get_file_structure_rejects_unsupported_extension(tmp_path: Path) -> None:
     repo_root = tmp_path
     source_file = repo_root / "notes.txt"

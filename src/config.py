@@ -51,6 +51,10 @@ class Settings(BaseSettings):
 		default="get_entity_details",
 		description="Tool name used to fetch a single entity from a file.",
 	)
+	ast_mcp_definitions_tool: str = Field(
+		default="find_symbol_definitions",
+		description="MCP tool name for repo-wide symbol definition search.",
+	)
 	ast_cache_ttl_seconds: int = Field(
 		default=3600,
 		ge=1,
@@ -63,6 +67,18 @@ class Settings(BaseSettings):
 	ast_fallback_to_search: bool = Field(
 		default=True,
 		description="Keep non-AST fallback paths available when MCP is unavailable.",
+	)
+	review_full_file_max_chars: int = Field(
+		default=500_000,
+		ge=5_000,
+		le=2_000_000,
+		description="Max characters returned per file when focused context requests full-file reads.",
+	)
+	review_full_file_max_total_chars: int = Field(
+		default=600_000,
+		ge=10_000,
+		le=3_000_000,
+		description="Max total characters across full-file payloads in one FocusedContextResult.",
 	)
 	redis_enabled: bool = Field(
 		default=True,
@@ -264,6 +280,12 @@ class Settings(BaseSettings):
 			"Must match a key in infrastructure.llm.factory.MODELS; for Ollama use the corresponding local model key."
 		),
 	)
+	reviewer_planner_max_completion_tokens: int = Field(
+		default=2048,
+		ge=256,
+		le=32768,
+		description="Maximum completion tokens for reviewer planner LLM calls.",
+	)
 	reviewer_worker_model_key: str = Field(
 		default="qwen3.5-35b-a3b",
 		description=(
@@ -271,6 +293,12 @@ class Settings(BaseSettings):
 			"Aligns with Models.DEFAULT_ROLE_MODELS['worker']. For Ollama set to the corresponding local model key and "
 			"REVIEW_LOCAL_LLM_BASE_URL to your OpenAI-compatible endpoint."
 		),
+	)
+	reviewer_worker_max_completion_tokens: int = Field(
+		default=4096,
+		ge=512,
+		le=65536,
+		description="Maximum completion tokens for reviewer worker, reflection, and critique-revision LLM calls.",
 	)
 	reviewer_use_legacy_specialist_workers: bool = Field(
 		default=False,
@@ -362,6 +390,20 @@ class Settings(BaseSettings):
 			"When true, only verify candidates that already have focused_context_results with snippets or search hits. "
 			"Set false to allow verifier using candidate JSON + git diff only (e.g. needs_context without a focused_request)."
 		),
+	)
+	verifier_ruff_enabled: bool = Field(
+		default=True,
+		description="Run `python -m ruff check . --no-cache` inside the verifier sandbox (advisory; avoids cache writes on read-only mounts).",
+	)
+	verifier_flake8_enabled: bool = Field(
+		default=False,
+		description="Run `python -m flake8` inside the verifier sandbox when enabled (after Ruff).",
+	)
+	verifier_lint_output_max_chars: int = Field(
+		default=32_000,
+		ge=1_000,
+		le=500_000,
+		description="Truncate each linter stdout/stderr stream stored on verifier attempts.",
 	)
 
 	# Phase 2 semantic enrichment + snapshot layout

@@ -16,6 +16,7 @@ def run_verifier_invocation(input_state: Dict[str, Any]) -> Dict[str, Any]:
         focused_context_snippets=str(input_state.get("focused_context_snippets", "")),
         git_diff_excerpt=str(input_state.get("git_diff_excerpt", "")),
         use_llm=bool(input_state.get("use_llm", True)),
+        graph_state=input_state if isinstance(input_state, dict) else None,
     )
     return {"verifier_report": report.model_dump(mode="json")}
 

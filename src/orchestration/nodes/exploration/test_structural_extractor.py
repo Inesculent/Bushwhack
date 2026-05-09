@@ -1,7 +1,15 @@
-from typing import Optional
+from typing import List, Optional, Sequence
 
 from src.domain.interfaces import IASTParser, IPreflightService
-from src.domain.schemas import CodeEntity, DiffFileManifestEntry, DiffManifest, DiffManifestAggregateMetrics, PreflightRequest, RunMetadata
+from src.domain.schemas import (
+    CodeEntity,
+    DiffFileManifestEntry,
+    DiffManifest,
+    DiffManifestAggregateMetrics,
+    PreflightRequest,
+    RunMetadata,
+    SymbolDefinition,
+)
 from src.domain.state import GraphState
 from src.orchestration.nodes.exploration.structural_extractor import make_structural_extractor_node
 
@@ -45,6 +53,28 @@ class _FakeASTParser(IASTParser):
             )
         return None
 
+    def find_symbol_definitions(
+        self,
+        repository_path: str,
+        symbol_name: str,
+        *,
+        candidate_file_paths: Sequence[str] | None = None,
+        max_results: int = 50,
+    ) -> List[SymbolDefinition]:
+        del repository_path, candidate_file_paths, max_results
+        if symbol_name != "demo":
+            return []
+        return [
+            SymbolDefinition(
+                file_path="src/demo.py",
+                line_start=1,
+                entity_name="demo",
+                entity_type="function",
+                signature="def demo():",
+                source="tree_sitter",
+            )
+        ]
+
 
 def test_structural_extractor_node_outputs_graph_payload() -> None:
     node = make_structural_extractor_node(
@@ -70,3 +100,4 @@ def test_structural_extractor_node_outputs_graph_payload() -> None:
     topo = result["structural_topology"]
     assert topo.community_count >= 1
     assert topo.algorithm
+    assert result["metadata"]["structural_extractor"]["ast_capability_state"] == "enabled"

@@ -1,4 +1,5 @@
 import json
+import re
 from typing import List, Sequence
 
 from src.domain.interfaces import ICodeSearcher
@@ -53,6 +54,16 @@ class RipgrepSearcher(ICodeSearcher):
         Searches for exact word boundaries to find symbol definitions/usages.
         """
         pattern = f"\\b{symbol_name}\\b"
+        return self.search_text(pattern, repository_path)
+
+    def find_definition_candidates(self, symbol_name: str, repository_path: str = "/repo") -> List[SearchResult]:
+        """Ripgrep-based heuristic scan for likely definition lines (``def`` / ``class`` / ``function``)."""
+        escaped = re.escape(symbol_name)
+        pattern = (
+            f"(?:^|\\s)(?:async\\s+)?def\\s+{escaped}\\s*\\(|"
+            f"(?:^|\\s)class\\s+{escaped}\\s*[\\(:]|"
+            f"(?:^|\\s)(?:export\\s+)?(?:async\\s+)?function\\s+{escaped}\\s*\\("
+        )
         return self.search_text(pattern, repository_path)
 
     @staticmethod

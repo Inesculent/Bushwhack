@@ -7,9 +7,10 @@ from .schemas import (
     GitHubIssueContext,
     GitHubIssueComment,
     GitHubPullRequestContext,
+    PreflightRequest,
     RepoDocsBundle,
     SearchResult,
-    PreflightRequest,
+    SymbolDefinition,
 )
 
 """Domain ports.
@@ -58,6 +59,23 @@ class IASTParser(ABC):
     ) -> Optional[CodeEntity]:
         """
         Retrieve details for an entity in the given repository-relative file.
+        """
+        pass
+
+    @abstractmethod
+    def find_symbol_definitions(
+        self,
+        repository_path: str,
+        symbol_name: str,
+        *,
+        candidate_file_paths: Sequence[str] | None = None,
+        max_results: int = 50,
+    ) -> List[SymbolDefinition]:
+        """
+        Search the repository for definitions matching ``symbol_name``.
+
+        Implementations may use AST (tree-sitter), Python semantics (e.g. Jedi), or MCP.
+        ``candidate_file_paths`` optionally restricts the scan to known paths.
         """
         pass
 

@@ -10,7 +10,10 @@ from src.domain.schemas import CandidateFinding, CritiquerOutput, FocusedContext
 from src.domain.state import GraphState
 from src.infrastructure.llm.factory import Models
 from src.infrastructure.llm.token_usage import extract_total_tokens_from_llm_result, parse_structured_output
-from src.orchestration.context.review_context import LazyReviewContextProvider
+from src.orchestration.context.review_context import (
+    LazyReviewContextProvider,
+    structural_critiquer_context_excerpt,
+)
 from src.orchestration.nodes.application.worker import ReviewTaskContext
 from src.orchestration.prompts.renderer import render_reviewer_prompt
 from src.orchestration.routing.critiquer_focus import auto_focus_requests
@@ -115,11 +118,16 @@ def make_general_critiquer_node(
         summary = ""
         initial_requests: List[FocusedContextRequest] = []
 
+        context_rendered = context.render()
+        struct_excerpt = structural_critiquer_context_excerpt(state, task.target_files)
+        if struct_excerpt:
+            context_rendered = f"{context_rendered}\n\n{struct_excerpt}"
+
         if use_llm:
             selected_model = model_key or getattr(get_settings(), "reviewer_worker_model_key", None)
             try:
                 llm = Models.worker(CritiquerOutput, model_key=selected_model)
-                invoke_result = llm.invoke(_render_critiquer_prompt(state, task, context.render()))
+                invoke_result = llm.invoke(_render_critiquer_prompt(state, task, context_rendered))
                 response = parse_structured_output(invoke_result, CritiquerOutput)
                 llm_tokens = extract_total_tokens_from_llm_result(invoke_result)
                 candidates = _normalize_candidates(task=task, candidates=response.candidates)
@@ -150,7 +158,17 @@ def make_general_critiquer_node(
                 len(candidates),
             )
 
-        metadata = dict(state.get("metadata", {}))
+        metadata = dict(state.get("metadata", {}) or {})
+        if context.ast_included_files:
+            prev = metadata.get("ast_included_files")
+            base = list(prev) if isinstance(prev, list) else []
+            metadata["ast_included_files"] = sorted(
+                {
+                    p.strip().replace("\\", "/")
+                    for p in base + context.ast_included_files
+                    if isinstance(p, str) and p.strip()
+                }
+            )
         crit_meta = dict(metadata.get("general_critiquer", {}) or {})
         crit_meta.setdefault("by_task", {})
         if isinstance(crit_meta["by_task"], dict):

@@ -18,6 +18,24 @@ class CodeEntity(BaseModel):
     signature: str
     body: str
     dependencies: List[str] = Field(default_factory=list)
+    definition_line: Optional[int] = Field(
+        default=None,
+        description="1-based line number of the definition signature when known (AST).",
+    )
+
+
+SymbolDefinitionSource = Literal["jedi", "tree_sitter", "regex", "mcp"]
+
+
+class SymbolDefinition(BaseModel):
+    """Resolved definition site for a symbol name (repo-relative)."""
+
+    file_path: str = Field(description="Repository-relative path using '/' separators.")
+    line_start: int = Field(ge=1, description="1-based line of the definition.")
+    entity_name: str
+    entity_type: str = "unknown"
+    signature: str = ""
+    source: SymbolDefinitionSource = "tree_sitter"
 
 
 class CodeSnippet(BaseModel):
@@ -159,6 +177,10 @@ class FocusedContextRequest(BaseModel):
     request_id: str
     candidate_id: str
     requested_by_specialty: Literal["security", "performance", "logic", "style", "general"]
+    file_read_mode: Literal["slice", "full"] = Field(
+        default="slice",
+        description="slice: bounded excerpts; full: whole file up to review_full_file_max_chars per path.",
+    )
     file_paths: List[str] = Field(default_factory=list, description="Max few paths to read slices from.")
     symbol_queries: List[str] = Field(default_factory=list, description="Symbols to resolve via search.")
     text_queries: List[str] = Field(default_factory=list, description="Ripgrep patterns or plain search strings.")
@@ -171,6 +193,10 @@ class FocusedContextResult(BaseModel):
     request_id: str
     candidate_id: str
     file_snippets: Dict[str, str] = Field(default_factory=dict)
+    file_contents_full: Dict[str, str] = Field(
+        default_factory=dict,
+        description="Full file bodies when file_read_mode was 'full' (separate from snippets).",
+    )
     search_hits: Dict[str, List[SearchResult]] = Field(default_factory=dict)
     warnings: List[str] = Field(default_factory=list)
 

@@ -1,0 +1,35 @@
+[
+  {
+    "id": "t2-001",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 221,
+    "line_end": 241,
+    "content": "class RegexMatch():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True}),\n                \"regex_pattern\": (IO.STRING, {\"multiline\": True}),",
+    "severity": "high",
+    "feedback_type": "defect_detection",
+    "recommendation": "Add regex pattern validation to detect catastrophic backtracking patterns. Options include: (1) Use regex-cpp or similar libraries with built-in complexity checks, (2) Implement timeout wrapper using signal/alarm or threading with timeout parameter, (3) Limit pattern complexity via character count, nesting depth, or backreference usage analysis. Consider adding execution timeout at framework level.",
+    "references": []
+  },
+  {
+    "id": "t2-002",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 243,
+    "line_end": 322,
+    "content": "class RegexExtract():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True}),\n                \"regex_pattern\": (IO.STRING, {\"multiline\": True}),",
+    "severity": "high",
+    "feedback_type": "defect_detection",
+    "recommendation": "Add regex pattern validation to detect catastrophic backtracking patterns. Implement timeout wrapper for all regex operations. Consider blocking patterns with known dangerous structures like nested quantifiers, excessive backreferences, or high complexity metrics.",
+    "references": []
+  },
+  {
+    "id": "t4-1",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 227,
+    "line_end": 243,
+    "content": "`RegexExtract.execute`",
+    "severity": "medium",
+    "feedback_type": "optimization",
+    "recommendation": "Use `re.compile` to cache the pattern. Either cache the compiled pattern at the class level or cache it in a module-level dictionary keyed by the pattern string.",
+    "references": []
+  }
+]

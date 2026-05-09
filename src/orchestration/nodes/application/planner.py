@@ -285,8 +285,16 @@ def make_review_planner_node(model_key: str | None = None, use_llm: bool = True)
         if use_llm:
             selected_model = model_key or getattr(get_settings(), "reviewer_planner_model_key", None)
             try:
+                prompt = _render_planner_prompt(state)
+                if _trace_enabled(state):
+                    trace_logger.info(
+                        "TRACE planner_prompt run_id=%s model=%s prompt_chars=%s",
+                        run_id,
+                        selected_model,
+                        len(prompt),
+                    )
                 llm = Models.planner(ReviewPlanOutput, model_key=selected_model)
-                invoke_result = llm.invoke(_render_planner_prompt(state))
+                invoke_result = llm.invoke(prompt)
                 response = parse_structured_output(invoke_result, ReviewPlanOutput)
                 llm_tokens = extract_total_tokens_from_llm_result(invoke_result)
                 tasks = _normalize_tasks(response.tasks, state)

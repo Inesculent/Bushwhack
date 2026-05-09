@@ -79,6 +79,7 @@ def build_mcp_ast_parser(settings: Settings, cache: ICacheService) -> IASTParser
         cache=cache,
         parse_tool_name=settings.ast_mcp_parse_tool,
         entity_tool_name=settings.ast_mcp_entity_tool,
+        definitions_tool_name=settings.ast_mcp_definitions_tool,
         cache_ttl_seconds=settings.ast_cache_ttl_seconds,
         parser_version=settings.ast_parser_version,
     )

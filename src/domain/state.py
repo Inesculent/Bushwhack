@@ -27,8 +27,24 @@ def merge_graph_metadata(
     right: Dict[str, Any] | None,
 ) -> Dict[str, Any]:
     """Deep-merge metadata dicts so parallel nodes (e.g. general_critiquer) can update disjoint keys safely."""
+
+    def _norm_ast_path(p: str) -> str:
+        return p.strip().replace("\\", "/")
+
     merged: Dict[str, Any] = dict(left or {})
     for key, val in (right or {}).items():
+        if key == "ast_included_files":
+            prev = merged.get(key)
+            left_list = list(prev) if isinstance(prev, list) else []
+            right_list = list(val) if isinstance(val, list) else []
+            merged[key] = sorted(
+                {
+                    _norm_ast_path(str(p))
+                    for p in left_list + right_list
+                    if isinstance(p, str) and str(p).strip()
+                }
+            )
+            continue
         if key in merged and isinstance(merged[key], dict) and isinstance(val, dict):
             merged[key] = merge_graph_metadata(merged[key], val)
         else:

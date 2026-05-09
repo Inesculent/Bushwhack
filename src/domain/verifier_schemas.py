@@ -21,6 +21,18 @@ class VerificationStatus(str, Enum):
 VerifierVerdict = Literal["verified", "refuted", "inconclusive"]
 VerificationScope = Literal["concrete_behavior", "abstract_or_unverifiable"]
 
+LintToolName = Literal["ruff", "flake8"]
+
+
+class VerifierLintRun(BaseModel):
+    """Optional linter output captured during a verifier attempt (advisory)."""
+
+    tool: LintToolName
+    command: str = ""
+    exit_code: Optional[int] = None
+    stdout: str = ""
+    stderr: str = ""
+
 
 class VerifierAttemptRecord(BaseModel):
     """One execution attempt for a candidate."""
@@ -33,6 +45,7 @@ class VerifierAttemptRecord(BaseModel):
     timeout: bool = False
     execution_time_seconds: float = 0.0
     status: VerificationStatus = VerificationStatus.PENDING
+    lint_runs: List[VerifierLintRun] = Field(default_factory=list)
 
 
 class VerifierReport(BaseModel):
