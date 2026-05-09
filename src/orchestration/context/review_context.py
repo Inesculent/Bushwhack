@@ -3,16 +3,24 @@
 from __future__ import annotations
 
 import logging
+import re
 import threading
+from urllib.parse import urlparse
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Set
 
 from src.config import get_settings
-from src.domain.interfaces import IASTParser, ICodeSearcher
-from src.domain.interfaces import IPreflightService
-from src.domain.schemas import CodeEntity, FocusedContextRequest, FocusedContextResult, ReviewTask, SearchResult
+from src.domain.interfaces import IASTParser, ICodeSearcher, IGitHubContextProvider
+from src.domain.schemas import (
+    CodeEntity,
+    FocusedContextRequest,
+    FocusedContextResult,
+    RepoDocument,
+    ReviewTask,
+    SearchResult,
+    StructuralTopologySummary,
+)
 from src.domain.state import GraphState
-from src.infrastructure.factory import build_ast_parser, build_cache_service
 from src.infrastructure.sandbox import RepoSandbox
 from src.infrastructure.search.ripgrep import RipgrepSearcher
 from src.orchestration.nodes.application.worker import ReviewTaskContext
@@ -27,6 +35,37 @@ MAX_SEARCH_RESULTS_PER_QUERY = 15
 MAX_FILE_SLICE_CHARS = 8000
 MAX_TOTAL_RESULT_CHARS = 24000
 MAX_NEIGHBOR_NODES = 12
+MAX_ENTITIES_FROM_GRAPH_PER_FILE = 48
+
+MAX_CRITIQUER_STRUCT_CONTEXT_FILES = 8
+MAX_CRITIQUER_STRUCT_NEIGHBORS = 8
+MAX_CRITIQUER_COMMUNITY_PEER_FILES = 6
+MAX_CRITIQUER_STRUCT_CONTEXT_CHARS = 4000
+
+
+def _normalize_repo_path(path: str) -> str:
+    return path.strip().replace("\\", "/")
+
+
+def _parse_structural_topology(state: GraphState) -> Optional[StructuralTopologySummary]:
+    raw = state.get("structural_topology")
+    if raw is None:
+        return None
+    if isinstance(raw, StructuralTopologySummary):
+        return raw
+    if isinstance(raw, dict):
+        try:
+            return StructuralTopologySummary.model_validate(raw)
+        except Exception:
+            return None
+    return None
+
+
+def _ast_included_paths_normalized(metadata: Dict[str, Any]) -> Set[str]:
+    raw = metadata.get("ast_included_files") or []
+    if not isinstance(raw, list):
+        return set()
+    return {_normalize_repo_path(str(p)) for p in raw if isinstance(p, str) and str(p).strip()}
 
 
 def _trace_enabled(state: GraphState) -> bool:
@@ -46,8 +85,13 @@ def structural_neighbor_summary(state: GraphState, file_path: str) -> str:
         if not isinstance(node, dict):
             continue
         if node.get("node_type") == "file" and isinstance(node.get("file_path"), str):
-            file_to_id[node["file_path"]] = str(node.get("id", ""))
-    node_id = file_to_id.get(file_path)
+            fp = node["file_path"]
+            nid = str(node.get("id", ""))
+            if nid:
+                file_to_id[fp] = nid
+                file_to_id[_normalize_repo_path(fp)] = nid
+    norm = _normalize_repo_path(file_path)
+    node_id = file_to_id.get(file_path) or file_to_id.get(norm)
     if not node_id:
         return ""
     neighbor_ids: Set[str] = set()
@@ -68,6 +112,219 @@ def structural_neighbor_summary(state: GraphState, file_path: str) -> str:
         fp = node.get("file_path", "")
         lines.append(f"{label} ({ntype}{f', {fp}' if fp else ''})")
     return "; ".join(lines)
+
+
+def structural_critiquer_context_excerpt(state: GraphState, target_files: Sequence[str]) -> str:
+    """Bounded structural + topology excerpt for the general critiquer (no live sandbox required)."""
+    graph_payload = state.get("structural_graph_node_link") or {}
+    if not isinstance(graph_payload, dict):
+        return ""
+    nodes = graph_payload.get("nodes", [])
+    edges = graph_payload.get("edges", [])
+    if not isinstance(nodes, list) or not isinstance(edges, list) or not nodes:
+        return ""
+
+    id_to_node = {str(n.get("id", "")): n for n in nodes if isinstance(n, dict) and n.get("id")}
+    path_to_id: Dict[str, str] = {}
+    for node in nodes:
+        if not isinstance(node, dict):
+            continue
+        if node.get("node_type") == "file" and isinstance(node.get("file_path"), str):
+            fp = node["file_path"]
+            nid = str(node.get("id", ""))
+            if nid:
+                path_to_id[fp] = nid
+                path_to_id[_normalize_repo_path(fp)] = nid
+
+    topology = _parse_structural_topology(state)
+
+    deduped: List[str] = []
+    seen: Set[str] = set()
+    for raw in target_files:
+        if not isinstance(raw, str) or not raw.strip():
+            continue
+        norm = _normalize_repo_path(raw)
+        if norm in seen:
+            continue
+        seen.add(norm)
+        deduped.append(norm)
+    deduped = deduped[:MAX_CRITIQUER_STRUCT_CONTEXT_FILES]
+
+    blocks: List[str] = []
+    matched_any = False
+    for norm_fp in deduped:
+        node_id = path_to_id.get(norm_fp)
+        if not node_id:
+            continue
+        matched_any = True
+
+        rows: List[tuple[str, str]] = []
+        for edge in edges:
+            if not isinstance(edge, dict):
+                continue
+            src = str(edge.get("source", ""))
+            tgt = str(edge.get("target", ""))
+            et = str(edge.get("edge_type") or edge.get("relation") or "?")
+            if src == node_id and tgt:
+                rows.append((tgt, et))
+            elif tgt == node_id and src:
+                rows.append((src, et))
+        rows.sort(key=lambda t: (t[1], t[0]))
+        neighbor_lines: List[str] = []
+        seen_other: Set[str] = set()
+        for other_id, et in rows:
+            if other_id in seen_other:
+                continue
+            seen_other.add(other_id)
+            on = id_to_node.get(other_id, {})
+            label = on.get("label") or on.get("name") or on.get("symbol_name") or other_id
+            ntype = on.get("node_type", "")
+            ofp = on.get("file_path", "")
+            tail = f", {ofp}" if isinstance(ofp, str) and ofp else ""
+            neighbor_lines.append(f"  - {label} ({ntype}{tail}) [{et}]")
+            if len(neighbor_lines) >= MAX_CRITIQUER_STRUCT_NEIGHBORS:
+                break
+
+        cid: int | None = None
+        if topology is not None:
+            cid = topology.node_to_community.get(f"file:{norm_fp}")
+        if cid is None:
+            fn = id_to_node.get(node_id, {})
+            raw_c = fn.get("community_id")
+            if isinstance(raw_c, int):
+                cid = raw_c
+            elif raw_c is not None:
+                try:
+                    cid = int(raw_c)
+                except (TypeError, ValueError):
+                    cid = None
+
+        peer_files: List[str] = []
+        if cid is not None and cid >= 0:
+            peer_set: Set[str] = set()
+            for n in nodes:
+                if not isinstance(n, dict):
+                    continue
+                if n.get("node_type") != "file":
+                    continue
+                ofp = n.get("file_path")
+                if not isinstance(ofp, str) or not ofp:
+                    continue
+                onorm = _normalize_repo_path(ofp)
+                if onorm == norm_fp:
+                    continue
+                oid = str(n.get("id", ""))
+                pcid: int | None = None
+                if topology is not None and oid:
+                    raw_pc = topology.node_to_community.get(oid)
+                    if isinstance(raw_pc, int):
+                        pcid = raw_pc
+                if pcid is None:
+                    rc = n.get("community_id")
+                    if isinstance(rc, int):
+                        pcid = rc
+                    elif rc is not None:
+                        try:
+                            pcid = int(rc)
+                        except (TypeError, ValueError):
+                            pcid = None
+                if pcid == cid:
+                    peer_set.add(onorm)
+            peer_files = sorted(peer_set)[:MAX_CRITIQUER_COMMUNITY_PEER_FILES]
+
+        block = [f"- {norm_fp}"]
+        if neighbor_lines:
+            block.append("  neighbors (1-hop):")
+            block.extend(neighbor_lines)
+        else:
+            block.append("  neighbors (1-hop): (none)")
+        if peer_files:
+            block.append(f"  community_peers (community_id={cid}):")
+            for pf in peer_files:
+                block.append(f"  - {pf}")
+        blocks.append("\n".join(block))
+
+    if not matched_any:
+        return ""
+    header = (
+        "Structural context (bounded, 1-hop neighbors + same-community files if available):"
+    )
+    body = "\n".join([header, *blocks])
+    return body[:MAX_CRITIQUER_STRUCT_CONTEXT_CHARS]
+
+
+def entities_for_file_from_structural_graph(state: GraphState, file_path: str) -> List[CodeEntity]:
+    """Build CodeEntity outlines from persisted structural graph (snapshot-safe, no live AST).
+
+    Uses symbol nodes scoped to ``file_path`` plus ``imports`` edges to module nodes.
+    Bodies are empty; suitable for the same prompts as lightweight AST outlines.
+    """
+    graph_payload = state.get("structural_graph_node_link") or {}
+    if not isinstance(graph_payload, dict):
+        return []
+    nodes = graph_payload.get("nodes", [])
+    edges = graph_payload.get("edges", [])
+    if not isinstance(nodes, list) or not isinstance(edges, list):
+        return []
+
+    norm = _normalize_repo_path(file_path)
+    symbol_rows: List[tuple[str, Dict[str, Any]]] = []
+    for node in nodes:
+        if not isinstance(node, dict) or node.get("node_type") != "symbol":
+            continue
+        fp = node.get("file_path")
+        if not isinstance(fp, str):
+            continue
+        if _normalize_repo_path(fp) != norm:
+            continue
+        sid = str(node.get("id", ""))
+        if not sid:
+            continue
+        name = node.get("symbol_name")
+        if not isinstance(name, str) or not name.strip():
+            continue
+        symbol_rows.append((sid, node))
+
+    if not symbol_rows:
+        return []
+
+    id_to_node = {str(n.get("id", "")): n for n in nodes if isinstance(n, dict) and n.get("id")}
+    imports_by_symbol: Dict[str, List[str]] = {}
+    for edge in edges:
+        if not isinstance(edge, dict):
+            continue
+        if str(edge.get("edge_type") or edge.get("relation") or "") != "imports":
+            continue
+        src = str(edge.get("source", ""))
+        tgt = str(edge.get("target", ""))
+        if not src or not tgt:
+            continue
+        mod = id_to_node.get(tgt, {})
+        if mod.get("node_type") != "module":
+            continue
+        mod_name = mod.get("module_name")
+        if isinstance(mod_name, str) and mod_name.strip():
+            imports_by_symbol.setdefault(src, []).append(mod_name.strip())
+
+    symbol_rows.sort(
+        key=lambda row: (str(row[1].get("symbol_name") or ""), str(row[1].get("signature") or ""))
+    )
+    entities: List[CodeEntity] = []
+    for sid, node in symbol_rows:
+        raw_deps = imports_by_symbol.get(sid, [])
+        deps = sorted(set(raw_deps))[:24]
+        entities.append(
+            CodeEntity(
+                name=str(node.get("symbol_name") or ""),
+                type=str(node.get("symbol_type") or "symbol"),
+                signature=str(node.get("signature") or ""),
+                body="",
+                dependencies=deps,
+            )
+        )
+        if len(entities) >= MAX_ENTITIES_FROM_GRAPH_PER_FILE:
+            break
+    return entities
 
 
 class LazyReviewContextProvider:
@@ -103,6 +360,27 @@ class LazyReviewContextProvider:
                 except Exception as exc:  # noqa: BLE001 - AST is enrichment only
                     warnings.append(f"ast_failed:{file_path}:{exc.__class__.__name__}: {exc}")
 
+        outline_from_graph = False
+        for file_path in task.target_files[:12]:
+            if entities_by_file.get(file_path):
+                continue
+            graph_entities = entities_for_file_from_structural_graph(state, file_path)
+            if graph_entities:
+                entities_by_file[file_path] = graph_entities
+                outline_from_graph = True
+        if outline_from_graph:
+            warnings.append("review_outline_source:structural_graph_fallback")
+
+        settings = get_settings()
+        if self._host_repo_path and self._ast_parser is not None:
+            warnings.append("ast_capability:local_enabled")
+        elif self._host_repo_path and settings.ast_enabled and self._ast_parser is None:
+            warnings.append("ast_capability:local_unavailable")
+        elif self._host_repo_path is None and settings.ast_enabled:
+            warnings.append("ast_capability:remote_unavailable")
+        elif not settings.ast_enabled:
+            warnings.append("ast_capability:disabled")
+
         for query in self._queries_for_task(task=task, entities_by_file=entities_by_file):
             if self._searcher is None:
                 warnings.append("search_unavailable")
@@ -112,12 +390,21 @@ class LazyReviewContextProvider:
             except Exception as exc:  # noqa: BLE001 - search is enrichment only
                 warnings.append(f"search_failed:{query}:{exc.__class__.__name__}: {exc}")
 
+        ast_included_files = sorted(
+            {
+                _normalize_repo_path(fp)
+                for fp, ents in entities_by_file.items()
+                if ents and isinstance(fp, str) and fp.strip()
+            }
+        )
+
         return ReviewTaskContext(
             explored_files=sorted(set(explored_files)),
             file_snippets=file_snippets,
             entities_by_file=entities_by_file,
             search_results=search_results,
             warnings=warnings,
+            ast_included_files=ast_included_files,
         )
 
     def stop(self) -> None:
@@ -135,6 +422,36 @@ class LazyReviewContextProvider:
     def read_file_slice(self, file_path: str, *, max_chars: int = 20000) -> str:
         """Read a bounded prefix of a repository-relative file path."""
         return self._read_file(file_path)[:max_chars]
+
+    def read_full_file(self, file_path: str, *, max_chars: int) -> str:
+        """Read a repository-relative file up to ``max_chars`` (whole-file reviews)."""
+        normalized = file_path.replace("\\", "/").lstrip("/")
+        if not normalized or ".." in normalized.split("/"):
+            return ""
+
+        if self._sandbox is not None:
+            limit = max(1, int(max_chars))
+            code = (
+                "import pathlib\n"
+                f"p = pathlib.Path('/repo') / {normalized!r}\n"
+                "print(p.read_text(encoding='utf-8', errors='replace')[:"
+                f"{limit}"
+                "])\n"
+            )
+            return self._sandbox.execute(["python", "-c", code], workdir="/repo")
+
+        if self._host_repo_path is None:
+            return ""
+
+        repo_root = Path(self._host_repo_path).resolve()
+        target = (repo_root / normalized).resolve()
+        try:
+            target.relative_to(repo_root)
+        except ValueError:
+            return ""
+        if not target.is_file():
+            return ""
+        return target.read_text(encoding="utf-8", errors="replace")[:max_chars]
 
     def search_bounded(
         self,
@@ -156,22 +473,31 @@ class LazyReviewContextProvider:
             logger.warning("bounded search failed query=%r reason=%s", query, exc)
             return []
 
-    def ast_entities_for_file(self, file_path: str) -> tuple[List[CodeEntity], List[str]]:
-        """Return AST entity summaries for one file plus warnings."""
+    def ast_entities_for_file(
+        self, file_path: str, *, graph_state: GraphState | None = None
+    ) -> tuple[List[CodeEntity], List[str]]:
+        """Return AST entity summaries for one file plus warnings.
+
+        When live tree-sitter AST is unavailable (e.g. remote sandbox), optional
+        ``graph_state`` supplies symbol outlines from ``structural_graph_node_link``.
+        """
         warnings: List[str] = []
-        if self._ast_parser is None or not self._host_repo_path:
-            return [], warnings
-        try:
-            return (
-                self._ast_parser.get_file_structure(
-                    repository_path=self._host_repo_path,
-                    file_path=file_path,
-                ),
-                warnings,
-            )
-        except Exception as exc:  # noqa: BLE001
-            warnings.append(f"ast_failed:{file_path}:{exc.__class__.__name__}: {exc}")
-            return [], warnings
+        if self._ast_parser is not None and self._host_repo_path:
+            try:
+                return (
+                    self._ast_parser.get_file_structure(
+                        repository_path=self._host_repo_path,
+                        file_path=file_path,
+                    ),
+                    warnings,
+                )
+            except Exception as exc:  # noqa: BLE001
+                warnings.append(f"ast_failed:{file_path}:{exc.__class__.__name__}: {exc}")
+        if graph_state is not None:
+            graph_entities = entities_for_file_from_structural_graph(graph_state, file_path)
+            if graph_entities:
+                return graph_entities, warnings
+        return [], warnings
 
     def _ensure_started(self, state: GraphState) -> None:
         if self._searcher is not None:
@@ -184,14 +510,20 @@ class LazyReviewContextProvider:
             settings = get_settings()
             repo_path = str(state.get("repo_path", "") or "")
             metadata = state.get("metadata", {}) or {}
-            sandbox = RepoSandbox()
+            sandbox: RepoSandbox | None = None
 
             try:
+                sandbox = RepoSandbox()
                 if Path(repo_path).is_dir():
                     self._host_repo_path = str(Path(repo_path).resolve())
                     sandbox.start(self._host_repo_path)
                     if settings.ast_enabled:
                         try:
+                            from src.infrastructure.factory import (
+                                build_ast_parser,
+                                build_cache_service,
+                            )
+
                             self._ast_parser = build_ast_parser(
                                 settings=settings,
                                 cache=build_cache_service(),
@@ -215,6 +547,8 @@ class LazyReviewContextProvider:
                         )
                     sandbox.start_from_remote_ref(repo_url=repo_url, ref=checkout_ref)
                     self._host_repo_path = None
+                    if settings.ast_enabled:
+                        self._startup_warnings.append("ast_unavailable:remote_sandbox_repo")
                     if metadata.get("review_trace_enabled"):
                         trace_logger.info(
                             "TRACE context_ast_unavailable run_id=%s reason=remote_sandbox repo_url=%s ref=%s",
@@ -226,7 +560,8 @@ class LazyReviewContextProvider:
                 self._sandbox = sandbox
                 self._searcher = RipgrepSearcher(sandbox=sandbox)
             except Exception as exc:
-                sandbox.stop()
+                if sandbox is not None:
+                    sandbox.stop()
                 self._startup_warnings.append(
                     f"sandbox_startup_failed:{exc.__class__.__name__}: {exc}"
                 )
@@ -289,8 +624,14 @@ class LazyReviewContextProvider:
 class BoundedReviewContextFulfiller:
     """Fulfill structured focused-context requests with hard caps (no arbitrary shell)."""
 
-    def __init__(self, provider: LazyReviewContextProvider) -> None:
+    def __init__(
+        self,
+        provider: LazyReviewContextProvider,
+        *,
+        github_provider: IGitHubContextProvider | None = None,
+    ) -> None:
         self._provider = provider
+        self._github_provider = github_provider
 
     def fulfill(
         self,
@@ -306,27 +647,64 @@ class BoundedReviewContextFulfiller:
         self._provider._ensure_started(state)  # noqa: SLF001 - intentional coupling
         warnings: List[str] = []
         file_snippets: Dict[str, str] = {}
+        file_contents_full: Dict[str, str] = {}
         search_hits: Dict[str, List[SearchResult]] = {}
         total_chars = 0
+        missing_files: List[str] = []
+
+        settings = get_settings()
+        max_total_budget = (
+            settings.review_full_file_max_total_chars
+            if request.file_read_mode == "full"
+            else MAX_TOTAL_RESULT_CHARS
+        )
 
         file_paths = request.file_paths[:MAX_FILES_PER_REQUEST]
+        ast_done = _ast_included_paths_normalized(state.get("metadata") or {})
         for fp in file_paths:
-            body = self._provider.read_file_slice(fp, max_chars=MAX_FILE_SLICE_CHARS)
-            if body:
+            if request.file_read_mode == "full":
+                body = self._provider.read_full_file(fp, max_chars=settings.review_full_file_max_chars)
+                if body:
+                    file_contents_full[fp] = body
+                    total_chars += len(body)
+                    if total_chars > max_total_budget:
+                        warnings.append("truncated_total_chars")
+                        break
                 neighbor = structural_neighbor_summary(state, fp)
-                if neighbor:
-                    body = f"{body}\n--- structural neighbors ---\n{neighbor}"
-                file_snippets[fp] = body
-                total_chars += len(body)
-            entities, ast_warnings = self._provider.ast_entities_for_file(fp)
-            warnings.extend(ast_warnings)
-            if entities:
-                lines = [f"- {e.type} {e.name}: {e.signature}" for e in entities[:24]]
-                ast_block = "\n".join(lines)
-                merged = file_snippets.get(fp, "")
-                merged = f"{merged}\n--- ast entities ---\n{ast_block}" if merged else ast_block
-                file_snippets[fp] = merged[:MAX_FILE_SLICE_CHARS]
-                total_chars = sum(len(v) for v in file_snippets.values())
+                entities, ast_warnings = self._provider.ast_entities_for_file(fp, graph_state=state)
+                warnings.extend(ast_warnings)
+                norm_fp = _normalize_repo_path(fp)
+                if entities and norm_fp not in ast_done:
+                    lines = [f"- {e.type} {e.name}: {e.signature}" for e in entities[:24]]
+                    ast_block = "\n".join(lines)
+                    snippet = f"--- ast entities ---\n{ast_block}"
+                    if neighbor:
+                        snippet = f"{snippet}\n--- structural neighbors ---\n{neighbor}"
+                    file_snippets[fp] = snippet[:MAX_FILE_SLICE_CHARS]
+                    total_chars += len(file_snippets[fp])
+                elif neighbor:
+                    file_snippets[fp] = f"--- structural neighbors ---\n{neighbor}"[:MAX_FILE_SLICE_CHARS]
+                    total_chars += len(file_snippets[fp])
+            else:
+                body = self._provider.read_file_slice(fp, max_chars=MAX_FILE_SLICE_CHARS)
+                if body:
+                    neighbor = structural_neighbor_summary(state, fp)
+                    if neighbor:
+                        body = f"{body}\n--- structural neighbors ---\n{neighbor}"
+                    file_snippets[fp] = body
+                    total_chars += len(body)
+                entities, ast_warnings = self._provider.ast_entities_for_file(fp, graph_state=state)
+                warnings.extend(ast_warnings)
+                norm_fp = _normalize_repo_path(fp)
+                if entities and norm_fp not in ast_done:
+                    lines = [f"- {e.type} {e.name}: {e.signature}" for e in entities[:24]]
+                    ast_block = "\n".join(lines)
+                    merged = file_snippets.get(fp, "")
+                    merged = f"{merged}\n--- ast entities ---\n{ast_block}" if merged else ast_block
+                    file_snippets[fp] = merged[:MAX_FILE_SLICE_CHARS]
+                    total_chars = sum(len(v) for v in file_snippets.values())
+
+        missing_files = [fp for fp in file_paths if fp not in file_snippets and fp not in file_contents_full]
 
         focused_paths = request.file_paths[:MAX_FILES_PER_REQUEST] or None
 
@@ -338,7 +716,7 @@ class BoundedReviewContextFulfiller:
             )
             search_hits[sym] = hits
             total_chars += sum(len(h.content) for h in hits)
-            if total_chars > MAX_TOTAL_RESULT_CHARS:
+            if total_chars > max_total_budget:
                 warnings.append("truncated_total_chars")
                 break
 
@@ -350,14 +728,35 @@ class BoundedReviewContextFulfiller:
             )
             search_hits[tq] = hits
             total_chars += sum(len(h.content) for h in hits)
-            if total_chars > MAX_TOTAL_RESULT_CHARS:
+            if total_chars > max_total_budget:
                 warnings.append("truncated_total_chars")
                 break
+
+        try:
+            self._apply_github_fallback(
+                state=state,
+                request=request,
+                file_snippets=file_snippets,
+                search_hits=search_hits,
+                warnings=warnings,
+                missing_files=missing_files,
+                total_chars=total_chars,
+            )
+        except Exception as exc:  # noqa: BLE001 - GitHub context is optional enrichment
+            warnings.append(f"github_fallback_failed:{exc.__class__.__name__}: {exc}")
+            logger.warning(
+                "GitHub focused-context fallback failed run_id=%s request_id=%s reason=%s: %s",
+                state.get("run_id", "unknown"),
+                request.request_id,
+                exc.__class__.__name__,
+                exc,
+            )
 
         result = FocusedContextResult(
             request_id=request.request_id,
             candidate_id=request.candidate_id,
             file_snippets=file_snippets,
+            file_contents_full=file_contents_full,
             search_hits=search_hits,
             warnings=warnings,
         )
@@ -366,7 +765,196 @@ class BoundedReviewContextFulfiller:
                 "TRACE focused_context_fulfilled run_id=%s request_id=%s files=%s queries=%s",
                 state.get("run_id", "unknown"),
                 request.request_id,
-                list(file_snippets),
+                list({*file_snippets.keys(), *file_contents_full.keys()}),
                 list(search_hits),
             )
         return result
+
+    def _apply_github_fallback(
+        self,
+        *,
+        state: GraphState,
+        request: FocusedContextRequest,
+        file_snippets: Dict[str, str],
+        search_hits: Dict[str, List[SearchResult]],
+        warnings: List[str],
+        missing_files: List[str],
+        total_chars: int,
+    ) -> None:
+        settings = get_settings()
+        if not settings.github_mcp_enabled or self._github_provider is None:
+            return
+
+        repo_identity = _resolve_repo_identity(state)
+        if repo_identity is None:
+            return
+        owner, repo = repo_identity
+        ref = _resolve_docs_ref(state)
+
+        if missing_files:
+            bundle = self._github_provider.get_repo_docs(owner, repo, ref, missing_files)
+            for doc in bundle.documents:
+                file_snippets[doc.path] = doc.content[:MAX_FILE_SLICE_CHARS]
+            warnings.extend(bundle.warnings)
+            if bundle.documents:
+                warnings.append("github_file_fallback")
+
+        missing_symbols = [
+            sym
+            for sym in request.symbol_queries[:MAX_SYMBOL_QUERIES]
+            if not search_hits.get(sym)
+        ]
+        missing_text = [
+            tq
+            for tq in request.text_queries[:MAX_TEXT_QUERIES]
+            if not search_hits.get(tq)
+        ]
+        if not missing_symbols and not missing_text:
+            return
+
+        doc_paths = settings.github_mcp_doc_paths
+        if not doc_paths:
+            return
+
+        bundle = self._github_provider.get_repo_docs(owner, repo, ref, doc_paths)
+        warnings.extend(bundle.warnings)
+        if not bundle.documents:
+            return
+
+        for sym in missing_symbols:
+            hits = _search_docs_for_symbol(bundle.documents, sym, MAX_SEARCH_RESULTS_PER_QUERY)
+            if hits:
+                search_hits[sym] = hits
+                total_chars += sum(len(h.content) for h in hits)
+            if total_chars > MAX_TOTAL_RESULT_CHARS:
+                warnings.append("truncated_total_chars")
+                return
+
+        for tq in missing_text:
+            hits = _search_docs_for_text(bundle.documents, tq, MAX_SEARCH_RESULTS_PER_QUERY)
+            if hits:
+                search_hits[tq] = hits
+                total_chars += sum(len(h.content) for h in hits)
+            if total_chars > MAX_TOTAL_RESULT_CHARS:
+                warnings.append("truncated_total_chars")
+                return
+
+        if missing_symbols or missing_text:
+            warnings.append("github_docs_fallback")
+
+
+def _resolve_repo_identity(state: GraphState) -> tuple[str, str] | None:
+    metadata = state.get("metadata", {}) or {}
+    candidates = [
+        metadata.get("pr_repo"),
+        metadata.get("review_repo_url"),
+        state.get("repo_path"),
+    ]
+    for value in candidates:
+        if not isinstance(value, str) or not value.strip():
+            continue
+        slug = _parse_repo_slug(value.strip())
+        if slug is not None:
+            return slug
+    return None
+
+
+def _parse_repo_slug(value: str) -> tuple[str, str] | None:
+    if "github.com" in value:
+        parsed = urlparse(value)
+        parts = [p for p in parsed.path.split("/") if p]
+        if len(parts) >= 2:
+            return parts[0], parts[1]
+        return None
+    if ":" in value or "\\" in value or value.startswith("/"):
+        return None
+    if "/" not in value:
+        return None
+    owner, repo = value.split("/", maxsplit=1)
+    if not owner or not repo:
+        return None
+    return owner, repo
+
+
+def _resolve_docs_ref(state: GraphState) -> str:
+    metadata = state.get("metadata", {}) or {}
+    docs_meta = metadata.get("docs_prebrief", {}) if isinstance(metadata, dict) else {}
+    if isinstance(docs_meta, dict):
+        ref = docs_meta.get("ref")
+        if isinstance(ref, str) and ref.strip():
+            return ref.strip()
+    return "main"
+
+
+def _search_docs_for_symbol(
+    docs: Sequence[RepoDocument],
+    symbol: str,
+    max_hits: int,
+) -> List[SearchResult]:
+    if not symbol:
+        return []
+    pattern = re.compile(r"\b" + re.escape(symbol) + r"\b", flags=re.IGNORECASE)
+    return _search_docs_with_pattern(docs, pattern, max_hits)
+
+
+def _search_docs_for_text(
+    docs: Sequence[RepoDocument],
+    query: str,
+    max_hits: int,
+) -> List[SearchResult]:
+    if not query:
+        return []
+    try:
+        pattern = re.compile(query, flags=re.IGNORECASE)
+        return _search_docs_with_pattern(docs, pattern, max_hits)
+    except re.error:
+        return _search_docs_substring(docs, query, max_hits)
+
+
+def _search_docs_with_pattern(
+    docs: Sequence[RepoDocument],
+    pattern: re.Pattern[str],
+    max_hits: int,
+) -> List[SearchResult]:
+    results: List[SearchResult] = []
+    for doc in docs:
+        for index, line in enumerate(doc.content.splitlines(), start=1):
+            if not pattern.search(line):
+                continue
+            line_text = line.strip()
+            results.append(
+                SearchResult(
+                    file_path=doc.path,
+                    line_number=index,
+                    content=line_text,
+                    context_lines=[line_text],
+                )
+            )
+            if len(results) >= max_hits:
+                return results
+    return results
+
+
+def _search_docs_substring(
+    docs: Sequence[RepoDocument],
+    query: str,
+    max_hits: int,
+) -> List[SearchResult]:
+    needle = query.lower()
+    results: List[SearchResult] = []
+    for doc in docs:
+        for index, line in enumerate(doc.content.splitlines(), start=1):
+            if needle not in line.lower():
+                continue
+            line_text = line.strip()
+            results.append(
+                SearchResult(
+                    file_path=doc.path,
+                    line_number=index,
+                    content=line_text,
+                    context_lines=[line_text],
+                )
+            )
+            if len(results) >= max_hits:
+                return results
+    return results

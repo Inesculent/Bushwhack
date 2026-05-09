@@ -3,12 +3,15 @@ from __future__ import annotations
 
 import json
 import logging
+import shutil
+import subprocess
+import sys
 import time
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Iterable, List, Optional
+from typing import Any, Callable, Dict, Iterable, List, Optional
 
 import pandas as pd
 
@@ -17,8 +20,10 @@ from src.data.research_pipeline.constants import AACR_BENCH_CONFIG, LOG_DIR, PRO
 from src.data.research_pipeline.github_api import GitHubPullRequestEnricher, PullRequestContext
 from src.data.research_pipeline.logging_utils import configure_logger
 from src.data.research_pipeline.utils import ensure_directories, parse_pr_number, parse_repo_from_pr_url
+from src.domain.schemas import PreflightSummary
 from src.domain.state import GraphState
 from src.infrastructure.redis_checkpoint import delete_checkpoint_thread
+from src.infrastructure.snapshot_loader import SnapshotLoader
 from src.orchestration.reviewer_graph import run_reviewer
 from src.orchestration.reviewer_graph_basic import run_reviewer_basic
 
@@ -65,6 +70,16 @@ def _slug_for_pr_url(pr_url: str) -> str:
     return f"{owner or 'unknown'}__{name or 'unknown'}__pr{number}"
 
 
+def _graph_thread_id(run_id: str, pr_url: str, snapshot_data: Optional[Dict[str, Any]]) -> str:
+    """LangGraph / Redis thread id for this PR (matches checkpoint cleanup keys)."""
+    slug = _slug_for_pr_url(pr_url)
+    if snapshot_data:
+        sid = snapshot_data["snapshot_id"]
+        short = sid[:8] if len(sid) >= 8 else sid
+        return f"{run_id}:{slug}_from_snapshot_{short}"
+    return f"{run_id}:{slug}"
+
+
 def _prepare_output_dirs(output_root: Path, run_id: str) -> tuple[Path, Path, Path]:
     run_dir = output_root / run_id
     raw_dir = run_dir / "raw"
@@ -100,6 +115,10 @@ def _write_raw(raw_dir: Path, slug: str, result: dict[str, Any]) -> Path:
             key: (val.model_dump() if hasattr(val, "model_dump") else val)
             for key, val in (result.get("critique_revision_digests", {}) or {}).items()
         },
+        "verifier_reports": [
+            item.model_dump() if hasattr(item, "model_dump") else item
+            for item in result.get("verifier_reports", []) or []
+        ],
     }
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
     return path
@@ -123,6 +142,48 @@ def _write_manifest(manifest_path: Path, rows: List[dict[str, Any]]) -> pd.DataF
         merged_df = new_df
     merged_df.to_csv(manifest_path, index=False)
     return merged_df
+
+
+def _load_snapshot_for_resume(snapshot_id: str, logger: logging.Logger) -> Dict[str, Any]:
+    """Load snapshot data for resuming review with new diff."""
+    settings = get_settings()
+    loader = SnapshotLoader(settings)
+    
+    logger.info("Loading snapshot for resume: %s", snapshot_id)
+    
+    try:
+        snapshot = loader.load_snapshot_pointer(snapshot_id)
+    except FileNotFoundError:
+        logger.error("Snapshot not found: %s", snapshot_id)
+        sys.exit(1)
+    except ValueError as e:
+        logger.error("Invalid snapshot format: %s - %s", snapshot_id, e)
+        sys.exit(1)
+    
+    # Load all components
+    graph_payload = loader.load_graph_payload(snapshot.snapshot_root)
+    topology = loader.load_topology(snapshot.snapshot_root)
+    community_summaries = loader.load_community_shards(snapshot.snapshot_root)
+    global_summary = loader.load_global_summary(snapshot.snapshot_root)
+    
+    logger.info(
+        "Loaded snapshot: %s (status=%s, communities=%s, nodes=%s, edges=%s)",
+        snapshot_id, snapshot.status, snapshot.community_count,
+        snapshot.total_nodes, snapshot.total_edges
+    )
+    
+    # Get repo_path from metadata (written by snapshot_writer)
+    repo_path = snapshot.metadata.get("repo_path", "")
+    
+    return {
+        "snapshot_root": snapshot.snapshot_root,
+        "snapshot_id": snapshot.snapshot_id,
+        "repo_path": repo_path,
+        "graph_payload": graph_payload,
+        "topology": topology,
+        "community_summaries": community_summaries,
+        "global_summary": global_summary,
+    }
 
 
 def _load_pr_urls(
@@ -161,6 +222,91 @@ def _load_pr_urls(
     return urls
 
 
+def _git_cli_available() -> bool:
+    try:
+        subprocess.run(
+            ["git", "--version"],
+            capture_output=True,
+            check=True,
+            timeout=15,
+        )
+        return True
+    except Exception:
+        return False
+
+
+def _ensure_snapshot_pr_worktree(
+    *,
+    snapshot_root: str,
+    canonical_repo_url: str,
+    pr_number: int,
+    logger: logging.Logger,
+) -> str:
+    """Fetch PR head into ``<snapshot_root>/_reviewer_worktree`` (host git).
+
+    Matches full-graph runs that bind-mount a real directory: review sandbox, verifier,
+    and AST see files on disk instead of a bare GitHub URL.
+    """
+    root = Path(snapshot_root).resolve()
+    worktree = root / "_reviewer_worktree"
+    marker = worktree / ".bw_snapshot_pr_worktree"
+    marker_payload = f"{canonical_repo_url}\npull/{pr_number}/head\n"
+
+    if worktree.is_dir() and marker.is_file():
+        try:
+            if marker.read_text(encoding="utf-8") == marker_payload:
+                logger.info("Snapshot resume: reusing PR worktree %s", worktree)
+                return str(worktree.resolve())
+        except OSError:
+            pass
+
+    if worktree.exists():
+        shutil.rmtree(worktree)
+
+    worktree.mkdir(parents=True)
+    logger.info(
+        "Snapshot resume: fetching pull/%s/head into %s (host git)",
+        pr_number,
+        worktree,
+    )
+    subprocess.run(
+        ["git", "init"],
+        cwd=worktree,
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    subprocess.run(
+        ["git", "remote", "add", "origin", canonical_repo_url],
+        cwd=worktree,
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    fetch = subprocess.run(
+        ["git", "fetch", "--depth", "1", "origin", f"pull/{pr_number}/head"],
+        cwd=worktree,
+        capture_output=True,
+        text=True,
+        timeout=1200,
+    )
+    if fetch.returncode != 0:
+        raise RuntimeError(fetch.stderr or fetch.stdout or "git fetch failed")
+    checkout = subprocess.run(
+        ["git", "checkout", "FETCH_HEAD"],
+        cwd=worktree,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    if checkout.returncode != 0:
+        raise RuntimeError(checkout.stderr or checkout.stdout or "git checkout failed")
+    marker.write_text(marker_payload, encoding="utf-8")
+    return str(worktree.resolve())
+
+
 def _invoke_for_pr(
     run_id: str,
     pr_url: str,
@@ -170,12 +316,65 @@ def _invoke_for_pr(
     started_at: str,
     run_reviewer_fn: Callable[[GraphState], dict[str, Any]],
     experiment_tag: str,
+    logger: logging.Logger,
+    snapshot_data: Optional[Dict[str, Any]] = None,
 ) -> dict[str, Any]:
-    graph_run_id = f"{run_id}:{_slug_for_pr_url(pr_url)}"
+    # Determine repo_path and graph_run_id
+    graph_run_id = _graph_thread_id(run_id, pr_url, snapshot_data)
     repo_url = f"https://github.com/{context.repo}"
+    snapshot_repo_extra: Dict[str, Any] = {}
+
+    if snapshot_data:
+        if repo_root is not None:
+            repo_path = str(repo_root.resolve())
+        else:
+            meta_rp = (snapshot_data.get("repo_path") or "").strip()
+            if meta_rp and Path(meta_rp).is_dir():
+                repo_path = str(Path(meta_rp).resolve())
+            elif meta_rp.startswith("http://") or meta_rp.startswith("https://"):
+                if _git_cli_available():
+                    try:
+                        repo_path = _ensure_snapshot_pr_worktree(
+                            snapshot_root=snapshot_data["snapshot_root"],
+                            canonical_repo_url=repo_url,
+                            pr_number=context.number,
+                            logger=logger,
+                        )
+                        snapshot_repo_extra["snapshot_pr_worktree_auto_cloned"] = True
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning(
+                            "Snapshot resume: could not prepare local PR worktree (%s: %s); "
+                            "using URL repo_path (review sandbox will clone remotely; verifier "
+                            "needs git in its image or pass --repo-root).",
+                            exc.__class__.__name__,
+                            exc,
+                        )
+                        repo_path = meta_rp
+                else:
+                    logger.warning(
+                        "Snapshot resume: host git not found; cannot auto-fetch PR head into "
+                        "snapshot worktree. Install git or pass --repo-root <checkout>."
+                    )
+                    repo_path = meta_rp
+            else:
+                repo_path = meta_rp or repo_url
+
+        if trace:
+            trace_logger = logging.getLogger("research_pipeline.reviewer_trace")
+            trace_logger.info(
+                "TRACE snapshot_load run_id=%s snapshot=%s snapshot_meta_repo=%s resolved_repo_path=%s",
+                graph_run_id,
+                snapshot_data["snapshot_id"][:8],
+                snapshot_data["repo_path"],
+                repo_path,
+            )
+    else:
+        repo_path = str(repo_root.resolve()) if repo_root is not None else repo_url
+    
+    # Base state
     initial_state: GraphState = {
         "run_id": graph_run_id,
-        "repo_path": str(repo_root.resolve()) if repo_root is not None else repo_url,
+        "repo_path": repo_path,
         "git_diff": context.unified_diff,
         "user_goals": "",
         "global_insights": [],
@@ -202,6 +401,44 @@ def _invoke_for_pr(
             "review_trace_enabled": trace,
         },
     }
+    
+    # Inject snapshot data if provided
+    if snapshot_data:
+        preflight_summary = PreflightSummary(
+            manifest_id=f"snapshot_{snapshot_data['snapshot_id']}",
+            total_files_changed=0,
+            total_hunks=0,
+            total_additions=0,
+            total_deletions=0,
+            has_errors=False,
+            has_ambiguity=False,
+        )
+        
+        initial_state.update({
+            "structural_graph_node_link": snapshot_data["graph_payload"],
+            "structural_topology": snapshot_data["topology"],
+            "community_summaries": [s.model_dump() for s in snapshot_data["community_summaries"]],
+            "global_summary": snapshot_data["global_summary"],
+            "snapshot_root": snapshot_data["snapshot_root"],
+            "snapshot_id": snapshot_data["snapshot_id"],
+            "snapshot_source": "loaded",
+            "preflight_summary": preflight_summary,
+            "preflight_errors": [],
+            "preflight_warnings": [],
+            "unverified_call_targets": [],
+            "knowledge_gaps": [],
+            "metadata": {
+                **initial_state["metadata"],
+                **snapshot_repo_extra,
+                "snapshot_loaded": True,
+                "snapshot_source": "loaded",
+                "docs_prebrief": {
+                    "status": "skipped_snapshot_resume",
+                    "reason": "snapshot_resume_uses_precomputed_context",
+                },
+            },
+        })
+    
     return run_reviewer_fn(initial_state)
 
 
@@ -235,6 +472,7 @@ def run_aacr_reviewer(
     trace: bool = False,
     use_basic_graph: bool = False,
     cli_flags: Optional[dict[str, Any]] = None,
+    snapshot_id: Optional[str] = None,
 ) -> ReviewerRunArtifacts:
     settings = get_settings()
     ensure_directories([LOG_DIR])
@@ -247,6 +485,12 @@ def run_aacr_reviewer(
 
     experiment_tag = BASIC_EXPERIMENT_TAG if use_basic_graph else EXPERIMENT_TAG
     run_reviewer_fn = run_reviewer_basic if use_basic_graph else run_reviewer
+
+    # Load snapshot if provided (once before the loop)
+    snapshot_data = None
+    if snapshot_id:
+        snapshot_data = _load_snapshot_for_resume(snapshot_id, logger)
+        logger.info("Snapshot repo for validation: %s", snapshot_data["repo_path"])
 
     logger.info(
         "Starting reviewer-graph AACR run run_id=%s dataset=%s output=%s trace=%s basic=%s",
@@ -281,7 +525,6 @@ def run_aacr_reviewer(
 
     for idx, pr_url in enumerate(pr_urls, start=1):
         slug = _slug_for_pr_url(pr_url)
-        graph_run_id = f"{resolved_run_id}:{slug}"
         pr_started_at = _utc_now_iso()
         row: dict[str, Any] = {
             "pr_url": pr_url,
@@ -308,6 +551,22 @@ def run_aacr_reviewer(
             logger.warning("[%s/%s] Skipping %s: enrichment failed", idx, len(pr_urls), pr_url)
             continue
 
+        # Validate repo match if using snapshot
+        if snapshot_data:
+            expected_repo_url = f"https://github.com/{context.repo}"
+            if snapshot_data["repo_path"] != expected_repo_url:
+                row["status"] = "error"
+                row["finished_at"] = _utc_now_iso()
+                row["error"] = f"snapshot_repo_mismatch: expected {expected_repo_url}, got {snapshot_data['repo_path']}"
+                manifest_rows.append(row)
+                failed += 1
+                logger.error(
+                    "[%s/%s] Snapshot repo mismatch for %s: expected %s, got %s",
+                    idx, len(pr_urls), pr_url, expected_repo_url, snapshot_data["repo_path"]
+                )
+                continue
+
+        graph_run_id = _graph_thread_id(resolved_run_id, pr_url, snapshot_data)
         started = time.perf_counter()
         try:
             result = _invoke_for_pr(
@@ -319,6 +578,8 @@ def run_aacr_reviewer(
                 started_at=pr_started_at,
                 run_reviewer_fn=run_reviewer_fn,
                 experiment_tag=experiment_tag,
+                logger=logger,
+                snapshot_data=snapshot_data,
             )
         except Exception as exc:  # noqa: BLE001 - per-PR isolation; harness continues
             elapsed_ms = int((time.perf_counter() - started) * 1000)

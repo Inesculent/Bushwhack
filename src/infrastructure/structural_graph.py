@@ -16,6 +16,7 @@ class StructuralBuildResult:
     gaps: List[StructuralExtractionGap]
     files_attempted: int
     files_parsed: int
+    ast_capability_state: str = "unknown"
 
 
 class StructuralGraphBuilder:
@@ -139,6 +140,7 @@ class StructuralGraphBuilder:
                 entities_by_file={},
                 file_languages={e.filepath: e.language for e in entries},
                 extraction_gaps=gaps,
+                ast_capability_state="disabled",
             )
 
         files_parsed = 0
@@ -163,6 +165,7 @@ class StructuralGraphBuilder:
             entities_by_file=entities_by_file,
             file_languages=file_languages,
             extraction_gaps=gaps,
+            ast_capability_state="enabled",
         )
 
     @classmethod
@@ -171,6 +174,7 @@ class StructuralGraphBuilder:
         entities_by_file: Dict[str, List[CodeEntity]],
         file_languages: Optional[Dict[str, Optional[str]]] = None,
         extraction_gaps: Optional[List[StructuralExtractionGap]] = None,
+        ast_capability_state: str = "unknown",
     ) -> StructuralBuildResult:
         """Build the structural graph from pre-extracted entities (no filesystem access).
 
@@ -295,6 +299,7 @@ class StructuralGraphBuilder:
             gaps=gaps,
             files_attempted=len(all_file_paths),
             files_parsed=files_with_entities,
+            ast_capability_state=ast_capability_state,
         )
 
     @staticmethod

@@ -1,3 +1,4 @@
+import sys
 from functools import lru_cache
 from pathlib import Path
 from typing import List, Optional
@@ -25,7 +26,7 @@ class Settings(BaseSettings):
 		description="Use MCP transport for AST parsing when enabled; otherwise use native in-process parsing.",
 	)
 	ast_mcp_command: str = Field(
-		default="python",
+		default_factory=lambda: sys.executable,
 		description="Command used to start the AST MCP server process.",
 	)
 	ast_mcp_args: List[str] = Field(
@@ -50,6 +51,10 @@ class Settings(BaseSettings):
 		default="get_entity_details",
 		description="Tool name used to fetch a single entity from a file.",
 	)
+	ast_mcp_definitions_tool: str = Field(
+		default="find_symbol_definitions",
+		description="MCP tool name for repo-wide symbol definition search.",
+	)
 	ast_cache_ttl_seconds: int = Field(
 		default=3600,
 		ge=1,
@@ -62,6 +67,18 @@ class Settings(BaseSettings):
 	ast_fallback_to_search: bool = Field(
 		default=True,
 		description="Keep non-AST fallback paths available when MCP is unavailable.",
+	)
+	review_full_file_max_chars: int = Field(
+		default=500_000,
+		ge=5_000,
+		le=2_000_000,
+		description="Max characters returned per file when focused context requests full-file reads.",
+	)
+	review_full_file_max_total_chars: int = Field(
+		default=600_000,
+		ge=10_000,
+		le=3_000_000,
+		description="Max total characters across full-file payloads in one FocusedContextResult.",
 	)
 	redis_enabled: bool = Field(
 		default=True,
@@ -92,6 +109,76 @@ class Settings(BaseSettings):
 		),
 		description="GitHub personal access token for PR API enrichment.",
 	)
+	github_mcp_enabled: bool = Field(
+		default=True,
+		description="Enable GitHub MCP for documentation and PR context enrichment.",
+	)
+	github_mcp_command: str = Field(
+		default_factory=lambda: sys.executable,
+		description="Command used to start the GitHub MCP server process.",
+	)
+	github_mcp_args: List[str] = Field(
+		default_factory=lambda: ["mcp/github-mcp/server.py"],
+		description="Arguments for the GitHub MCP server command.",
+	)
+	github_mcp_cwd: Optional[str] = Field(
+		default=None,
+		description="Optional working directory used when launching the GitHub MCP server.",
+	)
+	github_mcp_timeout_seconds: int = Field(
+		default=30,
+		ge=1,
+		le=300,
+		description="Timeout for GitHub MCP tool calls in seconds.",
+	)
+	github_mcp_cache_ttl_seconds: int = Field(
+		default=3600,
+		ge=60,
+		description="TTL for GitHub MCP cache entries in seconds.",
+	)
+	github_mcp_doc_max_chars: int = Field(
+		default=12000,
+		ge=1000,
+		description="Max characters per documentation file fetched via GitHub MCP.",
+	)
+	github_mcp_doc_max_total_chars: int = Field(
+		default=40000,
+		ge=2000,
+		description="Max total characters across documentation files fetched via GitHub MCP.",
+	)
+	github_mcp_pr_max_comments: int = Field(
+		default=20,
+		ge=0,
+		description="Max PR/issue comments to fetch via GitHub MCP.",
+	)
+	github_mcp_pr_comment_max_chars: int = Field(
+		default=2000,
+		ge=200,
+		description="Max characters per PR/issue comment fetched via GitHub MCP.",
+	)
+	github_mcp_doc_paths: List[str] = Field(
+		default_factory=lambda: [
+			"README.md",
+			"README.rst",
+			"README.txt",
+			"CONTRIBUTING.md",
+			"SECURITY.md",
+			"CHANGELOG.md",
+			"docs/README.md",
+			"docs/index.md",
+			".github/CONTRIBUTING.md",
+			".github/SECURITY.md",
+		],
+		description="Ordered doc paths to attempt for the GitHub MCP pre-brief.",
+	)
+	docs_prebrief_enabled: bool = Field(
+		default=True,
+		description="Generate a documentation-based pre-brief before semantic scanning.",
+	)
+	docs_prebrief_model_key: str = Field(
+		default="qwen3.5-35b-a3b",
+		description="Model key used for the documentation pre-brief summary.",
+	)
 	google_api_key: Optional[str] = Field(
 		default=None,
 		validation_alias=AliasChoices("REVIEW_GOOGLE_API_KEY", "GOOGLE_API_KEY"),
@@ -116,10 +203,16 @@ class Settings(BaseSettings):
 		description="API key placeholder for OpenAI-compatible local model servers.",
 	)
 	local_llm_timeout_seconds: int = Field(
-		default=180,
+		default=600,
 		ge=1,
-		le=600,
+		le=3600,
 		description="Request timeout for OpenAI-compatible local model servers.",
+	)
+	local_llm_status_timeout_seconds: float = Field(
+		default=5.0,
+		ge=0.5,
+		le=60.0,
+		description="Short timeout for local model server health/status probes.",
 	)
 	local_llm_max_retries: int = Field(
 		default=0,
@@ -168,7 +261,7 @@ class Settings(BaseSettings):
 		description="Maximum characters of the unified diff inlined into the solo-agent prompt.",
 	)
 	solo_agent_model_key: str = Field(
-		default="gpt-5.4",
+		default="qwen3.5-35b-a3b",
 		description="Model key (from Models factory) used by the solo-agent worker for free-form tagged output.",
 	)
 	solo_agent_prompt_version: str = Field(
@@ -181,19 +274,31 @@ class Settings(BaseSettings):
 		description="Root directory for reviewer-graph experiment artifacts.",
 	)
 	reviewer_planner_model_key: str = Field(
-		default="qwen2.5-coder-32b",
+		default="qwen3.5-35b-a3b",
 		description=(
 			"Model key (from Models factory) used by the reviewer planner. "
-			"Must match a key in infrastructure.llm.factory.MODELS; for Ollama use e.g. qwen2.5-coder-32b-ollama."
+			"Must match a key in infrastructure.llm.factory.MODELS; for Ollama use the corresponding local model key."
 		),
 	)
+	reviewer_planner_max_completion_tokens: int = Field(
+		default=8192,
+		ge=256,
+		le=32768,
+		description="Maximum completion tokens for reviewer planner LLM calls.",
+	)
 	reviewer_worker_model_key: str = Field(
-		default="qwen2.5-coder-32b",
+		default="qwen3.5-35b-a3b",
 		description=(
 			"Model key (from Models factory) used by reviewer workers, critiquer, reflection, and revision nodes. "
-			"Aligns with Models.DEFAULT_ROLE_MODELS['worker']. For Ollama set to qwen2.5-coder-32b-ollama and "
+			"Aligns with Models.DEFAULT_ROLE_MODELS['worker']. For Ollama set to the corresponding local model key and "
 			"REVIEW_LOCAL_LLM_BASE_URL to your OpenAI-compatible endpoint."
 		),
+	)
+	reviewer_worker_max_completion_tokens: int = Field(
+		default=4096,
+		ge=512,
+		le=65536,
+		description="Maximum completion tokens for reviewer worker, reflection, and critique-revision LLM calls.",
 	)
 	reviewer_use_legacy_specialist_workers: bool = Field(
 		default=False,
@@ -212,6 +317,187 @@ class Settings(BaseSettings):
 		default=8_000,
 		ge=500,
 		description="Truncate inlined CandidateFinding JSON per digest shard prompt.",
+	)
+	reviewer_reflection_retry_backoff_seconds: float = Field(
+		default=5.0,
+		ge=0.0,
+		le=120.0,
+		description="Base backoff between adversarial reflection retries when the local LLM server is still active.",
+	)
+	reviewer_reflection_timeout_patience_seconds: int = Field(
+		default=1800,
+		ge=0,
+		le=7200,
+		description=(
+			"Extra wall-clock budget for adversarial reflectors to keep waiting/retrying local LLM timeouts "
+			"while the model server still answers status probes."
+		),
+	)
+
+	# Self-healing verifier (optional runtime proof in Docker)
+	verifier_enabled: bool = Field(
+		default=True,
+		description=(
+			"Enable verifier after focused_context or post_reflection_evidence_pass for eligible claim types. "
+			"When true, runs only for claim types allowed below; use verifier_skip_if_no_docker to no-op when Docker is absent."
+		),
+	)
+	verifier_image: str = Field(
+		default="verifier-test-env:latest",
+		description="Docker image for verifier script execution (repo mounted at /repo).",
+	)
+	verifier_test_timeout_seconds: int = Field(
+		default=300,
+		ge=10,
+		le=3600,
+		description="Wall-clock timeout per verifier script execution.",
+	)
+	verifier_max_attempts: int = Field(
+		default=3,
+		ge=1,
+		le=5,
+		description="Max test-generation/execute cycles per candidate before inconclusive.",
+	)
+	verifier_run_on_defect: bool = Field(
+		default=True,
+		description="Run verifier for claim_type defect when other gates pass.",
+	)
+	verifier_run_on_security: bool = Field(
+		default=True,
+		description="Run verifier for claim_type security_risk (e.g. ReDoS, crash-on-input probes).",
+	)
+	verifier_run_on_performance: bool = Field(
+		default=False,
+		description="Run verifier for claim_type performance_regression.",
+	)
+	verifier_mock_heavy_deps: bool = Field(
+		default=True,
+		description="Instruct the generator to use sys.modules MagicMock prelude for heavy deps.",
+	)
+	verifier_total_budget_per_pr: int = Field(
+		default=10,
+		ge=1,
+		le=50,
+		description="Max verifier Send branches per focused_context wave.",
+	)
+	verifier_skip_if_no_docker: bool = Field(
+		default=True,
+		description="If Docker is unreachable, skip verifier and continue the reviewer graph.",
+	)
+	verifier_require_focused_evidence: bool = Field(
+		default=True,
+		description=(
+			"When true, only verify candidates that already have focused_context_results with snippets or search hits. "
+			"Set false to allow verifier using candidate JSON + git diff only (e.g. needs_context without a focused_request)."
+		),
+	)
+	verifier_ruff_enabled: bool = Field(
+		default=True,
+		description="Run `python -m ruff check . --no-cache` inside the verifier sandbox (advisory; avoids cache writes on read-only mounts).",
+	)
+	verifier_flake8_enabled: bool = Field(
+		default=False,
+		description="Run `python -m flake8` inside the verifier sandbox when enabled (after Ruff).",
+	)
+	verifier_lint_output_max_chars: int = Field(
+		default=32_000,
+		ge=1_000,
+		le=500_000,
+		description="Truncate each linter stdout/stderr stream stored on verifier attempts.",
+	)
+
+	# Phase 2 semantic enrichment + snapshot layout
+	snapshot_base_path: Path = Field(
+		default=Path("./bushwhack_runs"),
+		description="Root directory for exploration snapshot disk trees.",
+	)
+	snapshot_keep_full_graph: bool = Field(
+		default=True,
+		description="Keep graph/full_graph.json after snapshot_pin (False deletes after pin).",
+	)
+	semantic_enrichment_enabled: bool = Field(
+		default=True,
+		description="Run Phase 2 semantic bubble-up after structural extraction when topology exists.",
+	)
+	semantic_max_tokens_per_community: int = Field(
+		default=8000,
+		ge=500,
+		description="Approximate max prompt characters budget per community agent (rough token proxy).",
+	)
+	semantic_max_files_per_agent: int = Field(
+		default=20,
+		ge=1,
+		description="Max file nodes to include per community work item.",
+	)
+	semantic_max_symbols_per_agent: int = Field(
+		default=50,
+		ge=1,
+		description="Max symbol nodes to include per community work item.",
+	)
+	semantic_max_parallel_agents: int = Field(
+		default=4,
+		ge=1,
+		le=64,
+		description="Max Phase 2 community semantic agents allowed to call the LLM concurrently.",
+	)
+	semantic_agent_max_retries: int = Field(
+		default=2,
+		ge=0,
+		le=10,
+		description="Retries per community semantic LLM call before emitting a degraded summary.",
+	)
+	semantic_agent_retry_backoff_seconds: float = Field(
+		default=5.0,
+		ge=0.0,
+		le=120.0,
+		description="Base backoff between community semantic LLM retries.",
+	)
+	semantic_agent_timeout_patience_seconds: int = Field(
+		default=1800,
+		ge=0,
+		le=7200,
+		description=(
+			"Extra wall-clock budget for semantic agents to keep waiting/retrying local LLM timeouts "
+			"while the model server still answers status probes."
+		),
+	)
+	unverified_call_max_resolution_rounds: int = Field(
+		default=3,
+		ge=1,
+		le=10,
+		description="Max resolver self-loop rounds for newly surfaced unverified targets.",
+	)
+	semantic_model_key: str = Field(
+		default="qwen3.5-35b-a3b",
+		description=(
+			"Models factory key for community semantic agents (same registry as reviewer_worker_model_key). "
+			"Defaults to the local Qwen stack; set e.g. gemini-pro only if langchain-google-genai is installed."
+		),
+	)
+	semantic_merge_model_key: str = Field(
+		default="qwen3.5-35b-a3b",
+		description=(
+			"Models factory key for global semantic synthesis at merge (same as Models.DEFAULT_ROLE_MODELS['synthesizer']). "
+			"Defaults to local Qwen; override with REVIEW_SEMANTIC_MERGE_MODEL_KEY."
+		),
+	)
+	skip_trivial_communities: bool = Field(
+		default=True,
+		description="Synthesize trivial __init__-only communities without LLM.",
+	)
+	diagnostics_god_nodes_top_n: int = Field(default=10, ge=1, le=100)
+	diagnostics_bridge_nodes_top_n: int = Field(default=5, ge=1, le=50)
+	diagnostics_cross_community_edges_top_n: int = Field(default=10, ge=1, le=200)
+	diagnostics_low_cohesion_threshold: float = Field(
+		default=0.15,
+		ge=0.0,
+		le=1.0,
+		description="Communities below this cohesion with enough nodes are flagged as knowledge gaps.",
+	)
+	semantic_snapshot_pointer_ttl_seconds: int = Field(
+		default=86400,
+		ge=60,
+		description="TTL for Redis snapshot pointer keys (separate from checkpoint TTL).",
 	)
 
 	def get_ast_mcp_cwd(self) -> str:

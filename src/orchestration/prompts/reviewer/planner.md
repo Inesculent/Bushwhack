@@ -8,7 +8,11 @@ Use only these specialties: security, logic, performance, general.
 
 Prefer one focused task per specialty unless the diff clearly contains independent risk clusters that need separate review. Keep target files limited to the changed files or directly implicated context files.
 
+Balance the plan across **security, correctness (logic), performance, and general** (APIs, tests, integration). Do **not** let every task read as “security and defensive programming only”; surface non-security defects (wrong outputs, missing branches, type/None handling, API mismatches) and maintainability issues with equal weight when the diff supports them.
+
 Each task should explain what the worker should verify and what evidence would matter. Avoid vague tasks such as "review this file"; tell the specialist what risk to investigate.
+
+When the pipeline’s **runtime verifier** is enabled, tasks that hinge on “does this code crash, hang, or mis-handle edge inputs?” should anticipate **executable repro** (verifier), not only repo-wide text search.
 
 Do not include huge structural summaries in task descriptions. Use structural and preflight context only to identify likely risk areas and target files.
 

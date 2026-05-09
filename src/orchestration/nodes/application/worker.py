@@ -26,6 +26,8 @@ class ReviewTaskContext:
     entities_by_file: Dict[str, List[CodeEntity]] = field(default_factory=dict)
     search_results: Dict[str, List[SearchResult]] = field(default_factory=dict)
     warnings: List[str] = field(default_factory=list)
+    # Normalized repo-relative paths that already had AST in this context (focused-context dedupe).
+    ast_included_files: List[str] = field(default_factory=list)
 
     def render(self, max_chars: int = 24000) -> str:
         sections: List[str] = []
@@ -187,12 +189,25 @@ def make_specialist_worker_node(
             warnings=warnings,
         )
 
+        metadata = dict(state.get("metadata", {}) or {})
+        if context.ast_included_files:
+            prev = metadata.get("ast_included_files")
+            base = list(prev) if isinstance(prev, list) else []
+            metadata["ast_included_files"] = sorted(
+                {
+                    p.strip().replace("\\", "/")
+                    for p in base + context.ast_included_files
+                    if isinstance(p, str) and p.strip()
+                }
+            )
+
         return {
             "findings": findings,
             "reviewer_worker_reports": [report],
             "task_status_by_id": {task.id: "completed"},
             "node_history": [node_name],
             "token_usage": llm_tokens,
+            "metadata": metadata,
         }
 
     return specialist_worker_node

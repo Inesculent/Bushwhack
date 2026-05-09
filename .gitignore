@@ -2,6 +2,7 @@
 .env.*
 .venv/
 .vscode/
+.documentation/
 __pycache__/
 bushwhack_runs/
 documentation/

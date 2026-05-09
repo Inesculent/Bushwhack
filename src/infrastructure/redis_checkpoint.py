@@ -57,7 +57,33 @@ def redis_checkpoint_saver(settings: Settings) -> Iterator[RedisSaver]:
         yield saver
 
 
+def _delete_keys_by_pattern(client: Redis, pattern: str, *, batch_size: int = 500) -> int:
+    deleted = 0
+    batch: list[bytes] = []
+    for key in client.scan_iter(match=pattern, count=batch_size):
+        batch.append(key)
+        if len(batch) >= batch_size:
+            deleted += int(client.unlink(*batch))
+            batch.clear()
+    if batch:
+        deleted += int(client.unlink(*batch))
+    return deleted
+
+
 def delete_checkpoint_thread(settings: Settings, thread_id: str) -> None:
-    """Delete Redis checkpoints for a completed graph thread."""
+    """Delete Redis checkpoints and pending writes for a completed graph thread."""
     with redis_checkpoint_saver(settings) as saver:
         saver.delete_thread(thread_id)
+
+    client: Redis | None = None
+    try:
+        client = Redis.from_url(settings.redis_url)
+        checkpoint_prefix = _prefix_key(settings.redis_namespace, "checkpoint")
+        write_prefix = _prefix_key(settings.redis_namespace, "checkpoint_write")
+        # LangGraph's Redis saver stores large per-node channel writes separately
+        # from checkpoint rows. delete_thread() may leave those writes behind.
+        _delete_keys_by_pattern(client, f"{checkpoint_prefix}:{thread_id}:*")
+        _delete_keys_by_pattern(client, f"{write_prefix}:{thread_id}:*")
+    finally:
+        if client is not None:
+            client.close()

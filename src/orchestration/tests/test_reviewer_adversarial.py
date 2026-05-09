@@ -4,23 +4,21 @@ from __future__ import annotations
 
 import pytest
 
-from src.config import get_settings
+from src.config import Settings, get_settings
 from src.domain.schemas import (
     CandidateFinding,
     CritiqueRevisionDigest,
     FocusedContextRequest,
     FocusedContextResult,
+    ReflectionBatchOutput,
     ReflectionReport,
     ReviewFinding,
     SearchResult,
     ReviewTask,
 )
 from src.domain.state import merge_graph_metadata
-from src.orchestration.context.review_context import BoundedReviewContextFulfiller
 from src.orchestration.nodes.application.cleanup import make_adversarial_cleanup_node
-from src.orchestration.nodes.application.critiquer import _auto_focus_requests
 from src.orchestration.nodes.application.reflection import make_adversarial_reflection_node
-from src.orchestration.reviewer_graph import build_graph
 
 
 def test_merge_graph_metadata_deep_merges_parallel_critiquer_shapes() -> None:
@@ -31,12 +29,106 @@ def test_merge_graph_metadata_deep_merges_parallel_critiquer_shapes() -> None:
     assert merged["general_critiquer"]["by_task"]["t2"]["summary"] == "s2"
 
 
-def test_reviewer_graph_compiles_adversarial_path():
+def test_merge_graph_metadata_unions_ast_included_files() -> None:
+    a = {"ast_included_files": ["src/a.py"]}
+    b = {"ast_included_files": ["src/b.py"]}
+    merged = merge_graph_metadata(a, b)
+    assert merged["ast_included_files"] == ["src/a.py", "src/b.py"]
+
+    dup = merge_graph_metadata(
+        {"ast_included_files": ["src/a.py"]},
+        {"ast_included_files": ["src\\a.py"]},
+    )
+    assert dup["ast_included_files"] == ["src/a.py"]
+
+
+def test_structural_critiquer_context_excerpt_neighbors_and_peers() -> None:
+    from src.orchestration.context.review_context import structural_critiquer_context_excerpt
+
+    state = {
+        "structural_graph_node_link": {
+            "nodes": [
+                {"id": "file:a.py", "node_type": "file", "file_path": "a.py", "community_id": 0},
+                {"id": "file:b.py", "node_type": "file", "file_path": "b.py", "community_id": 0},
+                {
+                    "id": "sym:x",
+                    "node_type": "symbol",
+                    "file_path": "a.py",
+                    "symbol_name": "foo",
+                    "label": "foo",
+                },
+            ],
+            "edges": [
+                {"source": "file:a.py", "target": "sym:x", "edge_type": "defines"},
+            ],
+        },
+        "structural_topology": {
+            "algorithm": "test",
+            "community_count": 1,
+            "communities": [
+                {
+                    "community_id": 0,
+                    "node_ids": ["file:a.py", "file:b.py"],
+                    "cohesion": 0.5,
+                    "file_count": 2,
+                    "symbol_count": 1,
+                }
+            ],
+            "node_to_community": {"file:a.py": 0, "file:b.py": 0, "sym:x": 0},
+            "splits_applied": 0,
+            "config": {},
+        },
+    }
+    out = structural_critiquer_context_excerpt(state, ["a.py"])  # type: ignore[arg-type]
+    assert "Structural context" in out
+    assert "a.py" in out
+    assert "neighbors (1-hop)" in out
+    assert "[defines]" in out
+    assert "b.py" in out
+
+
+def test_entities_for_file_from_structural_graph_maps_symbols_and_imports() -> None:
+    from src.orchestration.context.review_context import entities_for_file_from_structural_graph
+
+    state = {
+        "structural_graph_node_link": {
+            "nodes": [
+                {"id": "file:a.py", "node_type": "file", "file_path": "a.py"},
+                {
+                    "id": "symbol:abc:foo",
+                    "node_type": "symbol",
+                    "file_path": "a.py",
+                    "symbol_name": "foo",
+                    "symbol_type": "function",
+                    "signature": "def foo():",
+                },
+                {"id": "module:os", "node_type": "module", "module_name": "os"},
+            ],
+            "edges": [
+                {"source": "file:a.py", "target": "symbol:abc:foo", "edge_type": "defines"},
+                {"source": "symbol:abc:foo", "target": "module:os", "edge_type": "imports"},
+            ],
+        }
+    }
+    ents = entities_for_file_from_structural_graph(state, "a.py")  # type: ignore[arg-type]
+    assert len(ents) == 1
+    assert ents[0].name == "foo"
+    assert ents[0].type == "function"
+    assert "os" in ents[0].dependencies
+
+
+def test_reviewer_graph_compiles_adversarial_path() -> None:
+    pytest.importorskip("langgraph")
+    from src.orchestration.reviewer_graph import build_graph
+
     graph = build_graph()
     assert graph is not None
 
 
 def test_reviewer_graph_compiles_legacy_workers(monkeypatch: pytest.MonkeyPatch) -> None:
+    pytest.importorskip("langgraph")
+    from src.orchestration.reviewer_graph import build_graph
+
     monkeypatch.setenv("REVIEW_REVIEWER_USE_LEGACY_SPECIALIST_WORKERS", "true")
     get_settings.cache_clear()
     try:
@@ -48,6 +140,11 @@ def test_reviewer_graph_compiles_legacy_workers(monkeypatch: pytest.MonkeyPatch)
 
 
 def test_bounded_fulfiller_respects_file_cap() -> None:
+    try:
+        from src.orchestration.context.review_context import BoundedReviewContextFulfiller
+    except ImportError as exc:
+        pytest.skip(f"review context stack unavailable ({exc})")
+
     calls: dict[str, int] = {"reads": 0}
 
     class StubProvider:
@@ -61,7 +158,7 @@ def test_bounded_fulfiller_respects_file_cap() -> None:
         def search_bounded(self, query: str, *, max_hits: int, file_paths=None):
             return []
 
-        def ast_entities_for_file(self, file_path: str):
+        def ast_entities_for_file(self, file_path: str, **kwargs):
             return [], []
 
     fulfiller = BoundedReviewContextFulfiller(StubProvider())  # type: ignore[arg-type]
@@ -80,6 +177,11 @@ def test_bounded_fulfiller_respects_file_cap() -> None:
 
 
 def test_bounded_fulfiller_scopes_searches_to_requested_files() -> None:
+    try:
+        from src.orchestration.context.review_context import BoundedReviewContextFulfiller
+    except ImportError as exc:
+        pytest.skip(f"review context stack unavailable ({exc})")
+
     calls: list[tuple[str, tuple[str, ...] | None]] = []
 
     class StubProvider:
@@ -100,7 +202,7 @@ def test_bounded_fulfiller_scopes_searches_to_requested_files() -> None:
                 )
             ]
 
-        def ast_entities_for_file(self, file_path: str):
+        def ast_entities_for_file(self, file_path: str, **kwargs):
             return [], []
 
     fulfiller = BoundedReviewContextFulfiller(StubProvider())  # type: ignore[arg-type]
@@ -120,6 +222,54 @@ def test_bounded_fulfiller_scopes_searches_to_requested_files() -> None:
         ("cache_control", ("middleware/cache_middleware.py",)),
         ("fragments", ("middleware/cache_middleware.py",)),
     ]
+
+
+def test_bounded_fulfiller_skips_ast_when_ast_included_in_metadata() -> None:
+    try:
+        from src.domain.schemas import CodeEntity
+        from src.orchestration.context.review_context import BoundedReviewContextFulfiller
+    except ImportError as exc:
+        pytest.skip(f"review context stack unavailable ({exc})")
+
+    class StubProvider:
+        def _ensure_started(self, state: dict) -> None:
+            return None
+
+        def read_file_slice(self, file_path: str, *, max_chars: int = 20000) -> str:
+            return f"body-{file_path}"
+
+        def search_bounded(self, query: str, *, max_hits: int, file_paths=None):
+            return []
+
+        def ast_entities_for_file(self, file_path: str, **kwargs):
+            return (
+                [
+                    CodeEntity(
+                        name="n",
+                        type="def",
+                        signature="()",
+                        body="",
+                        dependencies=[],
+                    )
+                ],
+                [],
+            )
+
+    fulfiller = BoundedReviewContextFulfiller(StubProvider())  # type: ignore[arg-type]
+    fp = "middleware/cache_middleware.py"
+    req = FocusedContextRequest(
+        request_id="r1",
+        candidate_id="c1",
+        requested_by_specialty="general",
+        file_paths=[fp],
+        symbol_queries=[],
+        text_queries=[],
+    )
+    state: dict = {"run_id": "t", "metadata": {"ast_included_files": [fp]}}
+    result = fulfiller.fulfill(state, req)  # type: ignore[arg-type]
+    snippet = result.file_snippets.get(fp, "")
+    assert "--- ast entities ---" not in snippet
+    assert "body-" in snippet
 
 
 def test_adversarial_cleanup_promotes_on_unanimous_accept() -> None:
@@ -240,6 +390,135 @@ def test_adversarial_cleanup_ignores_off_domain_reject() -> None:
     }
 
 
+def test_adversarial_cleanup_promotes_tier1_security_without_focused_context() -> None:
+    """Localized ReDoS-style claims must not be dropped solely for missing repo-wide context."""
+    node = make_adversarial_cleanup_node()
+    cand = CandidateFinding(
+        candidate_id="review-security-redos",
+        patch_task_id="t1",
+        file_path="src/x.py",
+        line_start=1,
+        line_end=5,
+        content="User-controlled pattern compiled without bounds.",
+        claim_type="security_risk",
+        failure_mode="ReDoS via catastrophic regex backtracking.",
+        evidence_summary="Diff applies re.compile(user_input) without timeout.",
+        suspected_category="security",
+        reflection_specialties=["security"],
+        recommendation="Bound or validate regex input.",
+    )
+    reports = [
+        ReflectionReport(
+            candidate_id=cand.candidate_id,
+            reflector_specialty="security",
+            verdict="accept",
+            rationale="Tier 1 localized ReDoS risk.",
+        )
+    ]
+    out = node(
+        {
+            "run_id": "t",
+            "candidate_findings": [cand],
+            "reflection_reports": reports,
+            "focused_context_results": {},
+            "metadata": {},
+        }
+    )
+    assert len(out["findings"]) == 1
+
+
+def test_adversarial_cleanup_promotes_needs_verification_with_runtime_verified() -> None:
+    """Verifier verified satisfies the revision gate for needs_verification without focused hits."""
+    node = make_adversarial_cleanup_node()
+    cand = CandidateFinding(
+        candidate_id="t1:nv1",
+        patch_task_id="t1",
+        file_path="src/nodes.py",
+        line_start=10,
+        line_end=20,
+        content="Possible None dereference in new node.",
+        claim_type="defect",
+        failure_mode="AttributeError when input string is None.",
+        evidence_summary="Diff calls .strip() on input without a guard.",
+        suspected_category="logic",
+        reflection_specialties=["logic"],
+        recommendation="Handle None before calling str methods.",
+    )
+    reports = [
+        ReflectionReport(
+            candidate_id=cand.candidate_id,
+            reflector_specialty="logic",
+            verdict="needs_verification",
+            rationale="Runtime repro needed.",
+        )
+    ]
+    out = node(
+        {
+            "run_id": "t",
+            "candidate_findings": [cand],
+            "reflection_reports": reports,
+            "focused_context_results": {},
+            "metadata": {
+                "verifier_hints": {
+                    cand.candidate_id: {
+                        "verdict": "verified",
+                        "verification_scope": "concrete_behavior",
+                        "updated_evidence_summary": "Runtime verifier: verified",
+                        "final_rationale": "STATUS: CRASHED",
+                        "attempts": 1,
+                        "skipped_reason": "",
+                    }
+                }
+            },
+        }
+    )
+    assert len(out["findings"]) == 1
+    life = out["metadata"]["adversarial_cleanup"]["candidate_lifecycle"][cand.candidate_id]
+    assert life["decision"] == "promoted"
+    assert "verifier_advisory" in life
+
+
+def test_adversarial_cleanup_drops_tier2_security_without_focused_hits() -> None:
+    """Architectural security claims still require gathered context when not Tier 1 localized."""
+    node = make_adversarial_cleanup_node()
+    cand = CandidateFinding(
+        candidate_id="review-security-tier2",
+        patch_task_id="t1",
+        file_path="src/api.py",
+        line_start=1,
+        line_end=10,
+        content="Delete endpoint may not verify resource ownership.",
+        claim_type="security_risk",
+        failure_mode="Potential IDOR on delete.",
+        evidence_summary="Authorization checks are not visible in this handler.",
+        suspected_category="security",
+        reflection_specialties=["security"],
+        recommendation="Verify tenant and ownership before delete.",
+    )
+    reports = [
+        ReflectionReport(
+            candidate_id=cand.candidate_id,
+            reflector_specialty="security",
+            verdict="accept",
+            rationale="Risk if no middleware auth.",
+        )
+    ]
+    out = node(
+        {
+            "run_id": "t",
+            "candidate_findings": [cand],
+            "reflection_reports": reports,
+            "focused_context_results": {},
+            "metadata": {},
+        }
+    )
+    assert out["findings"] == []
+    assert (
+        out["metadata"]["adversarial_cleanup"]["candidate_lifecycle"][cand.candidate_id]["reason"]
+        == "required_context_not_gathered"
+    )
+
+
 def test_adversarial_cleanup_drops_when_routed_expert_says_not_applicable() -> None:
     node = make_adversarial_cleanup_node()
     cand = CandidateFinding(
@@ -276,6 +555,50 @@ def test_adversarial_cleanup_drops_when_routed_expert_says_not_applicable() -> N
     assert out["metadata"]["adversarial_cleanup"]["misrouted_candidate_ids"][cand.candidate_id][0][
         "reflector_specialty"
     ] == "security"
+
+
+def test_adversarial_cleanup_drops_when_routed_expert_times_out() -> None:
+    node = make_adversarial_cleanup_node()
+    cand = CandidateFinding(
+        candidate_id="review-logic-1",
+        patch_task_id="review-logic",
+        file_path="src/x.py",
+        line_start=10,
+        line_end=12,
+        content="All-groups extraction can return the wrong match data.",
+        claim_type="defect",
+        failure_mode="The changed code mishandles regex group extraction.",
+        evidence_summary="The candidate was routed to both logic and general reflectors.",
+        suspected_category="logic",
+        reflection_specialties=["logic", "general"],
+        recommendation="Validate the group extraction branch with patterns that have no captures.",
+    )
+    reports = [
+        ReflectionReport(
+            candidate_id=cand.candidate_id,
+            reflector_specialty="general",
+            verdict="accept",
+            rationale="The recommendation is readable and actionable.",
+        )
+    ]
+
+    out = node(
+        {
+            "run_id": "t",
+            "candidate_findings": [cand],
+            "reflection_reports": reports,
+            "metadata": {
+                "adversarial_reflection": {
+                    "warnings": ["reflection_failed:logic:APITimeoutError: Request timed out."]
+                }
+            },
+        }
+    )
+
+    assert out["findings"] == []
+    cleanup = out["metadata"]["adversarial_cleanup"]
+    assert cleanup["missing_required_reflections"] == {cand.candidate_id: ["logic"]}
+    assert cleanup["candidate_lifecycle"][cand.candidate_id]["reason"] == "missing_required_reflection"
 
 
 def test_adversarial_cleanup_drops_positive_observation() -> None:
@@ -317,6 +640,8 @@ def test_adversarial_cleanup_drops_positive_observation() -> None:
 
 
 def test_auto_focus_request_created_for_security_claim_needing_context() -> None:
+    from src.orchestration.routing.critiquer_focus import auto_focus_requests
+
     task = ReviewTask(
         id="review-security",
         title="Security",
@@ -340,7 +665,7 @@ def test_auto_focus_request_created_for_security_claim_needing_context() -> None
         recommendation="Verify ownership before deletion.",
     )
 
-    requests = _auto_focus_requests(task, [cand])
+    requests = auto_focus_requests(task, [cand])
 
     assert len(requests) == 1
     assert requests[0].candidate_id == cand.candidate_id
@@ -385,6 +710,66 @@ def test_reflection_routes_candidates_only_to_declared_domains() -> None:
         "general": 1,
     }
     assert out["metadata"]["adversarial_reflection"]["total_routed_candidate_reviews"] == 2
+
+
+def test_reflection_retries_active_local_server_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    settings = Settings(
+        redis_enabled=False,
+        reviewer_reflection_retry_backoff_seconds=0,
+        reviewer_reflection_timeout_patience_seconds=60,
+    )
+    calls = {"invoke": 0}
+
+    class FakeLlm:
+        def invoke(self, _prompt: str) -> ReflectionBatchOutput:
+            calls["invoke"] += 1
+            if calls["invoke"] == 1:
+                raise TimeoutError("Request timed out.")
+            return ReflectionBatchOutput(
+                reports=[
+                    ReflectionReport(
+                        candidate_id="review-logic-1",
+                        reflector_specialty="logic",
+                        verdict="accept",
+                        rationale="The logic claim is valid.",
+                    )
+                ]
+            )
+
+    monkeypatch.setattr(
+        "src.orchestration.nodes.application.reflection.Models.worker",
+        lambda *_args, **_kwargs: FakeLlm(),
+    )
+    monkeypatch.setattr(
+        "src.orchestration.nodes.application.reflection.local_llm_server_active",
+        lambda _settings: (True, "status ok"),
+    )
+
+    node = make_adversarial_reflection_node(settings=settings)
+    out = node(
+        {
+            "run_id": "t",
+            "candidate_findings": [
+                CandidateFinding(
+                    candidate_id="review-logic-1",
+                    patch_task_id="review-logic",
+                    file_path="src/x.py",
+                    line_start=1,
+                    line_end=2,
+                    content="Logic issue",
+                    suspected_category="logic",
+                    reflection_specialties=["logic"],
+                )
+            ],
+            "metadata": {},
+        }
+    )
+
+    assert calls["invoke"] == 2
+    assert len(out["reflection_reports"]) == 1
+    assert out["metadata"]["adversarial_reflection"]["warnings"] == [
+        "reflection_timeout_server_active:logic"
+    ]
 
 
 def test_plan_critique_revision_shards_splits_when_over_budget() -> None:

@@ -15,6 +15,7 @@ from src.domain.schemas import (
     FocusedContextResult,
     ReflectionReport,
 )
+from src.domain.verifier_schemas import VerifierReport
 from src.domain.state import GraphState
 from src.infrastructure.llm.factory import Models
 from src.infrastructure.llm.token_usage import extract_total_tokens_from_llm_result, parse_structured_output
@@ -63,9 +64,54 @@ def _needs_revision_candidates(state: GraphState) -> List[str]:
                 continue
         else:
             continue
-        if report.verdict == "needs_context":
+        if report.verdict in ("needs_context", "needs_verification"):
             ids.add(report.candidate_id)
     return sorted(ids)
+
+
+def _candidate_ids_needs_verification(state: GraphState) -> Set[str]:
+    out: Set[str] = set()
+    for raw in state.get("reflection_reports", []) or []:
+        if isinstance(raw, ReflectionReport):
+            report = raw
+        elif isinstance(raw, dict):
+            try:
+                report = ReflectionReport.model_validate(raw)
+            except Exception:
+                continue
+        else:
+            continue
+        if report.verdict == "needs_verification":
+            out.add(report.candidate_id)
+    return out
+
+
+def _has_verifier_report_for_candidate(state: GraphState, candidate_id: str) -> bool:
+    for raw in state.get("verifier_reports") or []:
+        if isinstance(raw, VerifierReport):
+            r = raw
+        elif isinstance(raw, dict):
+            try:
+                r = VerifierReport.model_validate(raw)
+            except Exception:
+                continue
+        else:
+            continue
+        if r.candidate_id == candidate_id:
+            return True
+    return False
+
+
+def revision_inputs_ready(state: GraphState, candidate_ids: Sequence[str]) -> bool:
+    """True when every revision candidate has focused evidence and/or a verifier report if reflection requested it."""
+    nv = _candidate_ids_needs_verification(state)
+    for cid in candidate_ids:
+        if _focused_results_for_candidate(state, cid):
+            continue
+        if cid in nv and _has_verifier_report_for_candidate(state, cid):
+            continue
+        return False
+    return True
 
 
 def _has_focused_evidence(state: GraphState, candidate_ids: Sequence[str]) -> bool:
@@ -74,7 +120,7 @@ def _has_focused_evidence(state: GraphState, candidate_ids: Sequence[str]) -> bo
         res = _coerce_focused_result(raw)
         if res is None:
             continue
-        if res.candidate_id in want and (res.file_snippets or res.search_hits):
+        if res.candidate_id in want and (res.file_snippets or res.search_hits or res.file_contents_full):
             return True
     return False
 
@@ -123,6 +169,15 @@ def plan_critique_revision_shards(
             continue
         results = _focused_results_for_candidate(state, cid)
         if not results:
+            if cid in _candidate_ids_needs_verification(state) and _has_verifier_report_for_candidate(state, cid):
+                shards.append(
+                    CritiqueRevisionShardPayload(
+                        shard_id=f"{cid}:verifier_only",
+                        candidate_id=cid,
+                        candidate=candidate,
+                        focused_results=[],
+                    )
+                )
             continue
 
         cand_weight = min(len(candidate.model_dump_json()), max_candidate_chars)
@@ -177,6 +232,35 @@ def _render_digest_shard_prompt(
     return "\n\n".join(parts)
 
 
+def _render_verifier_advisory_section(
+    state: GraphState,
+    candidate_ids: Sequence[str],
+    *,
+    max_chars: int = 8000,
+) -> str:
+    want = set(candidate_ids)
+    parts: List[str] = []
+    for raw in state.get("verifier_reports") or []:
+        if isinstance(raw, VerifierReport):
+            r = raw
+        elif isinstance(raw, dict):
+            try:
+                r = VerifierReport.model_validate(raw)
+            except Exception:  # noqa: BLE001
+                continue
+        else:
+            continue
+        if r.candidate_id not in want:
+            continue
+        parts.append(r.model_dump_json())
+    if not parts:
+        return ""
+    blob = "\n\n".join(parts)
+    if len(blob) > max_chars:
+        blob = blob[:max_chars] + "\n... [truncated]"
+    return f"### Runtime verifier (advisory; scope may limit interpretability)\n{blob}"
+
+
 def _render_reduction_bundle(
     state: GraphState,
     candidate_ids: Sequence[str],
@@ -206,6 +290,10 @@ def _render_reduction_bundle(
                 f"#### Digest shard {d.shard_id} (requests {d.request_ids})\n"
                 f"impact={d.impact}\n{bullets}"
             )
+
+        vline = _render_verifier_advisory_section(state, [cid])
+        if vline:
+            sections.append(vline)
 
     return "\n\n".join(sections)
 
@@ -263,6 +351,7 @@ def make_critique_revision_digest_node(model_key: str | None = None, use_llm: bo
                     max_candidate_chars=max_candidate_chars,
                 ),
                 "Git Diff Excerpt": (state.get("git_diff", "") or "")[:6000],
+                "Verifier Advisory": _render_verifier_advisory_section(state, [shard.candidate_id]),
             },
         )
 
@@ -354,7 +443,7 @@ def make_critique_revision_reduce_node(model_key: str | None = None, use_llm: bo
                 except Exception:
                     continue
 
-        if not _has_focused_evidence(state, candidate_ids):
+        if not revision_inputs_ready(state, candidate_ids):
             return {"node_history": [f"{node_name}:skipped_no_results"]}
 
         bundle = _render_reduction_bundle(

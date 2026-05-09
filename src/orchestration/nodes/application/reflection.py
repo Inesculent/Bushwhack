@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any, Dict, List
 
-from src.config import get_settings
+from src.config import Settings, get_settings
 from src.domain.schemas import (
     CandidateFinding,
     FocusedContextRequest,
@@ -14,6 +15,12 @@ from src.domain.schemas import (
 )
 from src.domain.state import GraphState
 from src.infrastructure.llm.factory import Models
+from src.infrastructure.llm.local_status import (
+    is_local_model,
+    is_timeout_exception,
+    local_llm_server_active,
+    sleep_for_retry,
+)
 from src.infrastructure.llm.token_usage import extract_total_tokens_from_llm_result, parse_structured_output
 from src.orchestration.prompts.renderer import render_reviewer_prompt
 
@@ -94,6 +101,7 @@ def _normalize_reports(batch: ReflectionBatchOutput, specialty: str) -> tuple[Li
     for index, raw in enumerate(batch.reports):
         report = raw.model_copy(update={"reflector_specialty": specialty})
         reports.append(report)
+        # Only needs_context queues graph/search work; needs_verification uses the runtime verifier.
         if report.verdict == "needs_context" and report.focused_request is not None:
             normalized = _normalize_focus_request(report, specialty, index)
             if normalized is not None:
@@ -102,11 +110,16 @@ def _normalize_reports(batch: ReflectionBatchOutput, specialty: str) -> tuple[Li
     return reports, requests
 
 
-def make_adversarial_reflection_node(model_key: str | None = None, use_llm: bool = True):
+def make_adversarial_reflection_node(
+    model_key: str | None = None,
+    use_llm: bool = True,
+    settings: Settings | None = None,
+):
     node_name = "adversarial_reflection"
 
     def adversarial_reflection_node(state: GraphState) -> Dict[str, Any]:
         run_id = state.get("run_id", "unknown")
+        resolved_settings = settings or get_settings()
         candidates: List[CandidateFinding] = []
         for raw in state.get("candidate_findings", []) or []:
             if isinstance(raw, CandidateFinding):
@@ -129,32 +142,84 @@ def make_adversarial_reflection_node(model_key: str | None = None, use_llm: bool
             )
 
         if use_llm:
-            selected_model = model_key or getattr(get_settings(), "reviewer_worker_model_key", None)
+            selected_model = model_key or resolved_settings.reviewer_worker_model_key
             candidates_by_reflector = _candidates_by_reflector(candidates)
             for specialty in REFLECTOR_SPECIALTIES:
                 specialty_candidates = candidates_by_reflector[specialty]
                 if not specialty_candidates:
                     continue
-                try:
-                    llm = Models.worker(ReflectionBatchOutput, model_key=selected_model)
-                    invoke_result = llm.invoke(_render_reflection_prompt(state, specialty, specialty_candidates))
-                    response = parse_structured_output(invoke_result, ReflectionBatchOutput)
-                    llm_tokens += extract_total_tokens_from_llm_result(invoke_result)
-                    reps, reqs = _normalize_reports(response, specialty)
-                    all_reports.extend(reps)
-                    all_requests.extend(reqs)
-                    warnings.extend(response.warnings)
-                except Exception as exc:  # noqa: BLE001
-                    warning = f"reflection_failed:{specialty}:{exc.__class__.__name__}: {exc}"
-                    warnings.append(warning)
-                    logger.warning(
-                        "%s specialty=%s run_id=%s reason=%s: %s",
-                        node_name,
-                        specialty,
-                        run_id,
-                        exc.__class__.__name__,
-                        exc,
-                    )
+                timeout_deadline = (
+                    time.monotonic() + resolved_settings.reviewer_reflection_timeout_patience_seconds
+                    if is_local_model(selected_model)
+                    and resolved_settings.reviewer_reflection_timeout_patience_seconds > 0
+                    else None
+                )
+                attempt = 0
+                while True:
+                    attempt += 1
+                    try:
+                        llm = Models.worker(ReflectionBatchOutput, model_key=selected_model)
+                        invoke_result = llm.invoke(
+                            _render_reflection_prompt(state, specialty, specialty_candidates)
+                        )
+                        response = parse_structured_output(invoke_result, ReflectionBatchOutput)
+                        llm_tokens += extract_total_tokens_from_llm_result(invoke_result)
+                        reps, reqs = _normalize_reports(response, specialty)
+                        all_reports.extend(reps)
+                        all_requests.extend(reqs)
+                        warnings.extend(response.warnings)
+                        break
+                    except Exception as exc:  # noqa: BLE001
+                        timeout_with_patience_left = (
+                            is_timeout_exception(exc)
+                            and timeout_deadline is not None
+                            and time.monotonic() < timeout_deadline
+                        )
+                        if timeout_with_patience_left:
+                            server_active, status_detail = local_llm_server_active(resolved_settings)
+                            if server_active:
+                                warning = f"reflection_timeout_server_active:{specialty}"
+                                if warning not in warnings:
+                                    warnings.append(warning)
+                                remaining = max(0, int(timeout_deadline - time.monotonic()))
+                                logger.warning(
+                                    "%s timeout but server active specialty=%s run_id=%s "
+                                    "attempt=%s patience_remaining_seconds=%s status=%s err=%s",
+                                    node_name,
+                                    specialty,
+                                    run_id,
+                                    attempt,
+                                    remaining,
+                                    status_detail,
+                                    exc,
+                                )
+                                sleep_for_retry(
+                                    resolved_settings.reviewer_reflection_retry_backoff_seconds,
+                                    attempt,
+                                    timeout_deadline,
+                                )
+                                continue
+                            logger.warning(
+                                "%s timeout and server status inactive specialty=%s run_id=%s "
+                                "attempt=%s status=%s err=%s",
+                                node_name,
+                                specialty,
+                                run_id,
+                                attempt,
+                                status_detail,
+                                exc,
+                            )
+                        warning = f"reflection_failed:{specialty}:{exc.__class__.__name__}: {exc}"
+                        warnings.append(warning)
+                        logger.warning(
+                            "%s specialty=%s run_id=%s reason=%s: %s",
+                            node_name,
+                            specialty,
+                            run_id,
+                            exc.__class__.__name__,
+                            exc,
+                        )
+                        break
 
         if _trace_enabled(state):
             trace_logger.info(

@@ -67,6 +67,10 @@ MODELS = {
         model_name="qwen3-coder",
         provider="local",
     ),
+    "qwen3.5-35b-a3b": LLMConfig(
+        model_name="/lustre/fs1/home/dy828490/bushwhack_dev/qwen-3.5-35b-a3b",
+        provider="local",
+    ),
     "qwen-local": LLMConfig(
         model_name="Qwen/Qwen2.5-Coder-7B-Instruct",
         provider="local",
@@ -80,22 +84,33 @@ class Models:
     """
 
     DEFAULT_ROLE_MODELS = {
-        "explorer": "qwen2.5-coder-32b",
-        "planner": "qwen2.5-coder-32b",
-        "worker": "qwen2.5-coder-32b",
-        "synthesizer": "qwen2.5-coder-32b",
+        "explorer": "qwen3.5-35b-a3b",
+        "planner": "qwen3.5-35b-a3b",
+        "worker": "qwen3.5-35b-a3b",
+        "synthesizer": "qwen3.5-35b-a3b",
     }
 
     @staticmethod
-    def get(model_key: str):
+    def get(model_key: str, max_completion_tokens: int | None = None):
         config = _get_model_config(model_key)
         llm_class = _get_llm_class(config.provider)
-        llm_kwargs = _build_llm_kwargs(config, settings=get_settings())
+        llm_kwargs = _build_llm_kwargs(
+            config,
+            settings=get_settings(),
+            max_completion_tokens=max_completion_tokens,
+        )
         return llm_class(**llm_kwargs)
 
     @staticmethod
-    def get_structured(model_key: str, schema: Type[BaseModel]):
-        return Models.get(model_key).with_structured_output(schema, include_raw=True)
+    def get_structured(
+        model_key: str,
+        schema: Type[BaseModel],
+        max_completion_tokens: int | None = None,
+    ):
+        return Models.get(
+            model_key,
+            max_completion_tokens=max_completion_tokens,
+        ).with_structured_output(schema, include_raw=True)
 
     @staticmethod
     def explorer(schema: Type[BaseModel], model_key: Optional[str] = None):
@@ -104,13 +119,23 @@ class Models:
 
     @staticmethod
     def planner(schema: Type[BaseModel], model_key: Optional[str] = None):
+        settings = get_settings()
         selected_model = model_key or Models.DEFAULT_ROLE_MODELS["planner"]
-        return Models.get_structured(selected_model, schema)
+        return Models.get_structured(
+            selected_model,
+            schema,
+            max_completion_tokens=settings.reviewer_planner_max_completion_tokens,
+        )
 
     @staticmethod
     def worker(schema: Type[BaseModel], model_key: Optional[str] = None):
+        settings = get_settings()
         selected_model = model_key or Models.DEFAULT_ROLE_MODELS["worker"]
-        return Models.get_structured(selected_model, schema)
+        return Models.get_structured(
+            selected_model,
+            schema,
+            max_completion_tokens=settings.reviewer_worker_max_completion_tokens,
+        )
 
     @staticmethod
     def synthesizer(schema: Type[BaseModel], model_key: Optional[str] = None):
@@ -154,8 +179,14 @@ def _api_key_from_settings(settings: Settings, api_key_env: str | None) -> str |
     return None
 
 
-def _build_llm_kwargs(config: LLMConfig, settings: Settings) -> dict[str, Any]:
+def _build_llm_kwargs(
+    config: LLMConfig,
+    settings: Settings,
+    max_completion_tokens: int | None = None,
+) -> dict[str, Any]:
     kwargs: dict[str, Any] = {"model": config.model_name}
+    if max_completion_tokens is not None:
+        kwargs["max_completion_tokens"] = max_completion_tokens
     if config.provider == "local":
         kwargs["base_url"] = settings.local_llm_base_url
         kwargs["api_key"] = settings.local_llm_api_key

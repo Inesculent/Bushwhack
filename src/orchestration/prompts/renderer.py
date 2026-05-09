@@ -6,6 +6,14 @@ from typing import Mapping
 
 
 PROMPT_ROOT = Path(__file__).resolve().parent / "reviewer"
+EXPLORATION_PROMPT_ROOT = Path(__file__).resolve().parent / "exploration"
+
+
+@lru_cache(maxsize=32)
+def load_exploration_prompt(relative_path: str) -> str:
+    prompt_path = (EXPLORATION_PROMPT_ROOT / relative_path).resolve()
+    prompt_path.relative_to(EXPLORATION_PROMPT_ROOT.resolve())
+    return prompt_path.read_text(encoding="utf-8").strip()
 
 
 @lru_cache(maxsize=32)

@@ -1,14 +1,29 @@
 import logging
+import os
 from dataclasses import dataclass
 from typing import Optional
 
 from src.config import Settings, get_settings
-from src.domain.interfaces import IASTParser, ICacheService, ICodeSearcher, IPreflightService
+from src.domain.interfaces import (
+    IASTParser,
+    ICacheService,
+    ICodeSearcher,
+    IGitHubContextProvider,
+    IPreflightService,
+)
 from src.infrastructure.ast.native_parser import NativeASTParser
 from src.infrastructure.cache.memory_cache import InMemoryCache
 from src.infrastructure.mcp.ast_parser import MCPASTParser
 from src.infrastructure.mcp.client import MCPClient
+from src.infrastructure.mcp.github_context import GitHubMCPContextProvider
 from src.infrastructure.preflight.service import PreflightManifestService
+from src.infrastructure.snapshot_loader import SnapshotLoader
+from src.infrastructure.snapshot_pointer_store import (
+    InMemorySnapshotPointerStore,
+    RedisSnapshotPointerStore,
+    SnapshotPointerStore,
+)
+from src.infrastructure.snapshot_writer import SnapshotWriter
 from src.infrastructure.sandbox import RepoSandbox
 from src.infrastructure.search.ripgrep import RipgrepSearcher
 
@@ -20,6 +35,28 @@ class RepositoryUnderstandingAdapters:
     searcher: ICodeSearcher
     ast_parser: Optional[IASTParser]
     ast_enabled: bool
+
+
+def build_github_context_provider(
+    settings: Settings,
+    cache: ICacheService,
+) -> IGitHubContextProvider | None:
+    if not settings.github_mcp_enabled:
+        return None
+
+    env = None
+    if settings.github_personal_access_token:
+        env = dict(os.environ)
+        env["GITHUB_PERSONAL_ACCESS_TOKEN"] = settings.github_personal_access_token
+
+    mcp_client = MCPClient(
+        command=settings.github_mcp_command,
+        args=settings.github_mcp_args,
+        cwd=settings.github_mcp_cwd,
+        env=env,
+        timeout_seconds=settings.github_mcp_timeout_seconds,
+    )
+    return GitHubMCPContextProvider(mcp_client=mcp_client, cache=cache, settings=settings)
 
 
 def build_cache_service() -> ICacheService:
@@ -42,6 +79,7 @@ def build_mcp_ast_parser(settings: Settings, cache: ICacheService) -> IASTParser
         cache=cache,
         parse_tool_name=settings.ast_mcp_parse_tool,
         entity_tool_name=settings.ast_mcp_entity_tool,
+        definitions_tool_name=settings.ast_mcp_definitions_tool,
         cache_ttl_seconds=settings.ast_cache_ttl_seconds,
         parser_version=settings.ast_parser_version,
     )
@@ -88,3 +126,18 @@ def build_repository_understanding_adapters(
         ast_parser=ast_parser,
         ast_enabled=ast_parser is not None,
     )
+
+
+def build_snapshot_writer(settings: Settings) -> SnapshotWriter:
+    return SnapshotWriter(settings)
+
+
+def build_snapshot_pointer_store(settings: Settings) -> SnapshotPointerStore:
+    if not settings.redis_enabled:
+        return InMemorySnapshotPointerStore()
+    return RedisSnapshotPointerStore(settings)
+
+
+def build_snapshot_loader(settings: Settings) -> SnapshotLoader:
+    """Build a SnapshotLoader for loading exploration snapshots from disk."""
+    return SnapshotLoader(settings)
