@@ -513,6 +513,7 @@ class LazyReviewContextProvider:
             sandbox: RepoSandbox | None = None
 
             try:
+                # Review sandbox: clone or RO-mount at /repo for ripgrep + file reads (image must include git when cloning).
                 sandbox = RepoSandbox()
                 if Path(repo_path).is_dir():
                     self._host_repo_path = str(Path(repo_path).resolve())

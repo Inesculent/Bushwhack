@@ -29,6 +29,25 @@ def test_merge_graph_metadata_deep_merges_parallel_critiquer_shapes() -> None:
     assert merged["general_critiquer"]["by_task"]["t2"]["summary"] == "s2"
 
 
+def test_critique_subgraph_parent_updates_strips_last_value_channels() -> None:
+    """Parallel Send merges must not repeat run_id/repo_path/git_diff from subgraph.invoke()."""
+    from src.orchestration.nodes.application.critique_pipeline import _critique_subgraph_parent_updates
+
+    full = {
+        "run_id": "r1",
+        "repo_path": "/tmp",
+        "git_diff": "diff",
+        "metadata": {"a": 1},
+        "node_history": ["n"],
+        "token_usage": 3,
+    }
+    out = _critique_subgraph_parent_updates(full)
+    assert "run_id" not in out
+    assert "repo_path" not in out
+    assert "git_diff" not in out
+    assert out == {"metadata": {"a": 1}, "node_history": ["n"], "token_usage": 3}
+
+
 def test_merge_graph_metadata_unions_ast_included_files() -> None:
     a = {"ast_included_files": ["src/a.py"]}
     b = {"ast_included_files": ["src/b.py"]}
@@ -557,8 +576,57 @@ def test_adversarial_cleanup_drops_when_routed_expert_says_not_applicable() -> N
     ] == "security"
 
 
-def test_adversarial_cleanup_drops_when_routed_expert_times_out() -> None:
+def test_adversarial_cleanup_promotes_when_routed_expert_times_out_partial_quorum_default() -> None:
+    """Missing logic report after timeout: general accepted — default relaxed quorum promotes."""
     node = make_adversarial_cleanup_node()
+    cand = CandidateFinding(
+        candidate_id="review-logic-1",
+        patch_task_id="review-logic",
+        file_path="src/x.py",
+        line_start=10,
+        line_end=12,
+        content="All-groups extraction can return the wrong match data.",
+        claim_type="defect",
+        failure_mode="The changed code mishandles regex group extraction.",
+        evidence_summary="The candidate was routed to both logic and general reflectors.",
+        suspected_category="logic",
+        reflection_specialties=["logic", "general"],
+        recommendation="Validate the group extraction branch with patterns that have no captures.",
+    )
+    reports = [
+        ReflectionReport(
+            candidate_id=cand.candidate_id,
+            reflector_specialty="general",
+            verdict="accept",
+            rationale="The recommendation is readable and actionable.",
+        )
+    ]
+
+    out = node(
+        {
+            "run_id": "t",
+            "candidate_findings": [cand],
+            "reflection_reports": reports,
+            "metadata": {
+                "adversarial_reflection": {
+                    "warnings": ["reflection_failed:logic:APITimeoutError: Request timed out."]
+                }
+            },
+        }
+    )
+
+    assert len(out["findings"]) == 1
+    cleanup = out["metadata"]["adversarial_cleanup"]
+    assert cleanup.get("missing_required_reflections") == {}
+    life = cleanup["candidate_lifecycle"][cand.candidate_id]
+    assert life["decision"] == "promoted"
+    assert life["abstaining_reflectors"] == ["logic"]
+
+
+def test_adversarial_cleanup_strict_quorum_drops_when_routed_expert_times_out() -> None:
+    """With full quorum required, missing logic report still drops (legacy strict behavior)."""
+    strict = get_settings().model_copy(update={"reviewer_cleanup_require_full_reflection_quorum": True})
+    node = make_adversarial_cleanup_node(settings=strict)
     cand = CandidateFinding(
         candidate_id="review-logic-1",
         patch_task_id="review-logic",
@@ -599,6 +667,37 @@ def test_adversarial_cleanup_drops_when_routed_expert_times_out() -> None:
     cleanup = out["metadata"]["adversarial_cleanup"]
     assert cleanup["missing_required_reflections"] == {cand.candidate_id: ["logic"]}
     assert cleanup["candidate_lifecycle"][cand.candidate_id]["reason"] == "missing_required_reflection"
+
+
+def test_adversarial_cleanup_still_drops_when_only_routed_specialty_never_reports() -> None:
+    """Partial quorum cannot invent votes: logic-only route and zero logic reports → drop."""
+    node = make_adversarial_cleanup_node()
+    cand = CandidateFinding(
+        candidate_id="logic-only-1",
+        patch_task_id="t",
+        file_path="src/x.py",
+        line_start=1,
+        line_end=2,
+        content="bug",
+        claim_type="defect",
+        failure_mode="f",
+        evidence_summary="e",
+        suspected_category="logic",
+        reflection_specialties=["logic"],
+        recommendation="fix it",
+    )
+    out = node(
+        {
+            "run_id": "t",
+            "candidate_findings": [cand],
+            "reflection_reports": [],
+            "metadata": {},
+        }
+    )
+    assert out["findings"] == []
+    assert out["metadata"]["adversarial_cleanup"]["candidate_lifecycle"][cand.candidate_id][
+        "reason"
+    ] == "missing_required_reflection"
 
 
 def test_adversarial_cleanup_drops_positive_observation() -> None:

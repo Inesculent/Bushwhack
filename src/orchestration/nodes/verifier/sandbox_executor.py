@@ -1,4 +1,12 @@
-"""Run generated verifier scripts inside RepoSandbox with timeout."""
+"""Run generated verifier scripts inside RepoSandbox with timeout.
+
+Verifier uses ``Settings.verifier_image`` (slim Python image by default). That is **not** the same
+container as the review-context sandbox: critique/focused-context/grep use ``RepoSandbox()`` with
+the default review image (``agent-fs-sandbox`` / fs-style image with git + ripgrep) and bind-mount
+or ``start_from_remote_ref`` for a read-only tree at ``/repo``. Verifier defaults to
+``start_snippet_workspace()`` when there is no local checkout so it never requires git in
+``verifier_image`` unless ``verifier_clone_remote_in_container`` is enabled.
+"""
 
 from __future__ import annotations
 
@@ -26,6 +34,9 @@ def _truncate_stream(text: str, limit: int) -> str:
 def _collect_lint_runs(sandbox: RepoSandbox, settings: Settings) -> List[VerifierLintRun]:
     """Run Ruff/Flake8 inside the mounted repo (best-effort; missing tools are recorded)."""
     runs: List[VerifierLintRun] = []
+    workdir = sandbox.execution_workdir
+    if workdir != "/repo":
+        return runs
     cap = settings.verifier_lint_output_max_chars
     if settings.verifier_ruff_enabled:
         r = sandbox.execute_result(
@@ -39,7 +50,7 @@ def _collect_lint_runs(sandbox: RepoSandbox, settings: Settings) -> List[Verifie
                 "--output-format",
                 "concise",
             ],
-            workdir="/repo",
+            workdir=workdir,
         )
         runs.append(
             VerifierLintRun(
@@ -53,7 +64,7 @@ def _collect_lint_runs(sandbox: RepoSandbox, settings: Settings) -> List[Verifie
     if settings.verifier_flake8_enabled:
         r = sandbox.execute_result(
             ["python", "-m", "flake8", ".", "--count"],
-            workdir="/repo",
+            workdir=workdir,
         )
         runs.append(
             VerifierLintRun(
@@ -76,12 +87,19 @@ def _start_verifier_sandbox(
     sandbox: RepoSandbox,
     repo_path: str,
     graph_state: Optional[Dict[str, Any]],
+    *,
+    settings: Settings | None = None,
 ) -> None:
-    """Mount a local clone or clone from GitHub when ``repo_path`` is a URL (e.g. snapshot resume)."""
+    """Mount a local checkout, or start a minimal workspace for snippet-only verification."""
+    settings = settings or get_settings()
     raw = (repo_path or "").strip()
     local = Path(raw)
     if raw and local.is_dir():
         sandbox.start(str(local.resolve()))
+        return
+
+    if not settings.verifier_clone_remote_in_container:
+        sandbox.start_snippet_workspace()
         return
 
     meta: Dict[str, Any] = {}
@@ -104,9 +122,8 @@ def _start_verifier_sandbox(
 
     if not repo_url:
         raise FileNotFoundError(
-            "Verifier sandbox needs either a local repo directory in repo_path, "
-            "or metadata.review_repo_url (and checkout ref / PR number) to clone inside the container. "
-            f"Got repo_path={raw!r}."
+            "Verifier clone-in-container needs metadata.review_repo_url (and checkout ref / PR number), "
+            f"or repo_path as an https URL. Got repo_path={raw!r}."
         )
 
     if not checkout_ref:
@@ -138,13 +155,14 @@ def execute_test_script(
     )
     started = time.perf_counter()
     try:
-        _start_verifier_sandbox(sandbox, repo_path, graph_state)
+        _start_verifier_sandbox(sandbox, repo_path, graph_state, settings=settings)
         record.lint_runs = _collect_lint_runs(sandbox, settings)
         sandbox.write_file_in_container(remote_path, test_code.encode("utf-8"))
         cmd = ["python", remote_path]
+        exec_wd = sandbox.execution_workdir
 
         def _run() -> tuple[int, str, str]:
-            r = sandbox.execute_result(cmd, workdir="/repo")
+            r = sandbox.execute_result(cmd, workdir=exec_wd)
             return r.exit_code, r.stdout, r.stderr
 
         with ThreadPoolExecutor(max_workers=1) as pool:

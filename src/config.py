@@ -284,7 +284,10 @@ class Settings(BaseSettings):
 		default=8192,
 		ge=256,
 		le=32768,
-		description="Maximum completion tokens for reviewer planner LLM calls.",
+		description=(
+			"Per-invocation cap on completion tokens for planner-role LLM calls (draft/revise plan, monolithic planner). "
+			"Run-level totals in run_meta.json (total_llm_tokens) sum many calls and are unrelated to this cap."
+		),
 	)
 	reviewer_worker_model_key: str = Field(
 		default="qwen3.5-35b-a3b",
@@ -295,18 +298,56 @@ class Settings(BaseSettings):
 		),
 	)
 	reviewer_worker_max_completion_tokens: int = Field(
-		default=4096,
+		default=8192,
 		ge=512,
 		le=65536,
-		description="Maximum completion tokens for reviewer worker, reflection, and critique-revision LLM calls.",
+		description=(
+			"Per-invocation cap on completion tokens for worker-role calls (critiquer, reflection, Phase 0 mental-model "
+			"nodes, specialist workers, verifier test gen). Structured outputs for wide PRs can need more than a few "
+			"thousand tokens per call; run_meta total_llm_tokens is the sum across all calls, not this setting."
+		),
 	)
 	reviewer_use_legacy_specialist_workers: bool = Field(
 		default=False,
 		description="When true, route review_planner tasks to legacy specialist workers instead of the adversarial critiquer loop.",
 	)
+	reviewer_legacy_planner_mode: bool = Field(
+		default=False,
+		description=(
+			"When true, skip Phase 0 mental-model formulation and actor-critic planning; use the monolithic review_planner. "
+			"Orthogonal to reviewer_use_legacy_specialist_workers."
+		),
+	)
+	reviewer_actor_critic_max_plan_revisions: int = Field(
+		default=2,
+		ge=0,
+		le=5,
+		description="Max plan_revision cycles after plan_critic before emitting tasks anyway.",
+	)
+	reviewer_mental_model_max_queries_per_run: int = Field(
+		default=40,
+		ge=0,
+		le=500,
+		description="Cap query_mental_model tool invocations per graph run (across parallel tasks).",
+	)
+	reviewer_mental_model_max_answer_chars: int = Field(
+		default=2500,
+		ge=200,
+		le=16000,
+		description="Max characters returned from query_mental_model (excerpt of BehavioralSpec).",
+	)
 	reviewer_cleanup_redis_checkpoints: bool = Field(
 		default=True,
 		description="Delete per-PR Redis checkpoints after reviewer-agent experiments finish each graph run.",
+	)
+	reviewer_cleanup_require_full_reflection_quorum: bool = Field(
+		default=False,
+		description=(
+			"When true, adversarial_cleanup drops a candidate unless every routed reflector specialty produced a "
+			"ReflectionReport (strict quorum). When false (default), missing specialties abstain: if at least one "
+			"relevant report exists and none of them reject, promotion uses only the reports that arrived "
+			"(e.g. logic timed out but general accepted — avoids losing findings to graph/LLM timeouts)."
+		),
 	)
 	reviewer_critique_revision_max_shard_chars: int = Field(
 		default=12_000,
@@ -344,7 +385,15 @@ class Settings(BaseSettings):
 	)
 	verifier_image: str = Field(
 		default="verifier-test-env:latest",
-		description="Docker image for verifier script execution (repo mounted at /repo).",
+		description="Docker image for verifier script execution (repo mounted at /repo when using a local checkout).",
+	)
+	verifier_clone_remote_in_container: bool = Field(
+		default=False,
+		description=(
+			"When false (default), if repo_path is not a local directory the verifier runs generated scripts in an "
+			"empty /workspace inside the image (no git, no clone). When true, clone review_repo_url inside the "
+			"container (requires git in verifier_image); use with --repo-root or a local worktree for full-repo checks."
+		),
 	)
 	verifier_test_timeout_seconds: int = Field(
 		default=300,

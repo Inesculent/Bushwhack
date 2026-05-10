@@ -12,6 +12,7 @@ from src.domain.schemas import (
     ReviewCategory,
     ReviewFinding,
 )
+from src.config import Settings, get_settings
 from src.domain.state import GraphState
 
 logger = logging.getLogger(__name__)
@@ -193,7 +194,7 @@ def _candidate_requires_context(candidate: CandidateFinding) -> bool:
     return _high_risk_claim_needs_external_context(candidate)
 
 
-def make_adversarial_cleanup_node():
+def make_adversarial_cleanup_node(settings: Settings | None = None):
     node_name = "adversarial_cleanup"
 
     def adversarial_cleanup_node(state: GraphState) -> Dict[str, Any]:
@@ -217,6 +218,7 @@ def make_adversarial_cleanup_node():
             }
 
         by_cand = _reports_by_candidate(reports)
+        cleanup_settings = settings or get_settings()
         promoted: List[ReviewFinding] = []
         dropped: List[str] = []
         ignored_rejections: Dict[str, List[str]] = {}
@@ -250,18 +252,33 @@ def make_adversarial_cleanup_node():
             category = _final_category(candidate, cand_reports)
             relevant_reflectors = _relevant_reflectors(candidate, category)
             missing_relevant = relevant_reflectors - specialties
-            if missing_relevant:
-                missing_required_reflections[candidate.candidate_id] = sorted(missing_relevant)
-                drop(
-                    candidate,
-                    "missing_required_reflection",
-                    {"expected_reflectors": sorted(relevant_reflectors)},
-                )
-                continue
 
             relevant_reports = [
                 report for report in cand_reports if report.reflector_specialty in relevant_reflectors
             ]
+
+            abstaining_reflectors: frozenset[str] | None = None
+            if missing_relevant:
+                require_full = cleanup_settings.reviewer_cleanup_require_full_reflection_quorum
+                if require_full or not relevant_reports:
+                    missing_required_reflections[candidate.candidate_id] = sorted(missing_relevant)
+                    drop(
+                        candidate,
+                        "missing_required_reflection",
+                        {"expected_reflectors": sorted(relevant_reflectors)},
+                    )
+                    continue
+                abstaining_reflectors = frozenset(missing_relevant)
+                if _trace_enabled(state):
+                    trace_logger.info(
+                        "TRACE cleanup_partial_reflection_quorum run_id=%s candidate=%s abstaining=%s "
+                        "reports_from=%s",
+                        run_id,
+                        candidate.candidate_id,
+                        sorted(missing_relevant),
+                        sorted({r.reflector_specialty for r in relevant_reports}),
+                    )
+
             relevant_needs_verification = any(
                 report.verdict == "needs_verification" for report in relevant_reports
             )
@@ -397,6 +414,8 @@ def make_adversarial_cleanup_node():
                 "relevant_reflectors": sorted(relevant_reflectors),
                 "had_focused_context": _focused_hits_for_candidate(state, candidate.candidate_id),
             }
+            if abstaining_reflectors:
+                lifecycle[candidate.candidate_id]["abstaining_reflectors"] = sorted(abstaining_reflectors)
             if candidate.candidate_id in verifier_hints:
                 lifecycle[candidate.candidate_id]["verifier_advisory"] = verifier_hints[candidate.candidate_id]
 

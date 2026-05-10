@@ -114,8 +114,8 @@ def parse_args() -> argparse.Namespace:
             "--snapshot-id is used and metadata repo_path is a GitHub URL, the harness may fetch "
             "pull/<PR>/head under <snapshot_root>/_reviewer_worktree using host git if available. "
             "--repo-root skips that and mounts your checkout read-only (recommended when you already "
-            "have the PR checked out). Without either, the verifier image may run "
-            "`git clone` (needs git in the image)."
+            "have the PR checked out). Without it, the verifier still runs self-contained generated scripts in "
+            "Docker; full in-container clone is opt-in (verifier_clone_remote_in_container + git in the image)."
         ),
     )
     parser.add_argument(

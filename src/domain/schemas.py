@@ -87,6 +87,46 @@ class ReviewTask(BaseModel):
     assigned_model: Optional[str] = None
 
 
+class BehavioralEvidenceRef(BaseModel):
+    """Pointer to evidence used when forming the behavioral mandate (not a bug claim)."""
+
+    kind: Literal["file", "symbol", "community", "doc", "diff", "other"] = "other"
+    ref: str = Field(description="Human-readable reference, e.g. repo-relative path or node id.")
+    note: str = Field(default="", description="Why this evidence matters.")
+
+
+class BehavioralSpec(BaseModel):
+    """
+    Heuristic behavioral mandate for pull-request review.
+    Downstream reviewers must treat this as directional context, not a checklist of expected defects.
+    """
+
+    intent_summary: str = Field(default="", description="Concise PR intent and scope.")
+    behavioral_expectations: str = Field(
+        default="",
+        description="Approximate expected behavior and explicit non-goals.",
+    )
+    contract_boundaries: str = Field(
+        default="",
+        description="Type, interface, API, and data-contract signals from the repo.",
+    )
+    historical_precedents: str = Field(
+        default="",
+        description="Relevant precedent or conventions (bounded, evidence-linked).",
+    )
+    risk_hypotheses: str = Field(
+        default="",
+        description="Broad areas worth attention, explicitly marked as hypotheses.",
+    )
+    reviewer_guidance: str = Field(
+        default="",
+        description="Instructions to stay structural and unbiased; avoid anchoring on predicted bugs.",
+    )
+    evidence_refs: List[BehavioralEvidenceRef] = Field(default_factory=list)
+    confidence: float = Field(default=0.5, ge=0.0, le=1.0)
+    uncertainties: str = Field(default="", description="Known gaps in understanding.")
+
+
 class ReviewFinding(BaseModel):
 
     # Basic finding information

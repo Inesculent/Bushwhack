@@ -412,15 +412,38 @@ def test_revision_inputs_ready_accepts_verifier_without_focused() -> None:
     assert revision_inputs_ready(state, [cid]) is True
 
 
-def test_start_verifier_sandbox_clones_when_repo_path_is_remote_url() -> None:
+def test_start_verifier_sandbox_snippet_workspace_when_no_local_repo_by_default() -> None:
+    from unittest.mock import MagicMock
+
     from src.orchestration.nodes.verifier.sandbox_executor import _start_verifier_sandbox
+
+    settings = MagicMock()
+    settings.verifier_clone_remote_in_container = False
+
+    class StubSb:
+        def __init__(self) -> None:
+            self.calls: list[str] = []
+
+        def start_snippet_workspace(self) -> str:
+            self.calls.append("snippet")
+            return "cid"
+
+    sb = StubSb()
+    _start_verifier_sandbox(sb, "https://github.com/other/repo", {}, settings=settings)  # type: ignore[arg-type]
+    assert sb.calls == ["snippet"]
+
+
+def test_start_verifier_sandbox_clones_when_clone_flag_enabled() -> None:
+    from unittest.mock import MagicMock
+
+    from src.orchestration.nodes.verifier.sandbox_executor import _start_verifier_sandbox
+
+    settings = MagicMock()
+    settings.verifier_clone_remote_in_container = True
 
     class StubSb:
         def __init__(self) -> None:
             self.calls: list[tuple] = []
-
-        def start(self, p: str) -> None:
-            self.calls.append(("start", p))
 
         def start_from_remote_ref(self, repo_url: str, ref: str) -> None:
             self.calls.append(("remote", repo_url, ref))
@@ -432,15 +455,19 @@ def test_start_verifier_sandbox_clones_when_repo_path_is_remote_url() -> None:
             "review_pr_number": 99,
         }
     }
-    _start_verifier_sandbox(sb, "https://github.com/other/repo", state)  # type: ignore[arg-type]
+    _start_verifier_sandbox(sb, "https://github.com/other/repo", state, settings=settings)  # type: ignore[arg-type]
     assert sb.calls[0] == ("remote", "https://github.com/o/r", "pull/99/head")
 
     sb2 = StubSb()
-    _start_verifier_sandbox(sb2, "https://github.com/o/r", None)  # type: ignore[arg-type]
+    _start_verifier_sandbox(sb2, "https://github.com/o/r", None, settings=settings)  # type: ignore[arg-type]
     assert sb2.calls[0] == ("remote", "https://github.com/o/r", "HEAD")
 
 
-def test_build_test_generator_prompt_str_format_succeeds() -> None:
+def test_review_sandbox_default_image_is_agent_fs_stack() -> None:
+    """Review context uses RepoSandbox() default image (git+rg stack per mcp/fs-mcp); verifier uses verifier_image."""
+    from src.infrastructure.sandbox import RepoSandbox
+
+    assert RepoSandbox().image_name == "agent-fs-sandbox"
     """Regression: markdown must use balanced {{}} placeholders for str.format."""
     from src.orchestration.nodes.verifier.test_generator import build_test_generator_prompt
     from src.orchestration.prompts.renderer import load_reviewer_prompt

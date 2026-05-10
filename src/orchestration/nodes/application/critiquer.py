@@ -73,26 +73,37 @@ def _normalize_focus_requests(
     return normalized
 
 
-def _render_critiquer_prompt(state: GraphState, task: ReviewTask, context_rendered: str) -> str:
-    return render_reviewer_prompt(
-        "critiquer.md",
-        {
-            "Assigned Task": (
-                f"Task ID: {task.id}\n"
-                f"Task title: {task.title}\n"
-                f"Task description: {task.description}\n"
-                f"Target files: {task.target_files}"
-            ),
-            "Direct Context Gathered By Tools": context_rendered,
-            "Git Diff Excerpt": (state.get("git_diff", "") or "")[:16000],
-        },
-    )
+def _render_critiquer_prompt(
+    state: GraphState,
+    task: ReviewTask,
+    context_rendered: str,
+    *,
+    mental_model_excerpt: str = "",
+    exploration_ledger_snippet: str = "",
+) -> str:
+    sections: Dict[str, str] = {
+        "Assigned Task": (
+            f"Task ID: {task.id}\n"
+            f"Task title: {task.title}\n"
+            f"Task description: {task.description}\n"
+            f"Target files: {task.target_files}"
+        ),
+        "Direct Context Gathered By Tools": context_rendered,
+        "Git Diff Excerpt": (state.get("git_diff", "") or "")[:16000],
+    }
+    if mental_model_excerpt.strip():
+        sections["Mental model excerpt (optional, pull-based)"] = mental_model_excerpt.strip()
+    if exploration_ledger_snippet.strip():
+        sections["Mental model query log (bounded)"] = exploration_ledger_snippet.strip()
+    return render_reviewer_prompt("critiquer.md", sections)
 
 
 def make_general_critiquer_node(
     context_provider: LazyReviewContextProvider,
     model_key: str | None = None,
     use_llm: bool = True,
+    *,
+    use_pipeline_cache: bool = False,
 ):
     node_name = "general_critiquer"
 
@@ -106,28 +117,79 @@ def make_general_critiquer_node(
 
         if _trace_enabled(state):
             trace_logger.info(
-                "TRACE critiquer_start run_id=%s task_id=%s files=%s",
+                "TRACE critiquer_start run_id=%s task_id=%s files=%s pipeline_cache=%s",
                 run_id,
                 task.id,
                 task.target_files,
+                use_pipeline_cache,
             )
 
-        context: ReviewTaskContext = context_provider.collect_for_task(state=state, task=task)
-        warnings: List[str] = list(context.warnings)
-        candidates: List[CandidateFinding] = []
-        summary = ""
-        initial_requests: List[FocusedContextRequest] = []
+        warnings: List[str] = []
+        context_rendered = ""
+        mental_model_excerpt = ""
+        exploration_ledger_snippet = ""
+        ast_files: List[str] = []
 
-        context_rendered = context.render()
+        if use_pipeline_cache:
+            meta_raw = state.get("metadata", {}) or {}
+            pipe = meta_raw.get("critique_pipeline", {}) or {}
+            by_task = pipe.get("by_task", {}) or {}
+            slot = by_task.get(task.id) if isinstance(by_task, dict) else None
+            if isinstance(slot, dict) and slot.get("direct_context"):
+                context_rendered = str(slot["direct_context"])
+                mental_model_excerpt = str(slot.get("mental_model_excerpt") or "")
+                warnings.extend(str(w) for w in (slot.get("warnings") or []) if w)
+                raw_ast = slot.get("ast_included_files") or []
+                if isinstance(raw_ast, list):
+                    ast_files = [str(p) for p in raw_ast if isinstance(p, str) and p.strip()]
+            else:
+                ctx_fb = context_provider.collect_for_task(state=state, task=task)
+                warnings.extend(ctx_fb.warnings)
+                context_rendered = ctx_fb.render()
+                ast_files = list(ctx_fb.ast_included_files)
+        else:
+            ctx0 = context_provider.collect_for_task(state=state, task=task)
+            warnings.extend(ctx0.warnings)
+            context_rendered = ctx0.render()
+            ast_files = list(ctx0.ast_included_files)
+
         struct_excerpt = structural_critiquer_context_excerpt(state, task.target_files)
         if struct_excerpt:
             context_rendered = f"{context_rendered}\n\n{struct_excerpt}"
 
+        ledger_rows = state.get("exploration_ledger") or []
+        if ledger_rows:
+            from src.orchestration.prompts.ledger_formatter import format_exploration_ledger_for_prompt
+
+            snippet, stats = format_exploration_ledger_for_prompt(
+                ledger_rows,
+                task_id=task.id,
+                target_files=task.target_files,
+            )
+            exploration_ledger_snippet = snippet
+            metadata_for_metrics = dict(state.get("metadata", {}) or {})
+            mm = dict(metadata_for_metrics.get("mental_model_metrics") or {})
+            mm["ledger_formatter_rendered"] = int(mm.get("ledger_formatter_rendered", 0)) + stats.rendered
+            mm["ledger_formatter_deduped"] = int(mm.get("ledger_formatter_deduped", 0)) + stats.deduped
+            metadata_for_metrics["mental_model_metrics"] = mm
+            state = {**state, "metadata": metadata_for_metrics}
+
+        candidates: List[CandidateFinding] = []
+        summary = ""
+        initial_requests: List[FocusedContextRequest] = []
         if use_llm:
             selected_model = model_key or getattr(get_settings(), "reviewer_worker_model_key", None)
             try:
                 llm = Models.worker(CritiquerOutput, model_key=selected_model)
-                invoke_result = llm.invoke(_render_critiquer_prompt(state, task, context_rendered))
+                invoke_result = llm.invoke(
+                    _render_critiquer_prompt(
+                        state,
+                        task,
+                        context_rendered,
+                        mental_model_excerpt=mental_model_excerpt,
+                        exploration_ledger_snippet=exploration_ledger_snippet,
+                    )
+                )
                 response = parse_structured_output(invoke_result, CritiquerOutput)
                 llm_tokens = extract_total_tokens_from_llm_result(invoke_result)
                 candidates = _normalize_candidates(task=task, candidates=response.candidates)
@@ -159,13 +221,13 @@ def make_general_critiquer_node(
             )
 
         metadata = dict(state.get("metadata", {}) or {})
-        if context.ast_included_files:
+        if ast_files:
             prev = metadata.get("ast_included_files")
             base = list(prev) if isinstance(prev, list) else []
             metadata["ast_included_files"] = sorted(
                 {
                     p.strip().replace("\\", "/")
-                    for p in base + context.ast_included_files
+                    for p in base + ast_files
                     if isinstance(p, str) and p.strip()
                 }
             )

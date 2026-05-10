@@ -274,86 +274,125 @@ def _render_planner_prompt(state: GraphState) -> str:
     )
 
 
+def run_planner_generation(
+    state: GraphState,
+    *,
+    model_key: str | None = None,
+    use_llm: bool = True,
+) -> tuple[List[ReviewTask], str, List[str], int]:
+    """Run LLM planner (or deterministic fallback) and return normalized leaf tasks."""
+    run_id = state.get("run_id", "unknown")
+    tasks = _default_tasks(state)
+    summary = "Default parallel review plan."
+    warnings: List[str] = []
+    llm_tokens = 0
+
+    if use_llm:
+        selected_model = model_key or getattr(get_settings(), "reviewer_planner_model_key", None)
+        try:
+            prompt = _render_planner_prompt(state)
+            if _trace_enabled(state):
+                trace_logger.info(
+                    "TRACE planner_prompt run_id=%s model=%s prompt_chars=%s",
+                    run_id,
+                    selected_model,
+                    len(prompt),
+                )
+            llm = Models.planner(ReviewPlanOutput, model_key=selected_model)
+            invoke_result = llm.invoke(prompt)
+            response = parse_structured_output(invoke_result, ReviewPlanOutput)
+            llm_tokens = extract_total_tokens_from_llm_result(invoke_result)
+            tasks = _normalize_tasks(response.tasks, state)
+            summary = response.summary or summary
+        except Exception as exc:  # noqa: BLE001 - planner fallback keeps review runs alive
+            warnings.append(f"planner_llm_fallback:{exc.__class__.__name__}: {exc}")
+            logger.warning(
+                "review_planner falling back to deterministic plan run_id=%s reason=%s: %s",
+                run_id,
+                exc.__class__.__name__,
+                exc,
+            )
+
+    return tasks, summary, warnings, llm_tokens
+
+
+def build_planner_state_update(
+    state: GraphState,
+    tasks: List[ReviewTask],
+    summary: str,
+    warnings: List[str],
+    llm_tokens: int,
+    *,
+    node_history_name: str = "review_planner",
+    metadata_extra: Dict[str, Any] | None = None,
+) -> Dict[str, Any]:
+    """Canonical task_registry / task_status_by_id / metadata block for planner outputs."""
+    run_id = state.get("run_id", "unknown")
+    root_task = ReviewTask(
+        id="review-root",
+        title="Parallel code review",
+        description=summary,
+        target_files=_target_files(state),
+        specialty="general",
+        depth=0,
+        subtasks=tasks,
+    )
+    task_registry = {root_task.id: root_task}
+    task_registry.update({task.id: task for task in tasks})
+
+    metadata = dict(state.get("metadata", {}))
+    planner_block: Dict[str, Any] = {
+        "summary": summary,
+        "task_count": len(tasks),
+        "specialties": sorted({task.specialty for task in tasks}),
+        "tasks": [task.model_dump() for task in tasks],
+        "warnings": warnings,
+    }
+    if metadata_extra:
+        planner_block.update(metadata_extra)
+    metadata["review_planner"] = planner_block
+
+    if _trace_enabled(state):
+        trace_logger.info(
+            "TRACE planner run_id=%s summary=%r task_count=%s node=%s",
+            run_id,
+            summary,
+            len(tasks),
+            node_history_name,
+        )
+        for task in tasks:
+            trace_logger.info(
+                "TRACE plan_task run_id=%s task_id=%s specialty=%s files=%s title=%r",
+                run_id,
+                task.id,
+                task.specialty,
+                task.target_files,
+                task.title,
+            )
+
+    return {
+        "root_task_id": root_task.id,
+        "task_registry": task_registry,
+        "task_status_by_id": {task.id: "pending" for task in tasks},
+        "metadata": metadata,
+        "node_history": [node_history_name],
+        "next_step": "review",
+        "token_usage": llm_tokens,
+    }
+
+
 def make_review_planner_node(model_key: str | None = None, use_llm: bool = True):
     def review_planner_node(state: GraphState) -> Dict[str, Any]:
-        run_id = state.get("run_id", "unknown")
-        tasks = _default_tasks(state)
-        summary = "Default parallel review plan."
-        warnings: List[str] = []
-        llm_tokens = 0
-
-        if use_llm:
-            selected_model = model_key or getattr(get_settings(), "reviewer_planner_model_key", None)
-            try:
-                prompt = _render_planner_prompt(state)
-                if _trace_enabled(state):
-                    trace_logger.info(
-                        "TRACE planner_prompt run_id=%s model=%s prompt_chars=%s",
-                        run_id,
-                        selected_model,
-                        len(prompt),
-                    )
-                llm = Models.planner(ReviewPlanOutput, model_key=selected_model)
-                invoke_result = llm.invoke(prompt)
-                response = parse_structured_output(invoke_result, ReviewPlanOutput)
-                llm_tokens = extract_total_tokens_from_llm_result(invoke_result)
-                tasks = _normalize_tasks(response.tasks, state)
-                summary = response.summary or summary
-            except Exception as exc:  # noqa: BLE001 - planner fallback keeps review runs alive
-                warnings.append(f"planner_llm_fallback:{exc.__class__.__name__}: {exc}")
-                logger.warning(
-                    "review_planner falling back to deterministic plan run_id=%s reason=%s: %s",
-                    run_id,
-                    exc.__class__.__name__,
-                    exc,
-                )
-
-        root_task = ReviewTask(
-            id="review-root",
-            title="Parallel code review",
-            description=summary,
-            target_files=_target_files(state),
-            specialty="general",
-            depth=0,
-            subtasks=tasks,
+        tasks, summary, warnings, llm_tokens = run_planner_generation(
+            state, model_key=model_key, use_llm=use_llm
         )
-        task_registry = {root_task.id: root_task}
-        task_registry.update({task.id: task for task in tasks})
-
-        metadata = dict(state.get("metadata", {}))
-        metadata["review_planner"] = {
-            "summary": summary,
-            "task_count": len(tasks),
-            "specialties": sorted({task.specialty for task in tasks}),
-            "tasks": [task.model_dump() for task in tasks],
-            "warnings": warnings,
-        }
-
-        if _trace_enabled(state):
-            trace_logger.info(
-                "TRACE planner run_id=%s summary=%r task_count=%s",
-                run_id,
-                summary,
-                len(tasks),
-            )
-            for task in tasks:
-                trace_logger.info(
-                    "TRACE plan_task run_id=%s task_id=%s specialty=%s files=%s title=%r",
-                    run_id,
-                    task.id,
-                    task.specialty,
-                    task.target_files,
-                    task.title,
-                )
-
-        return {
-            "root_task_id": root_task.id,
-            "task_registry": task_registry,
-            "task_status_by_id": {task.id: "pending" for task in tasks},
-            "metadata": metadata,
-            "node_history": ["review_planner"],
-            "next_step": "review",
-            "token_usage": llm_tokens,
-        }
+        return build_planner_state_update(
+            state,
+            tasks,
+            summary,
+            warnings,
+            llm_tokens,
+            node_history_name="review_planner",
+        )
 
     return review_planner_node

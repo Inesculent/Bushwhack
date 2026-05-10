@@ -48,7 +48,14 @@ from src.orchestration.nodes.application.critique_revision import (
     plan_critique_revision_shards,
     revision_inputs_ready,
 )
-from src.orchestration.nodes.application.critiquer import make_general_critiquer_node
+from src.orchestration.nodes.application.actor_critic_planner import (
+    make_draft_planner_node,
+    make_plan_critic_node,
+    make_plan_emit_node,
+    make_plan_revision_node,
+    route_plan_critic,
+)
+from src.orchestration.nodes.application.critique_pipeline import build_critique_review_subgraph
 from src.orchestration.nodes.application.focused_context import make_focused_context_node
 from src.orchestration.nodes.application.planner import make_review_planner_node
 from src.orchestration.nodes.application.reflection import make_adversarial_reflection_node
@@ -63,12 +70,19 @@ from src.orchestration.nodes.exploration.semantic_dispatch import (
 )
 from src.orchestration.nodes.exploration.semantic_merge import make_semantic_merge_node
 from src.orchestration.nodes.exploration.snapshot_pin import make_snapshot_pin_node
+from src.orchestration.nodes.mental_model import (
+    make_contract_inspector_node,
+    make_historical_miner_node,
+    make_intent_extractor_node,
+    make_mandate_synthesizer_node,
+)
 from src.orchestration.nodes.exploration.structural_extractor import make_structural_extractor_node
 from src.orchestration.nodes.exploration.unverified_call_resolver import (
     make_unverified_call_resolver_node,
     route_after_unverified_call_resolver,
 )
 from src.orchestration.routing.adversarial_after_reflection import route_focused_after_reflection
+from src.orchestration.routing.send_payload import payload_for_send
 from src.orchestration.routing.verifier_fanout import (
     collect_verifier_send_payloads,
     make_verifier_subgraph_node,
@@ -96,9 +110,8 @@ def _route_critique_tasks(state: GraphState):
             continue
         if state.get("task_status_by_id", {}).get(task_id) == "completed":
             continue
-        payload = dict(state)
-        payload["current_task_id"] = task_id
-        sends.append(Send("general_critiquer", payload))
+        payload = payload_for_send(state, current_task_id=task_id)
+        sends.append(Send("critique_review_subgraph", payload))
         if metadata.get("review_trace_enabled"):
             trace_logger.info(
                 "TRACE dispatch_critiquer run_id=%s task_id=%s files=%s",
@@ -182,8 +195,7 @@ def _route_critique_revision(state: GraphState):
         return "adversarial_cleanup"
     sends: List[Send] = []
     for shard in shards:
-        payload = dict(state)
-        payload["critique_revision_shard"] = shard.model_dump(mode="json")
+        payload = payload_for_send(state, critique_revision_shard=shard.model_dump(mode="json"))
         sends.append(Send("critique_revision_digest", payload))
     if metadata.get("review_trace_enabled"):
         trace_logger.info(
@@ -201,6 +213,13 @@ def _route_initial_context(state: GraphState) -> str:
     if state.get("preflight_summary") and state.get("structural_graph_node_link"):
         if semantic_phase2_should_run(state, settings):
             route = "semantic_dispatch"
+        elif (
+            not settings.reviewer_legacy_planner_mode
+            and state.get("snapshot_source") == "loaded"
+        ):
+            # Snapshot resume: exploration is precomputed, but Phase 0 + actor-critic are orthogonal
+            # and can run on loaded graph/summaries without re-running semantic_merge.
+            route = "intent_extractor"
         else:
             route = "review_planner"
     elif Path(repo_path).is_dir():
@@ -367,8 +386,7 @@ def _route_review_tasks(state: GraphState):
         if state.get("task_status_by_id", {}).get(task_id) == "completed":
             continue
         specialty = task.specialty if task.specialty in WORKER_NODE_BY_SPECIALTY else "general"
-        payload = dict(state)
-        payload["current_task_id"] = task_id
+        payload = payload_for_send(state, current_task_id=task_id)
         sends.append(Send(WORKER_NODE_BY_SPECIALTY[specialty], payload))
         if metadata.get("review_trace_enabled"):
             trace_logger.info(
@@ -386,6 +404,25 @@ def _route_review_tasks(state: GraphState):
             state.get("run_id", "unknown"),
         )
     return sends or "review_synthesizer"
+
+
+def _route_after_semantic_merge(state: GraphState) -> str:
+    if get_settings().reviewer_legacy_planner_mode:
+        return "snapshot_pin"
+    return "intent_extractor"
+
+
+def _route_after_snapshot_pin(state: GraphState) -> str:
+    if get_settings().reviewer_legacy_planner_mode:
+        return "review_planner"
+    return "draft_planner"
+
+
+def _route_after_planner(state: GraphState):
+    """After any planner node emits tasks, fan out to workers or adversarial critique."""
+    if get_settings().reviewer_use_legacy_specialist_workers:
+        return _route_review_tasks(state)
+    return _route_critique_tasks(state)
 
 
 def _make_cleanup_synthesizer(context_provider: LazyReviewContextProvider):
@@ -449,11 +486,19 @@ def build_graph(
         make_unverified_call_resolver_node(ast_parser=ast_parser, settings=settings),
     )
     builder.add_node("semantic_merge", make_semantic_merge_node(settings=settings))
+    builder.add_node("intent_extractor", make_intent_extractor_node(settings=settings))
+    builder.add_node("contract_inspector", make_contract_inspector_node(settings=settings))
+    builder.add_node("historical_miner", make_historical_miner_node(settings=settings))
+    builder.add_node("mandate_synthesizer", make_mandate_synthesizer_node(settings=settings))
     builder.add_node(
         "snapshot_pin",
         make_snapshot_pin_node(snapshot_writer, pointer_store, settings=settings),
     )
     builder.add_node("review_planner", make_review_planner_node())
+    builder.add_node("draft_planner", make_draft_planner_node(settings=settings))
+    builder.add_node("plan_critic", make_plan_critic_node(settings=settings))
+    builder.add_node("plan_revision", make_plan_revision_node(settings=settings))
+    builder.add_node("plan_emit", make_plan_emit_node())
     builder.add_node("review_synthesizer", _make_cleanup_synthesizer(context_provider))
 
     if settings.reviewer_use_legacy_specialist_workers:
@@ -477,10 +522,8 @@ def build_graph(
         for worker_node in WORKER_NODE_BY_SPECIALTY.values():
             builder.add_edge(worker_node, "review_synthesizer")
     else:
-        builder.add_node(
-            "general_critiquer",
-            make_general_critiquer_node(context_provider=context_provider),
-        )
+        critique_review_subgraph = build_critique_review_subgraph(context_provider)
+        builder.add_node("critique_review_subgraph", critique_review_subgraph)
         builder.add_node("adversarial_reflection", make_adversarial_reflection_node())
         builder.add_node(
             "initial_focused_context",
@@ -495,8 +538,9 @@ def build_graph(
         builder.add_node("adversarial_cleanup", make_adversarial_cleanup_node())
         builder.add_node("verifier_subgraph", make_verifier_subgraph_node())
         builder.add_node("post_reflection_evidence_pass", _make_post_reflection_evidence_pass_node())
-        builder.add_conditional_edges("review_planner", _route_critique_tasks)
-        builder.add_edge("general_critiquer", "initial_focused_context")
+        builder.add_conditional_edges("review_planner", _route_after_planner)
+        builder.add_conditional_edges("plan_emit", _route_after_planner)
+        builder.add_edge("critique_review_subgraph", "initial_focused_context")
         builder.add_edge("initial_focused_context", "adversarial_reflection")
         builder.add_conditional_edges(
             "adversarial_reflection",
@@ -522,6 +566,7 @@ def build_graph(
             "structural_extractor": "structural_extractor",
             "sandbox_structural_extractor": "sandbox_structural_extractor",
             "review_planner": "review_planner",
+            "intent_extractor": "intent_extractor",
             "semantic_dispatch": "semantic_dispatch",
         },
     )
@@ -532,6 +577,7 @@ def build_graph(
             "structural_extractor": "structural_extractor",
             "sandbox_structural_extractor": "sandbox_structural_extractor",
             "review_planner": "review_planner",
+            "intent_extractor": "intent_extractor",
             "semantic_dispatch": "semantic_dispatch",
         },
     )
@@ -561,8 +607,36 @@ def build_graph(
             "semantic_merge": "semantic_merge",
         },
     )
-    builder.add_edge("semantic_merge", "snapshot_pin")
-    builder.add_edge("snapshot_pin", "review_planner")
+    builder.add_conditional_edges(
+        "semantic_merge",
+        _route_after_semantic_merge,
+        {
+            "snapshot_pin": "snapshot_pin",
+            "intent_extractor": "intent_extractor",
+        },
+    )
+    builder.add_edge("intent_extractor", "contract_inspector")
+    builder.add_edge("contract_inspector", "historical_miner")
+    builder.add_edge("historical_miner", "mandate_synthesizer")
+    builder.add_edge("mandate_synthesizer", "snapshot_pin")
+    builder.add_conditional_edges(
+        "snapshot_pin",
+        _route_after_snapshot_pin,
+        {
+            "review_planner": "review_planner",
+            "draft_planner": "draft_planner",
+        },
+    )
+    builder.add_edge("draft_planner", "plan_critic")
+    builder.add_conditional_edges(
+        "plan_critic",
+        route_plan_critic,
+        {
+            "plan_emit": "plan_emit",
+            "plan_revision": "plan_revision",
+        },
+    )
+    builder.add_edge("plan_revision", "plan_critic")
     builder.add_edge("review_synthesizer", END)
 
     if checkpointer is None:

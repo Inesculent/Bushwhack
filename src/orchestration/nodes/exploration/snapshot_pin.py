@@ -66,7 +66,26 @@ def make_snapshot_pin_node(
     """Materialize snapshot tree and write coordination pointer."""
 
     def snapshot_pin_node(state: GraphState) -> Dict[str, Any]:
-        resolved_settings = settings or get_settings()
+        # Loaded exploration snapshot: do not materialize a second on-disk tree; merge refs only.
+        if state.get("snapshot_source") == "loaded":
+            meta = dict(state.get("metadata", {}) or {})
+            snap_out: Dict[str, Any] = dict(meta.get("exploration_snapshot") or {})
+            if state.get("snapshot_id") is not None:
+                snap_out["snapshot_id"] = state["snapshot_id"]
+            if state.get("snapshot_root") is not None:
+                snap_out["snapshot_root"] = state["snapshot_root"]
+            inner_meta = dict(snap_out.get("metadata") or {})
+            if state.get("behavioral_spec_ref"):
+                inner_meta["behavioral_spec_ref"] = state["behavioral_spec_ref"]
+            if inner_meta:
+                snap_out["metadata"] = inner_meta
+            meta["exploration_snapshot"] = snap_out
+            return {
+                "metadata": meta,
+                "node_history": ["snapshot_pin:loaded_passthrough"],
+                "next_step": "plan",
+            }
+
         run_id = str(state.get("run_id", "unknown"))
         repo_path = str(state.get("repo_path", "") or "")
         topo = state.get("structural_topology")
@@ -111,7 +130,12 @@ def make_snapshot_pin_node(
             logger.warning("snapshot pointer store failed run_id=%s err=%s", run_id, exc)
 
         meta = dict(state.get("metadata", {}))
-        meta["exploration_snapshot"] = snap.model_dump(mode="json")
+        snap_dump = snap.model_dump(mode="json")
+        if state.get("behavioral_spec_ref"):
+            m = dict(snap_dump.get("metadata") or {})
+            m["behavioral_spec_ref"] = state["behavioral_spec_ref"]
+            snap_dump["metadata"] = m
+        meta["exploration_snapshot"] = snap_dump
 
         return {
             "snapshot_root": root,

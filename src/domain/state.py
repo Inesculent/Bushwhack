@@ -101,6 +101,10 @@ class GraphState(TypedDict, total=False):
     semantic_community_work_queue: Annotated[List[Dict[str, Any]], replace_list_reducer]
     semantic_dispatch_cursor: NotRequired[int]
 
+    # Mental model (externalized spec; ref only — never full BehavioralSpec on state for Send payloads)
+    behavioral_spec_ref: NotRequired[str]
+    exploration_ledger: Annotated[List[Dict[str, Any]], operator.add]
+
     # Task state: canonical task payloads + lifecycle status by task id.
     # Dict union reducers support compact per-task updates that are cache-friendly.
     root_task_id: NotRequired[str]

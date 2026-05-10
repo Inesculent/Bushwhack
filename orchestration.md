@@ -36,6 +36,32 @@ flowchart TD
 
 There is also a legacy worker path behind `Settings.reviewer_use_legacy_specialist_workers`. When enabled, `review_planner` fans out directly to `security_worker`, `logic_worker`, `performance_worker`, and `general_worker`, then joins at `review_synthesizer`. The default is the adversarial path.
 
+## Mental model and planner modes (default vs legacy)
+
+Orthogonal flags:
+
+- `Settings.reviewer_legacy_planner_mode` (`REVIEW_REVIEWER_LEGACY_PLANNER_MODE`, default `false`):
+  - **`false` (default):** After Phase 2 `semantic_merge`, **or** when resuming from a loaded exploration snapshot (`snapshot_source: "loaded"`), the graph runs Phase 0 mental-model nodes (`intent_extractor` → `contract_inspector` → `historical_miner` → `mandate_synthesizer`), then `snapshot_pin`, then **actor–critic planning** (`draft_planner` → `plan_critic` ↔ `plan_revision` → `plan_emit`). The full `BehavioralSpec` is written to disk via `BehavioralSpecStore`; only `behavioral_spec_ref` and `cache_refs` appear on `GraphState`.
+  - **`true` (legacy):** Skips Phase 0 and actor–critic; `semantic_merge` goes straight to `snapshot_pin`, then the monolithic `review_planner`.
+
+- `Settings.reviewer_use_legacy_specialist_workers` (unchanged): switches adversarial critique vs legacy specialist workers after tasks exist.
+
+### Adversarial critique pipeline (double node)
+
+When adversarial mode is on and legacy planner mode is off, each planned task runs the compiled subgraph `critique_review_subgraph`:
+
+`critique_context_probe` → `mental_model_context_enricher` → `general_critiquer`
+
+This ensures direct code context is gathered **before** optional `query_mental_model` calls. Parallel `Send` payloads use `payload_for_send` to avoid copying forbidden large keys.
+
+### Exploration ledger
+
+`exploration_ledger` is append-only (`operator.add`). Prompts include only a **bounded** digest via `format_exploration_ledger_for_prompt` in `src/orchestration/prompts/ledger_formatter.py` so reflection and critiquer prompts do not inline the full ledger.
+
+### Snapshot resume (`snapshot_source: "loaded"`)
+
+When the harness loads a prior exploration snapshot (for example `reviewer_agent --snapshot-id`), Phase 2 community agents still do not re-run. With **`reviewer_legacy_planner_mode=false`** (default), the graph still runs **Phase 0** from `intent_extractor` through `mandate_synthesizer`, then `snapshot_pin`, then actor–critic planning. For loaded snapshots, **`snapshot_pin` does not call `SnapshotWriter.write_snapshot` again** (no duplicate tree); it merges `behavioral_spec_ref` (and ids) into `metadata["exploration_snapshot"]` and logs `snapshot_pin:loaded_passthrough`. With **`reviewer_legacy_planner_mode=true`**, resume routes straight to `review_planner` as before. The **basic** graph (`reviewer_graph_basic`) unchanged: snapshot resume still enters `review_planner` directly.
+
 ## Routing And State
 
 The graph state type is `GraphState` in `src/domain/state.py`. Important channels:
@@ -44,12 +70,13 @@ The graph state type is `GraphState` in `src/domain/state.py`. Important channel
 - Preflight and structural context: `diff_manifest_ref`, `preflight_summary`, `preflight_errors`, `preflight_warnings`, `structural_graph_node_link`, `structural_topology`, `structural_extraction_gaps`.
 - Planning state: `root_task_id`, `task_registry`, `task_status_by_id`.
 - Adversarial review state: `candidate_findings`, `reflection_reports`, `focused_context_requests`, `focused_context_results`, `critique_revision_digests` (map-step outputs merged by shard id).
+- Mental model: `behavioral_spec_ref` (pointer only), `exploration_ledger` (bounded entries for `query_mental_model` and metrics).
 - Outputs: `findings` and `final_findings`.
 - Debugging: `metadata`, `node_history`, `token_usage`.
 
 Parallel fan-out relies on reducers:
 
-- List channels such as `candidate_findings`, `reflection_reports`, `findings`, and `node_history` use `operator.add`.
+- List channels such as `candidate_findings`, `reflection_reports`, `findings`, `exploration_ledger`, and `node_history` use `operator.add`.
 - Dict channels such as `task_registry`, `task_status_by_id`, `focused_context_results`, and `critique_revision_digests` use dict union reducers.
 - `metadata` uses `merge_graph_metadata`, a recursive dict merge. This is required because multiple parallel `general_critiquer` nodes update `metadata` in the same LangGraph step.
 

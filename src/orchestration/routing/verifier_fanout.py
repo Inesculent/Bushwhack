@@ -12,6 +12,7 @@ from src.config import get_settings
 from src.domain.schemas import CandidateFinding, FocusedContextResult
 from src.domain.state import GraphState
 from src.domain.verifier_schemas import VerifierReport
+from src.orchestration.routing.send_payload import payload_for_send
 from src.orchestration.nodes.application.critique_revision import (
     _candidate_ids_needs_verification,
     _has_focused_evidence,
@@ -128,8 +129,7 @@ def collect_verifier_send_payloads(state: GraphState) -> List[Send]:
 
     sends: List[Send] = []
     for cand in eligible:
-        payload = dict(state)
-        payload["verifier_candidate"] = cand.model_dump(mode="json")
+        payload = payload_for_send(state, verifier_candidate=cand.model_dump(mode="json"))
         sends.append(Send("verifier_subgraph", payload))
     return sends
 

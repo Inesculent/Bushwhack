@@ -69,7 +69,9 @@ def test_snapshot_resume_marks_docs_prebrief_done(tmp_path: Path) -> None:
     assert isinstance(captured["state"]["preflight_summary"], PreflightSummary)
 
 
-def test_snapshot_resume_start_routes_directly_to_planner() -> None:
+def test_snapshot_resume_start_routes_to_mental_model_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    from src.config import get_settings
+
     state = {
         "run_id": "run1:repo__pr1_from_snapshot_abc123",
         "repo_path": "https://github.com/comfyanonymous/ComfyUI",
@@ -77,6 +79,7 @@ def test_snapshot_resume_start_routes_directly_to_planner() -> None:
         "snapshot_root": "C:/snapshots/example",
         "preflight_summary": {"manifest_id": "snapshot_abc123"},
         "structural_graph_node_link": {"nodes": [], "edges": []},
+        "snapshot_source": "loaded",
         "metadata": {
             "docs_prebrief": {
                 "status": "skipped_snapshot_resume",
@@ -85,8 +88,42 @@ def test_snapshot_resume_start_routes_directly_to_planner() -> None:
         },
     }
 
-    assert route_reviewer_start(state) == "review_planner"
-    assert route_basic_start(state) == "review_planner"
+    monkeypatch.setenv("REVIEW_REVIEWER_LEGACY_PLANNER_MODE", "false")
+    get_settings.cache_clear()
+    try:
+        assert route_reviewer_start(state) == "intent_extractor"
+        assert route_basic_start(state) == "review_planner"
+    finally:
+        monkeypatch.delenv("REVIEW_REVIEWER_LEGACY_PLANNER_MODE", raising=False)
+        get_settings.cache_clear()
+
+
+def test_snapshot_resume_start_routes_to_planner_when_legacy_planner(monkeypatch: pytest.MonkeyPatch) -> None:
+    from src.config import get_settings
+
+    state = {
+        "run_id": "run1",
+        "repo_path": "https://github.com/comfyanonymous/ComfyUI",
+        "git_diff": "diff --git a/x.py b/x.py\n",
+        "snapshot_root": "C:/snapshots/example",
+        "preflight_summary": {"manifest_id": "snapshot_abc123"},
+        "structural_graph_node_link": {"nodes": [], "edges": []},
+        "snapshot_source": "loaded",
+        "metadata": {
+            "docs_prebrief": {
+                "status": "skipped_snapshot_resume",
+                "reason": "snapshot_resume_uses_precomputed_context",
+            },
+        },
+    }
+
+    monkeypatch.setenv("REVIEW_REVIEWER_LEGACY_PLANNER_MODE", "true")
+    get_settings.cache_clear()
+    try:
+        assert route_reviewer_start(state) == "review_planner"
+    finally:
+        monkeypatch.delenv("REVIEW_REVIEWER_LEGACY_PLANNER_MODE", raising=False)
+        get_settings.cache_clear()
 
 
 def test_review_context_degrades_when_sandbox_startup_fails(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -26,6 +26,12 @@ class RepoSandbox:
         
         self.image_name = image_name
         self.container = None
+        self._execution_workdir = "/repo"
+
+    @property
+    def execution_workdir(self) -> str:
+        """Working directory for verifier/exec helpers: ``/repo`` when mounted or cloned, else ``/workspace``."""
+        return self._execution_workdir
 
     def create_execution_workspace(self, workspace_name: Optional[str] = None) -> str:
         """
@@ -75,6 +81,21 @@ class RepoSandbox:
             volumes={abs_path: {'bind': '/repo', 'mode': 'ro'}}, # Read-only for safety
             working_dir="/repo"
         )
+        self._execution_workdir = "/repo"
+        return self.container.id
+
+    def start_snippet_workspace(self) -> str:
+        """Start with no repo mount; for self-contained verifier scripts (matches slim verifier images)."""
+        if self.container:
+            raise RuntimeError("Sandbox is already started.")
+
+        self.container = self.client.containers.run(
+            self.image_name,
+            detach=True,
+            tty=True,
+            working_dir="/workspace",
+        )
+        self._execution_workdir = "/workspace"
         return self.container.id
 
     def start_from_remote(self, repo_url: str, commit_hash: str) -> str:
@@ -91,6 +112,7 @@ class RepoSandbox:
             tty=True,
             working_dir="/",
         )
+        self._execution_workdir = "/repo"
 
         try:
             self.execute(["git", "clone", repo_url, "/repo"], check_exit_code=True)
@@ -120,6 +142,7 @@ class RepoSandbox:
             tty=True,
             working_dir="/",
         )
+        self._execution_workdir = "/repo"
 
         try:
             self.execute(["git", "clone", repo_url, "/repo"], check_exit_code=True)

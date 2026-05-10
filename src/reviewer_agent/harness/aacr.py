@@ -344,8 +344,8 @@ def _invoke_for_pr(
                     except Exception as exc:  # noqa: BLE001
                         logger.warning(
                             "Snapshot resume: could not prepare local PR worktree (%s: %s); "
-                            "using URL repo_path (review sandbox will clone remotely; verifier "
-                            "needs git in its image or pass --repo-root).",
+                            "using URL repo_path (verifier runs snippet-only in Docker unless you pass "
+                            "--repo-root or set verifier_clone_remote_in_container with git in the image).",
                             exc.__class__.__name__,
                             exc,
                         )

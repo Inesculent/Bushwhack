@@ -64,16 +64,22 @@ def _candidates_by_reflector(candidates: List[CandidateFinding]) -> Dict[str, Li
     return grouped
 
 
-def _render_reflection_prompt(state: GraphState, specialty: str, candidates: List[CandidateFinding]) -> str:
+def _render_reflection_prompt(
+    state: GraphState,
+    specialty: str,
+    candidates: List[CandidateFinding],
+    *,
+    mental_model_ledger_snippet: str = "",
+) -> str:
+    sections = {
+        "Reflector Specialty": specialty,
+        "Candidate Findings (JSON lines)": _serialize_candidates(candidates),
+        "Git Diff Excerpt": (state.get("git_diff", "") or "")[:12000],
+    }
+    if mental_model_ledger_snippet.strip():
+        sections["Mental model query log (bounded)"] = mental_model_ledger_snippet.strip()
     rel_path = f"reflection/{specialty}.md"
-    return render_reviewer_prompt(
-        rel_path,
-        {
-            "Reflector Specialty": specialty,
-            "Candidate Findings (JSON lines)": _serialize_candidates(candidates),
-            "Git Diff Excerpt": (state.get("git_diff", "") or "")[:12000],
-        },
-    )
+    return render_reviewer_prompt(rel_path, sections)
 
 
 def _normalize_focus_request(
@@ -148,6 +154,20 @@ def make_adversarial_reflection_node(
                 specialty_candidates = candidates_by_reflector[specialty]
                 if not specialty_candidates:
                     continue
+                c_ids = [c.candidate_id for c in specialty_candidates]
+                from src.orchestration.prompts.ledger_formatter import format_exploration_ledger_for_prompt
+
+                snippet, stats = format_exploration_ledger_for_prompt(
+                    state.get("exploration_ledger") or [],
+                    candidate_ids=c_ids,
+                    max_entries=5,
+                    max_chars=2000,
+                )
+                metadata_merged = dict(state.get("metadata", {}) or {})
+                mm = dict(metadata_merged.get("mental_model_metrics") or {})
+                mm["reflection_ledger_formatter_rendered"] = int(mm.get("reflection_ledger_formatter_rendered", 0)) + stats.rendered
+                metadata_merged["mental_model_metrics"] = mm
+                state = {**state, "metadata": metadata_merged}
                 timeout_deadline = (
                     time.monotonic() + resolved_settings.reviewer_reflection_timeout_patience_seconds
                     if is_local_model(selected_model)
@@ -160,7 +180,7 @@ def make_adversarial_reflection_node(
                     try:
                         llm = Models.worker(ReflectionBatchOutput, model_key=selected_model)
                         invoke_result = llm.invoke(
-                            _render_reflection_prompt(state, specialty, specialty_candidates)
+                            _render_reflection_prompt(state, specialty, specialty_candidates, mental_model_ledger_snippet=snippet)
                         )
                         response = parse_structured_output(invoke_result, ReflectionBatchOutput)
                         llm_tokens += extract_total_tokens_from_llm_result(invoke_result)

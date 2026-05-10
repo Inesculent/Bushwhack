@@ -11,6 +11,7 @@ from src.config import Settings, get_settings
 from src.domain.schemas import StructuralTopologySummary
 from src.domain.state import GraphState
 from src.infrastructure.community_context import plan_community_dispatch
+from src.orchestration.routing.send_payload import payload_for_send
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +90,7 @@ def route_semantic_dispatch(state: GraphState) -> Any:
     return [
         Send(
             "community_semantic_agent",
-            {**dict(state), "semantic_community_work_item": item},
+            payload_for_send(state, semantic_community_work_item=item),
         )
         for item in queue[cursor:end]
     ]

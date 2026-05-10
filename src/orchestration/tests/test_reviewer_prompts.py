@@ -18,6 +18,12 @@ def test_reviewer_prompt_files_exist_for_all_roles():
         "workers/logic.md",
         "workers/performance.md",
         "workers/general.md",
+        "mental_model/intent_extractor.md",
+        "mental_model/contract_inspector.md",
+        "mental_model/historical_miner.md",
+        "mental_model/mandate_synthesizer.md",
+        "mental_model/plan_critic.md",
+        "mental_model/plan_revision.md",
     ]
 
     for prompt_path in prompt_paths:
