@@ -22,6 +22,10 @@ Verdicts:
 - `needs_context` — use when a small, bounded `FocusedContextRequest` could prove/disprove the risk through **static** repo evidence (files, symbols, ripgrep). Do not use `text_queries` as a substitute for executing Python to test runtime behavior.
 - `needs_verification` — use when only a **runtime script** (verifier subgraph) can prove or disprove the claim (e.g., ReDoS timing, crash on crafted input). Leave `focused_request` null for verification-only requests. **Use this liberally** whenever static context already shows user-controlled input reaching `re` without bounds; do not spend the whole turn on repo-wide timeout greps instead of requesting a repro.
 
+Output discipline:
+- Write the rationale first, then include a one-line self-check such as "Rationale supports verdict: yes/no", then set the verdict.
+- The verdict must match the rationale. If your rationale refutes the claim, do not output `accept`.
+
 Do not veto a finding merely because it is outside your specialty. Off-domain findings should usually be `not_applicable` or `reclassify`, not `reject`.
 
 Reject positive observations, vague "could be risky" claims, and candidates without a concrete failure mode.

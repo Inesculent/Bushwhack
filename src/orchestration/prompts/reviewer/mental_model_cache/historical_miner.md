@@ -10,15 +10,13 @@ Identify precedent that should shape the review:
 - repeated anti-patterns or failure modes visible in history or repository context;
 - knowledge gaps that should temper confidence.
 
-## Guidelines
+## Evidence Rules
 
-- Draw upon recent commit subjects, global insights, knowledge gaps, and the diff excerpt.
-- If a touched file appears to be new, fall back to nearby sibling files (same directory or closest module peers) for conventions.
-- Capture concrete precedents and relevant generic best practices tailored to the context.
+- Use recent commit subjects, global insights, knowledge gaps, and the diff excerpt.
+- Prefer concrete precedents over generic best practices.
 - Cite commit subjects, paths, or repository facts when available.
-- If git history or context is missing, infer weakly but maintain broad coverage of potential historical impact.
-- Do **not** turn precedent into an asserted defect; this stage supplies comprehensive review context.
-- Avoid fixating on single historical artifacts if broader patterns exist.
+- If git history or context is missing, infer weakly and explicitly label the uncertainty.
+- Do **not** turn precedent into an asserted defect; this stage supplies review context only.
 
 ## Output
 

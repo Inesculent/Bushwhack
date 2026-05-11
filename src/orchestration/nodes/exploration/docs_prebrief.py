@@ -45,7 +45,8 @@ def make_docs_prebrief_node(
 
         pr_number = _resolve_pr_number(state)
         pr_context = _resolve_pr_context(state, github_provider, owner, repo, pr_number)
-        ref = (pr_context.base_ref if pr_context and pr_context.base_ref else None) or "main"
+        default_branch = _resolve_default_branch(owner, repo, github_provider)
+        ref = (pr_context.base_ref if pr_context and pr_context.base_ref else None) or default_branch or "main"
 
         docs, doc_warnings = _collect_docs(
             state=state,
@@ -212,6 +213,65 @@ def _resolve_pr_comments(
     return formatted
 
 
+def _resolve_default_branch(
+    owner: str,
+    repo: str,
+    github_provider: IGitHubContextProvider | None,
+) -> str | None:
+    if github_provider is None:
+        return None
+    meta = github_provider.get_repo_metadata(owner, repo)
+    if meta is None:
+        return None
+    branch = getattr(meta, "default_branch", None)
+    if isinstance(branch, str) and branch.strip():
+        return branch.strip()
+    return None
+
+
+def _merge_doc_paths(primary: Sequence[str], secondary: Sequence[str]) -> List[str]:
+    seen: set[str] = set()
+    merged: List[str] = []
+    for raw in list(primary) + list(secondary):
+        path = (raw or "").strip().lstrip("/")
+        if not path or path in seen:
+            continue
+        seen.add(path)
+        merged.append(path)
+    return merged
+
+
+def _discover_doc_paths(
+    owner: str,
+    repo: str,
+    ref: str,
+    github_provider: IGitHubContextProvider | None,
+    settings: Settings,
+) -> List[str]:
+    if github_provider is None or not settings.github_mcp_doc_discovery_enabled:
+        return []
+    max_paths = settings.github_mcp_doc_discovery_max_paths
+    if max_paths <= 0:
+        return []
+
+    paths: List[str] = []
+    seen: set[str] = set()
+    for seed in ("", "docs", ".github"):
+        listing = github_provider.get_repo_structure(owner, repo, seed, ref)
+        entries = listing.entries if hasattr(listing, "entries") else []
+        for entry in entries:
+            entry_path = (entry.path or "").strip().lstrip("/")
+            if not entry_path or entry_path in seen:
+                continue
+            lower = entry_path.lower()
+            if entry.type == "file" and lower.endswith((".md", ".rst", ".txt")):
+                seen.add(entry_path)
+                paths.append(entry_path)
+                if len(paths) >= max_paths:
+                    return paths
+    return paths
+
+
 def _collect_docs(
     *,
     state: GraphState,
@@ -238,6 +298,10 @@ def _collect_docs(
         warnings.append("github_docs_unavailable")
         return [], warnings
 
+    discovered = _discover_doc_paths(owner, repo, ref, github_provider, settings)
+    if discovered:
+        warnings.append(f"docs_discovery_paths:{len(discovered)}")
+        doc_paths = _merge_doc_paths(discovered, doc_paths)
     bundle = github_provider.get_repo_docs(owner, repo, ref, doc_paths)
     warnings.extend(bundle.warnings)
     return list(bundle.documents), warnings

@@ -30,6 +30,18 @@ trace_logger = logging.getLogger("research_pipeline.reviewer_trace")
 REFLECTOR_SPECIALTIES = ("security", "logic", "performance", "general")
 REFLECTOR_SPECIALTY_SET = set(REFLECTOR_SPECIALTIES)
 
+_CONTRADICTION_MARKERS = (
+    "incorrect",
+    "contradicted",
+    "no evidence",
+    "not supported",
+    "false",
+    "not true",
+    "does not",
+    "is not",
+    "missing return",
+)
+
 
 def _trace_enabled(state: GraphState) -> bool:
     metadata = state.get("metadata", {}) or {}
@@ -101,11 +113,39 @@ def _normalize_focus_request(
     )
 
 
-def _normalize_reports(batch: ReflectionBatchOutput, specialty: str) -> tuple[List[ReflectionReport], List[FocusedContextRequest]]:
+
+def _rationale_contradicts_accept(rationale: str) -> bool:
+    blob = (rationale or "").lower()
+    return any(marker in blob for marker in _CONTRADICTION_MARKERS)
+
+
+def _enforce_rationale_consistency(report: ReflectionReport) -> tuple[ReflectionReport, str | None]:
+    if report.verdict != "accept":
+        return report, None
+    if not report.rationale:
+        return report, None
+    if _rationale_contradicts_accept(report.rationale):
+        updated = report.model_copy(
+            update={
+                "verdict": "reject",
+                "rationale": f"[auto-corrected] Rationale contradicts accept verdict. {report.rationale}",
+            }
+        )
+        return updated, "reflection_auto_reject:rationale_contradiction"
+    return report, None
+
+
+def _normalize_reports(
+    batch: ReflectionBatchOutput, specialty: str
+) -> tuple[List[ReflectionReport], List[FocusedContextRequest], List[str]]:
     reports: List[ReflectionReport] = []
     requests: List[FocusedContextRequest] = []
+    warnings: List[str] = []
     for index, raw in enumerate(batch.reports):
         report = raw.model_copy(update={"reflector_specialty": specialty})
+        report, warn = _enforce_rationale_consistency(report)
+        if warn:
+            warnings.append(warn)
         reports.append(report)
         # Only needs_context queues graph/search work; needs_verification uses the runtime verifier.
         if report.verdict == "needs_context" and report.focused_request is not None:
@@ -113,7 +153,34 @@ def _normalize_reports(batch: ReflectionBatchOutput, specialty: str) -> tuple[Li
             if normalized is not None:
                 requests.append(normalized)
                 reports[-1] = report.model_copy(update={"focused_request": normalized})
-    return reports, requests
+    return reports, requests, warnings
+
+
+def _candidate_dedupe_key(candidate: CandidateFinding) -> tuple[str, int, int, str, str]:
+    content = (candidate.content or "").strip().lower()
+    content = " ".join(content.split())
+    return (
+        (candidate.file_path or "").strip().lower(),
+        int(candidate.line_start or 0),
+        int(candidate.line_end or 0),
+        str(candidate.claim_type or "").strip().lower(),
+        content,
+    )
+
+
+def _dedupe_candidates(candidates: List[CandidateFinding]) -> tuple[List[CandidateFinding], Dict[str, List[str]]]:
+    seen: Dict[tuple[str, int, int, str, str], str] = {}
+    deduped: List[CandidateFinding] = []
+    duplicates: Dict[str, List[str]] = {}
+    for cand in candidates:
+        key = _candidate_dedupe_key(cand)
+        if key in seen:
+            primary = seen[key]
+            duplicates.setdefault(primary, []).append(cand.candidate_id)
+            continue
+        seen[key] = cand.candidate_id
+        deduped.append(cand)
+    return deduped, duplicates
 
 
 def make_adversarial_reflection_node(
@@ -134,6 +201,8 @@ def make_adversarial_reflection_node(
                 candidates.append(CandidateFinding.model_validate(raw))
         if not candidates:
             return {"node_history": [f"{node_name}:skipped"]}
+
+        candidates, duplicate_map = _dedupe_candidates(candidates)
 
         all_reports: List[ReflectionReport] = []
         all_requests: List[FocusedContextRequest] = []
@@ -184,10 +253,11 @@ def make_adversarial_reflection_node(
                         )
                         response = parse_structured_output(invoke_result, ReflectionBatchOutput)
                         llm_tokens += extract_total_tokens_from_llm_result(invoke_result)
-                        reps, reqs = _normalize_reports(response, specialty)
+                        reps, reqs, norm_warnings = _normalize_reports(response, specialty)
                         all_reports.extend(reps)
                         all_requests.extend(reqs)
                         warnings.extend(response.warnings)
+                        warnings.extend(norm_warnings)
                         break
                     except Exception as exc:  # noqa: BLE001
                         timeout_with_patience_left = (
@@ -250,6 +320,23 @@ def make_adversarial_reflection_node(
             )
 
         metadata = dict(state.get("metadata", {}))
+        integrity_missing: List[str] = []
+        integrity_expected: List[str] = []
+        integrity_block = metadata.get("candidate_integrity", {})
+        by_task = integrity_block.get("by_task", {}) if isinstance(integrity_block, dict) else {}
+        if isinstance(by_task, dict):
+            for entry in by_task.values():
+                if isinstance(entry, dict):
+                    integrity_expected.extend(entry.get("candidate_ids", []) or [])
+        observed_ids = {c.candidate_id for c in candidates}
+        if integrity_expected:
+            deduped_ids = {cid for ids in duplicate_map.values() for cid in ids}
+            missing = sorted(
+                {cid for cid in integrity_expected if cid not in observed_ids and cid not in deduped_ids}
+            )
+            integrity_missing = missing
+            if integrity_missing:
+                warnings.append(f"candidate_integrity_missing:{len(integrity_missing)}")
         routed_counts = {
             specialty: len(items)
             for specialty, items in _candidates_by_reflector(candidates).items()
@@ -259,6 +346,10 @@ def make_adversarial_reflection_node(
             "focused_request_count": len(all_requests),
             "routed_candidate_counts": routed_counts,
             "total_routed_candidate_reviews": sum(routed_counts.values()),
+            "deduped_candidate_count": len(candidates),
+            "dedupe_duplicates": duplicate_map,
+            "integrity_expected_count": len(set(integrity_expected)),
+            "integrity_missing_candidate_ids": integrity_missing,
             "warnings": warnings,
         }
 

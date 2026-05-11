@@ -19,7 +19,12 @@ from .schemas import (
     TaskStatus,
     UnverifiedCallTarget,
 )
-from .verifier_schemas import VerifierReport
+from .verifier_schemas import (
+    VerificationScope,
+    VerifierAttemptRecord,
+    VerifierReport,
+    VerifierVerdict,
+)
 
 
 def merge_graph_metadata(
@@ -127,6 +132,18 @@ class GraphState(TypedDict, total=False):
     # Optional runtime verification (parallel Send branches carry verifier_candidate)
     verifier_candidate: NotRequired[Dict[str, Any]]
     verifier_reports: Annotated[List[VerifierReport], operator.add]
+
+    # Verifier loop state (transient)
+    verifier_attempt_idx: NotRequired[int]
+    verifier_retry_feedback: NotRequired[str]
+    verifier_last_rationale: NotRequired[str]
+    verifier_repo_root: NotRequired[str]
+    verifier_scope: NotRequired[VerificationScope]
+    verifier_verdict: NotRequired[VerifierVerdict]
+    verifier_skipped_reason: NotRequired[str]
+    verifier_current_test_code: NotRequired[str]
+    verifier_focused_context_text: NotRequired[str]
+    verifier_attempts: Annotated[List[VerifierAttemptRecord], operator.add]
 
     # Data for debugging and analysis
     current_task_id: NotRequired[str]

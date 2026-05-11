@@ -49,6 +49,20 @@ def test_reflection_prompts_contain_adversarial_two_tier_protocol() -> None:
         assert "Invisible safeguard" in text or "invisible" in text.lower()
 
 
+def test_mental_model_prompts_guard_data_integrity_and_branch_exhaustiveness() -> None:
+    mandate = load_reviewer_prompt("mental_model/mandate_synthesizer.md")
+    critic = load_reviewer_prompt("mental_model/plan_critic.md")
+    revision = load_reviewer_prompt("mental_model/plan_revision.md")
+    contract = load_reviewer_prompt("mental_model/contract_inspector.md")
+
+    assert "not asserted bugs" in mandate.lower()
+    assert "uncertainties explicit" in mandate.lower()
+    assert "aligned=true" in critic.lower()
+    assert "weak task specificity" in critic.lower()
+    assert "full replacement review plan" in revision.lower()
+    assert "do **not** invent unsupported paths" in contract.lower()
+
+
 def test_renderer_combines_global_role_and_runtime_sections():
     rendered = render_reviewer_prompt(
         "workers/security.md",

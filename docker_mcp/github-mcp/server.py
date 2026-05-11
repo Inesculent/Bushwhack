@@ -141,6 +141,26 @@ def get_pull_request(owner: str, repo: str, pull_number: int) -> Dict[str, Any]:
 
 
 @mcp.tool()
+def get_repo_metadata(owner: str, repo: str) -> Dict[str, Any]:
+    """Fetch lightweight repository metadata (default branch, etc.)."""
+    logger.info("Fetching repo metadata for %s/%s", owner, repo)
+    url = f"https://api.github.com/repos/{owner}/{repo}"
+    response = requests.get(url, headers=HEADERS)
+    if response.status_code != 200:
+        return {
+            "error": response.json().get("message", response.text),
+            "owner": owner,
+            "repo": repo,
+        }
+    payload = response.json()
+    return {
+        "owner": owner,
+        "repo": repo,
+        "default_branch": payload.get("default_branch"),
+    }
+
+
+@mcp.tool()
 def get_issue(owner: str, repo: str, issue_number: int) -> Dict[str, Any]:
     """Fetch issue metadata (title/body) by number."""
     logger.info("Fetching issue #%s for %s/%s", issue_number, owner, repo)

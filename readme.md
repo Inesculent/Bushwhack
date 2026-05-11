@@ -51,7 +51,7 @@ Adapter implementations for external systems:
 .
 ├── data/
 ├── logs/
-├── mcp/
+├── docker_mcp/
 │   ├── fs-mcp/
 │   └── github-mcp/
 ├── plots/
@@ -96,7 +96,7 @@ Useful settings to get started:
 - `REVIEW_AST_ENABLED=true`
 - `REVIEW_AST_MCP_ENABLED=false`
 - `REVIEW_AST_MCP_COMMAND=python`
-- `REVIEW_AST_MCP_ARGS=["mcp/fs-mcp/server.py"]`
+- `REVIEW_AST_MCP_ARGS=["docker_mcp/fs-mcp/server.py"]`
 - `REVIEW_REDIS_ENABLED=true`
 - `REVIEW_LOCAL_LLM_BASE_URL=http://localhost:8000/v1`
 - `REVIEW_GITHUB_PERSONAL_ACCESS_TOKEN=...` (for dataset enrichment)
@@ -115,7 +115,7 @@ Stop Redis:
 docker compose -f docker-compose.redis.yml down
 ```
 
-This Redis container is separate from MCP Dockerfiles in `mcp/fs-mcp` and `mcp/github-mcp`.
+This Redis container is separate from MCP Dockerfiles in `docker_mcp/fs-mcp` and `docker_mcp/github-mcp`.
 Those Dockerfiles are for MCP server processes, while this compose service is only for shared state/checkpoint storage.
 
 If Redis is unavailable, set `REVIEW_REDIS_ENABLED=false` to run without checkpointing.

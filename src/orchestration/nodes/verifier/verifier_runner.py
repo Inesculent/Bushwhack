@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 import docker
@@ -36,6 +37,15 @@ def _coerce_candidate_dict(candidate: Dict[str, Any] | CandidateFinding) -> Dict
     return dict(candidate)
 
 
+def _infer_verifier_repo_root(repo_path: str, settings: Settings) -> str:
+    raw = (repo_path or "").strip()
+    if raw and Path(raw).is_dir():
+        return "/repo"
+    if settings.verifier_clone_remote_in_container:
+        return "/repo"
+    return "/workspace"
+
+
 def invoke_verifier_for_candidate(
     *,
     run_id: str,
@@ -52,6 +62,7 @@ def invoke_verifier_for_candidate(
     cand_dict = _coerce_candidate_dict(candidate)
     candidate_id = str(cand_dict.get("candidate_id") or "")
     scope = infer_verification_scope(cand_dict)
+    repo_root = _infer_verifier_repo_root(repo_path, settings)
 
     if not settings.verifier_enabled:
         return VerifierReport(
@@ -61,7 +72,7 @@ def invoke_verifier_for_candidate(
             verification_scope=scope,
             final_rationale="Verifier disabled in settings.",
             skipped_reason="verifier_disabled",
-            metadata={"llm_tokens": 0},
+            metadata={"llm_tokens": 0, "verifier_repo_root": repo_root},
         )
 
     if settings.verifier_skip_if_no_docker and not _docker_ok():
@@ -72,7 +83,7 @@ def invoke_verifier_for_candidate(
             verification_scope=scope,
             final_rationale="Docker unavailable; skipped verifier.",
             skipped_reason="no_docker",
-            metadata={"llm_tokens": 0},
+            metadata={"llm_tokens": 0, "verifier_repo_root": repo_root},
         )
 
     attempts = []
@@ -86,6 +97,7 @@ def invoke_verifier_for_candidate(
             focused_context_snippets=focused_context_snippets,
             git_diff_excerpt=git_diff_excerpt,
             retry_feedback=retry_feedback,
+            repo_root=repo_root,
             settings=settings,
             use_llm=use_llm,
         )
@@ -118,7 +130,7 @@ def invoke_verifier_for_candidate(
                 final_rationale=rationale,
                 updated_evidence_summary=summary,
                 attempts=attempts,
-                metadata={"llm_tokens": total_tokens},
+                metadata={"llm_tokens": total_tokens, "verifier_repo_root": repo_root},
             )
 
         retry_feedback = build_retry_feedback(record)
@@ -132,5 +144,5 @@ def invoke_verifier_for_candidate(
         final_rationale=last_rationale or "No attempts completed.",
         updated_evidence_summary=summary,
         attempts=attempts,
-        metadata={"llm_tokens": total_tokens},
+        metadata={"llm_tokens": total_tokens, "verifier_repo_root": repo_root},
     )

@@ -183,7 +183,7 @@ All environment variables must be prefixed with `REVIEW_` and can be set in a `.
 |----------|------|---------|-------------|
 | `REVIEW_AST_MCP_ENABLED` | boolean | `false` | Use MCP transport for AST parsing; otherwise use native in-process parsing. |
 | `REVIEW_AST_MCP_COMMAND` | string | `python` | Command used to start the AST MCP server process. |
-| `REVIEW_AST_MCP_ARGS` | list | `["mcp/fs-mcp/server.py"]` | Arguments for the AST MCP server command. Comma-separated or JSON array. |
+| `REVIEW_AST_MCP_ARGS` | list | `["docker_mcp/fs-mcp/server.py"]` | Arguments for the AST MCP server command. Comma-separated or JSON array. |
 | `REVIEW_AST_MCP_CWD` | path | `None` | Optional working directory used when launching AST MCP server. Defaults to project root. |
 | `REVIEW_AST_MCP_TIMEOUT_SECONDS` | integer | `30` | Timeout for each MCP request in seconds. Range: 1-300. |
 | `REVIEW_AST_MCP_PARSE_TOOL` | string | `parse_file` | Tool name used to parse a file AST via MCP. |
@@ -212,7 +212,7 @@ All environment variables must be prefixed with `REVIEW_` and can be set in a `.
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
 | `REVIEW_GITHUB_MCP_COMMAND` | string | `python` | Command used to start the GitHub MCP server process. |
-| `REVIEW_GITHUB_MCP_ARGS` | list | `["mcp/github-mcp/server.py"]` | Arguments for the GitHub MCP server command. Comma-separated or JSON array. |
+| `REVIEW_GITHUB_MCP_ARGS` | list | `["docker_mcp/github-mcp/server.py"]` | Arguments for the GitHub MCP server command. Comma-separated or JSON array. |
 | `REVIEW_GITHUB_MCP_CWD` | path | `None` | Optional working directory used when launching the GitHub MCP server. |
 | `REVIEW_GITHUB_MCP_TIMEOUT_SECONDS` | integer | `30` | Timeout for each GitHub MCP request in seconds. Range: 1-300. |
 

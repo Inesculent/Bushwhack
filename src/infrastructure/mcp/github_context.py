@@ -11,6 +11,9 @@ from src.domain.schemas import (
     GitHubPullRequestContext,
     RepoDocument,
     RepoDocsBundle,
+    RepoMetadata,
+    RepoStructure,
+    RepoStructureEntry,
 )
 from src.infrastructure.mcp.client import MCPClient
 
@@ -84,6 +87,62 @@ class GitHubMCPContextProvider(IGitHubContextProvider):
         context = GitHubPullRequestContext.model_validate(payload)
         self._cache.set(cache_key, context.model_dump(mode="json"), self._settings.github_mcp_cache_ttl_seconds)
         return context
+
+    def get_repo_structure(
+        self,
+        owner: str,
+        repo: str,
+        path: str = "",
+        ref: str = "",
+    ) -> RepoStructure:
+        payload = self._client.call_tool(
+            "get_repo_structure",
+            {"owner": owner, "repo": repo, "path": path, "ref": ref},
+        )
+        if payload.get("error"):
+            return RepoStructure(
+                owner=owner,
+                repo=repo,
+                path=path or "",
+                ref=ref or None,
+                entries=[],
+                error=str(payload.get("error")),
+            )
+        raw_entries = payload.get("entries", [])
+        entries: List[RepoStructureEntry] = []
+        if isinstance(raw_entries, list):
+            for item in raw_entries:
+                if isinstance(item, dict):
+                    entries.append(RepoStructureEntry.model_validate(item))
+        return RepoStructure(
+            owner=owner,
+            repo=repo,
+            path=payload.get("path") or path or "",
+            ref=payload.get("ref") or (ref or None),
+            entries=entries,
+            error=payload.get("error"),
+        )
+
+    def get_repo_metadata(self, owner: str, repo: str) -> RepoMetadata | None:
+        cache_key = self._cache_key("repo_meta", owner, repo)
+        cached = self._cache.get(cache_key)
+        if cached is not None:
+            return RepoMetadata.model_validate(cached)
+        payload = self._client.call_tool(
+            "get_repo_metadata",
+            {"owner": owner, "repo": repo},
+        )
+        if payload.get("error"):
+            logger.warning(
+                "GitHub MCP repo metadata fetch failed %s/%s: %s",
+                owner,
+                repo,
+                payload.get("error"),
+            )
+            return None
+        meta = RepoMetadata.model_validate(payload)
+        self._cache.set(cache_key, meta.model_dump(mode="json"), self._settings.github_mcp_cache_ttl_seconds)
+        return meta
 
     def get_issue(
         self,

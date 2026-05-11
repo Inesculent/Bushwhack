@@ -20,6 +20,10 @@ Verdicts:
 - `needs_context` — use when bounded extra **static** context is required to compare old/new complexity, query count, memory use, batch size limits, or caller behavior.
 - `needs_verification` — use when runtime execution (verifier) is needed to confirm performance characteristics not visible from the diff alone.
 
+Output discipline:
+- Write the rationale first, then include a one-line self-check such as "Rationale supports verdict: yes/no", then set the verdict.
+- The verdict must match the rationale. If your rationale refutes the claim, do not output `accept`.
+
 Do not veto a finding merely because it is outside your specialty. Off-domain findings should usually be `not_applicable` or `reclassify`, not `reject`.
 
 Reject positive performance observations, vague trade-offs without an actionable regression, and candidates without a concrete failure mode.

@@ -30,7 +30,7 @@ class Settings(BaseSettings):
 		description="Command used to start the AST MCP server process.",
 	)
 	ast_mcp_args: List[str] = Field(
-		default_factory=lambda: ["mcp/fs-mcp/server.py"],
+		default_factory=lambda: ["docker_mcp/fs-mcp/server.py"],
 		description="Arguments for the AST MCP server command.",
 	)
 	ast_mcp_cwd: Optional[str] = Field(
@@ -118,7 +118,7 @@ class Settings(BaseSettings):
 		description="Command used to start the GitHub MCP server process.",
 	)
 	github_mcp_args: List[str] = Field(
-		default_factory=lambda: ["mcp/github-mcp/server.py"],
+		default_factory=lambda: ["docker_mcp/github-mcp/server.py"],
 		description="Arguments for the GitHub MCP server command.",
 	)
 	github_mcp_cwd: Optional[str] = Field(
@@ -171,6 +171,15 @@ class Settings(BaseSettings):
 		],
 		description="Ordered doc paths to attempt for the GitHub MCP pre-brief.",
 	)
+	github_mcp_doc_discovery_enabled: bool = Field(
+		default=True,
+		description="Discover markdown docs via GitHub API to reduce 404s and stale paths.",
+	)
+	github_mcp_doc_discovery_max_paths: int = Field(
+		default=30,
+		ge=0,
+		description="Max discovered doc paths to attempt before falling back to static list.",
+	)
 	docs_prebrief_enabled: bool = Field(
 		default=True,
 		description="Generate a documentation-based pre-brief before semantic scanning.",
@@ -219,6 +228,18 @@ class Settings(BaseSettings):
 		ge=0,
 		le=10,
 		description="Retry count for OpenAI-compatible local model requests.",
+	)
+	llm_temperature: Optional[float] = Field(
+		default=None,
+		ge=0.0,
+		le=2.0,
+		description="Optional temperature override for LLM calls (planner/worker/synthesizer).",
+	)
+	llm_presence_penalty: Optional[float] = Field(
+		default=None,
+		ge=-2.0,
+		le=2.0,
+		description="Optional presence_penalty override for OpenAI-compatible providers.",
 	)
 
 	structural_topology_enabled: bool = Field(
@@ -281,7 +302,7 @@ class Settings(BaseSettings):
 		),
 	)
 	reviewer_planner_max_completion_tokens: int = Field(
-		default=8192,
+		default=12288,
 		ge=256,
 		le=32768,
 		description=(
@@ -298,7 +319,7 @@ class Settings(BaseSettings):
 		),
 	)
 	reviewer_worker_max_completion_tokens: int = Field(
-		default=8192,
+		default=12288,
 		ge=512,
 		le=65536,
 		description=(
@@ -319,7 +340,7 @@ class Settings(BaseSettings):
 		),
 	)
 	reviewer_actor_critic_max_plan_revisions: int = Field(
-		default=2,
+		default=4,
 		ge=0,
 		le=5,
 		description="Max plan_revision cycles after plan_critic before emitting tasks anyway.",

@@ -187,11 +187,15 @@ def _build_llm_kwargs(
     kwargs: dict[str, Any] = {"model": config.model_name}
     if max_completion_tokens is not None:
         kwargs["max_completion_tokens"] = max_completion_tokens
+    if settings.llm_temperature is not None:
+        kwargs["temperature"] = settings.llm_temperature
     if config.provider == "local":
         kwargs["base_url"] = settings.local_llm_base_url
         kwargs["api_key"] = settings.local_llm_api_key
         kwargs["timeout"] = settings.local_llm_timeout_seconds
         kwargs["max_retries"] = settings.local_llm_max_retries
+        if settings.llm_presence_penalty is not None:
+            kwargs["presence_penalty"] = settings.llm_presence_penalty
         return kwargs
 
     if not config.api_key_env:
@@ -205,6 +209,8 @@ def _build_llm_kwargs(
         kwargs["google_api_key"] = api_key_value
     elif config.provider in {"openai", "anthropic"}:
         kwargs["api_key"] = api_key_value
+        if config.provider == "openai" and settings.llm_presence_penalty is not None:
+            kwargs["presence_penalty"] = settings.llm_presence_penalty
 
     return kwargs
 

@@ -58,6 +58,13 @@ def make_critique_context_probe_node(context_provider: LazyReviewContextProvider
             "probe_flags": flags,
             "warnings": list(context.warnings),
             "ast_included_files": list(context.ast_included_files),
+            "ast_mode": (
+                "local"
+                if "ast_capability:local_enabled" in context.warnings
+                else "structural_only_remote"
+                if "ast_unavailable:remote_sandbox_repo" in context.warnings
+                else "disabled"
+            ),
         }
         pipe["by_task"] = by_task
         meta["critique_pipeline"] = pipe

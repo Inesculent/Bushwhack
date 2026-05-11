@@ -12,6 +12,7 @@ from src.orchestration.nodes.verifier.sandbox_executor import execute_test_scrip
 def test_execute_test_script_attaches_ruff_lint_run(tmp_path) -> None:
     class FakeSandbox:
         image_name = "test"
+        execution_workdir = "/repo"
 
         def __init__(self, *args, **kwargs) -> None:  # noqa: ANN002, ANN003
             pass

@@ -364,6 +364,34 @@ class RepoDocsBundle(BaseModel):
     warnings: List[str] = Field(default_factory=list)
 
 
+class RepoStructureEntry(BaseModel):
+    """One entry from a repository structure listing."""
+
+    type: str = Field(description="Entry type: file or dir.")
+    path: str = Field(description="Repository-relative path using '/' separators.")
+    name: str = ""
+    sha: Optional[str] = None
+
+
+class RepoStructure(BaseModel):
+    """Directory listing response for repo structure discovery."""
+
+    owner: str
+    repo: str
+    path: str = ""
+    ref: Optional[str] = None
+    entries: List[RepoStructureEntry] = Field(default_factory=list)
+    error: Optional[str] = None
+
+
+class RepoMetadata(BaseModel):
+    """Lightweight repository metadata from GitHub."""
+
+    owner: str
+    repo: str
+    default_branch: Optional[str] = None
+
+
 class GitHubPullRequestContext(BaseModel):
     number: int
     title: str = ""

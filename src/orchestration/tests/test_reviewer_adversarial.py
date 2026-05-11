@@ -538,6 +538,47 @@ def test_adversarial_cleanup_drops_tier2_security_without_focused_hits() -> None
     )
 
 
+def test_adversarial_cleanup_promotes_accepted_localized_defect_with_stale_context_request() -> None:
+    """A direct logic accept should settle localized defects even if the candidate requested context."""
+    node = make_adversarial_cleanup_node()
+    cand = CandidateFinding(
+        candidate_id="logic-none-1",
+        patch_task_id="logic",
+        file_path="src/nodes.py",
+        line_start=20,
+        line_end=20,
+        content="return string[start:end],",
+        claim_type="defect",
+        failure_mode="None input raises TypeError when sliced.",
+        evidence_summary="The changed line slices the input directly with no guard.",
+        required_context=["Check whether upstream framework guarantees non-None strings."],
+        suspected_category="logic",
+        reflection_specialties=["logic"],
+        recommendation="Handle None or document the non-None invariant before slicing.",
+    )
+    report = ReflectionReport(
+        candidate_id=cand.candidate_id,
+        reflector_specialty="logic",
+        verdict="accept",
+        rationale="This is a localized TypeError in the changed code path.",
+    )
+
+    out = node(
+        {
+            "run_id": "t",
+            "candidate_findings": [cand],
+            "reflection_reports": [report],
+            "focused_context_results": {},
+            "metadata": {},
+        }
+    )
+
+    assert len(out["findings"]) == 1
+    life = out["metadata"]["adversarial_cleanup"]["candidate_lifecycle"][cand.candidate_id]
+    assert life["decision"] == "promoted"
+    assert life["context_requirement_overridden"] == "localized_defect_accepted_by_relevant_reflector"
+
+
 def test_adversarial_cleanup_drops_when_routed_expert_says_not_applicable() -> None:
     node = make_adversarial_cleanup_node()
     cand = CandidateFinding(
@@ -574,6 +615,52 @@ def test_adversarial_cleanup_drops_when_routed_expert_says_not_applicable() -> N
     assert out["metadata"]["adversarial_cleanup"]["misrouted_candidate_ids"][cand.candidate_id][0][
         "reflector_specialty"
     ] == "security"
+
+
+def test_adversarial_cleanup_accept_overrides_stray_relevant_not_applicable() -> None:
+    node = make_adversarial_cleanup_node()
+    cand = CandidateFinding(
+        candidate_id="logic-data-1",
+        patch_task_id="logic",
+        file_path="src/parser.py",
+        line_start=7,
+        line_end=9,
+        content="Invalid parse returns an empty string.",
+        claim_type="defect",
+        failure_mode="Callers cannot distinguish parse failure from a valid empty value.",
+        evidence_summary="The changed branch catches the parser error and returns ''.",
+        suspected_category="logic",
+        reflection_specialties=["logic", "general"],
+        recommendation="Return an explicit error state or preserve failure information.",
+    )
+    reports = [
+        ReflectionReport(
+            candidate_id=cand.candidate_id,
+            reflector_specialty="logic",
+            verdict="accept",
+            rationale="Ambiguous sentinel value causes a data integrity issue.",
+        ),
+        ReflectionReport(
+            candidate_id=cand.candidate_id,
+            reflector_specialty="general",
+            verdict="not_applicable",
+            rationale="This is a logic finding, not a general maintainability finding.",
+        ),
+    ]
+
+    out = node(
+        {
+            "run_id": "t",
+            "candidate_findings": [cand],
+            "reflection_reports": reports,
+            "metadata": {},
+        }
+    )
+
+    assert len(out["findings"]) == 1
+    cleanup = out["metadata"]["adversarial_cleanup"]
+    assert cleanup["misrouted_candidate_ids"][cand.candidate_id][0]["reflector_specialty"] == "general"
+    assert cleanup["candidate_lifecycle"][cand.candidate_id]["decision"] == "promoted"
 
 
 def test_adversarial_cleanup_promotes_when_routed_expert_times_out_partial_quorum_default() -> None:

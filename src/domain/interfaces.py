@@ -9,6 +9,8 @@ from .schemas import (
     GitHubPullRequestContext,
     PreflightRequest,
     RepoDocsBundle,
+    RepoMetadata,
+    RepoStructure,
     SearchResult,
     SymbolDefinition,
 )
@@ -152,6 +154,22 @@ class IGitHubContextProvider(ABC):
         """
         Fetch a bounded bundle of documentation files from the repository.
         """
+        pass
+
+    @abstractmethod
+    def get_repo_structure(
+        self,
+        owner: str,
+        repo: str,
+        path: str = "",
+        ref: str = "",
+    ) -> RepoStructure:
+        """Return a directory listing for doc discovery."""
+        pass
+
+    @abstractmethod
+    def get_repo_metadata(self, owner: str, repo: str) -> RepoMetadata | None:
+        """Fetch lightweight repository metadata (default branch, etc.)."""
         pass
 
     @abstractmethod

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import subprocess
+from pathlib import Path
 from typing import Any, Dict, List
 
 from pydantic import BaseModel, Field
@@ -41,6 +42,73 @@ def _git_recent_messages(repo_path: str, *, max_lines: int = 8) -> str:
         return proc.stdout.strip()[:4000]
     except Exception as exc:  # noqa: BLE001
         logger.debug("historical_miner git log skipped: %s", exc)
+        return ""
+
+
+def _new_files_from_diff(git_diff: str) -> List[str]:
+    new_files: List[str] = []
+    current: str | None = None
+    for line in git_diff.splitlines():
+        if line.startswith("diff --git "):
+            parts = line.split()
+            current = None
+            if len(parts) >= 4 and parts[3].startswith("b/"):
+                current = parts[3].removeprefix("b/")
+            continue
+        if current and (line.startswith("new file mode") or line.startswith("--- /dev/null")):
+            new_files.append(current)
+    return sorted({p for p in new_files if p and p != "/dev/null"})
+
+
+def _fallback_paths_for_new_files(repo_path: str, new_files: List[str], *, max_paths: int = 6) -> List[str]:
+    root = Path(repo_path).resolve()
+    collected: List[str] = []
+    seen: set[str] = set()
+    for rel in new_files:
+        try:
+            nf_path = (root / rel).resolve()
+            nf_path.relative_to(root)
+        except Exception:
+            continue
+        dir_path = nf_path.parent
+        if not dir_path.is_dir():
+            continue
+        preferred = dir_path / "nodes.py"
+        if preferred.is_file():
+            candidate = preferred.relative_to(root).as_posix()
+            if candidate not in seen and candidate != rel:
+                collected.append(candidate)
+                seen.add(candidate)
+                if len(collected) >= max_paths:
+                    return collected
+        for fp in sorted(dir_path.glob("*.py")):
+            candidate = fp.relative_to(root).as_posix()
+            if candidate == rel or candidate in seen:
+                continue
+            collected.append(candidate)
+            seen.add(candidate)
+            if len(collected) >= max_paths:
+                return collected
+    return collected
+
+
+def _git_log_for_paths(repo_path: str, paths: List[str], *, max_lines: int = 8) -> str:
+    if not paths:
+        return ""
+    try:
+        proc = subprocess.run(
+            ["git", "log", "-n", str(max_lines), "--oneline", "--no-decorate", "--", *paths],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            timeout=12,
+            check=False,
+        )
+        if proc.returncode != 0 or not proc.stdout.strip():
+            return ""
+        return proc.stdout.strip()[:4000]
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("historical_miner git log for paths skipped: %s", exc)
         return ""
 
 
@@ -184,6 +252,12 @@ def make_historical_miner_node(settings: Settings | None = None, *, use_llm: boo
         meta, slot = _mm_meta(state)
         repo_path = str(state.get("repo_path", "") or "")
         git_log = _git_recent_messages(repo_path) if repo_path else ""
+        new_files = _new_files_from_diff(state.get("git_diff", "") or "")
+        fallback_paths: List[str] = []
+        fallback_log = ""
+        if repo_path and new_files:
+            fallback_paths = _fallback_paths_for_new_files(repo_path, new_files)
+            fallback_log = _git_log_for_paths(repo_path, fallback_paths)
         insights = state.get("global_insights", []) or []
         gaps = state.get("knowledge_gaps", []) or []
         gap_lines: List[str] = []
@@ -200,7 +274,11 @@ def make_historical_miner_node(settings: Settings | None = None, *, use_llm: boo
         warnings: List[str] = []
 
         ctx = (
-            f"Recent commits (oneline):\n{git_log or '(unavailable)'}\n\nGlobal insights:\n{insights[:20]}\n\n"
+            f"Recent commits (oneline):\n{git_log or '(unavailable)'}\n\n"
+            f"New files in diff: {new_files or '(none)'}\n"
+            f"Sibling history fallback (bounded):\n{fallback_log or '(none)'}\n"
+            f"Sibling fallback paths: {fallback_paths or '(none)'}\n\n"
+            f"Global insights:\n{insights[:20]}\n\n"
             f"Knowledge gaps:\n{chr(10).join(gap_lines) if gap_lines else '(none)'}"
         )
 

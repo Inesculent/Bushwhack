@@ -18,7 +18,6 @@ from src.orchestration.nodes.application.critique_revision import (
     _has_focused_evidence,
     _needs_revision_candidates,
 )
-from src.orchestration.nodes.verifier.verifier_runner import invoke_verifier_for_candidate
 
 logger = logging.getLogger(__name__)
 
@@ -135,60 +134,23 @@ def collect_verifier_send_payloads(state: GraphState) -> List[Send]:
 
 
 def make_verifier_subgraph_node():
-    """Run verifier for the ``verifier_candidate`` carried on a Send branch."""
+    """Run verifier for the ``verifier_candidate`` carried on a Send branch using a multi-node subgraph."""
+    from src.orchestration.verifier_graph import build_verifier_graph
 
-    node_name = "verifier_subgraph"
+    inner = build_verifier_graph()
+
+    _PARENT_KEYS = frozenset(
+        {
+            "verifier_reports",
+            "metadata",
+            "token_usage",
+            "node_history",
+        }
+    )
 
     def verifier_subgraph_node(state: GraphState) -> Dict[str, Any]:
-        raw = state.get("verifier_candidate")
-        if not raw:
-            return {"node_history": [f"{node_name}:skipped"]}
-
-        try:
-            cand = CandidateFinding.model_validate(raw)
-        except Exception as exc:  # noqa: BLE001
-            return {
-                "node_history": [f"{node_name}:invalid_candidate:{exc.__class__.__name__}"],
-            }
-
-        fc = focused_context_text_for_candidate(state, cand.candidate_id)
-        git_excerpt = (state.get("git_diff", "") or "")[:8000]
-        report = invoke_verifier_for_candidate(
-            run_id=str(state.get("run_id", "")),
-            repo_path=str(state.get("repo_path", "")),
-            candidate=cand,
-            focused_context_snippets=fc,
-            git_diff_excerpt=git_excerpt,
-            graph_state=state,
-        )
-
-        meta = dict(state.get("metadata") or {})
-        hints = dict(meta.get("verifier_hints") or {})
-        hints[report.candidate_id] = {
-            "verdict": report.verdict,
-            "verification_scope": report.verification_scope,
-            "updated_evidence_summary": report.updated_evidence_summary,
-            "final_rationale": report.final_rationale,
-            "attempts": len(report.attempts),
-            "skipped_reason": report.skipped_reason,
-            "lint_advisory": _lint_advisory_from_report(report),
-        }
-        meta["verifier_hints"] = hints
-        vrun = dict(meta.get("verifier") or {})
-        by_c = dict(vrun.get("by_candidate") or {})
-        by_c[report.candidate_id] = report.model_dump(mode="json")
-        vrun["by_candidate"] = by_c
-        meta["verifier"] = vrun
-
-        tokens = 0
-        if isinstance(report.metadata, dict):
-            tokens = int(report.metadata.get("llm_tokens") or 0)
-
-        return {
-            "verifier_reports": [report],
-            "metadata": meta,
-            "token_usage": tokens,
-            "node_history": [node_name],
-        }
+        result = inner.invoke(state)
+        # Only return keys that should be merged back into the parent GraphState
+        return {k: result[k] for k in _PARENT_KEYS if k in result}
 
     return verifier_subgraph_node

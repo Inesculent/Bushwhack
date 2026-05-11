@@ -1,0 +1,68 @@
+[
+  {
+    "id": "t1-001-string-substring-exception",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 27,
+    "line_end": 31,
+    "content": "class StringSubstring():\n    @classmethod\n    def INPUT_TYPES(s):\n        return {\n            \"required\": {\n                \"string\": (IO.STRING, {\"multiline\": True}),\n                \"start\": (IO.INT, {}),\n                \"end\": (IO.INT, {}),\n            }\n        }",
+    "severity": "high",
+    "feedback_type": "defect_detection",
+    "recommendation": "Add type check: assert isinstance(string, str) before slicing, or wrap in try/except to return ComfyUI-compatible error state (e.g., \"error\" string or None) instead of crashing.",
+    "references": []
+  },
+  {
+    "id": "t4-defect-001",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 184,
+    "line_end": 188,
+    "content": "In the `StringCompare.execute` method, the `Ends With` case is missing a return statement.",
+    "severity": "high",
+    "feedback_type": "defect_detection",
+    "recommendation": "Add a return statement to the `Ends With` branch (e.g., `return a.endswith(b),`), ensuring it matches the style of the `Starts With` and `Equal` branches.",
+    "references": []
+  },
+  {
+    "id": "t5-001",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 190,
+    "line_end": 227,
+    "content": "class RegexMatch():\n\nPost-context evidence: Digest shards confirm ReDoS risk: RegexMatch.execute() at lines 218-230 directly uses user-controlled regex_pattern in re.search() without validation. No upstream validation or global timeout visible. Runtime verifier inconclusive due to test environment issues, but static analysis supports the vulnerability. Recommendation to add validation/limits remains valid.",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Add regex pattern length limits (e.g., <500 chars) and complexity validation. Consider a global timeout or safe regex library (e.g., oniguruma bindings) to prevent catastrophic backtracking.",
+    "references": []
+  },
+  {
+    "id": "t2-finding-1",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 208,
+    "line_end": 210,
+    "content": "The `RegexMatch.execute()` method catches `re.error` but returns `False`. This silently indicates a match failure when the real issue is an invalid regex pattern, potentially confusing users and masking configuration errors.",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Return a structured error message or raise an exception when an invalid regex pattern is provided. Consider returning a special error string like \"Invalid regex pattern\" instead of False.",
+    "references": []
+  },
+  {
+    "id": "t5-002",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 228,
+    "line_end": 299,
+    "content": "class RegexExtract():\n\nPost-context evidence: Digest shards confirm ReDoS risk: RegexExtract.execute() at lines 235-294 uses user-controlled regex_pattern in multiple regex functions (re.search, re.findall, re.finditer) without validation. Code snippet shows re.findall() and re.search() calls on lines 273 and 296 respectively. No timeout or safety library used. Recommendation to add validation/limits or use safe regex library remains valid.",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Implement pattern complexity validation or length limits. Use a regex safety library or enforce a global execution timeout for regex operations.",
+    "references": []
+  },
+  {
+    "id": "t2-finding-2",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 263,
+    "line_end": 265,
+    "content": "The `RegexExtract.execute()` method catches `re.error` but returns an empty string. This is misleading because an empty string could mean either \"no matches\" or \"error occurred\", making debugging difficult.",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Return a descriptive error string like \"Invalid regex pattern: <error_message>\" or raise an exception. The current behavior makes debugging extremely difficult.",
+    "references": []
+  }
+]

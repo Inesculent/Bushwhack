@@ -242,6 +242,15 @@ def make_general_critiquer_node(
             }
         metadata["general_critiquer"] = crit_meta
 
+        integrity = dict(metadata.get("candidate_integrity", {}) or {})
+        by_task = dict(integrity.get("by_task", {}) or {})
+        by_task[task.id] = {
+            "candidate_ids": [c.candidate_id for c in candidates],
+            "candidate_count": len(candidates),
+        }
+        integrity["by_task"] = by_task
+        metadata["candidate_integrity"] = integrity
+
         return {
             "candidate_findings": candidates,
             "focused_context_requests": initial_requests,

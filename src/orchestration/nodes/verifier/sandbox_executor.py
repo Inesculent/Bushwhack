@@ -156,10 +156,17 @@ def execute_test_script(
     started = time.perf_counter()
     try:
         _start_verifier_sandbox(sandbox, repo_path, graph_state, settings=settings)
+        exec_wd = sandbox.execution_workdir
+        record.repo_root = exec_wd
+        record.sandbox_mode = "repo_mount" if exec_wd == "/repo" else "snippet_workspace"
+        if exec_wd != "/repo":
+            try:
+                sandbox.execute(["sh", "-lc", "test -e /repo || ln -s /workspace /repo"], workdir="/")
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("verifier symlink /repo failed: %s", exc)
         record.lint_runs = _collect_lint_runs(sandbox, settings)
         sandbox.write_file_in_container(remote_path, test_code.encode("utf-8"))
         cmd = ["python", remote_path]
-        exec_wd = sandbox.execution_workdir
 
         def _run() -> tuple[int, str, str]:
             r = sandbox.execute_result(cmd, workdir=exec_wd)

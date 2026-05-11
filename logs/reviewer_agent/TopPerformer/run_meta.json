@@ -1,8 +1,8 @@
 {
   "experiment": "reviewer_graph_parallel",
-  "run_id": "a1bae06003f0",
-  "started_at": "2026-05-10T08:26:11.458700+00:00",
-  "finished_at": "2026-05-10T08:31:12.440981+00:00",
+  "run_id": "167ccd7b6635",
+  "started_at": "2026-05-10T09:04:13.028885+00:00",
+  "finished_at": "2026-05-10T09:09:17.581129+00:00",
   "dataset": "aacr_bench",
   "dataset_path": "data\\processed\\aacr_bench_graph_ready.csv",
   "planner_model_key": "qwen3.5-35b-a3b",
@@ -34,6 +34,6 @@
   "manifest_total_rows": 1,
   "succeeded": 1,
   "failed": 0,
-  "total_llm_tokens": 636269,
-  "elapsed_ms": 300777
+  "total_llm_tokens": 372815,
+  "elapsed_ms": 304503
 }

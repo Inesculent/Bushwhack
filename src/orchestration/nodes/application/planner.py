@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any, Dict, Iterable, List
 
 from pydantic import BaseModel, Field
@@ -18,6 +19,7 @@ trace_logger = logging.getLogger("research_pipeline.reviewer_trace")
 WORKER_SPECIALTIES = ("security", "logic", "performance", "general")
 MAX_PLANNER_DIFF_CHARS = 20000
 MAX_PLANNER_RELATED_ITEMS = 8
+_TASK_DEDUPE_SIMILARITY = 0.85
 
 
 class ReviewPlanOutput(BaseModel):
@@ -137,18 +139,46 @@ def _normalize_tasks(tasks: List[ReviewTask], state: GraphState) -> List[ReviewT
         if task_id in used_ids:
             task_id = f"{task_id}-{index}"
         used_ids.add(task_id)
-        normalized.append(
-            task.model_copy(
-                update={
-                    "id": task_id,
-                    "specialty": specialty,
-                    "target_files": _dedupe_preserve_order(task.target_files or fallback_files),
-                    "subtasks": [],
-                }
-            )
+        candidate = task.model_copy(
+            update={
+                "id": task_id,
+                "specialty": specialty,
+                "target_files": _dedupe_preserve_order(task.target_files or fallback_files),
+                "subtasks": [],
+            }
         )
+        if _is_duplicate_task(candidate, normalized):
+            continue
+        normalized.append(candidate)
 
     return normalized or _default_tasks(state)
+
+
+def _task_tokens(task: ReviewTask) -> set[str]:
+    text = f"{task.title} {task.description}".lower()
+    parts = re.split(r"[^a-z0-9]+", text)
+    return {p for p in parts if p}
+
+
+def _task_similarity(left: ReviewTask, right: ReviewTask) -> float:
+    lt = _task_tokens(left)
+    rt = _task_tokens(right)
+    if not lt or not rt:
+        return 0.0
+    intersection = lt & rt
+    union = lt | rt
+    return len(intersection) / max(1, len(union))
+
+
+def _is_duplicate_task(candidate: ReviewTask, existing: List[ReviewTask]) -> bool:
+    for prior in existing:
+        if prior.specialty != candidate.specialty:
+            continue
+        if _dedupe_preserve_order(prior.target_files) != _dedupe_preserve_order(candidate.target_files):
+            continue
+        if _task_similarity(prior, candidate) >= _TASK_DEDUPE_SIMILARITY:
+            return True
+    return False
 
 
 def _structural_routing_hints(state: GraphState, changed_files: List[str]) -> Dict[str, Any]:
@@ -257,10 +287,11 @@ def _structural_routing_hints(state: GraphState, changed_files: List[str]) -> Di
     }
 
 
-def _render_planner_prompt(state: GraphState) -> str:
+def _render_planner_prompt(state: GraphState, *, max_diff_chars: int | None = None) -> str:
     files = _target_files(state)
     preflight_summary = state.get("preflight_summary")
     insights = state.get("global_insights", []) or []
+    diff_limit = max_diff_chars if max_diff_chars is not None else MAX_PLANNER_DIFF_CHARS
 
     return render_reviewer_prompt(
         "planner.md",
@@ -269,7 +300,7 @@ def _render_planner_prompt(state: GraphState) -> str:
             "Preflight Summary": str(preflight_summary.model_dump() if preflight_summary else {}),
             "Structural Routing Hints": str(_structural_routing_hints(state, files)),
             "Global Insights": str(insights),
-            "Git Diff Excerpt": (state.get("git_diff", "") or "")[:MAX_PLANNER_DIFF_CHARS],
+            "Git Diff Excerpt": (state.get("git_diff", "") or "")[:diff_limit],
         },
     )
 
@@ -305,13 +336,30 @@ def run_planner_generation(
             tasks = _normalize_tasks(response.tasks, state)
             summary = response.summary or summary
         except Exception as exc:  # noqa: BLE001 - planner fallback keeps review runs alive
-            warnings.append(f"planner_llm_fallback:{exc.__class__.__name__}: {exc}")
+            warnings.append(f"planner_llm_failed:{exc.__class__.__name__}: {exc}")
             logger.warning(
-                "review_planner falling back to deterministic plan run_id=%s reason=%s: %s",
+                "review_planner failed run_id=%s reason=%s: %s",
                 run_id,
                 exc.__class__.__name__,
                 exc,
             )
+            try:
+                fallback_prompt = _render_planner_prompt(state, max_diff_chars=8000)
+                llm = Models.planner(ReviewPlanOutput, model_key=selected_model)
+                invoke_result = llm.invoke(fallback_prompt)
+                response = parse_structured_output(invoke_result, ReviewPlanOutput)
+                llm_tokens = extract_total_tokens_from_llm_result(invoke_result)
+                tasks = _normalize_tasks(response.tasks, state)
+                summary = response.summary or summary
+                warnings.append("planner_llm_retry:shorter_prompt")
+            except Exception as exc2:  # noqa: BLE001 - planner fallback keeps review runs alive
+                warnings.append(f"planner_llm_fallback:{exc2.__class__.__name__}: {exc2}")
+                logger.warning(
+                    "review_planner fallback to deterministic plan run_id=%s reason=%s: %s",
+                    run_id,
+                    exc2.__class__.__name__,
+                    exc2,
+                )
 
     return tasks, summary, warnings, llm_tokens
 

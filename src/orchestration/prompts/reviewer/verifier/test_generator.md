@@ -35,7 +35,9 @@ for mod in heavy_deps:
         sys.modules[mod] = MagicMock()
 ```
 
-2. Add `/repo` to `sys.path` before importing project modules, e.g. `sys.path.insert(0, "/repo")`.
+2. Use the repo root hint `{repo_root}` when adding to `sys.path`. Do **not** hardcode `/repo`.
+    - Example: set `repo_root = "{repo_root}"`, add it to `sys.path` if it exists.
+    - If it does not exist, fall back to the first existing path in `"/repo"`, then `"/workspace"`.
 
 3. Import **only** what you need from the repo; avoid `pytest` / `unittest` test runners.
 

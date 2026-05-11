@@ -41,6 +41,7 @@ def build_test_generator_prompt(
     retry_feedback: str,
     mock_heavy_deps: bool,
     timeout_seconds: int,
+    repo_root: str,
 ) -> str:
     template = load_reviewer_prompt("verifier/test_generator.md")
     candidate_json = json.dumps(candidate, indent=2, ensure_ascii=False)
@@ -54,6 +55,7 @@ def build_test_generator_prompt(
         line_start=candidate.get("line_start", 0),
         line_end=candidate.get("line_end", 0),
         timeout_seconds=timeout_seconds,
+        repo_root=repo_root or "/repo",
     )
 
 
@@ -63,6 +65,7 @@ def generate_test_script(
     focused_context_snippets: str,
     git_diff_excerpt: str,
     retry_feedback: str,
+    repo_root: str,
     settings: Settings | None = None,
     model_key: str | None = None,
     use_llm: bool = True,
@@ -76,6 +79,7 @@ def generate_test_script(
         retry_feedback=retry_feedback,
         mock_heavy_deps=settings.verifier_mock_heavy_deps,
         timeout_seconds=settings.verifier_test_timeout_seconds,
+        repo_root=repo_root,
     )
     if not use_llm:
         return "", 0

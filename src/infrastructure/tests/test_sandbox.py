@@ -9,6 +9,16 @@ def _debug_enabled() -> bool:
     return os.getenv("SANDBOX_TEST_DEBUG", "").strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _docker_daemon_available() -> bool:
+    try:
+        import docker
+
+        docker.from_env().ping()
+        return True
+    except Exception:
+        return False
+
+
 def _debug_print(title: str, content: str) -> None:
     if _debug_enabled():
         print(f"\n[{title}]\n{content}", flush=True)
@@ -16,6 +26,9 @@ def _debug_print(title: str, content: str) -> None:
 
 @pytest.fixture(scope="module")
 def sandbox_session(repo_root: Path):
+    if not _docker_daemon_available():
+        pytest.skip("Docker daemon not available")
+
     from src.infrastructure.sandbox import RepoSandbox
 
     sandbox = RepoSandbox()

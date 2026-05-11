@@ -62,6 +62,8 @@ _TIER1_LOCALIZED_MARKERS = (
     "re.fullmatch",
     "len(",
     "nonetype",
+    "none",
+    "typeerror",
     "attributeerror",
     "indexerror",
     "keyerror",
@@ -194,6 +196,16 @@ def _candidate_requires_context(candidate: CandidateFinding) -> bool:
     return _high_risk_claim_needs_external_context(candidate)
 
 
+def _accepted_localized_defect(candidate: CandidateFinding, reports: Sequence[ReflectionReport]) -> bool:
+    """A relevant accept can settle localized defect candidates despite stale required_context text."""
+    if candidate.claim_type != "defect":
+        return False
+    if not any(report.verdict == "accept" for report in reports):
+        return False
+    blob = _candidate_evidence_blob(candidate)
+    return any(marker in blob for marker in _TIER1_LOCALIZED_MARKERS)
+
+
 def make_adversarial_cleanup_node(settings: Settings | None = None):
     node_name = "adversarial_cleanup"
 
@@ -302,6 +314,11 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
             not_applicable_reports = [
                 report for report in relevant_reports if report.verdict == "not_applicable"
             ]
+            affirmative_reports = [
+                report
+                for report in relevant_reports
+                if report.verdict in {"accept", "reclassify", "needs_context", "needs_verification"}
+            ]
             if not_applicable_reports:
                 misrouted_candidates[candidate.candidate_id] = [
                     {
@@ -310,6 +327,7 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
                     }
                     for report in not_applicable_reports
                 ]
+            if not_applicable_reports and not affirmative_reports:
                 drop(
                     candidate,
                     "misrouted_not_applicable",
@@ -365,7 +383,12 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
                 ignored_context_requests[candidate.candidate_id] = off_domain_context
 
             needs_context = any(r.verdict == "needs_context" for r in relevant_reports)
-            if _candidate_requires_context(candidate) and not _focused_hits_for_candidate(state, candidate.candidate_id):
+            requires_context = _candidate_requires_context(candidate)
+            has_focused_context = _focused_hits_for_candidate(state, candidate.candidate_id)
+            context_requirement_overridden = False
+            if requires_context and not has_focused_context:
+                context_requirement_overridden = _accepted_localized_defect(candidate, relevant_reports)
+            if requires_context and not has_focused_context and not context_requirement_overridden:
                 drop(candidate, "required_context_not_gathered")
                 continue
 
@@ -381,7 +404,7 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
                 )
                 if (
                     verdict != "accept"
-                    and not _focused_hits_for_candidate(state, candidate.candidate_id)
+                    and not has_focused_context
                     and not (relevant_needs_verification and verified_hint)
                 ):
                     drop(candidate, "needs_context_without_supporting_revision")
@@ -412,10 +435,14 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
                 "claim_type": candidate.claim_type,
                 "final_category": category,
                 "relevant_reflectors": sorted(relevant_reflectors),
-                "had_focused_context": _focused_hits_for_candidate(state, candidate.candidate_id),
+                "had_focused_context": has_focused_context,
             }
             if abstaining_reflectors:
                 lifecycle[candidate.candidate_id]["abstaining_reflectors"] = sorted(abstaining_reflectors)
+            if context_requirement_overridden:
+                lifecycle[candidate.candidate_id]["context_requirement_overridden"] = (
+                    "localized_defect_accepted_by_relevant_reflector"
+                )
             if candidate.candidate_id in verifier_hints:
                 lifecycle[candidate.candidate_id]["verifier_advisory"] = verifier_hints[candidate.candidate_id]
 

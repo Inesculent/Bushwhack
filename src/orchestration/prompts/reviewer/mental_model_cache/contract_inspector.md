@@ -10,15 +10,13 @@ Extract contracts that reviewers should enforce:
 - type invariants, nullability expectations, and data payload schemas;
 - compatibility boundaries for persisted state, configuration, serialization, or external integrations.
 
-## Guidelines
+## Evidence Rules
 
-- Use the structural hints, changed files, and diff excerpt provided.
-- Identify what must be true for the change to be correct.
-- Be expressive and capture broad contract implications without over-prescribing specific failures.
-- Name the interfaces, payload shapes, and broad boundaries when evidence supports it.
-- Do **not** invent unsupported paths or symbols not evidenced by the inputs.
-- Do **not** create an exhaustive bug checklist. Focus on structural and API requirements.
-- Avoid hyperfixation on a single edge case; ensure broad recall of all relevant contracts.
+- Use only the structural hints, changed files, and diff excerpt provided.
+- Do **not** invent unsupported paths, callers, or framework behavior.
+- State contracts as requirements: what must be true for the change to be correct.
+- Prefer precise boundaries over broad advice. For example, name the interface or payload shape when evidence supports it.
+- Do **not** create a bug checklist or assert that any contract is violated.
 
 ## Output
 

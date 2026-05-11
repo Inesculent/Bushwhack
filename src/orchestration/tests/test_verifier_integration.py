@@ -464,10 +464,11 @@ def test_start_verifier_sandbox_clones_when_clone_flag_enabled() -> None:
 
 
 def test_review_sandbox_default_image_is_agent_fs_stack() -> None:
-    """Review context uses RepoSandbox() default image (git+rg stack per mcp/fs-mcp); verifier uses verifier_image."""
+    """Review context uses RepoSandbox() default image (git+rg stack per docker_mcp/fs-mcp); verifier uses verifier_image."""
     from src.infrastructure.sandbox import RepoSandbox
 
-    assert RepoSandbox().image_name == "agent-fs-sandbox"
+    with patch("src.infrastructure.sandbox.docker.from_env"):
+        assert RepoSandbox().image_name == "agent-fs-sandbox"
     """Regression: markdown must use balanced {{}} placeholders for str.format."""
     from src.orchestration.nodes.verifier.test_generator import build_test_generator_prompt
     from src.orchestration.prompts.renderer import load_reviewer_prompt
@@ -480,6 +481,7 @@ def test_review_sandbox_default_image_is_agent_fs_stack() -> None:
         retry_feedback="",
         mock_heavy_deps=True,
         timeout_seconds=60,
+        repo_root="/repo",
     )
     assert "pkg/x.py" in text
     assert "1" in text and "3" in text
