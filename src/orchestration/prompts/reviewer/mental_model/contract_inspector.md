@@ -10,6 +10,8 @@ Extract contracts that reviewers should enforce:
 - type invariants, nullability expectations, and data payload schemas;
 - compatibility boundaries for persisted state, configuration, serialization, or external integrations.
 
+When the diff or structural hints show **declared input schemas** (e.g. plugin/node `INPUT_TYPES`, required handler parameters, non-optional typed fields), record which inputs are **required vs explicitly optional/nullable**. Downstream reviewers should assume required inputs are present at runtime unless the PR changes the schema to allow absence.
+
 ## Guidelines
 
 - Use the structural hints, changed files, and diff excerpt provided.

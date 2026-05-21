@@ -128,13 +128,22 @@ class Models:
         )
 
     @staticmethod
-    def worker(schema: Type[BaseModel], model_key: Optional[str] = None):
+    def worker(
+        schema: Type[BaseModel],
+        model_key: Optional[str] = None,
+        max_completion_tokens: int | None = None,
+    ):
         settings = get_settings()
         selected_model = model_key or Models.DEFAULT_ROLE_MODELS["worker"]
+        cap = (
+            max_completion_tokens
+            if max_completion_tokens is not None
+            else settings.reviewer_worker_max_completion_tokens
+        )
         return Models.get_structured(
             selected_model,
             schema,
-            max_completion_tokens=settings.reviewer_worker_max_completion_tokens,
+            max_completion_tokens=cap,
         )
 
     @staticmethod

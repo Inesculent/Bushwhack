@@ -12,6 +12,8 @@ Produce a focused, well-rounded task list for parallel specialists. Use these sp
 
 Ensure balanced coverage across specialties. Do not omit a specialty unless clearly unsupported by the mandate.
 
+Always include **at least one** `logic` task for **diff-local general correctness** (returns, branches, bounds, types visible in the diff) that does not require off-diff caller or middleware discovery. Do not center that task on missing None/null guards for required, non-optional declared inputs (see global **Declared input contracts**). Use the phrase **“diff-local correctness”** in that task’s title or description.
+
 ## Revision Rules
 
 - Address every critic gap directly to maintain high recall.

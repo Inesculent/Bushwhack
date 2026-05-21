@@ -17,6 +17,7 @@ from src.config import get_settings
 from src.domain.state import GraphState
 from src.domain.verifier_schemas import VerifierReport
 from src.orchestration.nodes.verifier.result_judge import (
+    attempt_was_harness_error,
     build_retry_feedback,
     infer_verification_scope,
     judge_attempt,
@@ -193,6 +194,8 @@ def verifier_finalize_node(state: GraphState) -> Dict[str, Any]:
 
     meta = dict(state.get("metadata") or {})
     hints = dict(meta.get("verifier_hints") or {})
+    last_attempt = report.attempts[-1] if report.attempts else None
+    harness_error = bool(last_attempt and attempt_was_harness_error(last_attempt))
     hints[report.candidate_id] = {
         "verdict": report.verdict,
         "verification_scope": report.verification_scope,
@@ -201,6 +204,7 @@ def verifier_finalize_node(state: GraphState) -> Dict[str, Any]:
         "attempts": len(report.attempts),
         "skipped_reason": report.skipped_reason,
         "lint_advisory": _lint_advisory_from_report(report),
+        "harness_error": harness_error,
     }
     meta["verifier_hints"] = hints
     vrun = dict(meta.get("verifier") or {})

@@ -446,6 +446,62 @@ def test_adversarial_cleanup_promotes_tier1_security_without_focused_context() -
     assert len(out["findings"]) == 1
 
 
+def test_adversarial_cleanup_promotes_verified_with_required_context_localized_regex() -> None:
+    """Run 68c1a024f6a8 class: required_context + concrete_behavior verified promotes without focused hits."""
+    node = make_adversarial_cleanup_node()
+    cand = CandidateFinding(
+        candidate_id="logic-string-nodes-comprehensive-6",
+        patch_task_id="logic-string-nodes-comprehensive",
+        file_path="comfy_extras/nodes_string.py",
+        line_start=217,
+        line_end=227,
+        content="elif mode == 'All Groups':",
+        claim_type="defect",
+        failure_mode="RegexExtract 'All Groups' skips group_index=0 (full match) when match.groups() is empty.",
+        evidence_summary="Checks match.groups() before group_index; group 0 never returned.",
+        required_context=[
+            "Does group_index include group 0 for full match?",
+            "Are there tests for group_index=0 in 'All Groups' mode?",
+        ],
+        suspected_category="logic",
+        reflection_specialties=["logic"],
+        recommendation="Allow group_index=0 for full match in All Groups mode.",
+    )
+    reports = [
+        ReflectionReport(
+            candidate_id=cand.candidate_id,
+            reflector_specialty="logic",
+            verdict="needs_verification",
+            rationale="group_index=0 behavior needs runtime proof.",
+        )
+    ]
+    out = node(
+        {
+            "run_id": "t",
+            "candidate_findings": [cand],
+            "reflection_reports": reports,
+            "focused_context_results": {},
+            "metadata": {
+                "verifier_hints": {
+                    cand.candidate_id: {
+                        "verdict": "verified",
+                        "verification_scope": "concrete_behavior",
+                        "updated_evidence_summary": "Runtime verifier: verified",
+                        "final_rationale": "STATUS: CRASHED | LogicError",
+                        "attempts": 1,
+                        "skipped_reason": "",
+                        "harness_error": False,
+                    }
+                }
+            },
+        }
+    )
+    assert len(out["findings"]) == 1
+    life = out["metadata"]["adversarial_cleanup"]["candidate_lifecycle"][cand.candidate_id]
+    assert life["decision"] == "promoted"
+    assert life.get("context_requirement_overridden") == "runtime_verifier_concrete_behavior"
+
+
 def test_adversarial_cleanup_promotes_needs_verification_with_runtime_verified() -> None:
     """Verifier verified satisfies the revision gate for needs_verification without focused hits."""
     node = make_adversarial_cleanup_node()
@@ -856,6 +912,36 @@ def test_auto_focus_request_created_for_security_claim_needing_context() -> None
     assert len(requests) == 1
     assert requests[0].candidate_id == cand.candidate_id
     assert "src/x.py" in requests[0].file_paths
+
+
+def test_auto_focus_request_created_for_defect_required_context() -> None:
+    from src.orchestration.routing.critiquer_focus import auto_focus_requests
+
+    task = ReviewTask(
+        id="logic-string",
+        title="Logic",
+        description="Review string nodes.",
+        target_files=["comfy_extras/nodes_string.py"],
+        specialty="logic",
+    )
+    cand = CandidateFinding(
+        candidate_id="logic-string-nodes-comprehensive-6",
+        patch_task_id="logic-string-nodes-comprehensive",
+        file_path="comfy_extras/nodes_string.py",
+        line_start=217,
+        line_end=227,
+        content="elif mode == 'All Groups':",
+        claim_type="defect",
+        failure_mode="group_index=0 not returned when match.groups() empty.",
+        evidence_summary="All Groups mode checks match.groups() before index.",
+        required_context=["Does group_index include group 0 for full match?"],
+        suspected_category="logic",
+        reflection_specialties=["logic"],
+        recommendation="Fix group 0 handling.",
+    )
+    requests = auto_focus_requests(task, [cand])
+    assert len(requests) == 1
+    assert "group_index" in " ".join(requests[0].text_queries).lower()
 
 
 def test_reflection_routes_candidates_only_to_declared_domains() -> None:

@@ -8,7 +8,8 @@ Judge whether the task list covers:
 - contractual and API boundaries from the mandate;
 - behavioral expectations and invariants across all affected features;
 - every major risk hypothesis with a concrete investigation path;
-- non-security concerns such as correctness, performance, tests, integration, and maintainability.
+- non-security concerns such as correctness, performance, tests, integration, and maintainability;
+- **at least one diff-local general correctness** `logic` task (changed-hunk control flow, returns, None/edge inputs, bounds) that does **not** depend on off-diff caller/middleware discovery.
 
 ## Alignment Rules
 
@@ -16,6 +17,7 @@ Set `aligned=true` when the plan covers all key areas with sufficient specificit
 
 Set `aligned=false` when:
 - a major hypothesis or feature area is missing entirely;
+- there is **no** diff-local general correctness task and every `logic` task only chases off-diff context (callers, auth, config);
 - tasks are too generic (e.g., broad "check edge cases" work) or, conversely, so hyperspecific they miss the bigger picture;
 - the plan over-indexes on one specialty, causing a drop in overall review recall;
 - tasks get stuck in infinite loops of repetitive checks.

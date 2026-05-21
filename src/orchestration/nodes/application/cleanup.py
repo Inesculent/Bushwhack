@@ -14,6 +14,7 @@ from src.domain.schemas import (
 )
 from src.config import Settings, get_settings
 from src.domain.state import GraphState
+from src.orchestration.routing.misroute_recovery import parse_misroute_redirect_category
 
 logger = logging.getLogger(__name__)
 trace_logger = logging.getLogger("research_pipeline.reviewer_trace")
@@ -206,6 +207,50 @@ def _accepted_localized_defect(candidate: CandidateFinding, reports: Sequence[Re
     return any(marker in blob for marker in _TIER1_LOCALIZED_MARKERS)
 
 
+def _revision_accepts(candidate_id: str, revisions: Mapping[str, Mapping[str, Any]]) -> bool:
+    rev = revisions.get(candidate_id) or {}
+    return str(rev.get("verdict", "")).lower() == "accept"
+
+
+def _verifier_harness_error(candidate_id: str, verifier_hints: Mapping[str, Any]) -> bool:
+    hint = verifier_hints.get(candidate_id)
+    return isinstance(hint, dict) and bool(hint.get("harness_error"))
+
+
+def _verifier_concrete_behavior_verified(candidate_id: str, verifier_hints: Mapping[str, Any]) -> bool:
+    hint = verifier_hints.get(candidate_id)
+    return (
+        isinstance(hint, dict)
+        and str(hint.get("verdict", "")).lower() == "verified"
+        and str(hint.get("verification_scope", "")) == "concrete_behavior"
+        and not hint.get("harness_error")
+    )
+
+
+def _required_context_satisfied_by_verifier(
+    candidate: CandidateFinding,
+    candidate_id: str,
+    verifier_hints: Mapping[str, Any],
+) -> bool:
+    """Runtime concrete_behavior proof supersedes doc/test required_context for localized defects."""
+    if not _verifier_concrete_behavior_verified(candidate_id, verifier_hints):
+        return False
+    if candidate.claim_type != "defect":
+        return False
+    blob = _candidate_evidence_blob(candidate)
+    return any(marker in blob for marker in _TIER1_LOCALIZED_MARKERS)
+
+
+def _misroute_redirect_category(not_applicable_reports: Sequence[ReflectionReport]) -> ReviewCategory | None:
+    for report in not_applicable_reports:
+        parsed = parse_misroute_redirect_category(report.rationale)
+        if parsed is not None:
+            return parsed
+        if report.reclassified_category:
+            return report.reclassified_category
+    return None
+
+
 def make_adversarial_cleanup_node(settings: Settings | None = None):
     node_name = "adversarial_cleanup"
 
@@ -328,6 +373,46 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
                     for report in not_applicable_reports
                 ]
             if not_applicable_reports and not affirmative_reports:
+                redirect_category = _misroute_redirect_category(not_applicable_reports)
+                if (
+                    redirect_category
+                    and redirect_category in DOMAIN_REFLECTORS
+                    and redirect_category not in relevant_reflectors
+                    and _candidate_has_actionability(candidate)
+                    and candidate.claim_type in PROMOTABLE_CLAIM_TYPES
+                ):
+                    category = redirect_category
+                    feedback_type = _category_to_feedback(category)  # type: ignore[arg-type]
+                    rev = revisions.get(candidate.candidate_id) or {}
+                    evidence_extra = ""
+                    if isinstance(rev.get("updated_evidence_summary"), str) and rev["updated_evidence_summary"]:
+                        evidence_extra = f"\n\nPost-context evidence: {rev['updated_evidence_summary']}"
+                    runtime_note = ""
+                    if _verifier_harness_error(candidate.candidate_id, verifier_hints):
+                        runtime_note = "\n\n(runtime unverified: verifier harness error)"
+                    promoted.append(
+                        ReviewFinding(
+                            id=candidate.candidate_id,
+                            file_path=candidate.file_path,
+                            line_start=candidate.line_start,
+                            line_end=candidate.line_end,
+                            content=candidate.content + evidence_extra + runtime_note,
+                            severity=candidate.severity,
+                            feedback_type=feedback_type,  # type: ignore[arg-type]
+                            recommendation=candidate.recommendation,
+                            references=[],
+                        )
+                    )
+                    lifecycle[candidate.candidate_id] = {
+                        "decision": "promoted",
+                        "reason": "misroute_recovered_from_not_applicable",
+                        "claim_type": candidate.claim_type,
+                        "final_category": category,
+                        "relevant_reflectors": sorted(relevant_reflectors),
+                        "redirect_category": redirect_category,
+                        "had_focused_context": _focused_hits_for_candidate(state, candidate.candidate_id),
+                    }
+                    continue
                 drop(
                     candidate,
                     "misrouted_not_applicable",
@@ -385,11 +470,44 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
             needs_context = any(r.verdict == "needs_context" for r in relevant_reports)
             requires_context = _candidate_requires_context(candidate)
             has_focused_context = _focused_hits_for_candidate(state, candidate.candidate_id)
+            revision_accepted = _revision_accepts(candidate.candidate_id, revisions)
+            harness_error = _verifier_harness_error(candidate.candidate_id, verifier_hints)
+            verifier_satisfies_context = _required_context_satisfied_by_verifier(
+                candidate, candidate.candidate_id, verifier_hints
+            )
             context_requirement_overridden = False
             if requires_context and not has_focused_context:
-                context_requirement_overridden = _accepted_localized_defect(candidate, relevant_reports)
+                context_requirement_overridden = (
+                    _accepted_localized_defect(candidate, relevant_reports)
+                    or revision_accepted
+                    or harness_error
+                    or verifier_satisfies_context
+                )
             if requires_context and not has_focused_context and not context_requirement_overridden:
-                drop(candidate, "required_context_not_gathered")
+                drop(
+                    candidate,
+                    "required_context_not_gathered",
+                    {
+                        "required_context": list(candidate.required_context),
+                        "has_focused_context": has_focused_context,
+                        "verifier_concrete_verified": _verifier_concrete_behavior_verified(
+                            candidate.candidate_id, verifier_hints
+                        ),
+                        "revision_ran": bool(revisions),
+                    },
+                )
+                if _trace_enabled(state):
+                    trace_logger.info(
+                        "TRACE cleanup_required_context_drop run_id=%s candidate=%s "
+                        "required_context=%s focused=%s verifier_concrete=%s",
+                        run_id,
+                        candidate.candidate_id,
+                        candidate.required_context,
+                        has_focused_context,
+                        _verifier_concrete_behavior_verified(
+                            candidate.candidate_id, verifier_hints
+                        ),
+                    )
                 continue
 
             if needs_context or relevant_needs_verification:
@@ -399,12 +517,25 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
                     drop(candidate, "revision_reject")
                     continue
                 hint = verifier_hints.get(candidate.candidate_id)
+                if isinstance(hint, dict) and hint.get("harness_error"):
+                    pass
+                elif (
+                    isinstance(hint, dict)
+                    and str(hint.get("verdict", "")).lower() == "refuted"
+                    and str(hint.get("verification_scope", "")) == "concrete_behavior"
+                    and verdict == "accept"
+                ):
+                    drop(candidate, "verifier_refuted_concrete_behavior")
+                    continue
                 verified_hint = (
-                    isinstance(hint, dict) and str(hint.get("verdict", "")).lower() == "verified"
+                    isinstance(hint, dict)
+                    and str(hint.get("verdict", "")).lower() == "verified"
+                    and not hint.get("harness_error")
                 )
                 if (
                     verdict != "accept"
                     and not has_focused_context
+                    and not harness_error
                     and not (relevant_needs_verification and verified_hint)
                 ):
                     drop(candidate, "needs_context_without_supporting_revision")
@@ -415,6 +546,8 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
             rev = revisions.get(candidate.candidate_id) or {}
             if isinstance(rev.get("updated_evidence_summary"), str) and rev["updated_evidence_summary"]:
                 evidence_extra = f"\n\nPost-context evidence: {rev['updated_evidence_summary']}"
+            if harness_error and revision_accepted and "runtime unverified" not in evidence_extra.lower():
+                evidence_extra += "\n\n(runtime unverified: verifier harness error)"
 
             promoted.append(
                 ReviewFinding(
@@ -440,9 +573,22 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
             if abstaining_reflectors:
                 lifecycle[candidate.candidate_id]["abstaining_reflectors"] = sorted(abstaining_reflectors)
             if context_requirement_overridden:
-                lifecycle[candidate.candidate_id]["context_requirement_overridden"] = (
-                    "localized_defect_accepted_by_relevant_reflector"
-                )
+                if revision_accepted:
+                    lifecycle[candidate.candidate_id]["context_requirement_overridden"] = (
+                        "critique_revision_accept"
+                    )
+                elif verifier_satisfies_context:
+                    lifecycle[candidate.candidate_id]["context_requirement_overridden"] = (
+                        "runtime_verifier_concrete_behavior"
+                    )
+                elif harness_error:
+                    lifecycle[candidate.candidate_id]["context_requirement_overridden"] = (
+                        "verifier_harness_error"
+                    )
+                else:
+                    lifecycle[candidate.candidate_id]["context_requirement_overridden"] = (
+                        "localized_defect_accepted_by_relevant_reflector"
+                    )
             if candidate.candidate_id in verifier_hints:
                 lifecycle[candidate.candidate_id]["verifier_advisory"] = verifier_hints[candidate.candidate_id]
 

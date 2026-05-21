@@ -28,6 +28,7 @@ Examples:
 - Preserve intent, contracts, and precedent from Phase 0.
 - Do not claim a defect exists unless directly proven; phrase risks as balanced hypotheses.
 - Provide comprehensive output that avoids context explosion while ensuring high recall of potential issues.
+- In `behavioral_expectations` and `reviewer_guidance`, state that reviewers should **assume inputs satisfy declared schemas** (required parameters are present). Do **not** anchor the mandate on hunting missing None/null checks for required, non-optional inputs unless the contract or diff shows optional/nullable inputs.
 
 ## Output
 

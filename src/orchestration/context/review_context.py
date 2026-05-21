@@ -16,13 +16,16 @@ from src.domain.schemas import (
     FocusedContextRequest,
     FocusedContextResult,
     RepoDocument,
+    RepoDocsBundle,
     ReviewTask,
     SearchResult,
     StructuralTopologySummary,
 )
 from src.domain.state import GraphState
 from src.infrastructure.sandbox import RepoSandbox
+from src.infrastructure.sandbox_ast import collect_sandbox_file_entities, entities_from_sandbox_payload
 from src.infrastructure.search.ripgrep import RipgrepSearcher
+from src.orchestration.context.focused_query_sanitize import sanitize_focused_context_request
 from src.orchestration.nodes.application.worker import ReviewTaskContext
 
 logger = logging.getLogger(__name__)
@@ -327,6 +330,57 @@ def entities_for_file_from_structural_graph(state: GraphState, file_path: str) -
     return entities
 
 
+def symbol_call_edges_for_file(state: GraphState, file_path: str) -> Dict[str, List[str]]:
+    """Map symbol name -> outgoing call/reference target labels from the structural graph."""
+    graph_payload = state.get("structural_graph_node_link") or {}
+    if not isinstance(graph_payload, dict):
+        return {}
+    nodes = graph_payload.get("nodes", [])
+    edges = graph_payload.get("edges", [])
+    if not isinstance(nodes, list) or not isinstance(edges, list):
+        return {}
+
+    norm = _normalize_repo_path(file_path)
+    id_to_node = {str(n.get("id", "")): n for n in nodes if isinstance(n, dict) and n.get("id")}
+    symbol_id_to_name: Dict[str, str] = {}
+    for node in nodes:
+        if not isinstance(node, dict) or node.get("node_type") != "symbol":
+            continue
+        fp = node.get("file_path")
+        if not isinstance(fp, str) or _normalize_repo_path(fp) != norm:
+            continue
+        sid = str(node.get("id", ""))
+        name = node.get("symbol_name")
+        if sid and isinstance(name, str) and name.strip():
+            symbol_id_to_name[sid] = name.strip()
+
+    outgoing: Dict[str, List[str]] = {}
+    for edge in edges:
+        if not isinstance(edge, dict):
+            continue
+        et = str(edge.get("edge_type") or edge.get("relation") or "")
+        if et not in {"calls", "references"}:
+            continue
+        src = str(edge.get("source", ""))
+        tgt = str(edge.get("target", ""))
+        sym_name = symbol_id_to_name.get(src)
+        if not sym_name or not tgt:
+            continue
+        target_node = id_to_node.get(tgt, {})
+        label = (
+            target_node.get("symbol_name")
+            or target_node.get("label")
+            or target_node.get("name")
+            or tgt
+        )
+        if isinstance(label, str) and label.strip():
+            outgoing.setdefault(sym_name, []).append(label.strip())
+
+    for name in outgoing:
+        outgoing[name] = sorted(set(outgoing[name]))[:16]
+    return outgoing
+
+
 class LazyReviewContextProvider:
     """Shared direct-context adapter for reviewer graph runs."""
 
@@ -340,14 +394,30 @@ class LazyReviewContextProvider:
 
     def collect_for_task(self, state: GraphState, task: ReviewTask) -> ReviewTaskContext:
         self._ensure_started(state)
+        settings = get_settings()
         warnings = list(self._startup_warnings)
         explored_files: List[str] = []
         file_snippets: Dict[str, str] = {}
         entities_by_file: Dict[str, List[CodeEntity]] = {}
         search_results: Dict[str, List[SearchResult]] = {}
+        graph_call_edges_by_file: Dict[str, Dict[str, List[str]]] = {}
 
-        for file_path in task.target_files[:12]:
-            snippet = self.read_file_slice(file_path, max_chars=20000)
+        target_files = task.target_files[:12]
+        single_file_task = len(target_files) == 1
+        per_file_snippet_max = (
+            min(settings.reviewer_critiquer_single_file_max_chars, settings.review_full_file_max_chars)
+            if single_file_task
+            else 5000
+        )
+
+        for file_path in target_files:
+            if single_file_task:
+                snippet = self.read_full_file(
+                    file_path,
+                    max_chars=per_file_snippet_max,
+                )
+            else:
+                snippet = self.read_file_slice(file_path, max_chars=20000)
             if snippet:
                 file_snippets[file_path] = snippet
                 explored_files.append(file_path)
@@ -360,22 +430,51 @@ class LazyReviewContextProvider:
                 except Exception as exc:  # noqa: BLE001 - AST is enrichment only
                     warnings.append(f"ast_failed:{file_path}:{exc.__class__.__name__}: {exc}")
 
+        sandbox_ast_files = 0
+        if (
+            settings.ast_enabled
+            and self._host_repo_path is None
+            and self._sandbox is not None
+        ):
+            missing = [fp for fp in target_files if not entities_by_file.get(fp)]
+            if missing:
+                try:
+                    payload = collect_sandbox_file_entities(self._sandbox, missing)
+                    sandbox_entities = entities_from_sandbox_payload(payload)
+                    for fp, ents in sandbox_entities.items():
+                        entities_by_file[fp] = ents
+                        sandbox_ast_files += 1
+                    for gap in payload.get("gaps") or []:
+                        if isinstance(gap, dict):
+                            warnings.append(
+                                f"sandbox_ast_gap:{gap.get('filepath', '?')}:{gap.get('reason', '?')}"
+                            )
+                except Exception as exc:  # noqa: BLE001
+                    warnings.append(f"sandbox_ast_failed:{exc.__class__.__name__}: {exc}")
+
         outline_from_graph = False
-        for file_path in task.target_files[:12]:
+        for file_path in target_files:
             if entities_by_file.get(file_path):
                 continue
             graph_entities = entities_for_file_from_structural_graph(state, file_path)
             if graph_entities:
                 entities_by_file[file_path] = graph_entities
                 outline_from_graph = True
+                call_edges = symbol_call_edges_for_file(state, file_path)
+                if call_edges:
+                    graph_call_edges_by_file[file_path] = call_edges
         if outline_from_graph:
             warnings.append("review_outline_source:structural_graph_fallback")
 
-        settings = get_settings()
         if self._host_repo_path and self._ast_parser is not None:
             warnings.append("ast_capability:local_enabled")
         elif self._host_repo_path and settings.ast_enabled and self._ast_parser is None:
             warnings.append("ast_capability:local_unavailable")
+        elif sandbox_ast_files > 0:
+            if sandbox_ast_files < len(target_files):
+                warnings.append("ast_capability:sandbox_partial")
+            else:
+                warnings.append("ast_capability:sandbox_enabled")
         elif self._host_repo_path is None and settings.ast_enabled:
             warnings.append("ast_capability:remote_unavailable")
         elif not settings.ast_enabled:
@@ -405,6 +504,8 @@ class LazyReviewContextProvider:
             search_results=search_results,
             warnings=warnings,
             ast_included_files=ast_included_files,
+            per_file_snippet_max_chars=per_file_snippet_max,
+            graph_call_edges_by_file=graph_call_edges_by_file,
         )
 
     def stop(self) -> None:
@@ -482,6 +583,7 @@ class LazyReviewContextProvider:
         ``graph_state`` supplies symbol outlines from ``structural_graph_node_link``.
         """
         warnings: List[str] = []
+        settings = get_settings()
         if self._ast_parser is not None and self._host_repo_path:
             try:
                 return (
@@ -493,6 +595,18 @@ class LazyReviewContextProvider:
                 )
             except Exception as exc:  # noqa: BLE001
                 warnings.append(f"ast_failed:{file_path}:{exc.__class__.__name__}: {exc}")
+        if (
+            settings.ast_enabled
+            and self._host_repo_path is None
+            and self._sandbox is not None
+        ):
+            try:
+                payload = collect_sandbox_file_entities(self._sandbox, [file_path])
+                sandbox_entities = entities_from_sandbox_payload(payload)
+                if sandbox_entities.get(file_path):
+                    return sandbox_entities[file_path], warnings
+            except Exception as exc:  # noqa: BLE001
+                warnings.append(f"sandbox_ast_failed:{file_path}:{exc.__class__.__name__}: {exc}")
         if graph_state is not None:
             graph_entities = entities_for_file_from_structural_graph(graph_state, file_path)
             if graph_entities:
@@ -548,8 +662,6 @@ class LazyReviewContextProvider:
                         )
                     sandbox.start_from_remote_ref(repo_url=repo_url, ref=checkout_ref)
                     self._host_repo_path = None
-                    if settings.ast_enabled:
-                        self._startup_warnings.append("ast_unavailable:remote_sandbox_repo")
                     if metadata.get("review_trace_enabled"):
                         trace_logger.info(
                             "TRACE context_ast_unavailable run_id=%s reason=remote_sandbox repo_url=%s ref=%s",
@@ -633,6 +745,8 @@ class BoundedReviewContextFulfiller:
     ) -> None:
         self._provider = provider
         self._github_provider = github_provider
+        # One docs bundle per (owner, repo, ref) per fulfiller instance (focused_context wave).
+        self._github_docs_bundle_cache: Dict[tuple[str, str, str], RepoDocsBundle] = {}
 
     def fulfill(
         self,
@@ -645,6 +759,7 @@ class BoundedReviewContextFulfiller:
         if existing_result is not None:
             return existing_result
 
+        request = sanitize_focused_context_request(request)
         self._provider._ensure_started(state)  # noqa: SLF001 - intentional coupling
         warnings: List[str] = []
         file_snippets: Dict[str, str] = {}
@@ -688,6 +803,13 @@ class BoundedReviewContextFulfiller:
                     total_chars += len(file_snippets[fp])
             else:
                 body = self._provider.read_file_slice(fp, max_chars=MAX_FILE_SLICE_CHARS)
+                if not body.strip():
+                    read_full = getattr(self._provider, "read_full_file", None)
+                    if callable(read_full):
+                        body = read_full(
+                            fp,
+                            max_chars=min(settings.review_full_file_max_chars, MAX_FILE_SLICE_CHARS * 4),
+                        )
                 if body:
                     neighbor = structural_neighbor_summary(state, fp)
                     if neighbor:
@@ -771,6 +893,52 @@ class BoundedReviewContextFulfiller:
             )
         return result
 
+    def _read_paths_from_sandbox(self, paths: Sequence[str], *, max_chars: int) -> Dict[str, str]:
+        """Read repository-relative paths from the cloned sandbox (no GitHub MCP)."""
+        out: Dict[str, str] = {}
+        for raw in paths:
+            fp = _normalize_repo_path(str(raw))
+            if not fp:
+                continue
+            body = self._provider.read_full_file(fp, max_chars=max_chars)
+            if body.strip():
+                out[fp] = body
+        return out
+
+    def _get_github_docs_bundle_cached(
+        self,
+        owner: str,
+        repo: str,
+        ref: str,
+        paths: Sequence[str],
+    ) -> RepoDocsBundle | None:
+        if self._github_provider is None:
+            return None
+        requested = sorted({_normalize_repo_path(p) for p in paths if p and str(p).strip()})
+        if not requested:
+            return None
+        cache_key = (owner, repo, ref)
+        cached = self._github_docs_bundle_cache.get(cache_key)
+        have = {doc.path for doc in cached.documents} if cached is not None else set()
+        need_fetch = [p for p in requested if p not in have]
+        if not need_fetch and cached is not None:
+            return cached
+        fetched = self._github_provider.get_repo_docs(owner, repo, ref, need_fetch)
+        if cached is None:
+            self._github_docs_bundle_cache[cache_key] = fetched
+            return fetched
+        merged_docs = list(cached.documents) + [
+            doc for doc in fetched.documents if doc.path not in have
+        ]
+        merged = RepoDocsBundle(
+            repo=cached.repo,
+            ref=cached.ref,
+            documents=merged_docs,
+            warnings=list(cached.warnings) + list(fetched.warnings),
+        )
+        self._github_docs_bundle_cache[cache_key] = merged
+        return merged
+
     def _apply_github_fallback(
         self,
         *,
@@ -793,12 +961,28 @@ class BoundedReviewContextFulfiller:
         ref = _resolve_docs_ref(state)
 
         if missing_files:
-            bundle = self._github_provider.get_repo_docs(owner, repo, ref, missing_files)
-            for doc in bundle.documents:
-                file_snippets[doc.path] = doc.content[:MAX_FILE_SLICE_CHARS]
-            warnings.extend(bundle.warnings)
-            if bundle.documents:
-                warnings.append("github_file_fallback")
+            sandbox_hits = self._read_paths_from_sandbox(
+                missing_files,
+                max_chars=settings.review_full_file_max_chars,
+            )
+            for fp, body in sandbox_hits.items():
+                file_snippets[fp] = body[:MAX_FILE_SLICE_CHARS]
+            if sandbox_hits:
+                warnings.append("sandbox_file_fallback")
+
+            still_missing = [
+                fp
+                for fp in missing_files
+                if fp not in file_snippets and fp not in sandbox_hits
+            ]
+            if still_missing:
+                bundle = self._get_github_docs_bundle_cached(owner, repo, ref, still_missing)
+                if bundle is not None:
+                    for doc in bundle.documents:
+                        file_snippets[doc.path] = doc.content[:MAX_FILE_SLICE_CHARS]
+                    warnings.extend(bundle.warnings)
+                    if bundle.documents:
+                        warnings.append("github_file_fallback")
 
         missing_symbols = [
             sym
@@ -813,17 +997,35 @@ class BoundedReviewContextFulfiller:
         if not missing_symbols and not missing_text:
             return
 
+        if not settings.github_mcp_focused_context_doc_fallback:
+            if missing_symbols or missing_text:
+                warnings.append("sandbox_search_no_hits:github_doc_fallback_disabled")
+            return
+
         doc_paths = settings.github_mcp_doc_paths
         if not doc_paths:
             return
 
-        bundle = self._github_provider.get_repo_docs(owner, repo, ref, doc_paths)
-        warnings.extend(bundle.warnings)
-        if not bundle.documents:
+        sandbox_docs = self._read_paths_from_sandbox(
+            doc_paths,
+            max_chars=settings.github_mcp_doc_max_chars,
+        )
+        documents = [
+            RepoDocument(path=path, ref=ref, content=content, truncated=len(content) >= settings.github_mcp_doc_max_chars)
+            for path, content in sandbox_docs.items()
+        ]
+        mcp_paths = [p for p in doc_paths if _normalize_repo_path(p) not in sandbox_docs]
+        if mcp_paths:
+            bundle = self._get_github_docs_bundle_cached(owner, repo, ref, mcp_paths)
+            if bundle is not None:
+                warnings.extend(bundle.warnings)
+                documents.extend(bundle.documents)
+
+        if not documents:
             return
 
         for sym in missing_symbols:
-            hits = _search_docs_for_symbol(bundle.documents, sym, MAX_SEARCH_RESULTS_PER_QUERY)
+            hits = _search_docs_for_symbol(documents, sym, MAX_SEARCH_RESULTS_PER_QUERY)
             if hits:
                 search_hits[sym] = hits
                 total_chars += sum(len(h.content) for h in hits)
@@ -832,7 +1034,7 @@ class BoundedReviewContextFulfiller:
                 return
 
         for tq in missing_text:
-            hits = _search_docs_for_text(bundle.documents, tq, MAX_SEARCH_RESULTS_PER_QUERY)
+            hits = _search_docs_for_text(documents, tq, MAX_SEARCH_RESULTS_PER_QUERY)
             if hits:
                 search_hits[tq] = hits
                 total_chars += sum(len(h.content) for h in hits)

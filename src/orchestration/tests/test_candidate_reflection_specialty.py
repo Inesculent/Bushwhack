@@ -7,6 +7,7 @@ import pytest
 from src.domain.schemas import CandidateFinding, ReviewTask
 from src.orchestration.routing.normalize_critiquer_candidates import normalize_critiquer_candidates
 from src.orchestration.routing.candidate_reflection_specialty import (
+    correct_specialty_before_hardcap,
     normalize_reflection_specialty_hardcap,
     with_single_reflection_specialty,
 )
@@ -86,6 +87,17 @@ def test_normalize_candidates_collapses_to_single_entry() -> None:
 def test_hardcap_priority_order(specialties: list[str], expected: str) -> None:
     c = _base_candidate(reflection_specialties=specialties, claim_type="defect")
     assert normalize_reflection_specialty_hardcap(c) == expected
+
+
+def test_correct_specialty_security_risk_over_performance_tag() -> None:
+    c = _base_candidate(
+        reflection_specialties=["performance"],
+        claim_type="security_risk",
+        suspected_category="performance",
+    )
+    corrected, reason = correct_specialty_before_hardcap(c)
+    assert corrected.reflection_specialties == ["security"]
+    assert reason == "specialty_corrected:security_risk"
 
 
 def test_with_single_reflection_specialty_returns_one_element_list() -> None:

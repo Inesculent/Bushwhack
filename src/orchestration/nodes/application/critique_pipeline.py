@@ -11,6 +11,7 @@ from src.domain.state import GraphState
 from src.orchestration.context.review_context import LazyReviewContextProvider
 from src.orchestration.nodes.application.worker import ReviewTaskContext
 from src.orchestration.nodes.application.critiquer import make_general_critiquer_node
+from src.orchestration.review_principles import DECLARED_INPUT_CONTRACT_GUIDANCE
 from src.tools.mental_model_tools import query_mental_model
 
 _RISK_PATTERN = re.compile(
@@ -47,7 +48,7 @@ def make_critique_context_probe_node(context_provider: LazyReviewContextProvider
             return {"node_history": [f"{node_name}:skipped"]}
 
         context: ReviewTaskContext = context_provider.collect_for_task(state=state, task=task)
-        rendered = context.render()
+        rendered = f"## Review principles\n{DECLARED_INPUT_CONTRACT_GUIDANCE}\n\n{context.render()}"
         flags = _probe_flags(rendered)
 
         meta = dict(state.get("metadata", {}) or {})
@@ -61,8 +62,13 @@ def make_critique_context_probe_node(context_provider: LazyReviewContextProvider
             "ast_mode": (
                 "local"
                 if "ast_capability:local_enabled" in context.warnings
+                else "sandbox"
+                if any(
+                    w in context.warnings
+                    for w in ("ast_capability:sandbox_enabled", "ast_capability:sandbox_partial")
+                )
                 else "structural_only_remote"
-                if "ast_unavailable:remote_sandbox_repo" in context.warnings
+                if "review_outline_source:structural_graph_fallback" in context.warnings
                 else "disabled"
             ),
         }

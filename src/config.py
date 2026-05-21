@@ -171,6 +171,14 @@ class Settings(BaseSettings):
 		],
 		description="Ordered doc paths to attempt for the GitHub MCP pre-brief.",
 	)
+	github_mcp_focused_context_doc_fallback: bool = Field(
+		default=False,
+		description=(
+			"When true, fetch github_mcp_doc_paths via GitHub MCP if sandbox ripgrep finds no hits "
+			"for symbol/text queries. Default false: code search stays in the cloned sandbox; "
+			"avoids repeated README/CONTRIBUTING fetches per focused-context request."
+		),
+	)
 	github_mcp_doc_discovery_enabled: bool = Field(
 		default=True,
 		description="Discover markdown docs via GitHub API to reduce 404s and stale paths.",
@@ -328,6 +336,31 @@ class Settings(BaseSettings):
 			"thousand tokens per call; run_meta total_llm_tokens is the sum across all calls, not this setting."
 		),
 	)
+	reviewer_critiquer_max_completion_tokens: int = Field(
+		default=20480,
+		ge=512,
+		le=65536,
+		description=(
+			"Per-invocation completion token cap for the general critiquer structured-output call. "
+			"Falls back to a compact retry when the model hits the length limit."
+		),
+	)
+	reviewer_critiquer_single_file_max_chars: int = Field(
+		default=80_000,
+		ge=5_000,
+		le=500_000,
+		description=(
+			"Max characters per target file excerpt when a review task has exactly one target file "
+			"(avoids truncating mid-class logic for COMBO/execute review tasks)."
+		),
+	)
+	reviewer_allow_host_pr_worktree: bool = Field(
+		default=False,
+		description=(
+			"When true, snapshot AACR resume may clone the PR head into a host worktree under the snapshot root. "
+			"Default false: PR content stays in the Docker sandbox only."
+		),
+	)
 	reviewer_use_legacy_specialist_workers: bool = Field(
 		default=False,
 		description="When true, route review_planner tasks to legacy specialist workers instead of the adversarial critiquer loop.",
@@ -406,15 +439,43 @@ class Settings(BaseSettings):
 	)
 	verifier_image: str = Field(
 		default="verifier-test-env:latest",
-		description="Docker image for verifier script execution (repo mounted at /repo when using a local checkout).",
+		description="Docker image for verifier script execution when using a host-mounted checkout.",
+	)
+	verifier_clone_image: str = Field(
+		default="agent-fs-sandbox",
+		description=(
+			"Docker image for verifier runs that git-clone the PR inside the container. "
+			"Must include git (e.g. agent-fs-sandbox). Rebuild verifier-test-env after Dockerfile.verifier "
+			"changes if you prefer a single image for both clone and test execution."
+		),
 	)
 	verifier_clone_remote_in_container: bool = Field(
-		default=False,
+		default=True,
 		description=(
-			"When false (default), if repo_path is not a local directory the verifier runs generated scripts in an "
-			"empty /workspace inside the image (no git, no clone). When true, clone review_repo_url inside the "
-			"container (requires git in verifier_image); use with --repo-root or a local worktree for full-repo checks."
+			"When true (default), if repo_path is not a local directory, clone review_repo_url inside the "
+			"verifier container at /repo (requires git in verifier_image). When false, use an empty /workspace "
+			"only if verifier_require_repo_in_container is also false."
 		),
+	)
+	verifier_require_repo_in_container: bool = Field(
+		default=True,
+		description=(
+			"When true (default), verifier refuses snippet-only runs when no local checkout and remote clone "
+			"metadata/URL is unavailable (attempt records harness/inconclusive instead of fake /repo symlink)."
+		),
+	)
+	verifier_use_execution_workspace: bool = Field(
+		default=True,
+		description=(
+			"After mounting or cloning at /repo, copy tree into a writable /exec_* workspace and run verifier "
+			"scripts there (matches review sandbox RO + RW test area pattern)."
+		),
+	)
+	verifier_reflection_batch_size: int = Field(
+		default=3,
+		ge=1,
+		le=10,
+		description="Max candidates per adversarial reflection LLM call (per specialty).",
 	)
 	verifier_test_timeout_seconds: int = Field(
 		default=300,

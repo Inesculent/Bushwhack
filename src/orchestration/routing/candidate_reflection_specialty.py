@@ -97,7 +97,59 @@ def normalize_reflection_specialty_hardcap(candidate: CandidateFinding) -> Refle
     return _infer_specialty_when_empty(candidate)
 
 
+def correct_specialty_before_hardcap(candidate: CandidateFinding) -> tuple[CandidateFinding, str | None]:
+    """Align routing with claim_type and obvious domain signals before the hardcap."""
+    explicit = list(candidate.reflection_specialties)
+    blob = " ".join(
+        [
+            candidate.content,
+            candidate.failure_mode,
+            candidate.evidence_summary,
+        ]
+    ).lower()
+
+    if candidate.claim_type == "security_risk":
+        if explicit != ["security"]:
+            return (
+                candidate.model_copy(
+                    update={
+                        "reflection_specialties": ["security"],
+                        "suspected_category": "security",
+                    }
+                ),
+                "specialty_corrected:security_risk",
+            )
+        return candidate, None
+
+    if candidate.claim_type == "performance_regression":
+        if explicit != ["performance"]:
+            return (
+                candidate.model_copy(
+                    update={
+                        "reflection_specialties": ["performance"],
+                        "suspected_category": "performance",
+                    }
+                ),
+                "specialty_corrected:performance_regression",
+            )
+        return candidate, None
+
+    if explicit == ["performance"] and any(h in blob for h in _SECURITY_HINTS):
+        return (
+            candidate.model_copy(
+                update={
+                    "reflection_specialties": ["security"],
+                    "suspected_category": "security",
+                }
+            ),
+            "specialty_corrected:security_hints_over_performance_tag",
+        )
+
+    return candidate, None
+
+
 def with_single_reflection_specialty(candidate: CandidateFinding) -> CandidateFinding:
     """Copy candidate with ``reflection_specialties`` set to a single canonical specialty."""
-    specialty = normalize_reflection_specialty_hardcap(candidate)
-    return candidate.model_copy(update={"reflection_specialties": [specialty]})
+    corrected, _ = correct_specialty_before_hardcap(candidate)
+    specialty = normalize_reflection_specialty_hardcap(corrected)
+    return corrected.model_copy(update={"reflection_specialties": [specialty]})

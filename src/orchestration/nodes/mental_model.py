@@ -17,6 +17,7 @@ from src.infrastructure.llm.factory import Models
 from src.infrastructure.llm.token_usage import extract_total_tokens_from_llm_result, parse_structured_output
 from src.orchestration.nodes.application.planner import _extract_files_from_diff, _target_files
 from src.orchestration.prompts.renderer import render_reviewer_prompt
+from src.orchestration.review_principles import DECLARED_INPUT_CONTRACT_GUIDANCE
 
 logger = logging.getLogger(__name__)
 
@@ -337,6 +338,7 @@ def make_mandate_synthesizer_node(settings: Settings | None = None, *, use_llm: 
         expectations = ""
         risks = ""
         guidance = (
+            f"{DECLARED_INPUT_CONTRACT_GUIDANCE} "
             "Treat the behavioral mandate as directional context only. "
             "Do not assume defects exist because they are hypothesized here. "
             "Prioritize direct code evidence from the diff and repository."
@@ -357,7 +359,7 @@ def make_mandate_synthesizer_node(settings: Settings | None = None, *, use_llm: 
                 expectations = out.behavioral_expectations.strip()
                 risks = out.risk_hypotheses.strip()
                 if out.reviewer_guidance.strip():
-                    guidance = out.reviewer_guidance.strip()
+                    guidance = f"{out.reviewer_guidance.strip()} {DECLARED_INPUT_CONTRACT_GUIDANCE}"
                 uncertainties = out.uncertainties.strip()
             except Exception as exc:  # noqa: BLE001
                 warnings.append(f"{node_name}_llm_fallback:{exc.__class__.__name__}")

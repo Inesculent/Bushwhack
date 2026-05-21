@@ -332,7 +332,8 @@ def _invoke_for_pr(
             if meta_rp and Path(meta_rp).is_dir():
                 repo_path = str(Path(meta_rp).resolve())
             elif meta_rp.startswith("http://") or meta_rp.startswith("https://"):
-                if _git_cli_available():
+                settings = get_settings()
+                if settings.reviewer_allow_host_pr_worktree and _git_cli_available():
                     try:
                         repo_path = _ensure_snapshot_pr_worktree(
                             snapshot_root=snapshot_data["snapshot_root"],
@@ -341,21 +342,30 @@ def _invoke_for_pr(
                             logger=logger,
                         )
                         snapshot_repo_extra["snapshot_pr_worktree_auto_cloned"] = True
+                        logger.warning(
+                            "Snapshot resume: using host PR worktree (reviewer_allow_host_pr_worktree=true). "
+                            "PR content is on disk under the snapshot root."
+                        )
                     except Exception as exc:  # noqa: BLE001
                         logger.warning(
                             "Snapshot resume: could not prepare local PR worktree (%s: %s); "
-                            "using URL repo_path (verifier runs snippet-only in Docker unless you pass "
-                            "--repo-root or set verifier_clone_remote_in_container with git in the image).",
+                            "using URL repo_path (sandbox clones inside Docker).",
                             exc.__class__.__name__,
                             exc,
                         )
-                        repo_path = meta_rp
+                        repo_path = repo_url
                 else:
-                    logger.warning(
-                        "Snapshot resume: host git not found; cannot auto-fetch PR head into "
-                        "snapshot worktree. Install git or pass --repo-root <checkout>."
-                    )
-                    repo_path = meta_rp
+                    if not settings.reviewer_allow_host_pr_worktree:
+                        logger.info(
+                            "Snapshot resume: repo_path=%s (sandbox-only; set "
+                            "REVIEW_REVIEWER_ALLOW_HOST_PR_WORKTREE=true to allow host worktree).",
+                            repo_url,
+                        )
+                    else:
+                        logger.warning(
+                            "Snapshot resume: host git not found; using URL repo_path (sandbox clone)."
+                        )
+                    repo_path = repo_url
             else:
                 repo_path = meta_rp or repo_url
 

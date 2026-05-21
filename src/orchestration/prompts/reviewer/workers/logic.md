@@ -4,7 +4,8 @@ Focus on correctness, behavioral regressions, and API contract mismatches introd
 
 Look for:
 - mismatches between the PR description and implemented behavior;
-- edge cases around empty inputs, null values, boundaries, modes, defaults, and invalid parameters;
+- edge cases around boundaries, modes, defaults, and invalid parameters **allowed by declared input contracts**;
+- null/empty/absent inputs **only** when the API/schema marks them optional or the diff implies they can arrive;
 - inconsistent return shapes or violated framework conventions;
 - state transitions, lifecycle hooks, registration maps, or integration points that can break callers;
 - off-by-one errors, case-sensitivity mistakes, incorrect comparisons, and exception paths;

@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import List
 
 from src.domain.schemas import CandidateFinding, FocusedContextRequest, ReviewTask
+from src.orchestration.context.focused_query_sanitize import sanitize_text_query
 
 HIGH_RISK_CONTEXT_TERMS = (
     "auth",
@@ -27,6 +28,8 @@ HIGH_RISK_CONTEXT_TERMS = (
 def candidate_needs_auto_context(candidate: CandidateFinding) -> bool:
     if candidate.claim_type in {"positive_observation", "uncertain"}:
         return False
+    if candidate.claim_type == "defect" and candidate.required_context:
+        return True
     text = " ".join(
         [
             candidate.content,
@@ -44,29 +47,26 @@ def candidate_needs_auto_context(candidate: CandidateFinding) -> bool:
 
 
 def auto_focus_requests(task: ReviewTask, candidates: List[CandidateFinding]) -> List[FocusedContextRequest]:
-    """Emit bounded auto-requests for high-risk candidates missing evidence."""
+    """Emit bounded auto-requests for candidates with required_context or high-risk missing evidence."""
     requests: List[FocusedContextRequest] = []
     for index, candidate in enumerate(candidates, start=1):
         if not candidate_needs_auto_context(candidate):
             continue
-        query_seed = " ".join(
-            part
-            for part in [
-                candidate.failure_mode,
-                candidate.content,
-                " ".join(candidate.required_context),
-            ]
-            if part
+        text_queries: list[str] = []
+        if candidate.file_path.strip():
+            text_queries.append(candidate.file_path.strip())
+        for source in (candidate.failure_mode, candidate.content, *candidate.required_context):
+            cleaned = sanitize_text_query(source)
+            if cleaned and cleaned not in text_queries:
+                text_queries.append(cleaned)
+        reason = (
+            "Deterministic gather for critiquer required_context questions."
+            if candidate.claim_type == "defect" and candidate.required_context
+            else (
+                "Deterministic context requirement for a high-risk or externally dependent "
+                f"{candidate.claim_type} candidate."
+            )
         )
-        text_queries = [
-            query
-            for query in [
-                candidate.file_path,
-                candidate.failure_mode[:120],
-                query_seed[:160],
-            ]
-            if query
-        ]
         requests.append(
             FocusedContextRequest(
                 request_id=f"{candidate.candidate_id}:auto-context:{index}",
@@ -79,10 +79,7 @@ def auto_focus_requests(task: ReviewTask, candidates: List[CandidateFinding]) ->
                 file_paths=[candidate.file_path] + [path for path in task.target_files if path != candidate.file_path],
                 symbol_queries=[],
                 text_queries=text_queries[:3],
-                reason=(
-                    "Deterministic context requirement for a high-risk or externally dependent "
-                    f"{candidate.claim_type} candidate."
-                ),
+                reason=reason,
             )
         )
     return requests

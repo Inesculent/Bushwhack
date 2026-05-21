@@ -1,5 +1,10 @@
 from src.domain.schemas import ReviewFinding, ReviewTask, StructuralTopologyCommunity, StructuralTopologySummary
-from src.orchestration.nodes.application.planner import _normalize_tasks, _render_planner_prompt, make_review_planner_node
+from src.orchestration.nodes.application.planner import (
+    _ensure_diff_local_correctness_task,
+    _normalize_tasks,
+    _render_planner_prompt,
+    make_review_planner_node,
+)
 from src.orchestration.nodes.application.synthesizer import synthesizer_node
 from src.orchestration.nodes.application.worker import (
     ReviewTaskContext,
@@ -13,6 +18,33 @@ class FakeContextProvider:
             explored_files=task.target_files,
             file_snippets={path: "def changed():\n    return True\n" for path in task.target_files},
         )
+
+
+def test_ensure_diff_local_correctness_injects_when_llm_plan_omits_it():
+    state = {
+        "run_id": "test",
+        "repo_path": "/tmp/repo",
+        "git_diff": "diff --git a/src/app.py b/src/app.py\n+++ b/src/app.py\n",
+    }
+    tasks = [
+        ReviewTask(
+            id="review-security",
+            title="Auth chain review",
+            description="Verify authorization decorators and caller permission checks across the repo.",
+            target_files=["src/app.py"],
+            specialty="security",
+        ),
+        ReviewTask(
+            id="review-logic-callers",
+            title="Caller contract review",
+            description="Trace all callers of changed symbols and confirm middleware behavior.",
+            target_files=["src/app.py"],
+            specialty="logic",
+        ),
+    ]
+    out = _ensure_diff_local_correctness_task(tasks, state)
+    assert any("diff-local" in f"{t.title} {t.description}".lower() for t in out)
+    assert len(out) == 3
 
 
 def test_review_planner_deterministic_fallback_creates_parallel_tasks():
@@ -37,6 +69,8 @@ def test_review_planner_deterministic_fallback_creates_parallel_tasks():
         "performance",
         "general",
     }
+    logic_tasks = [t for t in leaf_tasks if t.specialty == "logic"]
+    assert any("diff-local" in f"{t.title} {t.description}".lower() for t in logic_tasks)
     assert all(task.target_files == ["src/app.py"] for task in leaf_tasks)
     assert result["next_step"] == "review"
 
@@ -119,8 +153,8 @@ def test_review_planner_flattens_nested_llm_task_output():
                     subtasks=[
                         ReviewTask(
                             id="review-logic",
-                            title="Logic",
-                            description="Logic leaf.",
+                            title="Diff-local correctness",
+                            description="Diff-local correctness leaf for changed hunks.",
                             target_files=[],
                             specialty="logic",
                         )

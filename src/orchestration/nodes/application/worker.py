@@ -28,20 +28,30 @@ class ReviewTaskContext:
     warnings: List[str] = field(default_factory=list)
     # Normalized repo-relative paths that already had AST in this context (focused-context dedupe).
     ast_included_files: List[str] = field(default_factory=list)
+    per_file_snippet_max_chars: int = 5000
+    graph_call_edges_by_file: Dict[str, Dict[str, List[str]]] = field(default_factory=dict)
 
     def render(self, max_chars: int = 24000) -> str:
         sections: List[str] = []
+        snippet_cap = max(1000, int(self.per_file_snippet_max_chars))
         if self.file_snippets:
             sections.append("File excerpts:")
             for file_path, content in self.file_snippets.items():
-                sections.append(f"\n--- {file_path} ---\n{content[:5000]}")
+                sections.append(f"\n--- {file_path} ---\n{content[:snippet_cap]}")
         if self.entities_by_file:
             sections.append("\nAST entities:")
             for file_path, entities in self.entities_by_file.items():
-                entity_lines = [
-                    f"- {entity.type} {entity.name}: {entity.signature}"
-                    for entity in entities[:20]
-                ]
+                entity_lines: List[str] = []
+                call_edges = self.graph_call_edges_by_file.get(file_path) or {}
+                for entity in entities[:20]:
+                    line = f"- {entity.type} {entity.name}: {entity.signature}"
+                    if entity.body.strip():
+                        body_preview = entity.body.strip().replace("\n", " ")[:240]
+                        line += f" | body: {body_preview}"
+                    targets = call_edges.get(entity.name) or []
+                    if targets:
+                        line += f" | calls: {', '.join(targets[:8])}"
+                    entity_lines.append(line)
                 sections.append(f"\n--- {file_path} ---\n" + "\n".join(entity_lines))
         if self.search_results:
             sections.append("\nSearch results:")

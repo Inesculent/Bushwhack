@@ -43,10 +43,12 @@ from src.orchestration.context.review_context import LazyReviewContextProvider
 from src.orchestration.nodes.application.cleanup import make_adversarial_cleanup_node
 from src.orchestration.nodes.application.critique_revision import (
     _needs_revision_candidates,
+    critique_revision_digests_complete,
     make_critique_revision_digest_node,
     make_critique_revision_reduce_node,
     plan_critique_revision_shards,
     revision_inputs_ready,
+    revision_ready_candidate_ids,
 )
 from src.orchestration.nodes.application.actor_critic_planner import (
     make_draft_planner_node,
@@ -158,11 +160,50 @@ def _route_after_focused_context(state: GraphState):
     return _route_critique_revision(state)
 
 
-def _route_critique_revision(state: GraphState):
-    """Fan out digest workers when revision work exists; otherwise skip to cleanup."""
+def post_verifier_gate_node(state: GraphState) -> Dict[str, Any]:
+    """Join point after all parallel ``verifier_subgraph`` Send branches complete."""
     metadata = state.get("metadata", {}) or {}
-    candidate_ids = _needs_revision_candidates(state)
-    if not candidate_ids:
+    if metadata.get("review_trace_enabled"):
+        reports = state.get("verifier_reports", []) or []
+        trace_logger.info(
+            "TRACE post_verifier_gate run_id=%s verifier_reports=%s",
+            state.get("run_id", "unknown"),
+            len(reports),
+        )
+    return {"node_history": ["post_verifier_gate"]}
+
+
+def _route_after_critique_revision_digest(state: GraphState):
+    """Run reduce only after the last digest shard lands (map-reduce barrier)."""
+    metadata = state.get("metadata", {}) or {}
+    if critique_revision_digests_complete(state):
+        if metadata.get("review_trace_enabled"):
+            digests = state.get("critique_revision_digests", {}) or {}
+            trace_logger.info(
+                "TRACE critique_revision_digest_barrier run_id=%s digests=%s route=reduce",
+                state.get("run_id", "unknown"),
+                len(digests),
+            )
+        return "critique_revision_reduce"
+    if metadata.get("review_trace_enabled"):
+        trace_logger.info(
+            "TRACE critique_revision_digest_barrier run_id=%s route=await_sibling_shards",
+            state.get("run_id", "unknown"),
+        )
+    return END
+
+
+def _route_critique_revision(state: GraphState):
+    """Fan out digest workers when revision work exists; otherwise skip to cleanup.
+
+    Invoked from ``post_verifier_gate`` (after all verifier branches join) or when no
+  verifiers were scheduled. Must not be wired directly off each verifier branch — that
+    caused premature ``adversarial_cleanup`` while siblings were still running.
+    """
+    metadata = state.get("metadata", {}) or {}
+    all_revision_ids = _needs_revision_candidates(state)
+    candidate_ids = revision_ready_candidate_ids(state, all_revision_ids)
+    if not all_revision_ids:
         if metadata.get("review_trace_enabled"):
             trace_logger.info(
                 "TRACE dispatch_critique_revision run_id=%s route=%s",
@@ -170,14 +211,24 @@ def _route_critique_revision(state: GraphState):
                 "adversarial_cleanup_no_candidates",
             )
         return "adversarial_cleanup"
-    if not revision_inputs_ready(state, candidate_ids):
+    if not revision_inputs_ready(state, all_revision_ids):
+        skipped = sorted(set(all_revision_ids) - set(candidate_ids))
         if metadata.get("review_trace_enabled"):
             trace_logger.info(
-                "TRACE dispatch_critique_revision run_id=%s route=%s",
+                "TRACE dispatch_critique_revision run_id=%s route=%s ready=%s skipped=%s",
                 state.get("run_id", "unknown"),
                 "adversarial_cleanup_no_revision_inputs",
+                candidate_ids,
+                skipped,
             )
         return "adversarial_cleanup"
+    if metadata.get("review_trace_enabled") and len(candidate_ids) < len(all_revision_ids):
+        trace_logger.info(
+            "TRACE dispatch_critique_revision run_id=%s partial_ready ready=%s skipped=%s",
+            state.get("run_id", "unknown"),
+            candidate_ids,
+            sorted(set(all_revision_ids) - set(candidate_ids)),
+        )
     settings = get_settings()
     shards = plan_critique_revision_shards(
         state,
@@ -535,6 +586,7 @@ def build_graph(
         )
         builder.add_node("critique_revision_digest", make_critique_revision_digest_node())
         builder.add_node("critique_revision_reduce", make_critique_revision_reduce_node())
+        builder.add_node("post_verifier_gate", post_verifier_gate_node)
         builder.add_node("adversarial_cleanup", make_adversarial_cleanup_node())
         builder.add_node("verifier_subgraph", make_verifier_subgraph_node())
         builder.add_node("post_reflection_evidence_pass", _make_post_reflection_evidence_pass_node())
@@ -553,7 +605,10 @@ def build_graph(
         )
         builder.add_conditional_edges("focused_context", _route_after_focused_context)
         builder.add_conditional_edges("post_reflection_evidence_pass", _route_after_focused_context)
-        builder.add_conditional_edges("verifier_subgraph", _route_critique_revision)
+        builder.add_edge("verifier_subgraph", "post_verifier_gate")
+        builder.add_conditional_edges("post_verifier_gate", _route_critique_revision)
+        # Always fan in to reduce; reduce waits until all digest shards are merged (operator.or_).
+        # Routing digest -> END left the graph without cleanup when parallel shards finished out of order.
         builder.add_edge("critique_revision_digest", "critique_revision_reduce")
         builder.add_edge("critique_revision_reduce", "adversarial_cleanup")
         builder.add_edge("adversarial_cleanup", "review_synthesizer")

@@ -41,7 +41,7 @@ def _infer_verifier_repo_root(repo_path: str, settings: Settings) -> str:
     raw = (repo_path or "").strip()
     if raw and Path(raw).is_dir():
         return "/repo"
-    if settings.verifier_clone_remote_in_container:
+    if settings.verifier_clone_remote_in_container or settings.verifier_require_repo_in_container:
         return "/repo"
     return "/workspace"
 

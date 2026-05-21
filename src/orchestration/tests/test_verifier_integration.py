@@ -15,7 +15,15 @@ from src.domain.schemas import (
 from src.domain.state import GraphState
 from src.domain.verifier_schemas import VerifierAttemptRecord, VerifierReport
 from src.orchestration.nodes.application.critique_revision import _render_verifier_advisory_section
-from src.orchestration.nodes.verifier.result_judge import infer_verification_scope, judge_attempt
+from src.orchestration.nodes.verifier.result_judge import (
+    attempt_was_harness_error,
+    infer_verification_scope,
+    judge_attempt,
+)
+from src.orchestration.nodes.verifier.sandbox_executor import (
+    _verifier_sandbox_image,
+    validate_test_code,
+)
 from src.orchestration.routing.verifier_fanout import collect_verifier_send_payloads, focused_context_text_for_candidate
 
 
@@ -132,6 +140,96 @@ def test_judge_attempt_refuted() -> None:
     rec = VerifierAttemptRecord(attempt_number=1, test_code="x", exit_code=0, stdout="", stderr="")
     v, _ = judge_attempt(rec)
     assert v == "refuted"
+
+
+def test_judge_attempt_refuted_when_status_safe() -> None:
+    rec = VerifierAttemptRecord(
+        attempt_number=1,
+        test_code="x",
+        exit_code=0,
+        stdout="STATUS: SAFE\n",
+        stderr="",
+    )
+    v, _ = judge_attempt(rec)
+    assert v == "refuted"
+
+
+def test_judge_attempt_harness_import_crash_is_inconclusive() -> None:
+    rec = VerifierAttemptRecord(
+        attempt_number=1,
+        test_code="x",
+        exit_code=1,
+        stdout="STATUS: CRASHED | ExceptionType: ImportError: No module named 'comfy_extras'\n",
+        stderr="",
+    )
+    v, _ = judge_attempt(rec)
+    assert v == "inconclusive"
+    assert attempt_was_harness_error(rec)
+
+
+def test_judge_attempt_pil_mock_submodule_crash_is_harness() -> None:
+    rec = VerifierAttemptRecord(
+        attempt_number=1,
+        test_code="x",
+        exit_code=1,
+        stdout=(
+            "STATUS: CRASHED | ExceptionType: ModuleNotFoundError: "
+            "No module named 'PIL.PngImagePlugin'; 'PIL' is not a package\n"
+        ),
+        stderr="",
+        sandbox_mode="exec_workspace",
+    )
+    assert attempt_was_harness_error(rec)
+    v, _ = judge_attempt(rec)
+    assert v == "inconclusive"
+
+
+def test_judge_attempt_harness_error_exit_code() -> None:
+    rec = VerifierAttemptRecord(
+        attempt_number=1,
+        test_code="x",
+        exit_code=2,
+        stdout="STATUS: HARNESS_ERROR | SyntaxError: invalid syntax",
+        stderr="",
+        sandbox_mode="harness_preflight",
+    )
+    v, _ = judge_attempt(rec)
+    assert v == "inconclusive"
+
+
+def test_validate_test_code_rejects_syntax_error() -> None:
+    assert validate_test_code("def broken(\n") is not None
+
+
+def test_start_verifier_sandbox_uses_exec_workspace_when_enabled(tmp_path) -> None:
+    from unittest.mock import MagicMock
+
+    from src.orchestration.nodes.verifier.sandbox_executor import _start_verifier_sandbox
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    settings = MagicMock()
+    settings.verifier_clone_remote_in_container = False
+    settings.verifier_require_repo_in_container = False
+    settings.verifier_use_execution_workspace = True
+
+    class StubSb:
+        def __init__(self) -> None:
+            self.calls: list[str] = []
+
+        def start(self, path: str) -> None:
+            self.calls.append(f"start:{path}")
+
+        def create_execution_workspace(self, workspace_name: str | None = None) -> str:
+            self.calls.append(f"exec:{workspace_name}")
+            return "/verify_exec"
+
+    sb = StubSb()
+    mode = _start_verifier_sandbox(sb, str(repo), {}, settings=settings)  # type: ignore[arg-type]
+    assert mode == "exec_workspace"
+    assert sb.calls[0].startswith("start:")
+    assert sb.calls[1] == "exec:verify_exec"
 
 
 def test_infer_scope_abstract() -> None:
@@ -412,13 +510,14 @@ def test_revision_inputs_ready_accepts_verifier_without_focused() -> None:
     assert revision_inputs_ready(state, [cid]) is True
 
 
-def test_start_verifier_sandbox_snippet_workspace_when_no_local_repo_by_default() -> None:
+def test_start_verifier_sandbox_snippet_workspace_when_clone_disabled() -> None:
     from unittest.mock import MagicMock
 
     from src.orchestration.nodes.verifier.sandbox_executor import _start_verifier_sandbox
 
     settings = MagicMock()
     settings.verifier_clone_remote_in_container = False
+    settings.verifier_require_repo_in_container = False
 
     class StubSb:
         def __init__(self) -> None:
@@ -433,6 +532,50 @@ def test_start_verifier_sandbox_snippet_workspace_when_no_local_repo_by_default(
     assert sb.calls == ["snippet"]
 
 
+def test_verifier_sandbox_image_uses_clone_stack_for_remote_pr() -> None:
+    from unittest.mock import MagicMock
+
+    settings = MagicMock()
+    settings.verifier_clone_remote_in_container = True
+    settings.verifier_image = "verifier-test-env:latest"
+    settings.verifier_clone_image = "agent-fs-sandbox"
+
+    state = {"metadata": {"review_repo_url": "https://github.com/o/r", "review_pr_number": 1}}
+    img = _verifier_sandbox_image(settings, "https://github.com/o/r", state)
+    assert img == "agent-fs-sandbox"
+
+
+def test_verifier_sandbox_image_uses_verifier_image_for_local_mount(tmp_path) -> None:
+    from unittest.mock import MagicMock
+
+    settings = MagicMock()
+    settings.verifier_image = "verifier-test-env:latest"
+    settings.verifier_clone_image = "agent-fs-sandbox"
+    settings.verifier_clone_remote_in_container = True
+
+    img = _verifier_sandbox_image(settings, str(tmp_path), {})
+    assert img == "verifier-test-env:latest"
+
+
+def test_start_verifier_sandbox_raises_when_repo_required_but_no_url() -> None:
+    from unittest.mock import MagicMock
+
+    import pytest
+
+    from src.orchestration.nodes.verifier.sandbox_executor import _start_verifier_sandbox
+
+    settings = MagicMock()
+    settings.verifier_clone_remote_in_container = True
+    settings.verifier_require_repo_in_container = True
+
+    class StubSb:
+        def start_snippet_workspace(self) -> str:
+            raise AssertionError("should not use snippet")
+
+    with pytest.raises(FileNotFoundError):
+        _start_verifier_sandbox(StubSb(), "", {}, settings=settings)  # type: ignore[arg-type]
+
+
 def test_start_verifier_sandbox_clones_when_clone_flag_enabled() -> None:
     from unittest.mock import MagicMock
 
@@ -440,6 +583,8 @@ def test_start_verifier_sandbox_clones_when_clone_flag_enabled() -> None:
 
     settings = MagicMock()
     settings.verifier_clone_remote_in_container = True
+    settings.verifier_require_repo_in_container = True
+    settings.verifier_use_execution_workspace = False
 
     class StubSb:
         def __init__(self) -> None:
@@ -469,7 +614,10 @@ def test_review_sandbox_default_image_is_agent_fs_stack() -> None:
 
     with patch("src.infrastructure.sandbox.docker.from_env"):
         assert RepoSandbox().image_name == "agent-fs-sandbox"
-    """Regression: markdown must use balanced {{}} placeholders for str.format."""
+
+
+def test_build_test_generator_prompt_escapes_python_braces() -> None:
+    """Regression: markdown code blocks must escape {{}} for str.format (e.g. f\"PIL.{sub}\")."""
     from src.orchestration.nodes.verifier.test_generator import build_test_generator_prompt
     from src.orchestration.prompts.renderer import load_reviewer_prompt
 
@@ -484,4 +632,5 @@ def test_review_sandbox_default_image_is_agent_fs_stack() -> None:
         repo_root="/repo",
     )
     assert "pkg/x.py" in text
-    assert "1" in text and "3" in text
+    assert 'f"PIL.{sub}"' in text
+    assert "PngImagePlugin" in text

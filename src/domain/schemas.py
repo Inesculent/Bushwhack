@@ -180,13 +180,17 @@ class CandidateFinding(BaseModel):
     file_path: str = Field(description="Repository-relative file path using '/' separators.")
     line_start: int = Field(ge=1)
     line_end: int = Field(ge=1)
-    content: str = Field(description="Issue description with evidence pointers.")
+    content: str = Field(description="Issue description with evidence pointers.", max_length=600)
     claim_type: ClaimType = Field(
         default="uncertain",
         description="Type of claim. Only actionable negative claims are eligible for promotion.",
     )
-    failure_mode: str = Field(default="", description="What breaks, regresses, or can be exploited.")
-    evidence_summary: str = Field(default="", description="Short note on what evidence supports this.")
+    failure_mode: str = Field(default="", description="What breaks, regresses, or can be exploited.", max_length=400)
+    evidence_summary: str = Field(
+        default="",
+        description="Short note on what evidence supports this.",
+        max_length=400,
+    )
     required_context: List[str] = Field(
         default_factory=list,
         description="External facts or code paths that must be checked before promotion.",
@@ -262,7 +266,7 @@ class ReflectionBatchOutput(BaseModel):
 class CritiquerOutput(BaseModel):
     """General critiquer structured output."""
 
-    summary: str = Field(default="", description="Brief overview of the critique pass.")
+    summary: str = Field(default="", description="Brief overview of the critique pass.", max_length=2000)
     candidates: List[CandidateFinding] = Field(default_factory=list)
     initial_focus_requests: List[FocusedContextRequest] = Field(
         default_factory=list,

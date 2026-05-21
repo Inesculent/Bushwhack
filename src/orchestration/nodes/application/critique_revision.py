@@ -102,16 +102,68 @@ def _has_verifier_report_for_candidate(state: GraphState, candidate_id: str) -> 
     return False
 
 
+def expected_critique_revision_shard_ids(
+    state: GraphState,
+    candidate_ids: Sequence[str],
+    *,
+    max_shard_chars: int | None = None,
+    max_candidate_chars: int | None = None,
+) -> set[str]:
+    """Shard ids that must exist in ``critique_revision_digests`` before reduce runs."""
+    settings = get_settings()
+    if max_shard_chars is None:
+        max_shard_chars = settings.reviewer_critique_revision_max_shard_chars
+    if max_candidate_chars is None:
+        max_candidate_chars = settings.reviewer_critique_revision_max_candidate_chars
+    return {
+        s.shard_id
+        for s in plan_critique_revision_shards(
+            state,
+            list(candidate_ids),
+            max_shard_chars=max_shard_chars,
+            max_candidate_chars=max_candidate_chars,
+        )
+    }
+
+
+def _candidate_revision_input_ready(state: GraphState, candidate_id: str) -> bool:
+    """Per-candidate: focused hits and/or verifier report when reflection asked for runtime proof."""
+    if _focused_results_for_candidate(state, candidate_id):
+        return True
+    if (
+        candidate_id in _candidate_ids_needs_verification(state)
+        and _has_verifier_report_for_candidate(state, candidate_id)
+    ):
+        return True
+    return False
+
+
+def revision_ready_candidate_ids(
+    state: GraphState,
+    candidate_ids: Sequence[str] | None = None,
+) -> List[str]:
+    """Subset of revision candidates that have enough input to run digest/reduce (does not block siblings)."""
+    ids = list(candidate_ids) if candidate_ids is not None else _needs_revision_candidates(state)
+    return [cid for cid in ids if _candidate_revision_input_ready(state, cid)]
+
+
+def critique_revision_digests_complete(state: GraphState) -> bool:
+    """True when every planned digest shard for revision-ready candidates is present."""
+    candidate_ids = revision_ready_candidate_ids(
+        state, _dedupe_revision_candidate_ids(state, _needs_revision_candidates(state))
+    )
+    if not candidate_ids:
+        return True
+    expected = expected_critique_revision_shard_ids(state, candidate_ids)
+    if not expected:
+        return True
+    have = set((state.get("critique_revision_digests") or {}).keys())
+    return expected <= have
+
+
 def revision_inputs_ready(state: GraphState, candidate_ids: Sequence[str]) -> bool:
-    """True when every revision candidate has focused evidence and/or a verifier report if reflection requested it."""
-    nv = _candidate_ids_needs_verification(state)
-    for cid in candidate_ids:
-        if _focused_results_for_candidate(state, cid):
-            continue
-        if cid in nv and _has_verifier_report_for_candidate(state, cid):
-            continue
-        return False
-    return True
+    """True when at least one revision candidate has focused evidence and/or a verifier report."""
+    return bool(revision_ready_candidate_ids(state, candidate_ids))
 
 
 def _has_focused_evidence(state: GraphState, candidate_ids: Sequence[str]) -> bool:
@@ -298,6 +350,73 @@ def _render_reduction_bundle(
     return "\n\n".join(sections)
 
 
+def _all_candidates_by_id(state: GraphState) -> Dict[str, CandidateFinding]:
+    out: Dict[str, CandidateFinding] = {}
+    for raw in state.get("candidate_findings", []) or []:
+        cand = _coerce_candidate(raw)
+        if cand is not None:
+            out[cand.candidate_id] = cand
+    return out
+
+
+def _dedupe_revision_candidate_ids(state: GraphState, candidate_ids: List[str]) -> List[str]:
+    """Drop duplicate ReDoS/security siblings on the same file (keep first by id)."""
+    by_id = _all_candidates_by_id(state)
+    by_file_redos: Dict[str, str] = {}
+    out: List[str] = []
+    for cid in candidate_ids:
+        cand = by_id.get(cid)
+        if cand is None:
+            out.append(cid)
+            continue
+        blob = f"{cand.content} {cand.failure_mode}".lower()
+        is_redos = cand.claim_type == "security_risk" and (
+            "redos" in blob or "backtrack" in blob or "catastrophic" in blob
+        )
+        if is_redos:
+            key = cand.file_path.strip().lower()
+            if key in by_file_redos:
+                continue
+            by_file_redos[key] = cid
+        out.append(cid)
+    return out
+
+
+def _apply_verifier_policy_to_revisions(
+    revisions: List[Dict[str, Any]],
+    state: GraphState,
+) -> tuple[List[Dict[str, Any]], List[str]]:
+    """Adjust revision rows using verifier_hints (harness-aware)."""
+    hints: Dict[str, Any] = dict((state.get("metadata") or {}).get("verifier_hints") or {})
+    warnings: List[str] = []
+    adjusted: List[Dict[str, Any]] = []
+    for row in revisions:
+        row = dict(row)
+        cid = str(row.get("candidate_id") or "")
+        hint = hints.get(cid)
+        if not isinstance(hint, dict):
+            adjusted.append(row)
+            continue
+        harness = bool(hint.get("harness_error"))
+        v_verdict = str(hint.get("verdict") or "").lower()
+        scope = str(hint.get("verification_scope") or "")
+        verdict = str(row.get("verdict") or "").lower()
+        summary = str(row.get("updated_evidence_summary") or "")
+        if harness:
+            note = "runtime unverified (harness)"
+            if note not in summary:
+                row["updated_evidence_summary"] = f"{summary} {note}".strip()
+            warnings.append(f"critique_revision_harness:{cid}")
+        elif v_verdict == "refuted" and scope == "concrete_behavior" and verdict == "accept":
+            row["verdict"] = "reject"
+            row["updated_evidence_summary"] = (
+                f"{summary} Runtime verifier refuted concrete_behavior claim.".strip()
+            )
+            warnings.append(f"critique_revision_verifier_refuted:{cid}")
+        adjusted.append(row)
+    return adjusted, warnings
+
+
 def _normalize_revision_rows(
     revisions: Sequence[Any],
     expected_ids: Set[str],
@@ -423,7 +542,33 @@ def make_critique_revision_reduce_node(model_key: str | None = None, use_llm: bo
 
     def critique_revision_reduce_node(state: GraphState) -> Dict[str, Any]:
         run_id = state.get("run_id", "unknown")
-        candidate_ids = _needs_revision_candidates(state)
+        metadata_existing = dict(state.get("metadata", {}) or {})
+        if metadata_existing.get("critique_revision", {}).get("reduce_completed"):
+            return {"node_history": [f"{node_name}:idempotent_skip"]}
+
+        if not critique_revision_digests_complete(state):
+            if _trace_enabled(state):
+                expected = expected_critique_revision_shard_ids(
+                    state,
+                    revision_ready_candidate_ids(
+                        state,
+                        _dedupe_revision_candidate_ids(
+                            state, _needs_revision_candidates(state)
+                        ),
+                    ),
+                )
+                have = set((state.get("critique_revision_digests") or {}).keys())
+                trace_logger.info(
+                    "TRACE critique_revision_reduce_barrier_waiting run_id=%s have=%s expected=%s",
+                    run_id,
+                    sorted(have),
+                    sorted(expected),
+                )
+            return {"node_history": [f"{node_name}:barrier_incomplete"]}
+
+        candidate_ids = _dedupe_revision_candidate_ids(
+            state, _needs_revision_candidates(state)
+        )
         digests_map = dict(state.get("critique_revision_digests") or {})
 
         if not candidate_ids:
@@ -443,8 +588,10 @@ def make_critique_revision_reduce_node(model_key: str | None = None, use_llm: bo
                 except Exception:
                     continue
 
-        if not revision_inputs_ready(state, candidate_ids):
+        ready_ids = revision_ready_candidate_ids(state, candidate_ids)
+        if not ready_ids:
             return {"node_history": [f"{node_name}:skipped_no_results"]}
+        candidate_ids = ready_ids
 
         bundle = _render_reduction_bundle(
             state,
@@ -475,8 +622,9 @@ def make_critique_revision_reduce_node(model_key: str | None = None, use_llm: bo
                 response = parse_structured_output(invoke_result, CritiqueRevisionOutput)
                 llm_tokens = extract_total_tokens_from_llm_result(invoke_result)
                 rows, norm_warnings = _normalize_revision_rows(response.revisions, expected_ids)
-                revisions = rows
+                revisions, policy_warnings = _apply_verifier_policy_to_revisions(rows, state)
                 warnings.extend(norm_warnings)
+                warnings.extend(policy_warnings)
                 warnings.extend(response.warnings)
             except Exception as exc:  # noqa: BLE001
                 warnings.append(f"critique_revision_reduce_llm_failed:{exc.__class__.__name__}: {exc}")
@@ -488,15 +636,11 @@ def make_critique_revision_reduce_node(model_key: str | None = None, use_llm: bo
                     exc,
                 )
 
-        shard_ids_expected = {
-            s.shard_id
-            for s in plan_critique_revision_shards(
-                state,
-                candidate_ids,
-                max_shard_chars=settings.reviewer_critique_revision_max_shard_chars,
-                max_candidate_chars=max_candidate_chars,
-            )
-        }
+        shard_ids_expected = expected_critique_revision_shard_ids(
+            state,
+            candidate_ids,
+            max_candidate_chars=max_candidate_chars,
+        )
         missing_shards = sorted(shard_ids_expected - set(digests.keys()))
 
         if _trace_enabled(state):
@@ -517,6 +661,7 @@ def make_critique_revision_reduce_node(model_key: str | None = None, use_llm: bo
             "digest_count": len(digests),
             "digest_shard_ids": sorted(digests.keys()),
             "missing_digest_shards": missing_shards,
+            "reduce_completed": True,
         }
 
         return {

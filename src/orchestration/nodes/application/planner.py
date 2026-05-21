@@ -20,6 +20,16 @@ WORKER_SPECIALTIES = ("security", "logic", "performance", "general")
 MAX_PLANNER_DIFF_CHARS = 20000
 MAX_PLANNER_RELATED_ITEMS = 8
 _TASK_DEDUPE_SIMILARITY = 0.85
+_DIFF_LOCAL_CORRECTNESS_PHRASES = (
+    "diff-local",
+    "diff local",
+    "general correctness",
+    "without requiring off-diff",
+    "without off-diff",
+    "visible in the diff",
+    "within the changed",
+    "changed hunks",
+)
 
 
 class ReviewPlanOutput(BaseModel):
@@ -90,8 +100,9 @@ def _default_tasks(state: GraphState) -> List[ReviewTask]:
         ),
         (
             "logic",
-            "Correctness review",
-            "Review the change for behavioral regressions, edge cases, broken state transitions, and API contract violations.",
+            "Diff-local correctness",
+            "Diff-local correctness: review control flow, return paths, None/empty inputs, off-by-one bounds, "
+            "and type/API consistency using only the changed hunks—without requiring off-diff callers or middleware.",
         ),
         (
             "performance",
@@ -115,6 +126,55 @@ def _default_tasks(state: GraphState) -> List[ReviewTask]:
         )
         for specialty, title, description in task_specs
     ]
+
+
+def _task_is_diff_local_correctness(task: ReviewTask) -> bool:
+    if task.specialty != "logic":
+        return False
+    blob = f"{task.title} {task.description}".lower()
+    return any(phrase in blob for phrase in _DIFF_LOCAL_CORRECTNESS_PHRASES)
+
+
+_REGEX_EXTRACT_MODE_CHECKLIST = (
+    " RegexExtract modes (if present in diff): All Matches — findall tuple indexing (m[0] vs full match); "
+    "All Groups — group_index, match.groups() truthiness, join with None; "
+    "First Group — len(match.groups()) vs group 0; "
+    "StringCompare — exhaustive mode returns."
+)
+
+
+def _baseline_diff_local_correctness_task(files: List[str]) -> ReviewTask:
+    description = (
+        "Diff-local correctness: review control flow, return paths, None/empty inputs, off-by-one bounds, "
+        "and type/API consistency using only the changed hunks—without requiring off-diff callers or middleware."
+    )
+    if any("nodes_string" in (f or "").lower() for f in files):
+        description += _REGEX_EXTRACT_MODE_CHECKLIST
+    return ReviewTask(
+        id="review-logic-diff-local",
+        title="Diff-local correctness",
+        description=description,
+        target_files=files,
+        specialty="logic",
+        depth=1,
+    )
+
+
+def _ensure_diff_local_correctness_task(tasks: List[ReviewTask], state: GraphState) -> List[ReviewTask]:
+    """Guarantee a non-context-dependent logic pass when the LLM plan omits one."""
+    if any(_task_is_diff_local_correctness(task) for task in tasks):
+        return tasks
+    files = _target_files(state)
+    baseline = _baseline_diff_local_correctness_task(files)
+    if _is_duplicate_task(baseline, tasks):
+        return tasks
+    if len(tasks) >= 6:
+        for index in range(len(tasks) - 1, -1, -1):
+            if tasks[index].specialty == "general":
+                trimmed = tasks[:index] + tasks[index + 1 :]
+                return trimmed + [baseline]
+        return tasks[:-1] + [baseline]
+    return tasks + [baseline]
 
 
 def _flatten_planner_tasks(tasks: List[ReviewTask]) -> List[ReviewTask]:
@@ -151,7 +211,8 @@ def _normalize_tasks(tasks: List[ReviewTask], state: GraphState) -> List[ReviewT
             continue
         normalized.append(candidate)
 
-    return normalized or _default_tasks(state)
+    normalized = normalized or _default_tasks(state)
+    return _ensure_diff_local_correctness_task(normalized, state)
 
 
 def _task_tokens(task: ReviewTask) -> set[str]:

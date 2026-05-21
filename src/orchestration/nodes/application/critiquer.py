@@ -9,7 +9,11 @@ from src.config import get_settings
 from src.domain.schemas import CandidateFinding, CritiquerOutput, FocusedContextRequest, ReviewTask
 from src.domain.state import GraphState
 from src.infrastructure.llm.factory import Models
-from src.infrastructure.llm.token_usage import extract_total_tokens_from_llm_result, parse_structured_output
+from src.infrastructure.llm.token_usage import (
+    extract_total_tokens_from_llm_result,
+    parse_structured_output,
+    salvage_structured_output_from_raw,
+)
 from src.orchestration.context.review_context import (
     LazyReviewContextProvider,
     structural_critiquer_context_excerpt,
@@ -98,6 +102,51 @@ def _render_critiquer_prompt(
     return render_reviewer_prompt("critiquer.md", sections)
 
 
+_COMPACT_OUTPUT_APPENDIX = (
+    "\n\n## OUTPUT BUDGET (retry — required)\n"
+    "Your previous response exceeded the length limit. Return at most 6 candidates. "
+    "Keep each content, evidence_summary, and failure_mode under 400 characters. "
+    "Keep summary under 500 characters. No prose outside the schema fields."
+)
+
+
+def _is_length_finish_error(exc: Exception) -> bool:
+    if "LengthFinish" in exc.__class__.__name__:
+        return True
+    msg = str(exc).lower()
+    return "length limit" in msg or "length_finish" in msg
+
+
+def _invoke_critiquer_llm(
+    *,
+    state: GraphState,
+    task: ReviewTask,
+    context_rendered: str,
+    mental_model_excerpt: str,
+    exploration_ledger_snippet: str,
+    model_key: str | None,
+    compact: bool,
+) -> tuple[Any, int]:
+    settings = get_settings()
+    prompt = _render_critiquer_prompt(
+        state,
+        task,
+        context_rendered,
+        mental_model_excerpt=mental_model_excerpt,
+        exploration_ledger_snippet=exploration_ledger_snippet,
+    )
+    if compact:
+        prompt = f"{prompt}{_COMPACT_OUTPUT_APPENDIX}"
+    llm = Models.worker(
+        CritiquerOutput,
+        model_key=model_key,
+        max_completion_tokens=settings.reviewer_critiquer_max_completion_tokens,
+    )
+    invoke_result = llm.invoke(prompt)
+    tokens = extract_total_tokens_from_llm_result(invoke_result)
+    return invoke_result, tokens
+
+
 def make_general_critiquer_node(
     context_provider: LazyReviewContextProvider,
     model_key: str | None = None,
@@ -179,19 +228,84 @@ def make_general_critiquer_node(
         initial_requests: List[FocusedContextRequest] = []
         if use_llm:
             selected_model = model_key or getattr(get_settings(), "reviewer_worker_model_key", None)
+            invoke_result: Any = None
             try:
-                llm = Models.worker(CritiquerOutput, model_key=selected_model)
-                invoke_result = llm.invoke(
-                    _render_critiquer_prompt(
-                        state,
-                        task,
-                        context_rendered,
-                        mental_model_excerpt=mental_model_excerpt,
-                        exploration_ledger_snippet=exploration_ledger_snippet,
-                    )
+                invoke_result, llm_tokens = _invoke_critiquer_llm(
+                    state=state,
+                    task=task,
+                    context_rendered=context_rendered,
+                    mental_model_excerpt=mental_model_excerpt,
+                    exploration_ledger_snippet=exploration_ledger_snippet,
+                    model_key=selected_model,
+                    compact=False,
                 )
-                response = parse_structured_output(invoke_result, CritiquerOutput)
-                llm_tokens = extract_total_tokens_from_llm_result(invoke_result)
+                try:
+                    response = parse_structured_output(invoke_result, CritiquerOutput)
+                except (ValueError, TypeError) as parse_exc:
+                    if _is_length_finish_error(parse_exc) or (
+                        isinstance(invoke_result, dict) and invoke_result.get("parsed") is None
+                    ):
+                        salvaged = salvage_structured_output_from_raw(invoke_result, CritiquerOutput)
+                        if salvaged is not None:
+                            warnings.append("critiquer_llm_salvaged:partial_json_from_raw")
+                            response = salvaged
+                        else:
+                            raise parse_exc
+                    else:
+                        raise
+            except Exception as exc:  # noqa: BLE001
+                if _is_length_finish_error(exc) or (
+                    isinstance(exc, (ValueError, TypeError))
+                    and invoke_result is not None
+                    and isinstance(invoke_result, dict)
+                    and invoke_result.get("parsed") is None
+                ):
+                    try:
+                        warnings.append("critiquer_llm_retry:reason=length")
+                        invoke_result, retry_tokens = _invoke_critiquer_llm(
+                            state=state,
+                            task=task,
+                            context_rendered=context_rendered,
+                            mental_model_excerpt=mental_model_excerpt,
+                            exploration_ledger_snippet=exploration_ledger_snippet,
+                            model_key=selected_model,
+                            compact=True,
+                        )
+                        llm_tokens += retry_tokens
+                        response = parse_structured_output(invoke_result, CritiquerOutput)
+                        candidates = _normalize_candidates(task=task, candidates=response.candidates)
+                        warnings.extend(response.warnings)
+                        summary = response.summary
+                        initial_requests = _normalize_focus_requests(
+                            task=task,
+                            candidates=candidates,
+                            requests=list(response.initial_focus_requests)
+                            + auto_focus_requests(task, candidates),
+                        )
+                    except Exception as retry_exc:  # noqa: BLE001
+                        exc = retry_exc
+                        warning = f"critiquer_llm_failed:{exc.__class__.__name__}: {exc}"
+                        warnings.append(warning)
+                        logger.warning(
+                            "%s failed after length retry run_id=%s task_id=%s reason=%s: %s",
+                            node_name,
+                            run_id,
+                            task.id,
+                            exc.__class__.__name__,
+                            exc,
+                        )
+                else:
+                    warning = f"critiquer_llm_failed:{exc.__class__.__name__}: {exc}"
+                    warnings.append(warning)
+                    logger.warning(
+                        "%s failed run_id=%s task_id=%s reason=%s: %s",
+                        node_name,
+                        run_id,
+                        task.id,
+                        exc.__class__.__name__,
+                        exc,
+                    )
+            else:
                 candidates = _normalize_candidates(task=task, candidates=response.candidates)
                 warnings.extend(response.warnings)
                 summary = response.summary
@@ -199,17 +313,6 @@ def make_general_critiquer_node(
                     task=task,
                     candidates=candidates,
                     requests=list(response.initial_focus_requests) + auto_focus_requests(task, candidates),
-                )
-            except Exception as exc:  # noqa: BLE001
-                warning = f"critiquer_llm_failed:{exc.__class__.__name__}: {exc}"
-                warnings.append(warning)
-                logger.warning(
-                    "%s failed run_id=%s task_id=%s reason=%s: %s",
-                    node_name,
-                    run_id,
-                    task.id,
-                    exc.__class__.__name__,
-                    exc,
                 )
 
         if _trace_enabled(state):

@@ -42,6 +42,15 @@ _CONTRADICTION_MARKERS = (
     "missing return",
 )
 
+_SOFT_VETO_MARKERS = (
+    "defensible",
+    "acceptable",
+    "intentional",
+    "by design",
+    "might be intentional",
+    "could be intentional",
+)
+
 
 def _trace_enabled(state: GraphState) -> bool:
     metadata = state.get("metadata", {}) or {}
@@ -119,7 +128,26 @@ def _rationale_contradicts_accept(rationale: str) -> bool:
     return any(marker in blob for marker in _CONTRADICTION_MARKERS)
 
 
+def _rationale_soft_veto_without_evidence(rationale: str) -> bool:
+    blob = (rationale or "").lower()
+    if not any(marker in blob for marker in _SOFT_VETO_MARKERS):
+        return False
+    return not any(marker in blob for marker in _CONTRADICTION_MARKERS)
+
+
 def _enforce_rationale_consistency(report: ReflectionReport) -> tuple[ReflectionReport, str | None]:
+    if report.verdict == "reject" and _rationale_soft_veto_without_evidence(report.rationale):
+        updated = report.model_copy(
+            update={
+                "verdict": "needs_verification",
+                "rationale": (
+                    f"[auto-corrected] Reject lacked concrete contradiction; needs verification. "
+                    f"{report.rationale}"
+                ),
+            }
+        )
+        return updated, "reflection_soft_veto_to_needs_verification"
+
     if report.verdict != "accept":
         return report, None
     if not report.rationale:
@@ -133,6 +161,121 @@ def _enforce_rationale_consistency(report: ReflectionReport) -> tuple[Reflection
         )
         return updated, "reflection_auto_reject:rationale_contradiction"
     return report, None
+
+
+def _chunk_candidates(
+    candidates: List[CandidateFinding],
+    batch_size: int,
+) -> List[List[CandidateFinding]]:
+    if batch_size < 1:
+        batch_size = 1
+    return [candidates[i : i + batch_size] for i in range(0, len(candidates), batch_size)]
+
+
+def _reflect_specialty_batches(
+    *,
+    state: GraphState,
+    specialty: str,
+    specialty_candidates: List[CandidateFinding],
+    selected_model: str | None,
+    resolved_settings: Settings,
+    mental_model_ledger_snippet: str,
+    use_llm: bool,
+) -> tuple[List[ReflectionReport], List[FocusedContextRequest], List[str], int]:
+    """Invoke reflection in bounded batches; retry singletons for missing candidate ids."""
+    if not use_llm or not specialty_candidates:
+        return [], [], [], 0
+
+    batch_size = max(1, int(resolved_settings.verifier_reflection_batch_size))
+    all_reports: List[ReflectionReport] = []
+    all_requests: List[FocusedContextRequest] = []
+    warnings: List[str] = []
+    llm_tokens = 0
+
+    def _invoke_batch(batch: List[CandidateFinding]) -> None:
+        nonlocal llm_tokens
+        timeout_deadline = (
+            time.monotonic() + resolved_settings.reviewer_reflection_timeout_patience_seconds
+            if is_local_model(selected_model)
+            and resolved_settings.reviewer_reflection_timeout_patience_seconds > 0
+            else None
+        )
+        attempt = 0
+        while True:
+            attempt += 1
+            try:
+                llm = Models.worker(ReflectionBatchOutput, model_key=selected_model)
+                invoke_result = llm.invoke(
+                    _render_reflection_prompt(
+                        state,
+                        specialty,
+                        batch,
+                        mental_model_ledger_snippet=mental_model_ledger_snippet,
+                    )
+                )
+                response = parse_structured_output(invoke_result, ReflectionBatchOutput)
+                llm_tokens += extract_total_tokens_from_llm_result(invoke_result)
+                reps, reqs, norm_warnings = _normalize_reports(response, specialty)
+                all_reports.extend(reps)
+                all_requests.extend(reqs)
+                warnings.extend(response.warnings)
+                warnings.extend(norm_warnings)
+                return
+            except Exception as exc:  # noqa: BLE001
+                timeout_with_patience_left = (
+                    is_timeout_exception(exc)
+                    and timeout_deadline is not None
+                    and time.monotonic() < timeout_deadline
+                )
+                if timeout_with_patience_left:
+                    server_active, status_detail = local_llm_server_active(resolved_settings)
+                    if server_active:
+                        warning = f"reflection_timeout_server_active:{specialty}"
+                        if warning not in warnings:
+                            warnings.append(warning)
+                        sleep_for_retry(
+                            resolved_settings.reviewer_reflection_retry_backoff_seconds,
+                            attempt,
+                            timeout_deadline,
+                        )
+                        continue
+                warnings.append(f"reflection_failed:{specialty}:{exc.__class__.__name__}: {exc}")
+                logger.warning(
+                    "adversarial_reflection specialty=%s batch_size=%s reason=%s: %s",
+                    specialty,
+                    len(batch),
+                    exc.__class__.__name__,
+                    exc,
+                )
+                return
+
+    for batch in _chunk_candidates(specialty_candidates, batch_size):
+        _invoke_batch(batch)
+
+    expected_ids = {c.candidate_id for c in specialty_candidates}
+    got_ids = {r.candidate_id for r in all_reports}
+    missing = sorted(expected_ids - got_ids)
+    for cid in missing:
+        cand = next(c for c in specialty_candidates if c.candidate_id == cid)
+        _invoke_batch([cand])
+        got_ids = {r.candidate_id for r in all_reports}
+
+    still_missing = sorted(expected_ids - {r.candidate_id for r in all_reports})
+    for cid in still_missing:
+        warnings.append(f"reflection_integrity_stub:{specialty}:{cid}")
+        all_reports.append(
+            ReflectionReport(
+                candidate_id=cid,
+                reflector_specialty=specialty,  # type: ignore[arg-type]
+                verdict="needs_context",
+                rationale=(
+                    "reflection_integrity: no ReflectionReport returned for this candidate "
+                    f"after batched {specialty} reflection; treat as needing further review."
+                ),
+            )
+        )
+
+    return all_reports, all_requests, warnings, llm_tokens
 
 
 def _normalize_reports(
@@ -237,79 +380,19 @@ def make_adversarial_reflection_node(
                 mm["reflection_ledger_formatter_rendered"] = int(mm.get("reflection_ledger_formatter_rendered", 0)) + stats.rendered
                 metadata_merged["mental_model_metrics"] = mm
                 state = {**state, "metadata": metadata_merged}
-                timeout_deadline = (
-                    time.monotonic() + resolved_settings.reviewer_reflection_timeout_patience_seconds
-                    if is_local_model(selected_model)
-                    and resolved_settings.reviewer_reflection_timeout_patience_seconds > 0
-                    else None
+                reps, reqs, batch_warnings, batch_tokens = _reflect_specialty_batches(
+                    state=state,
+                    specialty=specialty,
+                    specialty_candidates=specialty_candidates,
+                    selected_model=selected_model,
+                    resolved_settings=resolved_settings,
+                    mental_model_ledger_snippet=snippet,
+                    use_llm=use_llm,
                 )
-                attempt = 0
-                while True:
-                    attempt += 1
-                    try:
-                        llm = Models.worker(ReflectionBatchOutput, model_key=selected_model)
-                        invoke_result = llm.invoke(
-                            _render_reflection_prompt(state, specialty, specialty_candidates, mental_model_ledger_snippet=snippet)
-                        )
-                        response = parse_structured_output(invoke_result, ReflectionBatchOutput)
-                        llm_tokens += extract_total_tokens_from_llm_result(invoke_result)
-                        reps, reqs, norm_warnings = _normalize_reports(response, specialty)
-                        all_reports.extend(reps)
-                        all_requests.extend(reqs)
-                        warnings.extend(response.warnings)
-                        warnings.extend(norm_warnings)
-                        break
-                    except Exception as exc:  # noqa: BLE001
-                        timeout_with_patience_left = (
-                            is_timeout_exception(exc)
-                            and timeout_deadline is not None
-                            and time.monotonic() < timeout_deadline
-                        )
-                        if timeout_with_patience_left:
-                            server_active, status_detail = local_llm_server_active(resolved_settings)
-                            if server_active:
-                                warning = f"reflection_timeout_server_active:{specialty}"
-                                if warning not in warnings:
-                                    warnings.append(warning)
-                                remaining = max(0, int(timeout_deadline - time.monotonic()))
-                                logger.warning(
-                                    "%s timeout but server active specialty=%s run_id=%s "
-                                    "attempt=%s patience_remaining_seconds=%s status=%s err=%s",
-                                    node_name,
-                                    specialty,
-                                    run_id,
-                                    attempt,
-                                    remaining,
-                                    status_detail,
-                                    exc,
-                                )
-                                sleep_for_retry(
-                                    resolved_settings.reviewer_reflection_retry_backoff_seconds,
-                                    attempt,
-                                    timeout_deadline,
-                                )
-                                continue
-                            logger.warning(
-                                "%s timeout and server status inactive specialty=%s run_id=%s "
-                                "attempt=%s status=%s err=%s",
-                                node_name,
-                                specialty,
-                                run_id,
-                                attempt,
-                                status_detail,
-                                exc,
-                            )
-                        warning = f"reflection_failed:{specialty}:{exc.__class__.__name__}: {exc}"
-                        warnings.append(warning)
-                        logger.warning(
-                            "%s specialty=%s run_id=%s reason=%s: %s",
-                            node_name,
-                            specialty,
-                            run_id,
-                            exc.__class__.__name__,
-                            exc,
-                        )
-                        break
+                all_reports.extend(reps)
+                all_requests.extend(reqs)
+                warnings.extend(batch_warnings)
+                llm_tokens += batch_tokens
 
         if _trace_enabled(state):
             trace_logger.info(

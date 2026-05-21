@@ -5,7 +5,32 @@ from __future__ import annotations
 from typing import List
 
 from src.domain.schemas import CandidateFinding, ReviewTask
-from src.orchestration.routing.candidate_reflection_specialty import with_single_reflection_specialty
+from src.orchestration.routing.candidate_reflection_specialty import (
+    correct_specialty_before_hardcap,
+    with_single_reflection_specialty,
+)
+
+
+def _maybe_retag_findall_first_group_loss(candidate: CandidateFinding) -> CandidateFinding:
+    """findall tuples indexed with m[0] are correctness defects, not perf-only."""
+    blob = " ".join(
+        [
+            candidate.content,
+            candidate.failure_mode,
+            candidate.evidence_summary,
+        ]
+    ).lower()
+    if candidate.claim_type != "performance_regression":
+        return candidate
+    if "findall" not in blob or "m[0]" not in blob:
+        return candidate
+    return candidate.model_copy(
+        update={
+            "claim_type": "defect",
+            "reflection_specialties": ["logic"],
+            "suspected_category": "logic",
+        }
+    )
 
 
 def normalize_critiquer_candidates(task: ReviewTask, candidates: List[CandidateFinding]) -> List[CandidateFinding]:
@@ -21,5 +46,7 @@ def normalize_critiquer_candidates(task: ReviewTask, candidates: List[CandidateF
                 "patch_task_id": task.id,
             }
         )
-        normalized.append(with_single_reflection_specialty(with_ids))
+        corrected, _ = correct_specialty_before_hardcap(with_ids)
+        retagged = _maybe_retag_findall_first_group_loss(corrected)
+        normalized.append(with_single_reflection_specialty(retagged))
     return normalized

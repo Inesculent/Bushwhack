@@ -30,10 +30,25 @@ def test_reviewer_prompt_files_exist_for_all_roles():
         assert load_reviewer_prompt(prompt_path)
 
 
+def test_global_prompt_declared_input_contracts() -> None:
+    text = load_reviewer_prompt("global.md")
+    assert "Declared input contracts" in text
+    assert "required and non-optional" in text
+    assert "Optional" in text or "optional" in text
+
+
+def test_planner_prompt_requires_diff_local_correctness_baseline() -> None:
+    text = load_reviewer_prompt("planner.md")
+    assert "diff-local" in text.lower()
+    assert "general correctness" in text.lower()
+
+
 def test_critiquer_prompt_contains_routing_hardcap() -> None:
     text = load_reviewer_prompt("critiquer.md")
     assert "Single-Specialty Hardcap" in text
     assert "Hierarchy of Needs" in text
+    assert "Output budget" in text
+    assert "at most 6" in text
 
 
 def test_reflection_prompts_contain_adversarial_two_tier_protocol() -> None:

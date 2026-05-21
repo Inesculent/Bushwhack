@@ -61,7 +61,7 @@ class RepoSandbox:
             "done"
         )
         self.execute(["sh", "-lc", copy_script], check_exit_code=True)
-        
+        self._execution_workdir = workspace_path
         return workspace_path
 
     def start(self, local_repo_path: str):
