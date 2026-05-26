@@ -356,6 +356,126 @@ def test_adversarial_cleanup_drops_on_reject() -> None:
     assert out["findings"] == []
 
 
+def test_adversarial_cleanup_revision_accept_overrides_reflector_reject() -> None:
+    """Second-pass revision accept promotes when focused context backs the revised claim."""
+    node = make_adversarial_cleanup_node()
+    cand = CandidateFinding(
+        candidate_id="review-logic-001",
+        patch_task_id="review-logic",
+        file_path="comfy_extras/nodes_string.py",
+        line_start=177,
+        line_end=188,
+        content="class StringCompare",
+        claim_type="defect",
+        failure_mode="Missing return for unexpected mode values",
+        evidence_summary="execute() lacks else branch for invalid mode.",
+        suspected_category="logic",
+        reflection_specialties=["logic"],
+        recommendation="Add else branch returning a boolean tuple.",
+        required_context=["Confirm execute return paths"],
+    )
+    reports = [
+        ReflectionReport(
+            candidate_id=cand.candidate_id,
+            reflector_specialty="logic",
+            verdict="reject",
+            rationale="Ends With branch has an explicit return; original claim is wrong.",
+        ),
+    ]
+    out = node(
+        {
+            "run_id": "t",
+            "candidate_findings": [cand],
+            "reflection_reports": reports,
+            "focused_context_results": {
+                "review-logic-001": FocusedContextResult(
+                    request_id="review-logic-001",
+                    candidate_id=cand.candidate_id,
+                    file_contents_full={
+                        "comfy_extras/nodes_string.py": "class StringCompare:\n    def execute(self):\n        pass\n",
+                    },
+                ),
+            },
+            "metadata": {
+                "critique_revision": {
+                    "revisions": [
+                        {
+                            "candidate_id": cand.candidate_id,
+                            "verdict": "accept",
+                            "updated_evidence_summary": (
+                                "Runtime verifier STATUS: MISMATCH for invalid mode returning None."
+                            ),
+                        }
+                    ],
+                },
+                "verifier_hints": {
+                    cand.candidate_id: {
+                        "verdict": "verified",
+                        "verification_scope": "concrete_behavior",
+                        "harness_error": True,
+                        "product_verified": False,
+                        "final_rationale": "Verifier script reported STATUS: MISMATCH (wrong output reproduced).",
+                    },
+                },
+            },
+        }
+    )
+    assert len(out["findings"]) == 1
+    life = out["metadata"]["adversarial_cleanup"]["candidate_lifecycle"][cand.candidate_id]
+    assert life["decision"] == "promoted"
+    assert life["reason"] == "critique_revision_accept_overrides_reject"
+    assert life["overridden_rejecting_reflectors"] == ["logic"]
+
+
+def test_adversarial_cleanup_revision_accept_does_not_override_reject_without_evidence() -> None:
+    node = make_adversarial_cleanup_node()
+    cand = CandidateFinding(
+        candidate_id="t1:c1",
+        patch_task_id="t1",
+        file_path="src/x.py",
+        line_start=1,
+        line_end=2,
+        content="Issue",
+        claim_type="defect",
+        failure_mode="crash",
+        evidence_summary="line 1",
+        recommendation="fix",
+        suspected_category="logic",
+        reflection_specialties=["logic"],
+    )
+    reports = [
+        ReflectionReport(
+            candidate_id=cand.candidate_id,
+            reflector_specialty="logic",
+            verdict="reject",
+            rationale="no",
+        ),
+    ]
+    out = node(
+        {
+            "run_id": "t",
+            "candidate_findings": [cand],
+            "reflection_reports": reports,
+            "metadata": {
+                "critique_revision": {
+                    "revisions": [
+                        {
+                            "candidate_id": cand.candidate_id,
+                            "verdict": "accept",
+                            "updated_evidence_summary": "revised claim",
+                        }
+                    ],
+                },
+            },
+        }
+    )
+    assert out["findings"] == []
+    assert (
+        out["metadata"]["adversarial_cleanup"]["candidate_lifecycle"][cand.candidate_id]["reason"]
+        == "relevant_reflector_reject"
+    )
+
+
 def test_adversarial_cleanup_ignores_off_domain_reject() -> None:
     node = make_adversarial_cleanup_node()
     cand = CandidateFinding(
@@ -487,10 +607,11 @@ def test_adversarial_cleanup_promotes_verified_with_required_context_localized_r
                         "verdict": "verified",
                         "verification_scope": "concrete_behavior",
                         "updated_evidence_summary": "Runtime verifier: verified",
-                        "final_rationale": "STATUS: CRASHED | LogicError",
+                        "final_rationale": "STATUS: CRASHED with traceback in target file (product behavior).",
                         "attempts": 1,
                         "skipped_reason": "",
                         "harness_error": False,
+                        "product_verified": True,
                     }
                 }
             },
@@ -876,9 +997,10 @@ def test_adversarial_cleanup_drops_positive_observation() -> None:
     )
 
     assert out["findings"] == []
-    assert out["metadata"]["adversarial_cleanup"]["candidate_lifecycle"][cand.candidate_id][
+    reason = out["metadata"]["adversarial_cleanup"]["candidate_lifecycle"][cand.candidate_id][
         "reason"
-    ] == "non_promotable_claim_type"
+    ]
+    assert reason in ("non_promotable_claim_type", "resolution_only_not_promotable")
 
 
 def test_auto_focus_request_created_for_security_claim_needing_context() -> None:
@@ -1044,6 +1166,62 @@ def test_reflection_retries_active_local_server_timeout(monkeypatch: pytest.Monk
     ]
 
 
+def test_reflection_retries_on_length_finish(monkeypatch: pytest.MonkeyPatch) -> None:
+    settings = Settings(redis_enabled=False)
+    prompts: list[str] = []
+
+    class LengthFinishReasonError(Exception):
+        pass
+
+    class FakeLlm:
+        def invoke(self, prompt: str) -> dict:
+            prompts.append(prompt)
+            if len(prompts) == 1:
+                raise LengthFinishReasonError("length limit was reached")
+            return {
+                "parsed": ReflectionBatchOutput(
+                    reports=[
+                        ReflectionReport(
+                            candidate_id="review-logic-1",
+                            reflector_specialty="logic",
+                            verdict="accept",
+                            rationale="Valid defect.",
+                        )
+                    ]
+                )
+            }
+
+    monkeypatch.setattr(
+        "src.orchestration.nodes.application.reflection.Models.worker",
+        lambda *_args, **_kwargs: FakeLlm(),
+    )
+
+    node = make_adversarial_reflection_node(settings=settings)
+    out = node(
+        {
+            "run_id": "t",
+            "candidate_findings": [
+                CandidateFinding(
+                    candidate_id="review-logic-1",
+                    patch_task_id="review-logic",
+                    file_path="src/x.py",
+                    line_start=1,
+                    line_end=2,
+                    content="Logic issue",
+                    suspected_category="logic",
+                    reflection_specialties=["logic"],
+                )
+            ],
+            "metadata": {},
+        }
+    )
+
+    assert len(prompts) == 2
+    assert "retry — required" in prompts[1]
+    assert len(out["reflection_reports"]) == 1
+    assert "reflection_llm_retry:reason=length" in out["metadata"]["adversarial_reflection"]["warnings"]
+
+
 def test_plan_critique_revision_shards_splits_when_over_budget() -> None:
     from src.orchestration.nodes.application.critique_revision import plan_critique_revision_shards
 
@@ -1154,8 +1332,8 @@ def test_critique_revision_reduce_offline_writes_metadata() -> None:
             ),
         },
         "critique_revision_digests": {
-            "c1:0": CritiqueRevisionDigest(
-                shard_id="c1:0",
+            f"{cid}:0": CritiqueRevisionDigest(
+                shard_id=f"{cid}:0",
                 candidate_id=cid,
                 request_ids=["r1"],
                 evidence_bullets=["caller checks auth"],

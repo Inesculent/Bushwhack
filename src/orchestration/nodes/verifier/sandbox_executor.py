@@ -38,8 +38,6 @@ def _collect_lint_runs(sandbox: RepoSandbox, settings: Settings) -> List[Verifie
     if settings.verifier_ruff_enabled:
         r = sandbox.execute_result(
             [
-                "python",
-                "-m",
                 "ruff",
                 "check",
                 ".",
@@ -52,7 +50,7 @@ def _collect_lint_runs(sandbox: RepoSandbox, settings: Settings) -> List[Verifie
         runs.append(
             VerifierLintRun(
                 tool="ruff",
-                command="python -m ruff check . --no-cache --output-format concise",
+                command="ruff check . --no-cache --output-format concise",
                 exit_code=r.exit_code,
                 stdout=_truncate_stream(r.stdout, cap),
                 stderr=_truncate_stream(r.stderr, cap),
@@ -154,7 +152,7 @@ def _start_verifier_sandbox(
     local = Path(raw)
     if raw and local.is_dir():
         sandbox.start(str(local.resolve()))
-        if settings.verifier_use_execution_workspace:
+        if getattr(settings, "verifier_use_execution_workspace", False):
             sandbox.create_execution_workspace(workspace_name="verify_exec")
             return "exec_workspace"
         return "repo_mount"
@@ -172,7 +170,7 @@ def _start_verifier_sandbox(
         return "snippet_workspace"
 
     sandbox.start_from_remote_ref(repo_url=repo_url, ref=checkout_ref)
-    if settings.verifier_use_execution_workspace:
+    if getattr(settings, "verifier_use_execution_workspace", False):
         sandbox.create_execution_workspace(workspace_name="verify_exec")
         return "exec_workspace"
     return "repo_mount"
@@ -234,11 +232,18 @@ def execute_test_script(
             r = sandbox.execute_result(cmd, workdir=exec_wd)
             return r.exit_code, r.stdout, r.stderr
 
-        with ThreadPoolExecutor(max_workers=1) as pool:
+        # Do not use ``with ThreadPoolExecutor`` on the timeout path: its __exit__ calls
+        # shutdown(wait=True) before we stop the container, so a stuck docker exec blocks forever.
+        pool = ThreadPoolExecutor(max_workers=1)
+        timed_out = False
+        try:
             fut = pool.submit(_run)
             try:
-                exit_code, stdout, stderr = fut.result(timeout=settings.verifier_test_timeout_seconds)
+                exit_code, stdout, stderr = fut.result(
+                    timeout=settings.verifier_test_timeout_seconds
+                )
             except FuturesTimeout:
+                timed_out = True
                 record.timeout = True
                 record.exit_code = -1
                 record.stdout = ""
@@ -249,12 +254,20 @@ def execute_test_script(
                     candidate_id,
                     attempt_number,
                 )
-                return record
-
-        record.exit_code = exit_code
-        record.stdout = stdout
-        record.stderr = stderr
-        record.status = VerificationStatus.COMPLETED
+            else:
+                record.exit_code = exit_code
+                record.stdout = stdout
+                record.stderr = stderr
+                record.status = VerificationStatus.COMPLETED
+        finally:
+            if timed_out:
+                try:
+                    sandbox.stop()
+                except Exception:  # noqa: BLE001
+                    pass
+                pool.shutdown(wait=False, cancel_futures=True)
+            else:
+                pool.shutdown(wait=True)
     except Exception as exc:  # noqa: BLE001
         record.exit_code = 2
         record.stdout = f"STATUS: HARNESS_ERROR | {exc.__class__.__name__}: {exc}"

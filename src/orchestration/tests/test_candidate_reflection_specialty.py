@@ -71,7 +71,7 @@ def test_normalize_candidates_collapses_to_single_entry() -> None:
         reflection_specialties=["logic", "general"],
         claim_type="defect",
     )
-    out = normalize_critiquer_candidates(task, [raw])
+    out, _, _ = normalize_critiquer_candidates(task, [raw])
     assert len(out) == 1
     assert out[0].reflection_specialties == ["logic"]
     assert out[0].candidate_id.startswith("t1")

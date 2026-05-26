@@ -1,8 +1,17 @@
 from src.domain.schemas import ReviewFinding, ReviewTask, StructuralTopologyCommunity, StructuralTopologySummary
 from src.orchestration.nodes.application.planner import (
+    _amend_diff_narrowed_tasks,
+    _baseline_diff_local_correctness_task,
+    _chunk_logic_tasks_by_surface,
+    _diff_signals_structured_extraction,
     _ensure_diff_local_correctness_task,
+    _ensure_structured_extraction_logic_task,
+    _is_duplicate_task,
     _normalize_tasks,
     _render_planner_prompt,
+    _task_covers_structured_extraction,
+    finalize_emitted_tasks,
+    _sanitize_batched_logic_task_description,
     make_review_planner_node,
 )
 from src.orchestration.nodes.application.synthesizer import synthesizer_node
@@ -18,6 +27,278 @@ class FakeContextProvider:
             explored_files=task.target_files,
             file_snippets={path: "def changed():\n    return True\n" for path in task.target_files},
         )
+
+
+def test_baseline_diff_local_task_lists_multi_surface_inventory() -> None:
+    diff = "\n".join(
+        f"diff --git a/pkg/h{i}.py b/pkg/h{i}.py\n+++ b/pkg/h{i}.py\n+class H{i}:\n+    pass\n"
+        for i in range(5)
+    )
+    state = {"git_diff": diff, "metadata": {"mental_model": {"diff_surface_inventory": [f"H{i}" for i in range(5)]}}}
+    task = _baseline_diff_local_correctness_task(["pkg/h0.py"], state)
+    assert "H0" in task.description
+    assert "H4" in task.description
+    assert "entry point" in task.description.lower()
+
+
+def test_amend_diff_narrowed_tasks_expands_logic_scope_after_bootstrap() -> None:
+    surfaces = [f"Node{i}" for i in range(6)]
+    state = {
+        "git_diff": "",
+        "metadata": {
+            "mental_model": {
+                "bootstrap_completed": True,
+                "diff_surface_inventory": surfaces,
+            }
+        },
+    }
+    narrow = ReviewTask(
+        id="logic-diff-local-5-nodes",
+        title="Diff-local correctness: 5 visible nodes",
+        description="Focus only on the 322-line excerpt; do not infer behavior for unexposed nodes.",
+        target_files=["comfy_extras/nodes_string.py"],
+        specialty="logic",
+    )
+    out = _amend_diff_narrowed_tasks([narrow], state)
+    assert "do not infer" not in out[0].description.lower()
+    assert "Node0" in out[0].description
+    assert "entry point" in out[0].description.lower()
+
+
+def test_diff_signals_structured_extraction_from_findall_and_join() -> None:
+    diff = "\n".join(
+        [
+            "diff --git a/pkg/h.py b/pkg/h.py",
+            "+++ b/pkg/h.py",
+            "+    rows = re.findall(pat, s)",
+            "+    return ','.join(rows)",
+        ]
+    )
+    assert _diff_signals_structured_extraction({"git_diff": diff}) is True
+
+
+def test_mega_logic_checklist_does_not_block_structured_extraction_task() -> None:
+    mega = ReviewTask(
+        id="task-1",
+        title="Diff-local correctness for all handlers",
+        description=(
+            "Audit all handlers for branch exhaustiveness and structured result paths "
+            "and aggregation in the changed file."
+        ),
+        target_files=["pkg/h.py"],
+        specialty="logic",
+    )
+    assert _task_covers_structured_extraction(mega) is False
+
+
+def test_chunk_monolithic_logic_into_class_scoped_shards() -> None:
+    surfaces = [f"Node{i}" for i in range(10)]
+    state = {
+        "git_diff": "diff --git a/pkg/h.py b/pkg/h.py\n+++ b/pkg/h.py\n+import re\n+re.findall(x)\n",
+        "metadata": {"mental_model": {"diff_surface_inventory": surfaces}},
+    }
+    mega = ReviewTask(
+        id="task-1",
+        title="Diff-local correctness all nodes",
+        description="Audit each of: " + ", ".join(surfaces) + ".",
+        target_files=["pkg/h.py"],
+        specialty="logic",
+    )
+    out = _chunk_logic_tasks_by_surface(
+        [mega, ReviewTask(id="task-2", title="Security", description="ReDoS", target_files=["pkg/h.py"], specialty="security")],
+        state,
+    )
+    logic = [t for t in out if t.specialty == "logic"]
+    assert len(logic) >= 5
+    assert all("do not review any other class" in t.description.lower() for t in logic)
+    mentioned = {name for t in logic for name in surfaces if name in t.description}
+    assert mentioned == set(surfaces)
+
+
+def test_chunk_comfy_like_inventory_signal_tasks() -> None:
+    surfaces = [
+        "StringConcatenate",
+        "StringSubstring",
+        "StringLength",
+        "CaseConverter",
+        "StringTrim",
+        "StringReplace",
+        "StringContains",
+        "StringCompare",
+        "RegexMatch",
+        "RegexExtract",
+    ]
+    diff = "\n".join(
+        [
+            "diff --git a/comfy_extras/nodes_string.py b/comfy_extras/nodes_string.py",
+            "+++ b/comfy_extras/nodes_string.py",
+            "+class StringCompare():",
+            "+    elif mode == 'Equal':",
+            "+        return a == b",
+            "+    elif mode == 'Ends With':",
+            "+        return a.endswith(b)",
+            "+class RegexExtract():",
+            "+    rows = re.findall(pat, s)",
+            "+    return join_delimiter.join(rows)",
+        ]
+    )
+    state = {"git_diff": diff, "metadata": {"mental_model": {"diff_surface_inventory": surfaces}}}
+    mega = ReviewTask(
+        id="task-1",
+        title="Diff-local correctness",
+        description="Diff-local correctness for all handlers: " + ", ".join(surfaces),
+        target_files=["comfy_extras/nodes_string.py"],
+        specialty="logic",
+    )
+    out = _chunk_logic_tasks_by_surface([mega], state)
+    logic = [t for t in out if t.specialty == "logic"]
+    assert len(logic) >= 4
+    regex_tasks = [t for t in logic if "RegexExtract" in t.description]
+    assert regex_tasks
+    assert any("type-tracing" in t.description.lower() for t in regex_tasks)
+    compare_tasks = [t for t in logic if "StringCompare" in t.description]
+    assert compare_tasks
+    assert any("branch-exhaustiveness" in t.description.lower() for t in compare_tasks)
+
+
+def test_dedupe_allows_same_file_different_class_scopes() -> None:
+    left = ReviewTask(
+        id="a",
+        title="RegexExtract — structured extraction",
+        description="Type-tracing on RegexExtract only. Do not review any other class.",
+        target_files=["nodes_string.py"],
+        specialty="logic",
+    )
+    right = ReviewTask(
+        id="b",
+        title="StringCompare — branch exhaustiveness",
+        description="Branch checks on StringCompare only. Do not review any other class.",
+        target_files=["nodes_string.py"],
+        specialty="logic",
+    )
+    assert _is_duplicate_task(right, [left]) is False
+
+
+def test_sanitize_batched_logic_strips_cross_surface_boilerplate() -> None:
+    inventory = [
+        "StringConcatenate",
+        "StringSubstring",
+        "StringLength",
+        "CaseConverter",
+        "StringTrim",
+        "StringReplace",
+        "StringContains",
+        "StringCompare",
+        "RegexMatch",
+        "RegexExtract",
+    ]
+    state = {
+        "git_diff": "diff --git a/pkg/h.py b/pkg/h.py\n+++ b/pkg/h.py\n+class StringCompare():\n+    pass\n",
+        "metadata": {"mental_model": {"diff_surface_inventory": inventory}},
+    }
+    suffix = (
+        " Audit every changed entry point in: "
+        + ", ".join(inventory)
+        + ". For each: branch exhaustiveness on mode/discriminant inputs, consistent return on "
+        "all paths, correct indexing into structured results (e.g. regex tuples, capture groups), "
+        "and safe aggregation before return."
+    )
+    task = ReviewTask(
+        id="logic_1a",
+        title="StringConcatenate, StringSubstring, StringLength, CaseConverter, StringTrim: diff-local",
+        description="Audit five nodes." + suffix,
+        target_files=["pkg/h.py", "pkg/other.py"],
+        specialty="logic",
+    )
+    cleaned = _sanitize_batched_logic_task_description(task, state, inventory)
+    assert "Audit every changed entry point in:" not in cleaned
+    assert "do not review any other class" in cleaned.lower()
+
+
+def test_finalize_emitted_tasks_injects_structured_logic_task() -> None:
+    diff = "diff --git a/pkg/h.py b/pkg/h.py\n+++ b/pkg/h.py\n+    return ','.join(re.findall(p, s))\n"
+    state = {"git_diff": diff}
+    tasks = [
+        ReviewTask(
+            id="task-1",
+            title="Diff-local correctness",
+            description="Diff-local correctness in changed hunks.",
+            target_files=["pkg/h.py"],
+            specialty="logic",
+        ),
+    ]
+    out = finalize_emitted_tasks(tasks, state)
+    logic = [t for t in out if t.specialty == "logic"]
+    assert any(_task_covers_structured_extraction(t) for t in logic)
+
+
+def test_broad_logic_structured_title_does_not_block_dedicated_task() -> None:
+    diff = "diff --git a/pkg/h.py b/pkg/h.py\n+++ b/pkg/h.py\n+    return ','.join(re.findall(p, s))\n"
+    state = {"git_diff": diff}
+    inventory = ["HandlerA", "HandlerB"]
+    state["metadata"] = {"mental_model": {"diff_surface_inventory": inventory}}
+    tasks = [
+        ReviewTask(
+            id="logic_3",
+            title="HandlerA, HandlerB - structured extraction and aggregation",
+            description=(
+                "Audit HandlerA and HandlerB for structured result handling. "
+                "Verify index/slot selection and join paths."
+            ),
+            target_files=["pkg/h.py"],
+            specialty="logic",
+        ),
+    ]
+    out = _ensure_structured_extraction_logic_task(tasks, state)
+    assert any(t.id == "review-logic-structured-extraction" for t in out)
+
+
+def test_ensure_structured_extraction_logic_task_injected_when_signals_present() -> None:
+    diff = "diff --git a/pkg/h.py b/pkg/h.py\n+++ b/pkg/h.py\n+    return ','.join(re.findall(p, s))\n"
+    state = {"git_diff": diff}
+    tasks = [
+        ReviewTask(
+            id="review-logic-diff-local",
+            title="Diff-local correctness",
+            description="Diff-local correctness: control flow in changed hunks.",
+            target_files=["pkg/h.py"],
+            specialty="logic",
+        ),
+        ReviewTask(
+            id="review-security",
+            title="Security",
+            description="Injection and unsafe patterns.",
+            target_files=["pkg/h.py"],
+            specialty="security",
+        ),
+    ]
+    out = _ensure_structured_extraction_logic_task(tasks, state)
+    logic = [t for t in out if t.specialty == "logic"]
+    assert len(logic) == 2
+    assert any("structured" in f"{t.title} {t.description}".lower() for t in logic)
+
+
+def test_ensure_diff_local_not_skipped_when_only_structured_scoped_task() -> None:
+    inventory = [f"Node{i}" for i in range(10)]
+    diff = "diff --git a/pkg/h.py b/pkg/h.py\n+++ b/pkg/h.py\n+import re\n+class Node0():\n+    pass\n"
+    state = {
+        "git_diff": diff,
+        "metadata": {"mental_model": {"diff_surface_inventory": inventory}},
+    }
+    tasks = [
+        ReviewTask(
+            id="review-logic-structured-extraction",
+            title="Structured extraction and aggregation",
+            description=(
+                "Audit structured extraction and aggregation in changed handlers. "
+                "Do not review any other class in the target file."
+            ),
+            target_files=["pkg/h.py"],
+            specialty="logic",
+        ),
+    ]
+    out = _ensure_diff_local_correctness_task(tasks, state)
+    assert any("diff-local" in f"{t.title} {t.description}".lower() for t in out)
 
 
 def test_ensure_diff_local_correctness_injects_when_llm_plan_omits_it():

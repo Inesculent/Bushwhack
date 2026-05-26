@@ -5,13 +5,20 @@ from typing import Any, Dict, List
 
 from src.domain.schemas import ReviewFinding
 from src.domain.state import GraphState
+from src.orchestration.routing.finding_dedupe import (
+    dedupe_review_findings_by_signature,
+    ensure_unique_finding_ids,
+    is_resolution_only_finding,
+)
 
 trace_logger = logging.getLogger("research_pipeline.reviewer_trace")
 
 
-def _finding_key(finding: ReviewFinding) -> tuple[str, int, int, str]:
-    normalized_content = " ".join(finding.content.lower().split())[:160]
-    return (finding.file_path, finding.line_start, finding.line_end, normalized_content)
+def _finding_passes_quality_gate(finding: ReviewFinding) -> bool:
+    return not is_resolution_only_finding(
+        finding.content,
+        finding.recommendation or "",
+    )
 
 
 def _trace_enabled(state: GraphState) -> bool:
@@ -21,9 +28,8 @@ def _trace_enabled(state: GraphState) -> bool:
 
 def synthesizer_node(state: GraphState) -> Dict[str, Any]:
     findings = state.get("findings", []) or []
-    deduped: List[ReviewFinding] = []
-    seen: set[tuple[str, int, int, str]] = set()
-    dropped_ids: List[str] = []
+    dropped_resolution_ids: List[str] = []
+    passed_gate: List[ReviewFinding] = []
 
     severity_rank = {"high": 0, "medium": 1, "low": 2}
     for finding in sorted(
@@ -35,12 +41,14 @@ def synthesizer_node(state: GraphState) -> Dict[str, Any]:
             item.id,
         ),
     ):
-        key = _finding_key(finding)
-        if key in seen:
-            dropped_ids.append(finding.id)
+        if not _finding_passes_quality_gate(finding):
+            dropped_resolution_ids.append(finding.id)
             continue
-        seen.add(key)
-        deduped.append(finding)
+        passed_gate.append(finding)
+
+    deduped, duplicate_map = dedupe_review_findings_by_signature(passed_gate)
+    deduped = ensure_unique_finding_ids(deduped)
+    dropped_ids = [fid for ids in duplicate_map.values() for fid in ids]
 
     reports = state.get("reviewer_worker_reports", []) or []
     reflection_reports = state.get("reflection_reports", []) or []
@@ -51,6 +59,8 @@ def synthesizer_node(state: GraphState) -> Dict[str, Any]:
         "raw_finding_count": len(findings),
         "final_finding_count": len(deduped),
         "dropped_duplicate_ids": dropped_ids,
+        "semantic_dedupe_duplicates": duplicate_map,
+        "dropped_resolution_only_ids": dropped_resolution_ids,
         "worker_reports": [report.model_dump() for report in reports],
         "reflection_reports": [
             r.model_dump() if hasattr(r, "model_dump") else r for r in reflection_reports

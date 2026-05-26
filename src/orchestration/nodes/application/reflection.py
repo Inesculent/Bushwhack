@@ -22,24 +22,56 @@ from src.infrastructure.llm.local_status import (
     sleep_for_retry,
 )
 from src.infrastructure.llm.token_usage import extract_total_tokens_from_llm_result, parse_structured_output
+from src.orchestration.context.focus_request_scope import (
+    allowed_review_paths,
+    clamp_focused_context_request,
+)
+from src.orchestration.context.context_packets import (
+    build_reflection_packet,
+    packet_to_prompt_sections,
+)
 from src.orchestration.prompts.renderer import render_reviewer_prompt
+from src.orchestration.nodes.application.critiquer import _is_length_finish_error
+from src.orchestration.routing.finding_dedupe import dedupe_candidates_by_signature
+from src.orchestration.routing.reflection_consolidation import dedupe_batch_reports_per_candidate
 
 logger = logging.getLogger(__name__)
+
+_REFLECTION_OUTPUT_BUDGET = (
+    "\n\n## OUTPUT BUDGET (required)\n"
+    "Emit exactly one ReflectionReport per candidate line in the input (no extra reports). "
+    "Keep each rationale under 1200 characters: cite repository paths and line numbers or symbols; "
+    "do not paste code blocks (code is already in code_evidence). "
+    "One short self-check line is allowed (e.g. Rationale supports verdict: yes/no). "
+    "Use focused_request only when verdict is needs_context; keep reason under 300 characters. "
+    "Keep warnings to a few short strings—do not put full rationales in warnings."
+)
+
+_REFLECTION_COMPACT_RETRY_APPENDIX = (
+    "\n\n## OUTPUT BUDGET (retry — required)\n"
+    "Your previous response exceeded the length limit. Return exactly one report per input candidate. "
+    "Keep each rationale under 500 characters with path/line citations only—no code pastes. "
+    "Omit focused_request unless essential. No prose outside schema fields."
+)
 trace_logger = logging.getLogger("research_pipeline.reviewer_trace")
 
 REFLECTOR_SPECIALTIES = ("security", "logic", "performance", "general")
 REFLECTOR_SPECIALTY_SET = set(REFLECTOR_SPECIALTIES)
 
 _CONTRADICTION_MARKERS = (
-    "incorrect",
+    "false positive",
+    "not a bug",
+    "no defect",
+    "no bug",
+    "not a defect",
+    "incorrect claim",
+    "claim is false",
+    "claim is incorrect",
     "contradicted",
     "no evidence",
     "not supported",
-    "false",
-    "not true",
-    "does not",
-    "is not",
-    "missing return",
+    "does not exist",
+    "no failure mode",
 )
 
 _SOFT_VETO_MARKERS = (
@@ -55,13 +87,6 @@ _SOFT_VETO_MARKERS = (
 def _trace_enabled(state: GraphState) -> bool:
     metadata = state.get("metadata", {}) or {}
     return bool(metadata.get("review_trace_enabled"))
-
-
-def _serialize_candidates(candidates: List[CandidateFinding]) -> str:
-    lines: List[str] = []
-    for cand in candidates:
-        lines.append(cand.model_dump_json())
-    return "\n".join(lines)
 
 
 def _candidate_reflectors(candidate: CandidateFinding) -> List[str]:
@@ -91,29 +116,42 @@ def _render_reflection_prompt(
     candidates: List[CandidateFinding],
     *,
     mental_model_ledger_snippet: str = "",
+    compact: bool = False,
 ) -> str:
-    sections = {
-        "Reflector Specialty": specialty,
-        "Candidate Findings (JSON lines)": _serialize_candidates(candidates),
-        "Git Diff Excerpt": (state.get("git_diff", "") or "")[:12000],
-    }
-    if mental_model_ledger_snippet.strip():
-        sections["Mental model query log (bounded)"] = mental_model_ledger_snippet.strip()
+    packet = build_reflection_packet(
+        state,
+        specialty,
+        candidates,
+        mental_model_ledger_snippet=mental_model_ledger_snippet,
+    )
     rel_path = f"reflection/{specialty}.md"
-    return render_reviewer_prompt(rel_path, sections)
+    prompt = render_reviewer_prompt(rel_path, packet_to_prompt_sections(packet))
+    prompt = f"{prompt}{_REFLECTION_OUTPUT_BUDGET}"
+    if compact:
+        prompt = f"{prompt}{_REFLECTION_COMPACT_RETRY_APPENDIX}"
+    return prompt
 
 
 def _normalize_focus_request(
+    state: GraphState,
     report: ReflectionReport,
     specialty: str,
     index: int,
+    *,
+    candidate_file_path: str | None = None,
 ) -> FocusedContextRequest | None:
     if report.focused_request is None:
         return None
     req = report.focused_request
     rid = req.request_id.strip() or f"{report.candidate_id}:{specialty}:focus:{index}"
     cid = req.candidate_id.strip() or report.candidate_id
-    return req.model_copy(
+    scope = allowed_review_paths(state, candidate_file_path=candidate_file_path)
+    scoped = clamp_focused_context_request(
+        req,
+        scope,
+        fallback_path=candidate_file_path,
+    )
+    return scoped.model_copy(
         update={
             "request_id": rid,
             "candidate_id": cid,
@@ -201,6 +239,7 @@ def _reflect_specialty_batches(
             else None
         )
         attempt = 0
+        compact = False
         while True:
             attempt += 1
             try:
@@ -211,11 +250,14 @@ def _reflect_specialty_batches(
                         specialty,
                         batch,
                         mental_model_ledger_snippet=mental_model_ledger_snippet,
+                        compact=compact,
                     )
                 )
                 response = parse_structured_output(invoke_result, ReflectionBatchOutput)
                 llm_tokens += extract_total_tokens_from_llm_result(invoke_result)
-                reps, reqs, norm_warnings = _normalize_reports(response, specialty)
+                reps, reqs, norm_warnings = _normalize_reports(
+                    state, response, specialty, batch_candidates=batch
+                )
                 all_reports.extend(reps)
                 all_requests.extend(reqs)
                 warnings.extend(response.warnings)
@@ -239,6 +281,11 @@ def _reflect_specialty_batches(
                             timeout_deadline,
                         )
                         continue
+                if not compact and _is_length_finish_error(exc):
+                    compact = True
+                    if "reflection_llm_retry:reason=length" not in warnings:
+                        warnings.append("reflection_llm_retry:reason=length")
+                    continue
                 warnings.append(f"reflection_failed:{specialty}:{exc.__class__.__name__}: {exc}")
                 logger.warning(
                     "adversarial_reflection specialty=%s batch_size=%s reason=%s: %s",
@@ -279,8 +326,13 @@ def _reflect_specialty_batches(
 
 
 def _normalize_reports(
-    batch: ReflectionBatchOutput, specialty: str
+    state: GraphState,
+    batch: ReflectionBatchOutput,
+    specialty: str,
+    *,
+    batch_candidates: List[CandidateFinding],
 ) -> tuple[List[ReflectionReport], List[FocusedContextRequest], List[str]]:
+    file_by_id = {c.candidate_id: c.file_path for c in batch_candidates}
     reports: List[ReflectionReport] = []
     requests: List[FocusedContextRequest] = []
     warnings: List[str] = []
@@ -292,38 +344,27 @@ def _normalize_reports(
         reports.append(report)
         # Only needs_context queues graph/search work; needs_verification uses the runtime verifier.
         if report.verdict == "needs_context" and report.focused_request is not None:
-            normalized = _normalize_focus_request(report, specialty, index)
+            normalized = _normalize_focus_request(
+                state,
+                report,
+                specialty,
+                index,
+                candidate_file_path=file_by_id.get(report.candidate_id),
+            )
             if normalized is not None:
                 requests.append(normalized)
                 reports[-1] = report.model_copy(update={"focused_request": normalized})
+    reports, dedupe_warnings = dedupe_batch_reports_per_candidate(reports)
+    warnings.extend(dedupe_warnings)
     return reports, requests, warnings
 
 
-def _candidate_dedupe_key(candidate: CandidateFinding) -> tuple[str, int, int, str, str]:
-    content = (candidate.content or "").strip().lower()
-    content = " ".join(content.split())
-    return (
-        (candidate.file_path or "").strip().lower(),
-        int(candidate.line_start or 0),
-        int(candidate.line_end or 0),
-        str(candidate.claim_type or "").strip().lower(),
-        content,
-    )
-
-
-def _dedupe_candidates(candidates: List[CandidateFinding]) -> tuple[List[CandidateFinding], Dict[str, List[str]]]:
-    seen: Dict[tuple[str, int, int, str, str], str] = {}
-    deduped: List[CandidateFinding] = []
-    duplicates: Dict[str, List[str]] = {}
-    for cand in candidates:
-        key = _candidate_dedupe_key(cand)
-        if key in seen:
-            primary = seen[key]
-            duplicates.setdefault(primary, []).append(cand.candidate_id)
-            continue
-        seen[key] = cand.candidate_id
-        deduped.append(cand)
-    return deduped, duplicates
+def _dedupe_candidates(
+    candidates: List[CandidateFinding],
+    *,
+    git_diff: str = "",
+) -> tuple[List[CandidateFinding], Dict[str, List[str]]]:
+    return dedupe_candidates_by_signature(candidates, git_diff=git_diff)
 
 
 def make_adversarial_reflection_node(
@@ -345,7 +386,10 @@ def make_adversarial_reflection_node(
         if not candidates:
             return {"node_history": [f"{node_name}:skipped"]}
 
-        candidates, duplicate_map = _dedupe_candidates(candidates)
+        candidates, duplicate_map = _dedupe_candidates(
+            candidates,
+            git_diff=(state.get("git_diff", "") or ""),
+        )
 
         all_reports: List[ReflectionReport] = []
         all_requests: List[FocusedContextRequest] = []

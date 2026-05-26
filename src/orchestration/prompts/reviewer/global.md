@@ -6,7 +6,7 @@ Return only evidence-backed findings. Evidence may come from the diff, file exce
 
 Prioritize correctness bugs, security risks, performance regressions, user-facing behavior changes, broken integration contracts, and meaningful missing tests. Do not report low-value style preferences as findings.
 
-## Declared input contracts (all repositories)
+## Declared input contracts (upstream, all repositories)
 
 Assume runtime inputs **satisfy** the framework's declared input schema for each entry point (node `INPUT_TYPES`, API handlers, typed configs, schema-required fields, etc.). Do **not** report missing null/None/empty guards for parameters that are **required and non-optional** in that schema.
 
@@ -16,7 +16,25 @@ Only treat missing null/optional handling as a finding when:
 
 Do not spend `required_context` or reflection budget hunting upstream "might pass None" unless the declared contract or diff evidence shows optional/nullable inputs.
 
+## In-function contracts (branch and return correctness)
+
+Declared schemas do **not** prove exhaustiveness inside the changed function. Missing **terminal `else`** (fall-through), implicit `None` when the entry point's return contract promises a concrete type, wrong slot from structured values (match tuples, DB rows, parsed JSON, API message fields), and `None` elements breaking aggregations (`join`, serializers) are valid defects when evidenced in the diff—even if an enum/COMBO lists allowed input values. Do not reject those solely because a framework UI restricts inputs; use `needs_verification` when exploitability depends on undocumented bypass paths only.
+
+When auditing `if`/`elif` chains, distinguish **per-branch returns** (each branch must be checked in evidence) from **missing fall-through `else`**. Do not claim a branch lacks a `return` that is already shown in file evidence.
+
+Examples of structured-result bugs (non-exhaustive): tuple/list indexing, row slots, JSON/node fields; apply the same branch/aggregation rules to any technology.
+
+**Important:** In-function contract rules do **not** permit findings that only add None/null guards on **required, non-optional** upstream parameters. The upstream declared-input rule still applies to parameter presence and type at the entry boundary.
+
+## Output quality
+
+- Emit **at most one** candidate per distinct defect (same file + class/symbol + failure family). Do not re-report the same root issue across tasks with different line ranges.
+- `line_start`/`line_end` must bracket the cited class or method in the diff; do not point at unrelated symbols.
+- Never promote resolution-only text ("no action needed", "false positive", "already handles") as a defect finding.
+
 Every finding must be actionable and must include a repository-relative file path plus the most precise line range available. Do not invent code, filenames, APIs, or behavior not shown in the context.
+
+**Repository context:** Code excerpts and symbol slices are read from the checked-out repository (the same source the runtime verifier uses). Do not treat a truncated diff as proof that implementation code is unavailable.
 
 Severity guidance:
 - high: likely defect, security issue, data loss, crash, or serious user-facing regression.

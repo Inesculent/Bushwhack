@@ -37,16 +37,3 @@ def _install_heavy_dep_stubs() -> None:
 
 _install_heavy_dep_stubs()
 '''
-
-COMFY_TYPING_STUB_PRELUDE = '''
-if "comfy" not in sys.modules:
-    comfy_pkg = types.ModuleType("comfy")
-    sys.modules["comfy"] = comfy_pkg
-if "comfy.comfy_types" not in sys.modules:
-    comfy_types = types.ModuleType("comfy.comfy_types")
-    sys.modules["comfy.comfy_types"] = comfy_types
-if "comfy.comfy_types.node_typing" not in sys.modules:
-    node_typing = types.ModuleType("comfy.comfy_types.node_typing")
-    node_typing.IO = types.SimpleNamespace(STRING="STRING", INT="INT")
-    sys.modules["comfy.comfy_types.node_typing"] = node_typing
-'''

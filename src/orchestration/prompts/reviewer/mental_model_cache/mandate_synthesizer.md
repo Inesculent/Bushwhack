@@ -17,7 +17,7 @@ Hypotheses are attack vectors to investigate, **not asserted bugs**.
 Make each hypothesis specific enough to become a review task. Avoid generic wording such as "check edge cases" or "validate input handling."
 
 Examples:
-- If regex logic is involved, ask whether multi-match data is dropped, optional capture groups can return `None`, or patterns can backtrack catastrophically.
+- If structured extraction logic is involved, ask whether multi-item data is dropped, optional extracted fields can be absent, or inputs can amplify work unexpectedly.
 - If serialization or payload mapping is involved, ask whether required fields, defaults, versioning, and unknown keys are preserved correctly.
 - If async, caching, registration, or lifecycle hooks are involved, ask whether ordering, invalidation, cleanup, and repeated calls preserve state.
 - If numeric, indexing, batching, or pagination logic is involved, ask whether boundaries, empties, rounding, and partial batches are handled correctly.

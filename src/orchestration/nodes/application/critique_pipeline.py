@@ -8,17 +8,18 @@ from typing import Any, Dict, List, Optional
 from src.config import get_settings
 from src.domain.schemas import ReviewTask
 from src.domain.state import GraphState
+from src.orchestration.context.context_packets import (
+    build_critique_packet,
+    merge_probe_flags,
+    packet_to_storage_dict,
+    probe_direct_context_for_task,
+)
+from src.orchestration.context.task_evidence import build_task_evidence
 from src.orchestration.context.review_context import LazyReviewContextProvider
-from src.orchestration.nodes.application.worker import ReviewTaskContext
 from src.orchestration.nodes.application.critiquer import make_general_critiquer_node
-from src.orchestration.review_principles import DECLARED_INPUT_CONTRACT_GUIDANCE
 from src.tools.mental_model_tools import query_mental_model
 
-_RISK_PATTERN = re.compile(
-    r"(eval\s*\(|exec\s*\(|subprocess|os\.system|pickle\.|__import__|sql|sqlite|password|secret|token|"
-    r"auth|oauth|jwt|crypto|deserialize|requests\.|urllib)",
-    re.IGNORECASE,
-)
+_MANDATE_BULLET_MAX = 5
 
 
 def _task_from_state(state: GraphState) -> Optional[ReviewTask]:
@@ -29,16 +30,46 @@ def _task_from_state(state: GraphState) -> Optional[ReviewTask]:
     return registry[task_id]
 
 
-def _probe_flags(direct_context: str) -> Dict[str, Any]:
-    return {
-        "long_context": len(direct_context) > 15000,
-        "risky_keywords": bool(_RISK_PATTERN.search(direct_context)),
-        "char_len": len(direct_context),
-    }
+def _mental_model_bullets(answer: str, *, max_bullets: int = _MANDATE_BULLET_MAX) -> str:
+    """Normalize mandate pull to short hypothesis bullets (tier 4, non-defect)."""
+    if not answer.strip():
+        return ""
+    lines: List[str] = []
+    for raw in answer.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        if line.startswith("##"):
+            line = line.lstrip("#").strip()
+        line = re.sub(r"^[-*•]\s*", "", line)
+        if line:
+            lines.append(line)
+    if not lines:
+        return f"- {answer.strip()[:600]}"
+    bullets = lines[:max_bullets]
+    return "\n".join(f"- {b}" for b in bullets)
+
+
+def _mental_model_query_for_task(task: ReviewTask) -> str:
+    files = ", ".join(task.target_files[:8]) or "(none)"
+    return (
+        f"For task {task.id} on files [{files}] ({task.specialty}): list contract assumptions, "
+        f"risk hypotheses, and uncertainties relevant to this task only. "
+        f"Do not restate full PR intent."
+    )
+
+
+def _should_skip_mental_model(state: GraphState) -> tuple[bool, str]:
+    settings = get_settings()
+    if settings.reviewer_legacy_planner_mode:
+        return True, "legacy_planner_mode"
+    if not state.get("behavioral_spec_ref"):
+        return True, "no_behavioral_spec_ref"
+    return False, ""
 
 
 def make_critique_context_probe_node(context_provider: LazyReviewContextProvider):
-    """Gather direct repo context before any mental-model query."""
+    """Gather task-scoped repo context before mental-model pull."""
 
     node_name = "critique_context_probe"
 
@@ -47,17 +78,36 @@ def make_critique_context_probe_node(context_provider: LazyReviewContextProvider
         if task is None:
             return {"node_history": [f"{node_name}:skipped"]}
 
-        context: ReviewTaskContext = context_provider.collect_for_task(state=state, task=task)
-        rendered = f"## Review principles\n{DECLARED_INPUT_CONTRACT_GUIDANCE}\n\n{context.render()}"
-        flags = _probe_flags(rendered)
+        context = context_provider.collect_for_critique(state=state, task=task)
+        bundle = build_task_evidence(state, task, context_provider, context)
+        packet = build_critique_packet(
+            state,
+            task,
+            context,
+            provider=context_provider,
+            code_evidence=bundle.rendered,
+            evidence_metadata=bundle.to_storage_dict(),
+        )
+        stored = packet_to_storage_dict(packet)
+        code_evidence, probe_warnings = probe_direct_context_for_task(stored)
+        if bundle.rendered.strip():
+            code_evidence = bundle.rendered
+            probe_warnings = [w for w in probe_warnings if w != "probe_missing_code_evidence"]
+        flags = merge_probe_flags(packet)
+        flags["byte_chop"] = flags.get("byte_chop") or bundle.byte_chop
+        flags["files_complete"] = bundle.files_complete
+        flags["symbols_included"] = bundle.symbols_included
+        probe_task_warnings = list(context.warnings) + list(bundle.warnings) + probe_warnings
 
         meta = dict(state.get("metadata", {}) or {})
         pipe = dict(meta.get("critique_pipeline", {}) or {})
         by_task = dict(pipe.get("by_task", {}) or {})
         by_task[task.id] = {
-            "direct_context": rendered,
+            "context_packet": stored,
+            "task_evidence": bundle.to_storage_dict(),
+            "direct_context": code_evidence,
             "probe_flags": flags,
-            "warnings": list(context.warnings),
+            "warnings": probe_task_warnings,
             "ast_included_files": list(context.ast_included_files),
             "ast_mode": (
                 "local"
@@ -94,20 +144,8 @@ def make_critique_context_probe_node(context_provider: LazyReviewContextProvider
     return critique_context_probe_node
 
 
-def _should_query_mental_model(flags: Dict[str, Any], task: ReviewTask) -> bool:
-    settings = get_settings()
-    if settings.reviewer_legacy_planner_mode:
-        return False
-    if flags.get("long_context") or flags.get("risky_keywords"):
-        return True
-    desc = f"{task.title} {task.description}".lower()
-    if any(k in desc for k in ("auth", "security", "migration", "breaking", "api", "contract")):
-        return True
-    return False
-
-
 def make_mental_model_context_enricher_node():
-    """Optionally query behavioral mandate after direct context exists."""
+    """Task-scoped behavioral mandate pull after code evidence (always when spec exists)."""
 
     node_name = "mental_model_context_enricher"
 
@@ -120,32 +158,30 @@ def make_mental_model_context_enricher_node():
         pipe = dict(meta.get("critique_pipeline", {}) or {})
         by_task = dict(pipe.get("by_task", {}) or {})
         slot = dict(by_task.get(task.id, {}) or {})
-        flags = dict(slot.get("probe_flags") or {})
         ledger_patch: List[Dict[str, Any]] = []
-        excerpt = ""
         tokens = 0
 
-        if not _should_query_mental_model(flags, task):
+        skip, skip_reason = _should_skip_mental_model(state)
+        if skip:
             slot["mental_model_excerpt"] = ""
             slot["mental_model_skipped"] = True
-            slot["mental_model_skip_reason"] = "probe_heuristic_not_met"
+            slot["mental_model_skip_reason"] = skip_reason
         else:
-            q = (
-                f"Summarize behavioral expectations, contracts, and reviewer guidance relevant to task "
-                f"{task.id} ({task.title}) targeting files {task.target_files[:5]}."
-            )
             result = query_mental_model(
                 state=state,
-                query=q,
+                query=_mental_model_query_for_task(task),
                 topic="critique_task",
                 task_id=task.id,
                 caller=node_name,
             )
-            excerpt = str(result.get("answer") or "")
+            raw_answer = str(result.get("answer") or "")
+            excerpt = _mental_model_bullets(raw_answer)
             ledger_patch = list(result.get("exploration_ledger") or [])
             slot["mental_model_excerpt"] = excerpt
             slot["mental_model_skipped"] = bool(result.get("skipped"))
             slot["mental_model_skip_reason"] = str(result.get("skip_reason") or "")
+            if not excerpt.strip() and not result.get("skipped"):
+                slot["mental_model_skip_reason"] = "empty_mandate_answer"
 
         by_task[task.id] = slot
         pipe["by_task"] = by_task

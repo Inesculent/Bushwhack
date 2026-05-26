@@ -40,6 +40,22 @@ def test_dedupe_redos_candidates_same_file() -> None:
 
 def test_apply_verifier_policy_refuted_forces_reject() -> None:
     state: GraphState = {
+        "candidate_findings": [
+            CandidateFinding(
+                candidate_id="c1",
+                patch_task_id="1",
+                file_path="m.py",
+                line_start=1,
+                line_end=2,
+                content="raise",
+                claim_type="defect",
+                failure_mode="IndexError when index out of range",
+                evidence_summary="crash",
+                recommendation="fix bounds",
+                reflection_specialties=["logic"],
+                suspected_category="logic",
+            )
+        ],
         "metadata": {
             "verifier_hints": {
                 "c1": {
@@ -48,7 +64,7 @@ def test_apply_verifier_policy_refuted_forces_reject() -> None:
                     "harness_error": False,
                 }
             }
-        }
+        },
     }
     rows, warnings = _apply_verifier_policy_to_revisions(
         [{"candidate_id": "c1", "verdict": "accept", "updated_evidence_summary": "still bad"}],
@@ -75,3 +91,39 @@ def test_apply_verifier_policy_harness_annotates_summary() -> None:
         state,
     )
     assert "runtime unverified (harness)" in rows[0]["updated_evidence_summary"]
+
+
+def test_apply_verifier_policy_refuted_wrong_output_does_not_force_reject() -> None:
+    state: GraphState = {
+        "candidate_findings": [
+            CandidateFinding(
+                candidate_id="c1",
+                patch_task_id="1",
+                file_path="m.py",
+                line_start=1,
+                line_end=2,
+                content="join",
+                claim_type="defect",
+                failure_mode="Wrong output: loses capturing groups from findall tuples",
+                evidence_summary="data loss",
+                recommendation="fix indexing",
+                reflection_specialties=["logic"],
+                suspected_category="logic",
+            )
+        ],
+        "metadata": {
+            "verifier_hints": {
+                "c1": {
+                    "verdict": "refuted",
+                    "verification_scope": "concrete_behavior",
+                    "harness_error": False,
+                }
+            }
+        },
+    }
+    rows, warnings = _apply_verifier_policy_to_revisions(
+        [{"candidate_id": "c1", "verdict": "accept", "updated_evidence_summary": "still bad"}],
+        state,
+    )
+    assert rows[0]["verdict"] == "accept"
+    assert any("critique_revision_verifier_inconclusive_wrong_output" in w for w in warnings)

@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from src.domain.state import GraphState
 from src.domain.verifier_schemas import VerifierAttemptRecord, VerifierReport
+from src.orchestration.nodes.verifier.result_judge import verifier_hint_flags_for_attempts
 from src.orchestration.verifier_graph import (
     build_verifier_graph,
     verifier_preflight_node,
@@ -133,6 +134,42 @@ def test_verifier_routing_stop_max_attempts() -> None:
         assert verifier_routing(state) == "finalize"
 
 
+def test_verifier_finalize_product_verified_false_when_any_harness_attempt() -> None:
+    harness = VerifierAttemptRecord(
+        attempt_number=1,
+        test_code="x",
+        exit_code=1,
+        stdout="STATUS: CRASHED | ExceptionType: ImportError: No module named 'pkg'",
+        stderr="",
+    )
+    product = VerifierAttemptRecord(
+        attempt_number=2,
+        test_code="x",
+        exit_code=1,
+        stdout="STATUS: MISMATCH | expected=a actual=b",
+        stderr="",
+    )
+    flags = verifier_hint_flags_for_attempts(
+        verdict="verified",
+        attempts=[harness, product],
+        target_file_path="pkg/mod.py",
+    )
+    assert flags["harness_error"] is True
+    assert flags["product_verified"] is False
+
+    state = _minimal_state(
+        verifier_verdict="verified",
+        verifier_last_rationale="mismatch",
+        verifier_scope="concrete_behavior",
+        verifier_attempts=[harness, product],
+    )
+    with patch("src.orchestration.routing.verifier_fanout._lint_advisory_from_report", return_value=""):
+        res = verifier_finalize_node(state)
+    hint = res["metadata"]["verifier_hints"]["c1"]
+    assert hint["harness_error"] is True
+    assert hint["product_verified"] is False
+
+
 def test_verifier_finalize_node() -> None:
     state = _minimal_state(
         verifier_verdict="refuted",
@@ -148,6 +185,53 @@ def test_verifier_finalize_node() -> None:
     report = res["verifier_reports"][0]
     assert report.verdict == "refuted"
     assert "verifier" in res["metadata"]
+
+
+def test_verifier_graph_retries_after_harness_failure() -> None:
+    state = _minimal_state()
+    harness_record = VerifierAttemptRecord(
+        attempt_number=1,
+        test_code="broken",
+        exit_code=2,
+        stdout="STATUS: HARNESS_ERROR | SyntaxError: invalid syntax",
+        stderr="",
+        sandbox_mode="harness_preflight",
+    )
+    ok_record = VerifierAttemptRecord(
+        attempt_number=2,
+        test_code="print('ok')",
+        exit_code=0,
+        stdout="STATUS: SAFE\n",
+        stderr="",
+    )
+    generate_calls: list = []
+
+    def _fake_generate(**kwargs):
+        generate_calls.append(dict(kwargs))
+        return ("print('ok')", 10)
+
+    with patch("src.orchestration.verifier_graph.get_settings") as gs:
+        m = MagicMock()
+        m.verifier_enabled = True
+        m.verifier_skip_if_no_docker = False
+        m.verifier_max_attempts = 3
+        gs.return_value = m
+
+        with patch("src.orchestration.verifier_graph._docker_ok", return_value=True), \
+             patch("src.orchestration.verifier_graph._infer_verifier_repo_root", return_value="/repo"), \
+             patch("src.orchestration.routing.verifier_fanout.focused_context_text_for_candidate", return_value="ctx"), \
+             patch("src.orchestration.verifier_graph.generate_test_script", side_effect=_fake_generate), \
+             patch("src.orchestration.verifier_graph.execute_test_script", side_effect=[harness_record, ok_record]), \
+             patch("src.orchestration.routing.verifier_fanout._lint_advisory_from_report", return_value=""):
+            graph = build_verifier_graph()
+            final_state = graph.invoke(state)
+
+    assert len(generate_calls) == 2
+    assert generate_calls[1].get("retry_feedback", "").strip() not in ("", "(none)")
+    assert "signature_mismatch" in generate_calls[1]["retry_feedback"] or "harness_error" in generate_calls[1]["retry_feedback"] or "syntax_error" in generate_calls[1]["retry_feedback"]
+    assert final_state["verifier_verdict"] == "refuted"
+    hint = final_state["metadata"]["verifier_hints"]["c1"]
+    assert hint["harness_error"] is True
 
 
 def test_compiled_verifier_graph_integration() -> None:

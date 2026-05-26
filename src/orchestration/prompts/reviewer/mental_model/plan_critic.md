@@ -22,7 +22,7 @@ Set `aligned=false` when:
 - the plan over-indexes on one specialty, causing a drop in overall review recall;
 - tasks get stuck in infinite loops of repetitive checks.
 
-Good task specificity: "Verify `.join()` handles optional regex capture groups correctly in the changed path."
+Good task specificity: "Verify `.join()` handles optional extracted fields correctly in the changed path."
 
 Weak task specificity: "Check null handling." OR "Check if line 43 might be null, and if line 44 might be null..." (too granular, causing loop).
 

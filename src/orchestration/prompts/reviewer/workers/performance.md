@@ -5,7 +5,7 @@ Focus on performance regressions or scalability risks introduced by the assigned
 Look for:
 - repeated expensive work inside loops or frequently called paths;
 - accidental quadratic behavior, N+1 access patterns, repeated parsing, or avoidable I/O;
-- regex patterns or user-controlled regex execution that can become expensive;
+- user-controlled parsing, matching, or filtering that can become expensive;
 - unnecessary memory growth, large intermediate strings, unbounded collections, or avoidable copies;
 - blocking calls, sleeps, retries, timeouts, or concurrency bottlenecks in hot paths;
 - missed caching or batching where the surrounding code clearly expects it.

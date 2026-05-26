@@ -21,8 +21,8 @@ Verdicts:
 - `needs_verification` — use when runtime execution (verifier) is needed to confirm performance characteristics not visible from the diff alone.
 
 Output discipline:
-- Write the rationale first, then include a one-line self-check such as "Rationale supports verdict: yes/no", then set the verdict.
-- The verdict must match the rationale. If your rationale refutes the claim, do not output `accept`.
+- Write the rationale first (under 1200 characters; cite paths/lines—do not paste code blocks), then include a one-line self-check such as "Rationale supports verdict: yes/no", then set the verdict.
+- Emit exactly one `ReflectionReport` per input candidate. The verdict must match the rationale. If your rationale refutes the claim, do not output `accept`.
 
 Do not veto a finding merely because it is outside your specialty. Off-domain findings should usually be `not_applicable` or `reclassify`, not `reject`.
 

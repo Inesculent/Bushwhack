@@ -97,9 +97,14 @@ def format_exploration_ledger_for_prompt(
             continue
         seen_keys.add(dk)
 
-        qprev = str(entry.get("query_preview") or entry.get("query") or "")[:240]
-        aprev = str(entry.get("answer_preview") or entry.get("answer") or "")[:400]
-        line = f"- [{entry.get('caller', '?')}] {qprev}\n  → {aprev}"
+        if entry.get("kind") == "mandate_tool_observation":
+            tool = entry.get("tool", "?")
+            aprev = str(entry.get("result_preview") or entry.get("answer_preview") or "")[:400]
+            line = f"- [mandate_tool:{tool}] {entry.get('args_preview', '')}\n  → {aprev}"
+        else:
+            qprev = str(entry.get("query_preview") or entry.get("query") or "")[:240]
+            aprev = str(entry.get("answer_preview") or entry.get("answer") or "")[:400]
+            line = f"- [{entry.get('caller', '?')}] {qprev}\n  → {aprev}"
         if chars + len(line) > max_chars:
             stats.truncated_chars = max(0, max_chars - chars)
             break
@@ -115,9 +120,14 @@ def format_exploration_ledger_for_prompt(
                 stats.deduped += 1
                 continue
             seen_keys.add(dk)
-            qprev = str(entry.get("query_preview") or "")[:240]
-            aprev = str(entry.get("answer_preview") or "")[:400]
-            line = f"- [{entry.get('caller', '?')}] {qprev}\n  → {aprev}"
+            if entry.get("kind") == "mandate_tool_observation":
+                tool = entry.get("tool", "?")
+                aprev = str(entry.get("result_preview") or entry.get("answer_preview") or "")[:400]
+                line = f"- [mandate_tool:{tool}] {entry.get('args_preview', '')}\n  → {aprev}"
+            else:
+                qprev = str(entry.get("query_preview") or "")[:240]
+                aprev = str(entry.get("answer_preview") or "")[:400]
+                line = f"- [{entry.get('caller', '?')}] {qprev}\n  → {aprev}"
             if chars + len(line) > max_chars:
                 break
             lines.append(line)

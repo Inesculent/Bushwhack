@@ -23,7 +23,30 @@ Include **at least one** `logic` task that audits **diff-local general correctne
 
 Phrase that task so it is recognizable (e.g. title or description mentions **“diff-local correctness”**). Example focus: “Verify every branch in the changed function returns or raises consistently” rather than “Find all callers of `foo`.”
 
-When the diff touches **regex extract / string node** logic (e.g. `nodes_string.py`, `RegexExtract`), the diff-local logic task must include an explicit **per-mode checklist**: All Matches (findall + `m[0]` vs capturing groups), All Groups (`group_index`, `match.groups()` truthiness, join + `None`), First Group (`len(match.groups())` vs group 0), StringCompare (exhaustive mode returns). State `failure_mode` per mode when emitting candidates.
+When the diff adds **multiple entry points** in the same file (see **Surfaces introduced in diff** when provided), prefer **several disjoint `logic` tasks**—one per class or per small batch (2–3 classes)—instead of one task that lists every handler. Each task must name its in-scope class(es) and state **do not review any other class** in that file.
+
+Example scoped tasks (use real class/handler names from the inventory):
+- `FooHandler.process` — type-tracing on structured API return shapes, index/slot selection, and aggregation before return; **only** `FooHandler`.
+- `BarHandler.process` — branch exhaustiveness and a terminal `else` for invalid discriminant; **only** `BarHandler`.
+
+Do **not** paste the full surface inventory into every task description when the list has **4 or more** classes; the pipeline will shard oversized plans. A single mega checklist causes workers to skim and miss defects.
+
+**Technology-neutral checklist** (include in each scoped diff-local `logic` task description, not one combined essay):
+- Every **discriminant branch** (`mode`, `op`, `kind`, …): all paths return or raise per the declared contract.
+- Every **structured result** path (match tuples, rows, parsed nodes, message fields): correct index/slot—not only the first element.
+- Every **build-then-aggregate** path (`join`, format, serialize): no `None` in collections unless the contract allows it.
+
+Security or performance tasks must not substitute for this logic pass.
+
+When **Surfaces introduced in diff** lists **4 or more** entry points in **one file**, emit **multiple `logic` tasks** with **disjoint** class subsets (typically one class, or two simple classes per task). Never rely on one task that says “audit all N nodes.”
+
+When the change includes structured extraction (multi-slot rows/tuples, capture groups, join/format of extracted parts) or multi-branch `elif` dispatch on a discriminant, add **focused** tasks:
+- Handlers that build then aggregate structured results: type-tracing and slot selection (title may mention **structured extraction**).
+- Handlers with discriminant dispatch: branch exhaustiveness and terminal `else`.
+
+Duplicate `logic` tasks on the **same file** are acceptable when each names a **different** class scope.
+
+When bootstrap completed / diff omitted, workers read **full repository files**. Do **not** scope tasks to “visible in the diff excerpt” or “first N nodes in the hunk”—but **do** scope each task to the class names it lists, not the whole file.
 
 Separate **context-dependent** investigations (callers, auth decorators, ORM escaping, service contracts) into their own tasks when the mandate or structural hints justify them—do not let them replace the baseline diff-local correctness pass.
 

@@ -9,7 +9,7 @@ import docker
 from langgraph.types import Send
 
 from src.config import get_settings
-from src.domain.schemas import CandidateFinding, FocusedContextResult
+from src.domain.schemas import CandidateFinding
 from src.domain.state import GraphState
 from src.domain.verifier_schemas import VerifierReport
 from src.orchestration.routing.send_payload import payload_for_send
@@ -69,29 +69,10 @@ def _claim_type_eligible(candidate: CandidateFinding, settings) -> bool:
 
 
 def focused_context_text_for_candidate(state: GraphState, candidate_id: str, *, max_chars: int | None = None) -> str:
-    """Concat focused JSON blobs for one candidate (bounded)."""
-    settings = get_settings()
-    if max_chars is None:
-        max_chars = min(120_000, max(24_000, int(settings.review_full_file_max_total_chars)))
-    chunks: List[str] = []
-    for raw in (state.get("focused_context_results", {}) or {}).values():
-        res: FocusedContextResult | None
-        if isinstance(raw, FocusedContextResult):
-            res = raw
-        elif isinstance(raw, dict):
-            try:
-                res = FocusedContextResult.model_validate(raw)
-            except Exception:  # noqa: BLE001
-                res = None
-        else:
-            res = None
-        if res is None or res.candidate_id != candidate_id:
-            continue
-        chunks.append(res.model_dump_json())
-    blob = "\n\n".join(chunks)
-    if len(blob) > max_chars:
-        return blob[:max_chars] + "\n... [truncated]"
-    return blob
+    """Bounded focused snippets for one candidate (tier-2 tool results, not raw JSON dumps)."""
+    from src.orchestration.context.context_packets import focused_snippets_for_candidate
+
+    return focused_snippets_for_candidate(state, candidate_id, max_chars=max_chars)
 
 
 def collect_verifier_send_payloads(state: GraphState) -> List[Send]:
@@ -128,7 +109,12 @@ def collect_verifier_send_payloads(state: GraphState) -> List[Send]:
 
     sends: List[Send] = []
     for cand in eligible:
-        payload = payload_for_send(state, verifier_candidate=cand.model_dump(mode="json"))
+        # Isolate per-branch token accounting: do not copy parent cumulative token_usage.
+        payload = payload_for_send(
+            state,
+            verifier_candidate=cand.model_dump(mode="json"),
+            token_usage=0,
+        )
         sends.append(Send("verifier_subgraph", payload))
     return sends
 

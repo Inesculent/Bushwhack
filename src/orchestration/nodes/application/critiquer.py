@@ -14,11 +14,14 @@ from src.infrastructure.llm.token_usage import (
     parse_structured_output,
     salvage_structured_output_from_raw,
 )
-from src.orchestration.context.review_context import (
-    LazyReviewContextProvider,
-    structural_critiquer_context_excerpt,
+from src.orchestration.context.focus_request_scope import (
+    allowed_review_paths,
+    clamp_focused_context_request,
 )
-from src.orchestration.nodes.application.worker import ReviewTaskContext
+from src.orchestration.context.context_packets import (
+    build_critiquer_packet,
+    packet_to_prompt_sections,
+)
 from src.orchestration.prompts.renderer import render_reviewer_prompt
 from src.orchestration.routing.critiquer_focus import auto_focus_requests
 from src.orchestration.routing.normalize_critiquer_candidates import normalize_critiquer_candidates
@@ -40,11 +43,41 @@ def _task_from_state(state: GraphState) -> ReviewTask | None:
     return registry[task_id]
 
 
-def _normalize_candidates(task: ReviewTask, candidates: List[CandidateFinding]) -> List[CandidateFinding]:
-    return normalize_critiquer_candidates(task, candidates)
+def _normalize_candidates(
+    task: ReviewTask,
+    candidates: List[CandidateFinding],
+    *,
+    pipeline_slot: dict | None = None,
+    git_diff: str = "",
+) -> List[CandidateFinding]:
+    file_contents = None
+    if pipeline_slot:
+        te = pipeline_slot.get("task_evidence")
+        if isinstance(te, dict):
+            raw = te.get("file_contents")
+            if isinstance(raw, dict):
+                file_contents = raw
+    normalized, anchor_warnings, duplicate_map = normalize_critiquer_candidates(
+        task,
+        candidates,
+        file_contents=file_contents,
+        git_diff=git_diff,
+    )
+    if duplicate_map:
+        slot = pipeline_slot or {}
+        slot["semantic_dedupe_duplicates"] = duplicate_map
+    if anchor_warnings:
+        slot = pipeline_slot or {}
+        existing = slot.get("line_anchor_warnings")
+        if isinstance(existing, list):
+            existing.extend(anchor_warnings)
+        else:
+            slot["line_anchor_warnings"] = list(anchor_warnings)
+    return normalized
 
 
 def _normalize_focus_requests(
+    state: GraphState,
     task: ReviewTask,
     candidates: List[CandidateFinding],
     requests: List[FocusedContextRequest],
@@ -54,6 +87,8 @@ def _normalize_focus_requests(
         candidate.candidate_id.rsplit(":", 1)[-1]: candidate.candidate_id for candidate in candidates
     }
     fallback_candidate_id = candidates[0].candidate_id if candidates else task.id
+    candidates_by_id = {c.candidate_id: c for c in candidates}
+    scope = allowed_review_paths(state, task_target_files=task.target_files)
     normalized: List[FocusedContextRequest] = []
     seen: set[str] = set()
 
@@ -65,12 +100,18 @@ def _normalize_focus_requests(
         candidate_id = request.candidate_id.strip()
         if candidate_id not in candidate_ids:
             candidate_id = candidate_id_aliases.get(candidate_id, fallback_candidate_id)
+        cand = candidates_by_id.get(candidate_id)
+        scoped = clamp_focused_context_request(
+            request,
+            scope,
+            fallback_path=(cand.file_path if cand else None) or (task.target_files[0] if task.target_files else None),
+        )
         normalized.append(
-            request.model_copy(
+            scoped.model_copy(
                 update={
                     "request_id": request_id,
                     "candidate_id": candidate_id,
-                    "requested_by_specialty": request.requested_by_specialty or "general",
+                    "requested_by_specialty": scoped.requested_by_specialty or "general",
                 }
             )
         )
@@ -80,26 +121,10 @@ def _normalize_focus_requests(
 def _render_critiquer_prompt(
     state: GraphState,
     task: ReviewTask,
-    context_rendered: str,
-    *,
-    mental_model_excerpt: str = "",
-    exploration_ledger_snippet: str = "",
+    pipeline_slot: Dict[str, Any],
 ) -> str:
-    sections: Dict[str, str] = {
-        "Assigned Task": (
-            f"Task ID: {task.id}\n"
-            f"Task title: {task.title}\n"
-            f"Task description: {task.description}\n"
-            f"Target files: {task.target_files}"
-        ),
-        "Direct Context Gathered By Tools": context_rendered,
-        "Git Diff Excerpt": (state.get("git_diff", "") or "")[:16000],
-    }
-    if mental_model_excerpt.strip():
-        sections["Mental model excerpt (optional, pull-based)"] = mental_model_excerpt.strip()
-    if exploration_ledger_snippet.strip():
-        sections["Mental model query log (bounded)"] = exploration_ledger_snippet.strip()
-    return render_reviewer_prompt("critiquer.md", sections)
+    packet = build_critiquer_packet(state, task, pipeline_slot)
+    return render_reviewer_prompt("critiquer.md", packet_to_prompt_sections(packet))
 
 
 _COMPACT_OUTPUT_APPENDIX = (
@@ -108,6 +133,14 @@ _COMPACT_OUTPUT_APPENDIX = (
     "Keep each content, evidence_summary, and failure_mode under 400 characters. "
     "Keep summary under 500 characters. No prose outside the schema fields."
 )
+_ORTHOGONAL_RECALL_APPENDIX = (
+    "\n\n## ORTHOGONAL RECALL PASS (bounded)\n"
+    "Return only missed issues from dimensions not already covered: contract completeness, "
+    "boundary/index handling, structured data preservation, aggregation/serialization safety, "
+    "exception/control-flow scope, and resource amplification. Do not repeat existing root failures. "
+    "Return at most 3 additional candidates and include audit_coverage."
+)
+_MIN_COVERAGE_DIMENSIONS = 3
 
 
 def _is_length_finish_error(exc: Exception) -> bool:
@@ -121,22 +154,17 @@ def _invoke_critiquer_llm(
     *,
     state: GraphState,
     task: ReviewTask,
-    context_rendered: str,
-    mental_model_excerpt: str,
-    exploration_ledger_snippet: str,
+    pipeline_slot: Dict[str, Any],
     model_key: str | None,
     compact: bool,
+    appendix: str = "",
 ) -> tuple[Any, int]:
     settings = get_settings()
-    prompt = _render_critiquer_prompt(
-        state,
-        task,
-        context_rendered,
-        mental_model_excerpt=mental_model_excerpt,
-        exploration_ledger_snippet=exploration_ledger_snippet,
-    )
+    prompt = _render_critiquer_prompt(state, task, pipeline_slot)
     if compact:
         prompt = f"{prompt}{_COMPACT_OUTPUT_APPENDIX}"
+    if appendix:
+        prompt = f"{prompt}{appendix}"
     llm = Models.worker(
         CritiquerOutput,
         model_key=model_key,
@@ -145,6 +173,32 @@ def _invoke_critiquer_llm(
     invoke_result = llm.invoke(prompt)
     tokens = extract_total_tokens_from_llm_result(invoke_result)
     return invoke_result, tokens
+
+
+def _needs_orthogonal_recall(response: CritiquerOutput) -> bool:
+    if not response.audit_coverage:
+        return bool(response.candidates)
+    for row in response.audit_coverage:
+        dims = {d.strip().lower() for d in row.dimensions if isinstance(d, str) and d.strip()}
+        if row.surface.strip() and len(dims) < _MIN_COVERAGE_DIMENSIONS:
+            return True
+    return False
+
+
+def _merge_recall_response(
+    primary: CritiquerOutput,
+    recall: CritiquerOutput,
+) -> CritiquerOutput:
+    return primary.model_copy(
+        update={
+            "summary": primary.summary,
+            "candidates": list(primary.candidates) + list(recall.candidates),
+            "audit_coverage": list(primary.audit_coverage) + list(recall.audit_coverage),
+            "initial_focus_requests": list(primary.initial_focus_requests)
+            + list(recall.initial_focus_requests),
+            "warnings": list(primary.warnings) + ["orthogonal_recall_pass_ran"] + list(recall.warnings),
+        }
+    )
 
 
 def make_general_critiquer_node(
@@ -174,58 +228,58 @@ def make_general_critiquer_node(
             )
 
         warnings: List[str] = []
-        context_rendered = ""
-        mental_model_excerpt = ""
-        exploration_ledger_snippet = ""
+        pipeline_slot: Dict[str, Any] = {}
         ast_files: List[str] = []
 
-        if use_pipeline_cache:
-            meta_raw = state.get("metadata", {}) or {}
-            pipe = meta_raw.get("critique_pipeline", {}) or {}
-            by_task = pipe.get("by_task", {}) or {}
-            slot = by_task.get(task.id) if isinstance(by_task, dict) else None
-            if isinstance(slot, dict) and slot.get("direct_context"):
-                context_rendered = str(slot["direct_context"])
-                mental_model_excerpt = str(slot.get("mental_model_excerpt") or "")
-                warnings.extend(str(w) for w in (slot.get("warnings") or []) if w)
-                raw_ast = slot.get("ast_included_files") or []
-                if isinstance(raw_ast, list):
-                    ast_files = [str(p) for p in raw_ast if isinstance(p, str) and p.strip()]
-            else:
-                ctx_fb = context_provider.collect_for_task(state=state, task=task)
-                warnings.extend(ctx_fb.warnings)
-                context_rendered = ctx_fb.render()
-                ast_files = list(ctx_fb.ast_included_files)
+        meta_raw = state.get("metadata", {}) or {}
+        pipe = meta_raw.get("critique_pipeline", {}) or {}
+        by_task = pipe.get("by_task", {}) or {}
+        slot = by_task.get(task.id) if isinstance(by_task, dict) else None
+        if isinstance(slot, dict) and (
+            slot.get("direct_context") or slot.get("context_packet")
+        ):
+            pipeline_slot = dict(slot)
+            warnings.extend(str(w) for w in (slot.get("warnings") or []) if w)
+            raw_ast = slot.get("ast_included_files") or []
+            if isinstance(raw_ast, list):
+                ast_files = [str(p) for p in raw_ast if isinstance(p, str) and p.strip()]
+        elif use_pipeline_cache:
+            warnings.append("critiquer_missing_pipeline_slot")
         else:
-            ctx0 = context_provider.collect_for_task(state=state, task=task)
-            warnings.extend(ctx0.warnings)
-            context_rendered = ctx0.render()
-            ast_files = list(ctx0.ast_included_files)
-
-        struct_excerpt = structural_critiquer_context_excerpt(state, task.target_files)
-        if struct_excerpt:
-            context_rendered = f"{context_rendered}\n\n{struct_excerpt}"
-
-        ledger_rows = state.get("exploration_ledger") or []
-        if ledger_rows:
-            from src.orchestration.prompts.ledger_formatter import format_exploration_ledger_for_prompt
-
-            snippet, stats = format_exploration_ledger_for_prompt(
-                ledger_rows,
-                task_id=task.id,
-                target_files=task.target_files,
+            from src.orchestration.context.context_packets import (
+                build_critique_packet,
+                packet_to_storage_dict,
+                probe_direct_context_for_task,
             )
-            exploration_ledger_snippet = snippet
-            metadata_for_metrics = dict(state.get("metadata", {}) or {})
-            mm = dict(metadata_for_metrics.get("mental_model_metrics") or {})
-            mm["ledger_formatter_rendered"] = int(mm.get("ledger_formatter_rendered", 0)) + stats.rendered
-            mm["ledger_formatter_deduped"] = int(mm.get("ledger_formatter_deduped", 0)) + stats.deduped
-            metadata_for_metrics["mental_model_metrics"] = mm
-            state = {**state, "metadata": metadata_for_metrics}
+            from src.orchestration.context.task_evidence import build_task_evidence
+
+            ctx0 = context_provider.collect_for_critique(state=state, task=task)
+            warnings.extend(ctx0.warnings)
+            bundle0 = build_task_evidence(state, task, context_provider, ctx0)
+            probe_packet = build_critique_packet(
+                state,
+                task,
+                ctx0,
+                provider=context_provider,
+                code_evidence=bundle0.rendered,
+                evidence_metadata=bundle0.to_storage_dict(),
+            )
+            stored = packet_to_storage_dict(probe_packet)
+            code_fb, fb_warn = probe_direct_context_for_task(stored)
+            if bundle0.rendered.strip():
+                code_fb = bundle0.rendered
+            warnings.extend(fb_warn)
+            pipeline_slot = {
+                "context_packet": stored,
+                "task_evidence": bundle0.to_storage_dict(),
+                "direct_context": code_fb,
+            }
+            ast_files = list(ctx0.ast_included_files)
 
         candidates: List[CandidateFinding] = []
         summary = ""
         initial_requests: List[FocusedContextRequest] = []
+        audit_coverage: List[dict[str, Any]] = []
         if use_llm:
             selected_model = model_key or getattr(get_settings(), "reviewer_worker_model_key", None)
             invoke_result: Any = None
@@ -233,9 +287,7 @@ def make_general_critiquer_node(
                 invoke_result, llm_tokens = _invoke_critiquer_llm(
                     state=state,
                     task=task,
-                    context_rendered=context_rendered,
-                    mental_model_excerpt=mental_model_excerpt,
-                    exploration_ledger_snippet=exploration_ledger_snippet,
+                    pipeline_slot=pipeline_slot,
                     model_key=selected_model,
                     compact=False,
                 )
@@ -253,6 +305,23 @@ def make_general_critiquer_node(
                             raise parse_exc
                     else:
                         raise
+                if _needs_orthogonal_recall(response):
+                    try:
+                        recall_result, recall_tokens = _invoke_critiquer_llm(
+                            state=state,
+                            task=task,
+                            pipeline_slot=pipeline_slot,
+                            model_key=selected_model,
+                            compact=True,
+                            appendix=_ORTHOGONAL_RECALL_APPENDIX,
+                        )
+                        llm_tokens += recall_tokens
+                        recall_response = parse_structured_output(recall_result, CritiquerOutput)
+                        response = _merge_recall_response(response, recall_response)
+                    except Exception as recall_exc:  # noqa: BLE001
+                        warnings.append(
+                            f"orthogonal_recall_pass_failed:{recall_exc.__class__.__name__}: {recall_exc}"
+                        )
             except Exception as exc:  # noqa: BLE001
                 if _is_length_finish_error(exc) or (
                     isinstance(exc, (ValueError, TypeError))
@@ -265,21 +334,29 @@ def make_general_critiquer_node(
                         invoke_result, retry_tokens = _invoke_critiquer_llm(
                             state=state,
                             task=task,
-                            context_rendered=context_rendered,
-                            mental_model_excerpt=mental_model_excerpt,
-                            exploration_ledger_snippet=exploration_ledger_snippet,
+                            pipeline_slot=pipeline_slot,
                             model_key=selected_model,
                             compact=True,
                         )
                         llm_tokens += retry_tokens
                         response = parse_structured_output(invoke_result, CritiquerOutput)
-                        candidates = _normalize_candidates(task=task, candidates=response.candidates)
+                        candidates = _normalize_candidates(
+                            task=task,
+                            candidates=response.candidates,
+                            pipeline_slot=pipeline_slot,
+                            git_diff=state.get("git_diff", "") or "",
+                        )
                         warnings.extend(response.warnings)
                         summary = response.summary
+                        audit_coverage = [
+                            row.model_dump() if hasattr(row, "model_dump") else dict(row)
+                            for row in response.audit_coverage
+                        ]
                         initial_requests = _normalize_focus_requests(
-                            task=task,
-                            candidates=candidates,
-                            requests=list(response.initial_focus_requests)
+                            state,
+                            task,
+                            candidates,
+                            list(response.initial_focus_requests)
                             + auto_focus_requests(task, candidates),
                         )
                     except Exception as retry_exc:  # noqa: BLE001
@@ -306,13 +383,23 @@ def make_general_critiquer_node(
                         exc,
                     )
             else:
-                candidates = _normalize_candidates(task=task, candidates=response.candidates)
+                candidates = _normalize_candidates(
+                    task=task,
+                    candidates=response.candidates,
+                    pipeline_slot=pipeline_slot,
+                    git_diff=state.get("git_diff", "") or "",
+                )
                 warnings.extend(response.warnings)
                 summary = response.summary
+                audit_coverage = [
+                    row.model_dump() if hasattr(row, "model_dump") else dict(row)
+                    for row in response.audit_coverage
+                ]
                 initial_requests = _normalize_focus_requests(
-                    task=task,
-                    candidates=candidates,
-                    requests=list(response.initial_focus_requests) + auto_focus_requests(task, candidates),
+                    state,
+                    task,
+                    candidates,
+                    list(response.initial_focus_requests) + auto_focus_requests(task, candidates),
                 )
 
         if _trace_enabled(state):
@@ -337,18 +424,31 @@ def make_general_critiquer_node(
         crit_meta = dict(metadata.get("general_critiquer", {}) or {})
         crit_meta.setdefault("by_task", {})
         if isinstance(crit_meta["by_task"], dict):
-            crit_meta["by_task"][task.id] = {
+            task_meta = {
                 "summary": summary,
                 "candidate_count": len(candidates),
                 "warnings": warnings,
                 "initial_focus_requests": [r.model_dump() for r in initial_requests],
+                "audit_coverage": audit_coverage,
             }
+            anchor_warn = pipeline_slot.get("line_anchor_warnings")
+            if isinstance(anchor_warn, list) and anchor_warn:
+                task_meta["line_anchor_warnings"] = list(anchor_warn)
+                warnings.extend(anchor_warn)
+            crit_meta["by_task"][task.id] = task_meta
         metadata["general_critiquer"] = crit_meta
 
         integrity = dict(metadata.get("candidate_integrity", {}) or {})
         by_task = dict(integrity.get("by_task", {}) or {})
+        integrity_ids = [c.candidate_id for c in candidates]
+        slot = pipeline_slot or {}
+        dup_map = slot.get("semantic_dedupe_duplicates")
+        if isinstance(dup_map, dict):
+            for dropped in dup_map.values():
+                if isinstance(dropped, list):
+                    integrity_ids.extend(str(cid) for cid in dropped if cid)
         by_task[task.id] = {
-            "candidate_ids": [c.candidate_id for c in candidates],
+            "candidate_ids": sorted(set(integrity_ids)),
             "candidate_count": len(candidates),
         }
         integrity["by_task"] = by_task

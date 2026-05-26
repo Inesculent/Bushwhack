@@ -21,8 +21,8 @@ Verdicts:
 - `needs_verification` — use when a **runtime Python repro** is required to validate behavior; do not encode executable checks as `text_queries` on `FocusedContextRequest`.
 
 Output discipline:
-- Write the rationale first, then include a one-line self-check such as "Rationale supports verdict: yes/no", then set the verdict.
-- The verdict must match the rationale. If your rationale refutes the claim, do not output `accept`.
+- Write the rationale first (under 1200 characters; cite paths/lines—do not paste code blocks), then include a one-line self-check such as "Rationale supports verdict: yes/no", then set the verdict.
+- Emit exactly one `ReflectionReport` per input candidate. The verdict must match the rationale. If your rationale refutes the claim, do not output `accept`.
 
 Do not veto a finding merely because it is outside your specialty. Off-domain findings should usually be `not_applicable` or `reclassify`, not `reject`.
 

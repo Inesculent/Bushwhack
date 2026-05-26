@@ -7,7 +7,7 @@ __pycache__/
 bushwhack_runs/
 documentation/
 opencode.json
-
+.cursor/
 
 # Keep template env files if added.
 !.env.example

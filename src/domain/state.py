@@ -110,6 +110,13 @@ class GraphState(TypedDict, total=False):
     behavioral_spec_ref: NotRequired[str]
     exploration_ledger: Annotated[List[Dict[str, Any]], operator.add]
 
+    # Mandate explorer ReAct loop (transient; bootstrap + targeted passes)
+    mandate_explorer_mode: NotRequired[str]
+    mandate_explorer_step_idx: NotRequired[int]
+    mandate_explorer_finished: NotRequired[bool]
+    mandate_explorer_retry_feedback: NotRequired[str]
+    mandate_explorer_last_summary: NotRequired[str]
+
     # Task state: canonical task payloads + lifecycle status by task id.
     # Dict union reducers support compact per-task updates that are cache-friendly.
     root_task_id: NotRequired[str]

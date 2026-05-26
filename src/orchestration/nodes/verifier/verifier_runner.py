@@ -11,11 +11,12 @@ import docker
 from src.config import Settings, get_settings
 from src.domain.schemas import CandidateFinding
 from src.domain.state import GraphState
-from src.domain.verifier_schemas import VerifierReport
+from src.domain.verifier_schemas import VerifierReport, VerifierVerdict
 from src.orchestration.nodes.verifier.result_judge import (
     build_retry_feedback,
     infer_verification_scope,
     judge_attempt,
+    verifier_hint_flags_for_attempts,
 )
 from src.orchestration.nodes.verifier.sandbox_executor import execute_test_script
 from src.orchestration.nodes.verifier.test_generator import generate_test_script
@@ -86,10 +87,25 @@ def invoke_verifier_for_candidate(
             metadata={"llm_tokens": 0, "verifier_repo_root": repo_root},
         )
 
-    attempts = []
+    attempts: list = []
     retry_feedback = ""
     total_tokens = 0
     last_rationale = ""
+    last_verdict: VerifierVerdict = "inconclusive"
+    target_file_path = str(cand_dict.get("file_path") or "")
+
+    def _report_metadata(verdict: VerifierVerdict) -> Dict[str, Any]:
+        flags = verifier_hint_flags_for_attempts(
+            verdict=verdict,
+            attempts=attempts,
+            target_file_path=target_file_path,
+        )
+        return {
+            "llm_tokens": total_tokens,
+            "verifier_repo_root": repo_root,
+            "harness_error": flags["harness_error"],
+            "product_verified": flags["product_verified"],
+        }
 
     for attempt_idx in range(1, settings.verifier_max_attempts + 1):
         code, tok = generate_test_script(
@@ -114,8 +130,9 @@ def invoke_verifier_for_candidate(
             settings=settings,
             graph_state=graph_state,
         )
-        verdict, rationale = judge_attempt(record)
+        verdict, rationale = judge_attempt(record, target_file_path=target_file_path)
         last_rationale = rationale
+        last_verdict = verdict
         attempts.append(record)
 
         if verdict != "inconclusive":
@@ -130,10 +147,14 @@ def invoke_verifier_for_candidate(
                 final_rationale=rationale,
                 updated_evidence_summary=summary,
                 attempts=attempts,
-                metadata={"llm_tokens": total_tokens, "verifier_repo_root": repo_root},
+                metadata=_report_metadata(verdict),
             )
 
-        retry_feedback = build_retry_feedback(record)
+        retry_feedback = build_retry_feedback(
+            record,
+            prior_attempts=attempts[:-1],
+            target_file_path=target_file_path,
+        )
 
     summary = f"Runtime verifier: inconclusive after {len(attempts)} attempt(s). {last_rationale}"
     return VerifierReport(
@@ -144,5 +165,5 @@ def invoke_verifier_for_candidate(
         final_rationale=last_rationale or "No attempts completed.",
         updated_evidence_summary=summary,
         attempts=attempts,
-        metadata={"llm_tokens": total_tokens, "verifier_repo_root": repo_root},
+        metadata=_report_metadata(last_verdict),
     )

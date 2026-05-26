@@ -18,6 +18,8 @@ Always include **at least one** `logic` task for **diff-local general correctnes
 
 - Address every critic gap directly to maintain high recall.
 - Convert each major risk hypothesis into a clear, executable review task.
+- When the diff adds multiple entry points in one file (see **Surfaces introduced in diff** when provided), the diff-local `logic` task must audit **each** listed handler—not only the first or a truncated hunk. Checklist (technology-neutral): all branches return or raise; discriminant/mode inputs handled exhaustively; correct indices into structured values; aggregations match declared return types; no silent fall-through. Security or performance tasks must not replace this logic pass.
+- If the critic says the mandate or plan **misses** surfaces, **expand** task scope to cover those surfaces—never narrow the plan to “only what the diff excerpt shows” when bootstrap exploration already ran.
 - Consolidate repetitive checks to prevent infinite reasoning loops or context explosion (e.g., merge numerous specific null checks into one broad contract check for that path).
 - Prevent hyperfixation: ensure tasks cover all changed features evenly rather than drilling endlessly into one algorithm.
 - Do not assert that a bug exists. Phrase tasks as investigations.

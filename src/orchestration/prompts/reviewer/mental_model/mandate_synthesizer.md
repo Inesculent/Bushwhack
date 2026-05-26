@@ -16,13 +16,16 @@ Hypotheses are potential vectors to investigate, **not asserted bugs**.
 Allow for expressive, feature-rich hypotheses while avoiding endless reasoning loops. Ensure broad coverage rather than hyperfixating on a single component.
 
 Examples:
-- If regex logic is involved, ask about multi-match data, capture groups, or edge cases without exhausting every single regex failure mode.
+- Multi-branch handlers driven by enums, modes, or discriminants: exhaustiveness, default paths, implicit fall-through.
+- Code that extracts sub-values from structured results (tuples, rows, parsed objects): wrong slot, empty-collection edge cases, `None` in aggregations.
 - If serialization is involved, ask about fields, defaults, versioning, and unknown keys.
 - If async or caching is involved, ask about ordering, invalidation, and state preservation.
 - Ensure the hypotheses cover the entire scope of the PR without getting stuck in minutiae.
 
 ## Guidelines
 
+- When many new types appear in one change, `behavioral_expectations` should cover **each** surface at a high level (inputs, outputs, invariants), not only the first few.
+- `risk_hypotheses` must span the full surface inventory when provided, not only security-adjacent concerns.
 - Demand structural and algorithmic depth, capturing broad features.
 - Keep uncertainties explicit.
 - Preserve intent, contracts, and precedent from Phase 0.

@@ -392,7 +392,21 @@ class LazyReviewContextProvider:
         self._host_repo_path: Optional[str] = None
         self._startup_warnings: List[str] = []
 
+    def collect_for_critique(self, state: GraphState, task: ReviewTask) -> ReviewTaskContext:
+        """Task-scoped collection for adversarial critique (no generic repo search for non-security)."""
+        return self._collect_task_context(state, task, critique_mode=True)
+
     def collect_for_task(self, state: GraphState, task: ReviewTask) -> ReviewTaskContext:
+        """Full collection for legacy specialist workers."""
+        return self._collect_task_context(state, task, critique_mode=False)
+
+    def _collect_task_context(
+        self,
+        state: GraphState,
+        task: ReviewTask,
+        *,
+        critique_mode: bool,
+    ) -> ReviewTaskContext:
         self._ensure_started(state)
         settings = get_settings()
         warnings = list(self._startup_warnings)
@@ -404,11 +418,19 @@ class LazyReviewContextProvider:
 
         target_files = task.target_files[:12]
         single_file_task = len(target_files) == 1
-        per_file_snippet_max = (
-            min(settings.reviewer_critiquer_single_file_max_chars, settings.review_full_file_max_chars)
-            if single_file_task
-            else 5000
-        )
+        if single_file_task:
+            per_file_snippet_max = min(
+                settings.reviewer_critiquer_single_file_max_chars,
+                settings.review_full_file_max_chars,
+            )
+        elif critique_mode:
+            packet_budget = int(settings.reviewer_critique_packet_max_chars)
+            per_file_snippet_max = min(
+                8000,
+                max(2000, packet_budget // max(1, len(target_files))),
+            )
+        else:
+            per_file_snippet_max = 5000
 
         for file_path in target_files:
             if single_file_task:
@@ -417,7 +439,8 @@ class LazyReviewContextProvider:
                     max_chars=per_file_snippet_max,
                 )
             else:
-                snippet = self.read_file_slice(file_path, max_chars=20000)
+                slice_max = per_file_snippet_max if critique_mode else 20000
+                snippet = self.read_file_slice(file_path, max_chars=slice_max)
             if snippet:
                 file_snippets[file_path] = snippet
                 explored_files.append(file_path)
@@ -480,7 +503,11 @@ class LazyReviewContextProvider:
         elif not settings.ast_enabled:
             warnings.append("ast_capability:disabled")
 
-        for query in self._queries_for_task(task=task, entities_by_file=entities_by_file):
+        if critique_mode:
+            queries = self._queries_for_critique(task=task)
+        else:
+            queries = self._queries_for_task(task=task, entities_by_file=entities_by_file)
+        for query in queries:
             if self._searcher is None:
                 warnings.append("search_unavailable")
                 break
@@ -702,6 +729,16 @@ class LazyReviewContextProvider:
         if not target.is_file():
             return ""
         return target.read_text(encoding="utf-8", errors="replace")[:20000]
+
+    @staticmethod
+    def _queries_for_critique(task: ReviewTask) -> List[str]:
+        """Repo search only for security tasks; avoids TODO/FIXME noise on logic paths."""
+        if task.specialty != "security":
+            return []
+        return [
+            "password|secret|token|credential|auth|permission|eval|exec|pickle|subprocess",
+            "sql|query|deserialize|jwt|cookie|session|csrf|cors",
+        ]
 
     @staticmethod
     def _queries_for_task(

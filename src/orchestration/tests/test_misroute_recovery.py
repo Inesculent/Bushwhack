@@ -33,7 +33,7 @@ def test_normalize_forces_security_risk_specialty() -> None:
         reflection_specialties=["performance"],
         suspected_category="performance",
     )
-    out = normalize_critiquer_candidates(task, [raw])
+    out, _, _ = normalize_critiquer_candidates(task, [raw])
     assert out[0].reflection_specialties == ["security"]
 
 
@@ -53,9 +53,130 @@ def test_normalize_retags_findall_m0_as_logic_defect() -> None:
         reflection_specialties=["performance"],
         suspected_category="performance",
     )
-    out = normalize_critiquer_candidates(task, [raw])
+    out, _, _ = normalize_critiquer_candidates(task, [raw])
     assert out[0].claim_type == "defect"
     assert out[0].reflection_specialties == ["logic"]
+
+
+_STRING_COMPARE_BODY = """
+class StringCompare():
+    def execute(self, string_a, string_b, mode, case_sensitive, **kwargs):
+        if mode == 'Equal':
+            return string_a == string_b,
+        elif mode == 'Starts With':
+            return string_a.startswith(string_b),
+        elif mode == 'Ends With':
+            return string_a.endswith(string_b),
+"""
+
+
+def test_normalize_drops_missing_else_on_structured_extraction_task() -> None:
+    task = ReviewTask(
+        id="review-logic-structured-extraction",
+        title="Structured extraction and aggregation",
+        description="Audit tuple slots and join paths. Do not review any other class in the target file.",
+        target_files=["comfy_extras/nodes_string.py"],
+    )
+    raw = CandidateFinding(
+        candidate_id="c1",
+        patch_task_id="review-logic-structured-extraction",
+        file_path="comfy_extras/nodes_string.py",
+        line_start=159,
+        line_end=189,
+        content="class StringCompare():",
+        claim_type="defect",
+        failure_mode="missing else after elif chain",
+        evidence_summary="no terminal else on mode dispatch",
+        recommendation="add terminal else",
+        reflection_specialties=["logic"],
+        suspected_category="logic",
+    )
+    out, warnings, _ = normalize_critiquer_candidates(task, [raw])
+    assert out == []
+    assert any("structured_task_scope_drop" in w for w in warnings)
+
+
+def test_normalize_repairs_endswith_return_slip_to_missing_else() -> None:
+    task = ReviewTask(
+        id="general-diff-local-1-1",
+        title="StringCompare",
+        description="branch exhaustiveness",
+        target_files=["comfy_extras/nodes_string.py"],
+    )
+    raw = CandidateFinding(
+        candidate_id="c1",
+        patch_task_id="general-diff-local-1-1",
+        file_path="comfy_extras/nodes_string.py",
+        line_start=2,
+        line_end=10,
+        content="class StringCompare():",
+        claim_type="defect",
+        failure_mode="Missing return statement in 'Ends With' branch",
+        evidence_summary="Ends With branch has no return",
+        recommendation='Add the missing return statement: `return a.endswith(b),` after the elif.',
+        reflection_specialties=["logic"],
+        suspected_category="logic",
+    )
+    out, _, _ = normalize_critiquer_candidates(
+        task,
+        [raw],
+        file_contents={"comfy_extras/nodes_string.py": _STRING_COMPARE_BODY},
+    )
+    assert "terminal else" in out[0].failure_mode.lower()
+    assert "duplicate returns" in (out[0].recommendation or "").lower()
+
+
+def test_normalize_does_not_strengthen_redos_with_hedge_wording() -> None:
+    task = ReviewTask(id="general_1", title="quality", description="d", target_files=["pkg/h.py"])
+    raw = CandidateFinding(
+        candidate_id="c1",
+        patch_task_id="general_1",
+        file_path="pkg/h.py",
+        line_start=10,
+        line_end=40,
+        content="def execute(self, pattern, **kwargs):",
+        claim_type="security_risk",
+        failure_mode="ReDoS: catastrophic backtracking on user-controlled pattern",
+        evidence_summary="group_index and matches[0] mentioned in passing",
+        recommendation="Consider adding pattern length limits and timeout mechanism.",
+        reflection_specialties=["security"],
+        suspected_category="security",
+        severity="high",
+    )
+    out, _, _ = normalize_critiquer_candidates(task, [raw])
+    assert "data loss" not in out[0].failure_mode.lower()
+    assert "retain all required slots" not in (out[0].recommendation or "").lower()
+
+
+def test_normalize_strengthens_hedged_findall_tuple_candidate() -> None:
+    task = ReviewTask(
+        id="logic-structured-extraction-005",
+        title="structured extraction",
+        description="RegexExtract findall tuples",
+        target_files=["comfy_extras/nodes_string.py"],
+    )
+    raw = CandidateFinding(
+        candidate_id="c1",
+        patch_task_id="logic-structured-extraction-005",
+        file_path="comfy_extras/nodes_string.py",
+        line_start=155,
+        line_end=157,
+        content="elif mode == 'All Matches':",
+        claim_type="defect",
+        failure_mode="matches[0] tuple handling",
+        evidence_summary="findall may return tuples; code uses matches[0]",
+        recommendation=(
+            "The current logic appears correct. Consider adding explicit handling "
+            "when matches[0] is a tuple."
+        ),
+        reflection_specialties=["logic"],
+        suspected_category="logic",
+        severity="medium",
+    )
+    out, _, _ = normalize_critiquer_candidates(task, [raw])
+    assert out[0].severity == "high"
+    assert "data loss" in out[0].failure_mode.lower()
+    assert "appears correct" not in (out[0].recommendation or "").lower()
 
 
 def test_cleanup_misroute_recovered_when_redirect_parsed() -> None:

@@ -52,6 +52,7 @@ from src.orchestration.nodes.application.critique_revision import (
 )
 from src.orchestration.nodes.application.actor_critic_planner import (
     make_draft_planner_node,
+    make_mandate_finalize_node,
     make_plan_critic_node,
     make_plan_emit_node,
     make_plan_revision_node,
@@ -72,11 +73,15 @@ from src.orchestration.nodes.exploration.semantic_dispatch import (
 )
 from src.orchestration.nodes.exploration.semantic_merge import make_semantic_merge_node
 from src.orchestration.nodes.exploration.snapshot_pin import make_snapshot_pin_node
-from src.orchestration.nodes.mental_model import (
-    make_contract_inspector_node,
-    make_historical_miner_node,
-    make_intent_extractor_node,
-    make_mandate_synthesizer_node,
+from src.orchestration.nodes.mental_model import make_intent_extractor_node
+from src.orchestration.nodes.mandate_explorer_node import (
+    make_mandate_explorer_bootstrap_node,
+    make_mandate_explorer_targeted_node,
+)
+from src.orchestration.nodes.mandate_patch_node import make_mandate_patch_node
+from src.orchestration.routing.mandate_plan_coupling import (
+    route_after_intent,
+    route_after_mandate_patch,
 )
 from src.orchestration.nodes.exploration.structural_extractor import make_structural_extractor_node
 from src.orchestration.nodes.exploration.unverified_call_resolver import (
@@ -463,10 +468,10 @@ def _route_after_semantic_merge(state: GraphState) -> str:
     return "intent_extractor"
 
 
-def _route_after_snapshot_pin(state: GraphState) -> str:
+def _route_after_snapshot_pin(state: GraphState):
     if get_settings().reviewer_legacy_planner_mode:
         return "review_planner"
-    return "draft_planner"
+    return _route_after_planner(state)
 
 
 def _route_after_planner(state: GraphState):
@@ -538,9 +543,16 @@ def build_graph(
     )
     builder.add_node("semantic_merge", make_semantic_merge_node(settings=settings))
     builder.add_node("intent_extractor", make_intent_extractor_node(settings=settings))
-    builder.add_node("contract_inspector", make_contract_inspector_node(settings=settings))
-    builder.add_node("historical_miner", make_historical_miner_node(settings=settings))
-    builder.add_node("mandate_synthesizer", make_mandate_synthesizer_node(settings=settings))
+    builder.add_node(
+        "mandate_explorer",
+        make_mandate_explorer_bootstrap_node(context_provider, settings=settings),
+    )
+    builder.add_node(
+        "mandate_explorer_targeted",
+        make_mandate_explorer_targeted_node(context_provider, settings=settings),
+    )
+    builder.add_node("mandate_patch", make_mandate_patch_node(settings=settings))
+    builder.add_node("mandate_finalize", make_mandate_finalize_node(settings=settings))
     builder.add_node(
         "snapshot_pin",
         make_snapshot_pin_node(snapshot_writer, pointer_store, settings=settings),
@@ -670,16 +682,22 @@ def build_graph(
             "intent_extractor": "intent_extractor",
         },
     )
-    builder.add_edge("intent_extractor", "contract_inspector")
-    builder.add_edge("contract_inspector", "historical_miner")
-    builder.add_edge("historical_miner", "mandate_synthesizer")
-    builder.add_edge("mandate_synthesizer", "snapshot_pin")
     builder.add_conditional_edges(
-        "snapshot_pin",
-        _route_after_snapshot_pin,
+        "intent_extractor",
+        route_after_intent,
         {
-            "review_planner": "review_planner",
+            "mandate_explorer": "mandate_explorer",
+            "mandate_patch": "mandate_patch",
+            "snapshot_pin": "snapshot_pin",
+        },
+    )
+    builder.add_edge("mandate_explorer", "mandate_patch")
+    builder.add_conditional_edges(
+        "mandate_patch",
+        route_after_mandate_patch,
+        {
             "draft_planner": "draft_planner",
+            "plan_revision": "plan_revision",
         },
     )
     builder.add_edge("draft_planner", "plan_critic")
@@ -687,8 +705,20 @@ def build_graph(
         "plan_critic",
         route_plan_critic,
         {
-            "plan_emit": "plan_emit",
+            "mandate_finalize": "mandate_finalize",
+            "mandate_explorer_targeted": "mandate_explorer_targeted",
             "plan_revision": "plan_revision",
+        },
+    )
+    builder.add_edge("mandate_explorer_targeted", "mandate_patch")
+    builder.add_edge("mandate_finalize", "plan_emit")
+    builder.add_edge("plan_emit", "snapshot_pin")
+    builder.add_conditional_edges(
+        "snapshot_pin",
+        _route_after_snapshot_pin,
+        {
+            "review_planner": "review_planner",
+            "draft_planner": "draft_planner",
         },
     )
     builder.add_edge("plan_revision", "plan_critic")

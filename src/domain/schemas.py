@@ -170,6 +170,37 @@ ClaimType = Literal[
     "positive_observation",
     "uncertain",
 ]
+BehavioralSymptom = Literal[
+    "wrong_output",
+    "data_loss",
+    "crash",
+    "missing_return",
+    "uncaught_exception",
+    "unbounded_work",
+    "contract_mismatch",
+    "other",
+]
+RootOperation = Literal[
+    "dispatch",
+    "indexing",
+    "aggregation",
+    "exception_scope",
+    "resource_use",
+    "serialization",
+    "contract",
+    "other",
+]
+
+
+class AuditCoverageRecord(BaseModel):
+    """Non-promotable coverage note from a critiquer pass."""
+
+    surface: str = Field(default="", description="Reviewed class, function, file, or entry point.")
+    dimensions: List[str] = Field(
+        default_factory=list,
+        description="Abstract review dimensions considered for this surface.",
+    )
+    notes: str = Field(default="", max_length=500)
 
 
 class CandidateFinding(BaseModel):
@@ -207,6 +238,14 @@ class CandidateFinding(BaseModel):
     feedback_type: Literal["code_improvement", "defect_detection", "optimization", "other"] = "other"
     severity: Literal["low", "medium", "high"] = "medium"
     recommendation: Optional[str] = Field(default=None, description="Concrete suggested fix or verification step.")
+    behavioral_symptom: Optional[BehavioralSymptom] = Field(
+        default=None,
+        description="Generic behavioral symptom for preserving distinct failure modes during dedupe.",
+    )
+    root_operation: Optional[RootOperation] = Field(
+        default=None,
+        description="Generic operation family where the defect arises.",
+    )
 
     @model_validator(mode="after")
     def validate_line_range(self) -> Self:
@@ -251,7 +290,11 @@ class ReflectionReport(BaseModel):
     candidate_id: str
     reflector_specialty: Literal["security", "performance", "logic", "style", "general"]
     verdict: ReflectionVerdict
-    rationale: str = ""
+    rationale: str = Field(
+        default="",
+        max_length=1500,
+        description="Verdict reasoning; cite paths/lines—do not paste code blocks.",
+    )
     reclassified_category: Optional[ReviewCategory] = None
     focused_request: Optional[FocusedContextRequest] = None
 
@@ -268,6 +311,10 @@ class CritiquerOutput(BaseModel):
 
     summary: str = Field(default="", description="Brief overview of the critique pass.", max_length=2000)
     candidates: List[CandidateFinding] = Field(default_factory=list)
+    audit_coverage: List[AuditCoverageRecord] = Field(
+        default_factory=list,
+        description="Non-promotable notes on reviewed surfaces and abstract dimensions considered.",
+    )
     initial_focus_requests: List[FocusedContextRequest] = Field(
         default_factory=list,
         description="Optional bounded follow-up context before reflection.",

@@ -17,6 +17,8 @@ from src.domain.verifier_schemas import VerifierAttemptRecord, VerifierReport
 from src.orchestration.nodes.application.critique_revision import _render_verifier_advisory_section
 from src.orchestration.nodes.verifier.result_judge import (
     attempt_was_harness_error,
+    build_retry_feedback,
+    classify_attempt_failure,
     infer_verification_scope,
     judge_attempt,
 )
@@ -94,6 +96,7 @@ def test_collect_verifier_send_payloads_eligible() -> None:
     assert len(sends) == 1
     assert sends[0].node == "verifier_subgraph"
     assert sends[0].arg["verifier_candidate"]["candidate_id"] == cid
+    assert sends[0].arg["token_usage"] == 0
 
 
 def test_has_focused_evidence_accepts_full_file_payload() -> None:
@@ -124,12 +127,53 @@ def test_focused_context_text_for_candidate() -> None:
     assert "a.py" in text
 
 
-def test_judge_attempt_verified() -> None:
+def test_judge_attempt_verified_product_crash_in_target_file() -> None:
     rec = VerifierAttemptRecord(
         attempt_number=1,
         test_code="x",
         exit_code=1,
         stdout="STATUS: CRASHED | ValueError: bad",
+        stderr='  File "/repo/pkg/mod.py", line 10, in execute\n    raise ValueError("bad")',
+    )
+    v, _ = judge_attempt(rec, target_file_path="pkg/mod.py")
+    assert v == "verified"
+
+
+def test_judge_attempt_crashed_without_target_traceback_is_inconclusive() -> None:
+    rec = VerifierAttemptRecord(
+        attempt_number=1,
+        test_code="x",
+        exit_code=1,
+        stdout="STATUS: CRASHED | TypeError: missing 4 required positional arguments",
+        stderr="",
+    )
+    v, rationale = judge_attempt(rec, target_file_path="pkg/mod.py")
+    assert v == "inconclusive"
+    assert "harness" in rationale.lower() or "signature" in rationale.lower()
+
+
+def test_judge_attempt_io_boolean_attribute_error_is_harness() -> None:
+    rec = VerifierAttemptRecord(
+        attempt_number=1,
+        test_code="x",
+        exit_code=1,
+        stdout="",
+        stderr=(
+            '  File "/repo/comfy_extras/nodes_string.py", line 145, in StringContains\n'
+            "    RETURN_TYPES = (IO.BOOLEAN,)\n"
+            "AttributeError: 'types.SimpleNamespace' object has no attribute 'BOOLEAN'"
+        ),
+    )
+    v, _ = judge_attempt(rec, target_file_path="comfy_extras/nodes_string.py")
+    assert v == "inconclusive"
+
+
+def test_judge_attempt_mismatch_verified() -> None:
+    rec = VerifierAttemptRecord(
+        attempt_number=1,
+        test_code="x",
+        exit_code=1,
+        stdout="STATUS: MISMATCH | expected=foo actual=bar",
         stderr="",
     )
     v, _ = judge_attempt(rec)
@@ -634,3 +678,138 @@ def test_build_test_generator_prompt_escapes_python_braces() -> None:
     assert "pkg/x.py" in text
     assert 'f"PIL.{sub}"' in text
     assert "PngImagePlugin" in text
+    assert "comfy.comfy_types" not in text
+    assert "inspect.signature" in text
+
+
+def test_build_retry_feedback_includes_error_class_and_prior_summary() -> None:
+    prior = VerifierAttemptRecord(
+        attempt_number=1,
+        test_code="x",
+        exit_code=2,
+        stdout="STATUS: HARNESS_ERROR | SyntaxError: invalid",
+        stderr="",
+    )
+    last = VerifierAttemptRecord(
+        attempt_number=2,
+        test_code="x",
+        exit_code=1,
+        stdout="STATUS: CRASHED | TypeError: missing 2 required positional arguments",
+        stderr="",
+    )
+    fb = build_retry_feedback(
+        last,
+        prior_attempts=[prior],
+        target_file_path="pkg/mod.py",
+    )
+    assert "signature_mismatch" in fb
+    assert "attempt=1" in fb
+    assert "pkg/mod.py" in fb
+
+
+def test_classify_attempt_failure_signature_mismatch() -> None:
+    rec = VerifierAttemptRecord(
+        attempt_number=1,
+        test_code="x",
+        exit_code=1,
+        stdout="STATUS: CRASHED | TypeError: foo() missing 1 required positional argument",
+        stderr="",
+    )
+    assert classify_attempt_failure(rec, target_file_path="pkg/mod.py") == "signature_mismatch"
+
+
+def test_classify_harness_crashed_not_product_crash() -> None:
+    rec = VerifierAttemptRecord(
+        attempt_number=1,
+        test_code="x",
+        exit_code=1,
+        stdout="STATUS: CRASHED | TypeError: missing 4 required positional arguments",
+        stderr="",
+    )
+    assert classify_attempt_failure(rec, target_file_path="pkg/mod.py") == "signature_mismatch"
+    assert classify_attempt_failure(rec, target_file_path="pkg/mod.py") != "product_crash"
+
+
+def test_classify_wrong_status_protocol() -> None:
+    rec = VerifierAttemptRecord(
+        attempt_number=1,
+        test_code="x",
+        exit_code=1,
+        stdout="Traceback...\n",
+        stderr="",
+    )
+    assert classify_attempt_failure(rec) == "wrong_status_protocol"
+
+
+def test_build_retry_feedback_harness_error_action_hint() -> None:
+    rec = VerifierAttemptRecord(
+        attempt_number=1,
+        test_code="x",
+        exit_code=2,
+        stdout="STATUS: HARNESS_ERROR | SyntaxError: invalid",
+        stderr="",
+        sandbox_mode="harness_preflight",
+    )
+    fb = build_retry_feedback(rec, target_file_path="pkg/mod.py")
+    assert "HARNESS_ERROR" in fb
+    assert "syntax_error" in fb or "harness_error" in fb
+
+
+def test_invoke_verifier_runner_metadata_harness_flags() -> None:
+    from src.orchestration.nodes.verifier.verifier_runner import invoke_verifier_for_candidate
+
+    harness = VerifierAttemptRecord(
+        attempt_number=1,
+        test_code="x",
+        exit_code=2,
+        stdout="STATUS: HARNESS_ERROR | SyntaxError: invalid",
+        stderr="",
+        sandbox_mode="harness_preflight",
+    )
+    with patch("src.orchestration.nodes.verifier.verifier_runner._docker_ok", return_value=True), \
+         patch("src.orchestration.nodes.verifier.verifier_runner.generate_test_script", return_value=("code", 0)), \
+         patch("src.orchestration.nodes.verifier.verifier_runner.execute_test_script", return_value=harness), \
+         patch("src.orchestration.nodes.verifier.verifier_runner.get_settings") as gs:
+        m = MagicMock()
+        m.verifier_enabled = True
+        m.verifier_skip_if_no_docker = True
+        m.verifier_max_attempts = 1
+        gs.return_value = m
+        report = invoke_verifier_for_candidate(
+            run_id="r1",
+            repo_path="/tmp/repo",
+            candidate={
+                "candidate_id": "c1",
+                "file_path": "pkg/mod.py",
+                "line_start": 1,
+                "line_end": 2,
+                "failure_mode": "crash",
+            },
+            focused_context_snippets="",
+            git_diff_excerpt="",
+            use_llm=False,
+        )
+    assert report.metadata.get("harness_error") is True
+    assert report.metadata.get("product_verified") is False
+
+
+def test_verifier_advisory_omits_test_code() -> None:
+    huge_code = "x = 1\n" * 5000
+    vr = VerifierReport(
+        run_id="r1",
+        candidate_id="c1",
+        verdict="inconclusive",
+        attempts=[
+            VerifierAttemptRecord(
+                attempt_number=1,
+                test_code=huge_code,
+                exit_code=2,
+                stdout="STATUS: HARNESS_ERROR",
+                stderr="",
+            )
+        ],
+    )
+    state = _minimal_state(verifier_reports=[vr])
+    blob = _render_verifier_advisory_section(state, ["c1"])
+    assert "test_code" not in blob
+    assert len(blob) < len(huge_code)

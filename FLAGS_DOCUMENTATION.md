@@ -226,7 +226,7 @@ All environment variables must be prefixed with `REVIEW_` and can be set in a `.
 | `REVIEW_GITHUB_MCP_PR_MAX_COMMENTS` | integer | `20` | Maximum number of PR or issue comments fetched for the docs pre-brief. |
 | `REVIEW_GITHUB_MCP_PR_COMMENT_MAX_CHARS` | integer | `2000` | Maximum characters retained from each PR or issue comment. |
 | `REVIEW_GITHUB_MCP_DOC_PATHS` | list | common README/CONTRIBUTING/SECURITY/CHANGELOG/docs paths | Ordered documentation paths attempted for docs pre-brief and focused-context fallback. |
-| `REVIEW_DOCS_PREBRIEF_MODEL_KEY` | string | `qwen3.5-35b-a3b` | Model key used to summarize the documentation/PR pre-brief. Must match a key in `infrastructure.llm.factory.MODELS`. |
+| `REVIEW_DOCS_PREBRIEF_MODEL_KEY` | string | `qwen3.5-122b` (see `infrastructure.llm.defaults`) | Model key used to summarize the documentation/PR pre-brief. Must match a key in `infrastructure.llm.factory.MODELS`. |
 
 ---
 
@@ -264,6 +264,8 @@ export REVIEW_REDIS_ENABLED=true
 
 #### Local LLM Configuration (Ollama/LM Studio/vLLM)
 
+**Hotswap default model:** edit `src/infrastructure/llm/defaults.py` (`DEFAULT_LOCAL_MODEL_KEY` and `DEFAULT_LOCAL_MODEL_PATH`). That registers the vLLM model id and sets defaults for all `REVIEW_*_MODEL_KEY` settings unless overridden in `.env`.
+
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
 | `REVIEW_LOCAL_LLM_BASE_URL` | string | `http://localhost:8000/v1` | OpenAI-compatible base URL for local models (Qwen via Ollama, LM Studio, vLLM). |
@@ -279,8 +281,8 @@ export REVIEW_REDIS_ENABLED=true
 
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
-| `REVIEW_REVIEWER_PLANNER_MODEL_KEY` | string | `qwen3.5-35b-a3b` | Model key used by the reviewer planner. Must match a key in `infrastructure.llm.factory.MODELS`. For Ollama: use the corresponding local model key. |
-| `REVIEW_REVIEWER_WORKER_MODEL_KEY` | string | `qwen3.5-35b-a3b` | Model key used by reviewer workers, critiquer, reflection, and revision nodes. For Ollama: use the corresponding local model key. |
+| `REVIEW_REVIEWER_PLANNER_MODEL_KEY` | string | `qwen3.5-122b` (see `infrastructure.llm.defaults`) | Model key used by the reviewer planner. Must match a key in `infrastructure.llm.factory.MODELS`. For Ollama: use the corresponding local model key. |
+| `REVIEW_REVIEWER_WORKER_MODEL_KEY` | string | `qwen3.5-122b` (see `infrastructure.llm.defaults`) | Model key used by reviewer workers, critiquer, reflection, and revision nodes. For Ollama: use the corresponding local model key. |
 
 #### Agent Behavior
 
@@ -336,8 +338,7 @@ REVIEW_REDIS_ENABLED=false
 REVIEW_AST_MCP_ENABLED=false
 REVIEW_GITHUB_MCP_ENABLED=false
 REVIEW_LOCAL_LLM_BASE_URL=http://localhost:8000/v1
-REVIEW_REVIEWER_PLANNER_MODEL_KEY=qwen3.5-35b-a3b
-REVIEW_REVIEWER_WORKER_MODEL_KEY=qwen3.5-35b-a3b
+# Defaults: src/infrastructure/llm/defaults.py (DEFAULT_LOCAL_MODEL_KEY / PATH)
 ```
 
 ```bash
@@ -353,8 +354,7 @@ REVIEW_REDIS_ENABLED=true
 REVIEW_REDIS_URL=redis://prod-redis-host:6379/0
 REVIEW_AST_MCP_ENABLED=true
 REVIEW_GITHUB_MCP_ENABLED=true
-REVIEW_REVIEWER_PLANNER_MODEL_KEY=qwen3.5-35b-a3b
-REVIEW_REVIEWER_WORKER_MODEL_KEY=qwen3.5-35b-a3b
+# Defaults: src/infrastructure/llm/defaults.py (DEFAULT_LOCAL_MODEL_KEY / PATH)
 ```
 
 ```bash

@@ -195,3 +195,112 @@ def test_critique_revision_reduce_waits_until_all_digest_shards_present() -> Non
     out_done = node(state)
     assert out_done["node_history"][0] == "critique_revision_reduce"
     assert out_done["metadata"]["critique_revision"]["reduce_completed"] is True
+
+
+def test_partition_revision_batches() -> None:
+    from src.orchestration.nodes.application.critique_revision import _partition_revision_batches
+
+    assert _partition_revision_batches(["a", "b", "c", "d"], 2) == [["a", "b"], ["c", "d"]]
+    assert _partition_revision_batches(["a"], 2) == [["a"]]
+    assert _partition_revision_batches([], 2) == []
+
+
+def test_critique_revision_batched_reduce_merges_across_batches() -> None:
+    from unittest.mock import patch
+
+    from src.domain.schemas import CritiqueRevisionDigest, CritiqueRevisionItem, CritiqueRevisionOutput
+    from src.orchestration.nodes.application.critique_revision import make_critique_revision_reduce_node
+
+    def _candidate(n: int) -> CandidateFinding:
+        cid = f"c{n}"
+        return CandidateFinding(
+            candidate_id=cid,
+            patch_task_id="t1",
+            file_path=f"m{n}.py",
+            line_start=1,
+            line_end=2,
+            content=f"issue {n}",
+            claim_type="defect",
+            failure_mode="crash",
+            evidence_summary="e",
+            recommendation="r",
+        )
+
+    candidates = [_candidate(i) for i in range(4)]
+    cids = [c.candidate_id for c in candidates]
+    state = _state(
+        candidate_findings=candidates,
+        reflection_reports=[
+            ReflectionReport(
+                candidate_id=cid,
+                reflector_specialty="logic",
+                verdict="needs_context",
+            )
+            for cid in cids
+        ],
+        focused_context_results={
+            f"r{cid}": FocusedContextResult(
+                request_id=f"r{cid}",
+                candidate_id=cid,
+                file_snippets={f"m{cid[-1]}.py": "code"},
+            )
+            for cid in cids
+        },
+        critique_revision_digests={
+            f"{cid}:0": CritiqueRevisionDigest(
+                shard_id=f"{cid}:0",
+                candidate_id=cid,
+                request_ids=[f"r{cid}"],
+                evidence_bullets=[f"bullet for {cid}"],
+                impact="supports",
+            )
+            for cid in cids
+        },
+    )
+
+    invoke_count = 0
+
+    class _FakeLLM:
+        def invoke(self, _prompt: str) -> str:
+            nonlocal invoke_count
+            invoke_count += 1
+            return "fake"
+
+    def _parse(_invoke_result: str, _schema: type) -> CritiqueRevisionOutput:
+        batch_index = invoke_count - 1
+        batch_ids = cids[batch_index * 2 : batch_index * 2 + 2]
+        return CritiqueRevisionOutput(
+            revisions=[
+                CritiqueRevisionItem(
+                    candidate_id=cid,
+                    verdict="accept",
+                    updated_evidence_summary=f"rev {cid}",
+                )
+                for cid in batch_ids
+            ],
+            warnings=[],
+        )
+
+    with (
+        patch(
+            "src.orchestration.nodes.application.critique_revision.Models.worker",
+            return_value=_FakeLLM(),
+        ),
+        patch(
+            "src.orchestration.nodes.application.critique_revision.parse_structured_output",
+            side_effect=_parse,
+        ),
+        patch(
+            "src.orchestration.nodes.application.critique_revision.extract_total_tokens_from_llm_result",
+            return_value=100,
+        ),
+    ):
+        out = make_critique_revision_reduce_node(use_llm=True)(state)
+
+    cr = out["metadata"]["critique_revision"]
+    assert invoke_count == 2
+    assert cr["reduce_batch_count"] == 2
+    assert cr["reduce_batch_size"] == 2
+    assert len(cr["revisions"]) == 4
+    assert cr["reduce_failed"] is False
+    assert {row["candidate_id"] for row in cr["revisions"]} == set(cids)

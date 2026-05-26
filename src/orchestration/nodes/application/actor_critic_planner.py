@@ -6,12 +6,9 @@ import json
 import logging
 from typing import Any, Dict, List
 
-from pydantic import BaseModel, Field
-
 from src.config import Settings, get_settings
-from src.domain.schemas import BehavioralSpec, ReviewTask
+from src.domain.schemas import ReviewTask
 from src.domain.state import GraphState
-from src.infrastructure.behavioral_spec_store import BehavioralSpecStore
 from src.infrastructure.llm.factory import Models
 from src.infrastructure.llm.token_usage import extract_total_tokens_from_llm_result, parse_structured_output
 from src.orchestration.nodes.application.planner import (
@@ -19,34 +16,19 @@ from src.orchestration.nodes.application.planner import (
     _normalize_tasks,
     _trace_enabled,
     build_planner_state_update,
+    finalize_emitted_tasks,
     run_planner_generation,
 )
+from src.orchestration.context.context_packets import (
+    build_plan_critic_packet,
+    build_plan_revision_packet,
+    packet_to_prompt_sections,
+)
 from src.orchestration.prompts.renderer import render_reviewer_prompt
+from src.orchestration.routing.mandate_plan_coupling import JointPlanCritiqueOutput
 
 logger = logging.getLogger(__name__)
 trace_logger = logging.getLogger("research_pipeline.reviewer_trace")
-
-
-class PlanCritiqueOutput(BaseModel):
-    aligned: bool = Field(
-        description="True if draft review tasks adequately cover behavioral and contractual boundaries.",
-    )
-    gaps: str = Field(default="", description="Missing coverage or misaligned tasks (compact).")
-    revision_instructions: str = Field(
-        default="",
-        description="Concrete instructions to improve the task list without prescribing specific bugs.",
-    )
-
-
-def _behavioral_excerpt_for_critic(ref: str | None, settings: Settings) -> str:
-    if not ref:
-        return "(no behavioral spec ref)"
-    try:
-        spec = BehavioralSpecStore(settings).read(ref)
-        blob = spec.model_dump_json(indent=2)
-        return blob[:8000] + ("..." if len(blob) > 8000 else "")
-    except Exception as exc:  # noqa: BLE001
-        return f"(failed to load behavioral spec: {exc.__class__.__name__})"
 
 
 def make_draft_planner_node(settings: Settings | None = None, *, use_llm: bool = True):
@@ -90,36 +72,41 @@ def make_plan_critic_node(settings: Settings | None = None, *, use_llm: bool = T
         ac = dict(meta.get("actor_critic_planner") or {})
         draft_raw = ac.get("draft_tasks") or []
         draft_tasks = [ReviewTask.model_validate(row) for row in draft_raw]
-        ref = state.get("behavioral_spec_ref")
-        excerpt = _behavioral_excerpt_for_critic(ref if isinstance(ref, str) else None, resolved)
         llm_tokens = 0
         aligned = True
         gaps = ""
         rev_instr = ""
         warnings: List[str] = list(ac.get("warnings") or [])
 
+        exploration_requests: List[Dict[str, Any]] = []
+        mandate_adequate = True
+
         if use_llm and draft_tasks:
             try:
+                critic_packet = build_plan_critic_packet(state, draft_tasks, settings=resolved)
                 prompt = render_reviewer_prompt(
-                    "mental_model/plan_critic.md",
-                    {
-                        "Behavioral mandate excerpt": excerpt,
-                        "Draft tasks JSON": json.dumps([t.model_dump() for t in draft_tasks], indent=2)[:12000],
-                    },
+                    "mental_model/joint_plan_critic.md",
+                    packet_to_prompt_sections(critic_packet),
                 )
-                llm = Models.worker(PlanCritiqueOutput, model_key=resolved.reviewer_planner_model_key)
+                llm = Models.worker(JointPlanCritiqueOutput, model_key=resolved.reviewer_planner_model_key)
                 invoke_result = llm.invoke(prompt)
-                out = parse_structured_output(invoke_result, PlanCritiqueOutput)
+                out = parse_structured_output(invoke_result, JointPlanCritiqueOutput)
                 llm_tokens = extract_total_tokens_from_llm_result(invoke_result)
                 aligned = bool(out.aligned)
                 gaps = out.gaps.strip()
                 rev_instr = out.revision_instructions.strip()
+                mandate_adequate = bool(out.mandate_adequate)
+                exploration_requests = [
+                    r.model_dump(mode="json") for r in (out.exploration_requests or [])
+                ]
             except Exception as exc:  # noqa: BLE001
                 warnings.append(f"{node_name}_llm_fallback:{exc.__class__.__name__}")
                 logger.warning("%s LLM fallback aligned=True: %s", node_name, exc)
                 aligned = True
 
         ac["aligned"] = aligned
+        ac["mandate_adequate"] = mandate_adequate
+        ac["exploration_requests"] = exploration_requests
         ac["last_critique"] = {"gaps": gaps, "revision_instructions": rev_instr}
         ac["phase"] = "critic"
         ac["warnings"] = warnings
@@ -143,23 +130,32 @@ def make_plan_revision_node(settings: Settings | None = None, *, use_llm: bool =
         draft_raw = ac.get("draft_tasks") or []
         draft_tasks = [ReviewTask.model_validate(row) for row in draft_raw]
         critique = dict(ac.get("last_critique") or {})
-        excerpt = _behavioral_excerpt_for_critic(
-            state.get("behavioral_spec_ref") if isinstance(state.get("behavioral_spec_ref"), str) else None,
-            resolved,
-        )
         llm_tokens = 0
         warnings: List[str] = list(ac.get("warnings") or [])
         new_tasks = draft_tasks
 
         if use_llm:
             try:
+                revision_packet = build_plan_revision_packet(
+                    state, draft_tasks, critique, settings=resolved
+                )
+                sections_map = packet_to_prompt_sections(revision_packet)
                 prompt = render_reviewer_prompt(
                     "mental_model/plan_revision.md",
                     {
-                        "Behavioral mandate excerpt": excerpt,
-                        "Current tasks JSON": json.dumps([t.model_dump() for t in draft_tasks], indent=2)[:12000],
-                        "Critique gaps": str(critique.get("gaps", "")),
-                        "Revision instructions": str(critique.get("revision_instructions", "")),
+                        "Behavioral mandate excerpt": sections_map.get(
+                            "behavioral_mandate_excerpt",
+                            sections_map.get("Behavioral mandate excerpt", ""),
+                        ),
+                        "Current tasks JSON": sections_map.get(
+                            "Current tasks JSON",
+                            json.dumps([t.model_dump() for t in draft_tasks], indent=2)[:12000],
+                        ),
+                        "Critique gaps": sections_map.get("Critique gaps", str(critique.get("gaps", ""))),
+                        "Revision instructions": sections_map.get(
+                            "Revision instructions",
+                            str(critique.get("revision_instructions", "")),
+                        ),
                     },
                 )
                 llm = Models.planner(ReviewPlanOutput, model_key=resolved.reviewer_planner_model_key)
@@ -178,9 +174,38 @@ def make_plan_revision_node(settings: Settings | None = None, *, use_llm: bool =
         ac["phase"] = "revision"
         ac["warnings"] = warnings
         meta["actor_critic_planner"] = ac
+        from src.orchestration.routing.mandate_plan_coupling import increment_coupled_cycle
+
+        cycle_update = increment_coupled_cycle({**state, "metadata": meta})
+        meta = cycle_update.get("metadata", meta)
         return {"metadata": meta, "node_history": [node_name], "token_usage": llm_tokens}
 
     return plan_revision_node
+
+
+def make_mandate_finalize_node(settings: Settings | None = None, *, use_llm: bool = True):
+    """Optional polish via mandate_synthesizer when spec is still thin."""
+
+    node_name = "mandate_finalize"
+
+    def mandate_finalize_node(state: GraphState) -> Dict[str, Any]:
+        from src.orchestration.nodes.mental_model import make_mandate_synthesizer_node
+
+        meta = dict(state.get("metadata", {}) or {})
+        slot = dict(meta.get("mental_model", {}) or {})
+        loop = dict(slot.get("coupled_loop", {}) or {})
+        loop["last_route"] = "mandate_finalize"
+        slot["coupled_loop"] = loop
+        meta["mental_model"] = slot
+        patch_seq = int(slot.get("patch_seq", 0))
+        if patch_seq <= 1 and use_llm:
+            synth = make_mandate_synthesizer_node(settings, use_llm=use_llm)
+            out = synth({**state, "metadata": meta})
+            out["node_history"] = [node_name]
+            return out
+        return {"metadata": meta, "node_history": [f"{node_name}:skipped"]}
+
+    return mandate_finalize_node
 
 
 def make_plan_emit_node():
@@ -191,6 +216,7 @@ def make_plan_emit_node():
         ac = dict(meta.get("actor_critic_planner") or {})
         draft_raw = ac.get("draft_tasks") or []
         tasks = [ReviewTask.model_validate(row) for row in draft_raw] or []
+        tasks = finalize_emitted_tasks(tasks, state)
         summary = str(ac.get("summary") or "Actor-critic review plan.")
         warnings = [str(w) for w in (ac.get("warnings") or []) if w]
         if not tasks:
@@ -217,11 +243,7 @@ def make_plan_emit_node():
 
 
 def route_plan_critic(state: GraphState) -> str:
-    settings = get_settings()
-    meta = state.get("metadata", {}) or {}
-    ac = meta.get("actor_critic_planner") or {}
-    if ac.get("aligned"):
-        return "plan_emit"
-    if int(ac.get("revision_count", 0)) >= int(settings.reviewer_actor_critic_max_plan_revisions):
-        return "plan_emit"
-    return "plan_revision"
+    """Coupled mandate-plan routing after joint critic."""
+    from src.orchestration.routing.mandate_plan_coupling import route_joint_critic
+
+    return route_joint_critic(state)

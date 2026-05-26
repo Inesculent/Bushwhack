@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from typing import Any, Literal, Optional, Type
 
 from src.config import Settings, get_settings
+from src.infrastructure.llm.defaults import DEFAULT_LOCAL_MODEL_KEY, DEFAULT_LOCAL_MODEL_PATH
 
 
 
@@ -67,6 +68,10 @@ MODELS = {
         model_name="qwen3-coder",
         provider="local",
     ),
+    DEFAULT_LOCAL_MODEL_KEY: LLMConfig(
+        model_name=DEFAULT_LOCAL_MODEL_PATH,
+        provider="local",
+    ),
     "qwen3.5-35b-a3b": LLMConfig(
         model_name="/lustre/fs1/home/dy828490/bushwhack_dev/qwen-3.5-35b-a3b",
         provider="local",
@@ -84,10 +89,10 @@ class Models:
     """
 
     DEFAULT_ROLE_MODELS = {
-        "explorer": "qwen3.5-35b-a3b",
-        "planner": "qwen3.5-35b-a3b",
-        "worker": "qwen3.5-35b-a3b",
-        "synthesizer": "qwen3.5-35b-a3b",
+        "explorer": DEFAULT_LOCAL_MODEL_KEY,
+        "planner": DEFAULT_LOCAL_MODEL_KEY,
+        "worker": DEFAULT_LOCAL_MODEL_KEY,
+        "synthesizer": DEFAULT_LOCAL_MODEL_KEY,
     }
 
     @staticmethod

@@ -21,7 +21,7 @@ Set `aligned=false` when:
 - the plan over-indexes on one specialty and misses supported logic, performance, or general review risk;
 - task targets drift beyond files or context justified by the mandate.
 
-Good task specificity: "Verify `.join()` never receives `None` from optional regex capture groups in the changed parser path."
+Good task specificity: "Verify `.join()` never receives absent optional fields in the changed parser path."
 
 Weak task specificity: "Check null handling and edge cases."
 

@@ -6,6 +6,8 @@ from typing import List, Optional
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from src.infrastructure.llm.defaults import DEFAULT_LOCAL_MODEL_KEY
+
 
 class Settings(BaseSettings):
 	"""Application settings loaded from environment variables."""
@@ -193,8 +195,11 @@ class Settings(BaseSettings):
 		description="Generate a documentation-based pre-brief before semantic scanning.",
 	)
 	docs_prebrief_model_key: str = Field(
-		default="qwen3.5-35b-a3b",
-		description="Model key used for the documentation pre-brief summary.",
+		default=DEFAULT_LOCAL_MODEL_KEY,
+		description=(
+			"Model key used for the documentation pre-brief summary. "
+			"Default from infrastructure.llm.defaults.DEFAULT_LOCAL_MODEL_KEY."
+		),
 	)
 	google_api_key: Optional[str] = Field(
 		default=None,
@@ -290,7 +295,7 @@ class Settings(BaseSettings):
 		description="Maximum characters of the unified diff inlined into the solo-agent prompt.",
 	)
 	solo_agent_model_key: str = Field(
-		default="qwen3.5-35b-a3b",
+		default=DEFAULT_LOCAL_MODEL_KEY,
 		description="Model key (from Models factory) used by the solo-agent worker for free-form tagged output.",
 	)
 	solo_agent_prompt_version: str = Field(
@@ -303,7 +308,7 @@ class Settings(BaseSettings):
 		description="Root directory for reviewer-graph experiment artifacts.",
 	)
 	reviewer_planner_model_key: str = Field(
-		default="qwen3.5-35b-a3b",
+		default=DEFAULT_LOCAL_MODEL_KEY,
 		description=(
 			"Model key (from Models factory) used by the reviewer planner. "
 			"Must match a key in infrastructure.llm.factory.MODELS; for Ollama use the corresponding local model key."
@@ -319,7 +324,7 @@ class Settings(BaseSettings):
 		),
 	)
 	reviewer_worker_model_key: str = Field(
-		default="qwen3.5-35b-a3b",
+		default=DEFAULT_LOCAL_MODEL_KEY,
 		description=(
 			"Model key (from Models factory) used by reviewer workers, critiquer, reflection, and revision nodes. "
 			"Aligns with Models.DEFAULT_ROLE_MODELS['worker']. For Ollama set to the corresponding local model key and "
@@ -355,10 +360,10 @@ class Settings(BaseSettings):
 		),
 	)
 	reviewer_allow_host_pr_worktree: bool = Field(
-		default=False,
+		default=True,
 		description=(
-			"When true, snapshot AACR resume may clone the PR head into a host worktree under the snapshot root. "
-			"Default false: PR content stays in the Docker sandbox only."
+			"When true, snapshot AACR resume clones the PR head into a host worktree under the snapshot root "
+			"(enables AST and local ripgrep). Set REVIEW_REVIEWER_ALLOW_HOST_PR_WORKTREE=false to use Docker sandbox only."
 		),
 	)
 	reviewer_use_legacy_specialist_workers: bool = Field(
@@ -390,6 +395,109 @@ class Settings(BaseSettings):
 		le=16000,
 		description="Max characters returned from query_mental_model (excerpt of BehavioralSpec).",
 	)
+	reviewer_mandate_explorer_enabled: bool = Field(
+		default=True,
+		description="When true, run mandate_explorer (bootstrap + critic-targeted) before/during coupled planning.",
+	)
+	reviewer_mandate_bootstrap_max_steps: int = Field(
+		default=8,
+		ge=1,
+		le=24,
+		description="ReAct steps for mandatory bootstrap mandate_explorer pass.",
+	)
+	reviewer_mandate_targeted_max_steps: int = Field(
+		default=4,
+		ge=1,
+		le=16,
+		description="ReAct steps per critic-triggered targeted explorer pass.",
+	)
+	reviewer_mandate_explorer_max_observation_chars: int = Field(
+		default=4000,
+		ge=500,
+		le=32000,
+		description="Max characters per mandate explorer tool result.",
+	)
+	reviewer_mandate_ledger_max_total_chars: int = Field(
+		default=48000,
+		ge=4000,
+		le=200000,
+		description="Soft cap on total mandate_tool_observation preview chars in exploration_ledger.",
+	)
+	reviewer_mandate_bootstrap_digest_max_chars: int = Field(
+		default=1200,
+		ge=200,
+		le=8000,
+		description="Planner/critic bootstrap digest size stored in metadata.mental_model.",
+	)
+	reviewer_mandate_plan_max_cycles: int = Field(
+		default=3,
+		ge=1,
+		le=8,
+		description="Max joint critic cycles (explorer/patch/revision) before plan_emit.",
+	)
+	reviewer_mandate_spec_excerpt_max_chars: int = Field(
+		default=8000,
+		ge=1000,
+		le=32000,
+		description="BehavioralSpec JSON excerpt size for mandate synthesizer prompts (full spec).",
+	)
+	reviewer_context_intent_max_chars: int = Field(
+		default=4000,
+		ge=500,
+		le=32000,
+		description="ContextPacket char budget for intent_extractor.",
+	)
+	reviewer_context_mandate_synth_max_chars: int = Field(
+		default=8000,
+		ge=1000,
+		le=32000,
+		description="ContextPacket char budget for mandate_synthesizer.",
+	)
+	reviewer_context_plan_critic_max_chars: int = Field(
+		default=6000,
+		ge=1000,
+		le=32000,
+		description="ContextPacket char budget for draft_planner / plan_critic / plan_revision.",
+	)
+	reviewer_critique_packet_max_chars: int = Field(
+		default=22000,
+		ge=4000,
+		le=64000,
+		description=(
+			"Quality ceiling for task-scoped critique evidence and critiquer ContextPacket "
+			"(code slices + principles; diff hunk capped separately)."
+		),
+	)
+	reviewer_context_critique_probe_max_chars: int = Field(
+		default=16000,
+		ge=2000,
+		le=64000,
+		description="ContextPacket char budget for critique_context_probe (pre-critiquer gather).",
+	)
+	reviewer_context_critiquer_max_chars: int = Field(
+		default=20000,
+		ge=2000,
+		le=64000,
+		description="ContextPacket char budget for general_critiquer LLM prompt.",
+	)
+	reviewer_context_critiquer_diff_hunk_max_chars: int = Field(
+		default=4000,
+		ge=500,
+		le=32000,
+		description="Per-section cap for git diff excerpt inside critiquer ContextPacket.",
+	)
+	reviewer_context_reflection_max_chars: int = Field(
+		default=14000,
+		ge=500,
+		le=32000,
+		description="ContextPacket char budget per adversarial_reflection batch.",
+	)
+	reviewer_context_verifier_gen_max_chars: int = Field(
+		default=4000,
+		ge=500,
+		le=32000,
+		description="ContextPacket char budget for verifier test_generator.",
+	)
 	reviewer_cleanup_redis_checkpoints: bool = Field(
 		default=True,
 		description="Delete per-PR Redis checkpoints after reviewer-agent experiments finish each graph run.",
@@ -404,7 +512,7 @@ class Settings(BaseSettings):
 		),
 	)
 	reviewer_critique_revision_max_shard_chars: int = Field(
-		default=12_000,
+		default=16_000,
 		ge=2_000,
 		description="Approximate max characters of focused context JSON per critique-revision digest shard.",
 	)
@@ -412,6 +520,21 @@ class Settings(BaseSettings):
 		default=8_000,
 		ge=500,
 		description="Truncate inlined CandidateFinding JSON per digest shard prompt.",
+	)
+	reviewer_critique_revision_reduce_batch_size: int = Field(
+		default=2,
+		ge=1,
+		le=4,
+		description="Candidates per critique_revision_reduce LLM call (1–2 recommended to avoid output token ceiling).",
+	)
+	reviewer_critique_revision_max_completion_tokens: int = Field(
+		default=16_384,
+		ge=512,
+		le=65536,
+		description=(
+			"Completion token cap for critique_revision digest and reduce structured-output calls "
+			"(overrides reviewer_worker_max_completion_tokens for those nodes only)."
+		),
 	)
 	reviewer_reflection_retry_backoff_seconds: float = Field(
 		default=5.0,
@@ -484,10 +607,10 @@ class Settings(BaseSettings):
 		description="Wall-clock timeout per verifier script execution.",
 	)
 	verifier_max_attempts: int = Field(
-		default=3,
+		default=4,
 		ge=1,
 		le=5,
-		description="Max test-generation/execute cycles per candidate before inconclusive.",
+		description="Max test-generation/execute cycles per candidate before inconclusive (self-healing retries).",
 	)
 	verifier_run_on_defect: bool = Field(
 		default=True,
@@ -535,6 +658,18 @@ class Settings(BaseSettings):
 		ge=1_000,
 		le=500_000,
 		description="Truncate each linter stdout/stderr stream stored on verifier attempts.",
+	)
+	verifier_focused_context_max_chars: int = Field(
+		default=16_000,
+		ge=2_000,
+		le=120_000,
+		description="Max characters of focused-context JSON passed to the verifier test generator.",
+	)
+	verifier_test_generator_max_completion_tokens: int = Field(
+		default=8192,
+		ge=1024,
+		le=32_768,
+		description="Completion token cap for verifier test-script generation (separate from worker default).",
 	)
 
 	# Phase 2 semantic enrichment + snapshot layout
@@ -599,14 +734,14 @@ class Settings(BaseSettings):
 		description="Max resolver self-loop rounds for newly surfaced unverified targets.",
 	)
 	semantic_model_key: str = Field(
-		default="qwen3.5-35b-a3b",
+		default=DEFAULT_LOCAL_MODEL_KEY,
 		description=(
 			"Models factory key for community semantic agents (same registry as reviewer_worker_model_key). "
 			"Defaults to the local Qwen stack; set e.g. gemini-pro only if langchain-google-genai is installed."
 		),
 	)
 	semantic_merge_model_key: str = Field(
-		default="qwen3.5-35b-a3b",
+		default=DEFAULT_LOCAL_MODEL_KEY,
 		description=(
 			"Models factory key for global semantic synthesis at merge (same as Models.DEFAULT_ROLE_MODELS['synthesizer']). "
 			"Defaults to local Qwen; override with REVIEW_SEMANTIC_MERGE_MODEL_KEY."

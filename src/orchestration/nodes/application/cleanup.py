@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any, Dict, List, Mapping, Sequence
 
 from src.domain.schemas import (
@@ -15,6 +16,25 @@ from src.domain.schemas import (
 from src.config import Settings, get_settings
 from src.domain.state import GraphState
 from src.orchestration.routing.misroute_recovery import parse_misroute_redirect_category
+from src.orchestration.nodes.verifier.failure_class import verifier_refutation_applies
+from src.orchestration.routing.finding_dedupe import (
+    candidate_with_behavioral_metadata,
+    changed_files_from_diff,
+    dedupe_candidates_by_signature,
+    dedupe_review_findings_by_signature,
+    ensure_unique_finding_ids,
+    infer_root_operation,
+    is_required_upstream_none_guard_claim,
+    is_resolution_only_finding,
+    recommendation_cites_foreign_class,
+    resolve_repo_file_path,
+    review_finding_semantic_key,
+    revision_summary_conflicts_with_claim,
+)
+from src.orchestration.routing.reflection_consolidation import (
+    TIER1_LOCALIZED_MARKERS,
+    consolidate_reflection_reports,
+)
 
 logger = logging.getLogger(__name__)
 trace_logger = logging.getLogger("research_pipeline.reviewer_trace")
@@ -49,37 +69,34 @@ _TIER2_EXTERNAL_CONTEXT_MARKERS = (
     "service ",
     "contract",
 )
-
-# Tier 1: localized defect signals — do not force focused-context gathers solely for claim_type.
-_TIER1_LOCALIZED_MARKERS = (
-    "redos",
-    "backtrack",
-    "catastrophic backtracking",
-    "regex",
-    "re.search",
-    "re.match",
-    "re.sub",
-    "re.compile",
-    "re.fullmatch",
-    "len(",
-    "nonetype",
-    "none",
-    "typeerror",
-    "attributeerror",
-    "indexerror",
-    "keyerror",
-    "zerodivision",
-    "off-by-one",
-    "group 0",
-    "capture group",
-    "division by zero",
-    "n+1",
-    "nested loop",
-    "quadratic",
-    "o(n^2)",
-    "memory leak",
+_BROAD_RISK_BOUNDARY_MARKERS = (
+    "attacker",
+    "untrusted",
+    "user-controlled",
+    "external",
+    "remote",
+    "public",
+    "request",
+    "tenant",
+    "cross-boundary",
+    "shared",
+    "network",
+    "endpoint",
 )
-
+_SCOPE_OUTSIDE_MARKERS = (
+    "outside the try",
+    "outside try",
+    "not wrapped",
+    "not enclosed",
+    "not caught",
+    "uncaught",
+)
+_SCOPE_INSIDE_MARKERS = (
+    "inside the try",
+    "wrapped by try",
+    "enclosed by try",
+    "caught by",
+)
 
 def _trace_enabled(state: GraphState) -> bool:
     metadata = state.get("metadata", {}) or {}
@@ -179,12 +196,104 @@ def _candidate_evidence_blob(candidate: CandidateFinding) -> str:
     ).lower()
 
 
+def _task_evidence_file_text(state: GraphState, candidate: CandidateFinding) -> str:
+    metadata = state.get("metadata") if isinstance(state.get("metadata"), dict) else {}
+    pipe = metadata.get("critique_pipeline") if isinstance(metadata.get("critique_pipeline"), dict) else {}
+    by_task = pipe.get("by_task") if isinstance(pipe.get("by_task"), dict) else {}
+    task_ids = [candidate.patch_task_id] + [tid for tid in by_task if tid != candidate.patch_task_id]
+    norm_fp = (candidate.file_path or "").replace("\\", "/").lstrip("/")
+    for tid in task_ids:
+        slot = by_task.get(tid) if isinstance(by_task, dict) else None
+        if not isinstance(slot, dict):
+            continue
+        te = slot.get("task_evidence") if isinstance(slot.get("task_evidence"), dict) else {}
+        files = te.get("file_contents") if isinstance(te.get("file_contents"), dict) else {}
+        for raw_path, body in files.items():
+            fp = str(raw_path).replace("\\", "/").lstrip("/")
+            if fp == norm_fp or fp.endswith("/" + norm_fp):
+                return str(body or "")
+    return ""
+
+
+def _quoted_scope_terms(text: str) -> list[str]:
+    terms = re.findall(r"'([^']{2,80})'|\"([^\"]{2,80})\"", text)
+    out: list[str] = []
+    for a, b in terms:
+        term = (a or b).strip()
+        if term and term.lower() not in {"try", "except", "else", "finally"}:
+            out.append(term)
+    return out[:4]
+
+
+def _line_inside_indented_try(lines: list[str], line_no: int) -> bool:
+    if line_no < 1 or line_no > len(lines):
+        return False
+    active: list[int] = []
+    for idx, raw in enumerate(lines, start=1):
+        stripped = raw.strip()
+        indent = len(raw) - len(raw.lstrip(" "))
+        active = [level for level in active if stripped == "" or indent > level]
+        if stripped.startswith(("except", "finally")) and stripped.endswith(":"):
+            active = [level for level in active if indent > level]
+        if idx == line_no:
+            return bool(active)
+        if stripped.startswith("try") and stripped.endswith(":"):
+            active.append(indent)
+    return False
+
+
+def _scope_claim_contradicted(state: GraphState, candidate: CandidateFinding) -> bool:
+    blob = _candidate_evidence_blob(candidate)
+    says_outside = any(marker in blob for marker in _SCOPE_OUTSIDE_MARKERS)
+    says_inside = any(marker in blob for marker in _SCOPE_INSIDE_MARKERS)
+    if not says_outside and not says_inside:
+        return False
+    text = _task_evidence_file_text(state, candidate)
+    if not text.strip():
+        return False
+    lines = text.splitlines()
+    probe_lines: list[int] = []
+    for term in _quoted_scope_terms(blob):
+        for idx, raw in enumerate(lines, start=1):
+            if term in raw.lower():
+                probe_lines.append(idx)
+                break
+    if not probe_lines:
+        probe_lines.append(int(candidate.line_start or 1))
+    inside = any(_line_inside_indented_try(lines, line_no) for line_no in probe_lines)
+    if says_outside and inside:
+        return True
+    if says_inside and not inside:
+        return True
+    return False
+
+
+def _broad_risk_without_impact_path(candidate: CandidateFinding) -> bool:
+    if candidate.claim_type not in {"security_risk", "performance_regression"}:
+        return False
+    normalized = candidate_with_behavioral_metadata(candidate)
+    root = normalized.root_operation or infer_root_operation(
+        candidate.content,
+        candidate.failure_mode,
+        candidate.evidence_summary,
+        candidate.recommendation or "",
+    )
+    if root != "resource_use" and normalized.behavioral_symptom != "unbounded_work":
+        return False
+    blob = _candidate_evidence_blob(candidate)
+    if any(marker in blob for marker in _BROAD_RISK_BOUNDARY_MARKERS):
+        return False
+    if candidate.required_context:
+        return False
+    return True
+
+
 def _high_risk_claim_needs_external_context(candidate: CandidateFinding) -> bool:
     """When claim_type is security_risk or performance_regression, decide if promotion requires focused hits."""
     blob = _candidate_evidence_blob(candidate)
     if any(marker in blob for marker in _TIER2_EXTERNAL_CONTEXT_MARKERS):
         return True
-    if any(marker in blob for marker in _TIER1_LOCALIZED_MARKERS):
+    if any(marker in blob for marker in TIER1_LOCALIZED_MARKERS):
         return False
     return True
 
@@ -204,7 +313,7 @@ def _accepted_localized_defect(candidate: CandidateFinding, reports: Sequence[Re
     if not any(report.verdict == "accept" for report in reports):
         return False
     blob = _candidate_evidence_blob(candidate)
-    return any(marker in blob for marker in _TIER1_LOCALIZED_MARKERS)
+    return any(marker in blob for marker in TIER1_LOCALIZED_MARKERS)
 
 
 def _revision_accepts(candidate_id: str, revisions: Mapping[str, Mapping[str, Any]]) -> bool:
@@ -212,19 +321,64 @@ def _revision_accepts(candidate_id: str, revisions: Mapping[str, Mapping[str, An
     return str(rev.get("verdict", "")).lower() == "accept"
 
 
+def _revision_overrides_reflector_reject(
+    state: GraphState,
+    candidate_id: str,
+    revisions: Mapping[str, Mapping[str, Any]],
+    verifier_hints: Mapping[str, Any],
+) -> bool:
+    """Post-revision accept supersedes an earlier reflector reject when second-pass evidence exists."""
+    if not _revision_accepts(candidate_id, revisions):
+        return False
+    if _focused_hits_for_candidate(state, candidate_id):
+        return True
+    if _verifier_concrete_behavior_verified(candidate_id, verifier_hints):
+        return True
+    hint = verifier_hints.get(candidate_id)
+    if isinstance(hint, dict) and str(hint.get("verdict", "")).lower() == "verified":
+        rationale = str(hint.get("final_rationale") or "").lower()
+        if "mismatch" in rationale:
+            return True
+    return False
+
+
 def _verifier_harness_error(candidate_id: str, verifier_hints: Mapping[str, Any]) -> bool:
     hint = verifier_hints.get(candidate_id)
     return isinstance(hint, dict) and bool(hint.get("harness_error"))
 
 
+def _revision_evidence_extra(
+    candidate: CandidateFinding,
+    revision: Mapping[str, Any],
+) -> str:
+    summary = revision.get("updated_evidence_summary")
+    if not isinstance(summary, str) or not summary.strip():
+        return ""
+    if revision_summary_conflicts_with_claim(
+        content=candidate.content or "",
+        failure_mode=candidate.failure_mode or "",
+        evidence_summary=candidate.evidence_summary or "",
+        revision_summary=summary,
+    ):
+        return ""
+    return f"\n\nPost-context evidence: {summary}"
+
+
 def _verifier_concrete_behavior_verified(candidate_id: str, verifier_hints: Mapping[str, Any]) -> bool:
     hint = verifier_hints.get(candidate_id)
-    return (
-        isinstance(hint, dict)
-        and str(hint.get("verdict", "")).lower() == "verified"
-        and str(hint.get("verification_scope", "")) == "concrete_behavior"
-        and not hint.get("harness_error")
-    )
+    if not isinstance(hint, dict):
+        return False
+    if str(hint.get("verdict", "")).lower() != "verified":
+        return False
+    if str(hint.get("verification_scope", "")) != "concrete_behavior":
+        return False
+    if hint.get("harness_error"):
+        return False
+    # Prefer explicit product proof flag from verifier finalize; fall back for older hints.
+    if "product_verified" in hint:
+        return bool(hint.get("product_verified"))
+    final_rationale = str(hint.get("final_rationale") or "").lower()
+    return "mismatch" in final_rationale or "target file" in final_rationale
 
 
 def _required_context_satisfied_by_verifier(
@@ -238,7 +392,7 @@ def _required_context_satisfied_by_verifier(
     if candidate.claim_type != "defect":
         return False
     blob = _candidate_evidence_blob(candidate)
-    return any(marker in blob for marker in _TIER1_LOCALIZED_MARKERS)
+    return any(marker in blob for marker in TIER1_LOCALIZED_MARKERS)
 
 
 def _misroute_redirect_category(not_applicable_reports: Sequence[ReflectionReport]) -> ReviewCategory | None:
@@ -262,7 +416,7 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
                 candidates.append(raw)
             elif isinstance(raw, dict):
                 candidates.append(CandidateFinding.model_validate(raw))
-        reports = list(state.get("reflection_reports", []) or [])
+        reports = consolidate_reflection_reports(state.get("reflection_reports", []) or [])
         metadata = dict(state.get("metadata", {}))
         revisions = _revision_map(metadata)
         verifier_hints: Dict[str, Any] = dict(metadata.get("verifier_hints") or {})
@@ -273,6 +427,15 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
                 "metadata": metadata,
                 "node_history": [f"{node_name}:empty"],
             }
+
+        git_diff = (state.get("git_diff", "") or "")[:50000]
+        changed_files = changed_files_from_diff(git_diff)
+        ast_files = metadata.get("ast_included_files") or []
+        if isinstance(ast_files, list):
+            for raw_path in ast_files:
+                if isinstance(raw_path, str) and raw_path.strip():
+                    changed_files.add(raw_path.strip().replace("\\", "/"))
+        candidates, semantic_duplicates = dedupe_candidates_by_signature(candidates, git_diff=git_diff)
 
         by_cand = _reports_by_candidate(reports)
         cleanup_settings = settings or get_settings()
@@ -295,6 +458,55 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
             }
 
         for candidate in candidates:
+            candidate = candidate_with_behavioral_metadata(candidate)
+            rev_early = revisions.get(candidate.candidate_id) or {}
+            rev_summary_early = str(rev_early.get("updated_evidence_summary") or "")
+            if is_resolution_only_finding(
+                candidate.content,
+                candidate.recommendation or "",
+                candidate.evidence_summary,
+                rev_summary_early,
+            ):
+                drop(candidate, "resolution_only_not_promotable")
+                continue
+            if is_required_upstream_none_guard_claim(candidate):
+                drop(candidate, "required_param_none_guard_out_of_scope")
+                continue
+            if _scope_claim_contradicted(state, candidate):
+                drop(candidate, "scope_claim_contradicted_by_code_evidence")
+                continue
+            early_harness_error = _verifier_harness_error(candidate.candidate_id, verifier_hints)
+            early_revision_accepted = _revision_accepts(candidate.candidate_id, revisions)
+            if (
+                _broad_risk_without_impact_path(candidate)
+                and not (
+                    candidate.claim_type == "security_risk"
+                    and early_harness_error
+                    and not _verifier_concrete_behavior_verified(candidate.candidate_id, verifier_hints)
+                    and not _focused_hits_for_candidate(state, candidate.candidate_id)
+                    and not early_revision_accepted
+                )
+            ):
+                drop(candidate, "broad_risk_without_concrete_impact_path")
+                continue
+
+            if changed_files:
+                resolved_path = resolve_repo_file_path(candidate.file_path, changed_files)
+                if resolved_path is None:
+                    drop(candidate, "file_path_not_in_changed_set", {"file_path": candidate.file_path})
+                    continue
+                if resolved_path != candidate.file_path:
+                    candidate = candidate.model_copy(update={"file_path": resolved_path})
+
+            if recommendation_cites_foreign_class(
+                content=candidate.content,
+                failure_mode=candidate.failure_mode,
+                evidence_summary=candidate.evidence_summary,
+                recommendation=candidate.recommendation or "",
+            ):
+                drop(candidate, "recommendation_cites_foreign_class")
+                continue
+
             cand_reports = by_cand.get(candidate.candidate_id, [])
             specialties = {r.reflector_specialty for r in cand_reports}
             missing = EXPECTED_REFLECTORS - specialties
@@ -339,6 +551,14 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
             relevant_needs_verification = any(
                 report.verdict == "needs_verification" for report in relevant_reports
             )
+            has_focused_context = _focused_hits_for_candidate(state, candidate.candidate_id)
+            revision_accepted = _revision_accepts(candidate.candidate_id, revisions)
+            revision_overrides_reject = _revision_overrides_reflector_reject(
+                state,
+                candidate.candidate_id,
+                revisions,
+                verifier_hints,
+            )
             off_domain_reports = [
                 report for report in cand_reports if report.reflector_specialty not in relevant_reflectors
             ]
@@ -381,12 +601,21 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
                     and _candidate_has_actionability(candidate)
                     and candidate.claim_type in PROMOTABLE_CLAIM_TYPES
                 ):
+                    if (
+                        candidate.claim_type == "security_risk"
+                        and _verifier_harness_error(candidate.candidate_id, verifier_hints)
+                        and not _verifier_concrete_behavior_verified(
+                            candidate.candidate_id, verifier_hints
+                        )
+                        and not has_focused_context
+                        and not revision_accepted
+                    ):
+                        drop(candidate, "security_unverified_harness_error")
+                        continue
                     category = redirect_category
                     feedback_type = _category_to_feedback(category)  # type: ignore[arg-type]
                     rev = revisions.get(candidate.candidate_id) or {}
-                    evidence_extra = ""
-                    if isinstance(rev.get("updated_evidence_summary"), str) and rev["updated_evidence_summary"]:
-                        evidence_extra = f"\n\nPost-context evidence: {rev['updated_evidence_summary']}"
+                    evidence_extra = _revision_evidence_extra(candidate, rev)
                     runtime_note = ""
                     if _verifier_harness_error(candidate.candidate_id, verifier_hints):
                         runtime_note = "\n\n(runtime unverified: verifier harness error)"
@@ -420,7 +649,7 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
                 )
                 continue
 
-            if any(r.verdict == "reject" for r in relevant_reports):
+            if any(r.verdict == "reject" for r in relevant_reports) and not revision_overrides_reject:
                 drop(
                     candidate,
                     "relevant_reflector_reject",
@@ -429,14 +658,17 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
                             report.reflector_specialty
                             for report in relevant_reports
                             if report.verdict == "reject"
-                        ]
+                        ],
                     },
                 )
                 continue
 
-            if not any(
-                r.verdict in {"accept", "reclassify", "needs_context", "needs_verification"}
-                for r in relevant_reports
+            if not (
+                any(
+                    r.verdict in {"accept", "reclassify", "needs_context", "needs_verification"}
+                    for r in relevant_reports
+                )
+                or revision_overrides_reject
             ):
                 drop(
                     candidate,
@@ -469,9 +701,17 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
 
             needs_context = any(r.verdict == "needs_context" for r in relevant_reports)
             requires_context = _candidate_requires_context(candidate)
-            has_focused_context = _focused_hits_for_candidate(state, candidate.candidate_id)
-            revision_accepted = _revision_accepts(candidate.candidate_id, revisions)
             harness_error = _verifier_harness_error(candidate.candidate_id, verifier_hints)
+            if (
+                candidate.claim_type == "security_risk"
+                and harness_error
+                and not _verifier_concrete_behavior_verified(candidate.candidate_id, verifier_hints)
+                and not has_focused_context
+                and not revision_accepted
+            ):
+                drop(candidate, "security_unverified_harness_error")
+                continue
+
             verifier_satisfies_context = _required_context_satisfied_by_verifier(
                 candidate, candidate.candidate_id, verifier_hints
             )
@@ -480,9 +720,15 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
                 context_requirement_overridden = (
                     _accepted_localized_defect(candidate, relevant_reports)
                     or revision_accepted
-                    or harness_error
                     or verifier_satisfies_context
                 )
+                if (
+                    candidate.claim_type == "security_risk"
+                    and harness_error
+                    and not verifier_satisfies_context
+                    and not revision_accepted
+                ):
+                    context_requirement_overridden = False
             if requires_context and not has_focused_context and not context_requirement_overridden:
                 drop(
                     candidate,
@@ -521,9 +767,13 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
                     pass
                 elif (
                     isinstance(hint, dict)
-                    and str(hint.get("verdict", "")).lower() == "refuted"
-                    and str(hint.get("verification_scope", "")) == "concrete_behavior"
                     and verdict == "accept"
+                    and verifier_refutation_applies(
+                        candidate.model_dump(mode="json"),
+                        verifier_verdict=str(hint.get("verdict", "")),
+                        verification_scope=str(hint.get("verification_scope", "")),
+                        harness_error=bool(hint.get("harness_error")),
+                    )
                 ):
                     drop(candidate, "verifier_refuted_concrete_behavior")
                     continue
@@ -542,10 +792,8 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
                     continue
 
             feedback_type = _category_to_feedback(category)  # type: ignore[arg-type]
-            evidence_extra = ""
             rev = revisions.get(candidate.candidate_id) or {}
-            if isinstance(rev.get("updated_evidence_summary"), str) and rev["updated_evidence_summary"]:
-                evidence_extra = f"\n\nPost-context evidence: {rev['updated_evidence_summary']}"
+            evidence_extra = _revision_evidence_extra(candidate, rev)
             if harness_error and revision_accepted and "runtime unverified" not in evidence_extra.lower():
                 evidence_extra += "\n\n(runtime unverified: verifier harness error)"
 
@@ -562,14 +810,25 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
                     references=[],
                 )
             )
+            promote_reason = (
+                "critique_revision_accept_overrides_reject"
+                if revision_overrides_reject
+                else "accepted_by_relevant_reflectors"
+            )
             lifecycle[candidate.candidate_id] = {
                 "decision": "promoted",
-                "reason": "accepted_by_relevant_reflectors",
+                "reason": promote_reason,
                 "claim_type": candidate.claim_type,
                 "final_category": category,
                 "relevant_reflectors": sorted(relevant_reflectors),
                 "had_focused_context": has_focused_context,
             }
+            if revision_overrides_reject:
+                lifecycle[candidate.candidate_id]["overridden_rejecting_reflectors"] = [
+                    report.reflector_specialty
+                    for report in relevant_reports
+                    if report.verdict == "reject"
+                ]
             if abstaining_reflectors:
                 lifecycle[candidate.candidate_id]["abstaining_reflectors"] = sorted(abstaining_reflectors)
             if context_requirement_overridden:
@@ -592,6 +851,34 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
             if candidate.candidate_id in verifier_hints:
                 lifecycle[candidate.candidate_id]["verifier_advisory"] = verifier_hints[candidate.candidate_id]
 
+        severity_rank = {"high": 0, "medium": 1, "low": 2}
+        promoted = sorted(
+            promoted,
+            key=lambda item: (
+                severity_rank.get(item.severity, 99),
+                item.file_path,
+                item.line_start,
+                item.id,
+            ),
+        )
+        redos_kept: set[tuple[str, str]] = set()
+        redos_filtered: List[ReviewFinding] = []
+        dropped_redos_ids: List[str] = []
+        for finding in promoted:
+            key = review_finding_semantic_key(finding)
+            if key[2] == "redos":
+                scope = (key[0], key[1])
+                if scope in redos_kept:
+                    dropped_redos_ids.append(finding.id)
+                    continue
+                redos_kept.add(scope)
+            redos_filtered.append(finding)
+        promoted, finding_duplicates = dedupe_review_findings_by_signature(redos_filtered)
+        promoted = ensure_unique_finding_ids(promoted)
+        dropped_semantic_finding_ids = [
+            fid for ids in finding_duplicates.values() for fid in ids
+        ] + dropped_redos_ids
+
         if _trace_enabled(state):
             trace_logger.info(
                 "TRACE adversarial_cleanup run_id=%s promoted=%s dropped=%s",
@@ -608,7 +895,10 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
             "missing_required_reflections": missing_required_reflections,
             "misrouted_candidate_ids": misrouted_candidates,
             "candidate_lifecycle": lifecycle,
+            "dropped_semantic_duplicate_finding_ids": dropped_semantic_finding_ids,
         }
+        if semantic_duplicates:
+            cleanup_meta["semantic_dedupe_duplicates"] = semantic_duplicates
         metadata["adversarial_cleanup"] = cleanup_meta
 
         return {
