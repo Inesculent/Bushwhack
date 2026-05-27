@@ -22,6 +22,7 @@ from src.orchestration.routing.finding_dedupe import (
     changed_files_from_diff,
     dedupe_candidates_by_signature,
     dedupe_review_findings_by_signature,
+    ensure_unique_candidate_ids,
     ensure_unique_finding_ids,
     infer_root_operation,
     is_required_upstream_none_guard_claim,
@@ -194,6 +195,24 @@ def _candidate_evidence_blob(candidate: CandidateFinding) -> str:
             " ".join(candidate.required_context),
         ]
     ).lower()
+
+
+_INCOMPLETE_EVIDENCE_MARKERS = (
+    "truncated code",
+    "truncated context",
+    "incomplete code",
+    "incomplete context",
+    "cannot determine",
+    "can't determine",
+    "insufficient context",
+    "needs verification",
+    "needs more context",
+)
+
+
+def _candidate_depends_on_incomplete_evidence(candidate: CandidateFinding) -> bool:
+    blob = _candidate_evidence_blob(candidate)
+    return any(marker in blob for marker in _INCOMPLETE_EVIDENCE_MARKERS)
 
 
 def _task_evidence_file_text(state: GraphState, candidate: CandidateFinding) -> str:
@@ -427,6 +446,7 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
                 "metadata": metadata,
                 "node_history": [f"{node_name}:empty"],
             }
+        candidates = ensure_unique_candidate_ids(candidates)
 
         git_diff = (state.get("git_diff", "") or "")[:50000]
         changed_files = changed_files_from_diff(git_diff)
@@ -477,6 +497,14 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
                 continue
             early_harness_error = _verifier_harness_error(candidate.candidate_id, verifier_hints)
             early_revision_accepted = _revision_accepts(candidate.candidate_id, revisions)
+            if (
+                _candidate_depends_on_incomplete_evidence(candidate)
+                and not early_revision_accepted
+                and not _focused_hits_for_candidate(state, candidate.candidate_id)
+                and not _verifier_concrete_behavior_verified(candidate.candidate_id, verifier_hints)
+            ):
+                drop(candidate, "incomplete_evidence_without_followup")
+                continue
             if (
                 _broad_risk_without_impact_path(candidate)
                 and not (
@@ -873,6 +901,7 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
                     continue
                 redos_kept.add(scope)
             redos_filtered.append(finding)
+        redos_filtered = ensure_unique_finding_ids(redos_filtered)
         promoted, finding_duplicates = dedupe_review_findings_by_signature(redos_filtered)
         promoted = ensure_unique_finding_ids(promoted)
         dropped_semantic_finding_ids = [

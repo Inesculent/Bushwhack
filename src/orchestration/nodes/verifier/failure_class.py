@@ -79,3 +79,48 @@ def verifier_refutation_applies(
     if fclass == "crash":
         return True
     return True
+
+
+def verifier_confidence_label(
+    candidate: Dict[str, Any],
+    *,
+    verifier_verdict: str,
+    verification_scope: str,
+    harness_error: bool,
+    product_verified: bool = False,
+    stdout: str = "",
+    stderr: str = "",
+) -> str:
+    """Classify how strongly runtime verifier output should affect static review."""
+    if harness_error:
+        return "harness_only"
+    if str(verification_scope).lower() != "concrete_behavior":
+        return "scope_mismatch"
+    if product_verified:
+        return "clean_product_signal"
+    combined = f"{stdout}\n{stderr}".lower()
+    if (
+        str(verifier_verdict).lower() == "refuted"
+        and "status: safe" in combined
+        and verifier_refutation_applies(
+            candidate,
+            verifier_verdict=verifier_verdict,
+            verification_scope=verification_scope,
+            harness_error=harness_error,
+            stdout=stdout,
+            stderr=stderr,
+        )
+    ):
+        return "clean_product_signal"
+    if str(verifier_verdict).lower() == "refuted" and not verifier_refutation_applies(
+        candidate,
+        verifier_verdict=verifier_verdict,
+        verification_scope=verification_scope,
+        harness_error=harness_error,
+        stdout=stdout,
+        stderr=stderr,
+    ):
+        return "static_claim_not_runtime_refutable"
+    if str(verifier_verdict).lower() in {"verified", "refuted"}:
+        return "advisory"
+    return "advisory"

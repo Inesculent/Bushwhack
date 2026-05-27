@@ -80,9 +80,14 @@ _RESOLUTION_ONLY_MARKERS = (
     "no action required",
     "no fix needed",
     "no change needed",
+    "no critical defect",
+    "no critical issue",
+    "no correctness defect",
+    "no correctness issue",
     "false positive",
     "not a bug",
     "not a defect",
+    "not a correctness bug",
     "no defect",
     "no issue",
     "actually safe",
@@ -93,6 +98,15 @@ _RESOLUTION_ONLY_MARKERS = (
     "correct as written",
     "no failure mode",
     "recommendation: none",
+    "consider logging",
+    "add logging",
+    "logging for observability",
+    "document the expected",
+    "consider documenting",
+    "debugging aid",
+    "style-only",
+    "style only",
+    "maintainability only",
 )
 
 _REQUIRED_PARAM_NONE_MARKERS = (
@@ -232,8 +246,6 @@ def defect_family(*texts: str) -> str:
         return "redos"
     if any(m in blob for m in _NONE_JOIN_MARKERS):
         return "aggregation_none_type"
-    if any(m in blob for m in _GROUP_INDEX_MARKERS):
-        return "regex_group_index"
     if any(m in blob for m in _STRUCTURED_SLOT_MARKERS) and (
         "[0]" in blob
         or "m[0]" in blob
@@ -241,8 +253,12 @@ def defect_family(*texts: str) -> str:
         or "first slot" in blob
         or "first element" in blob
         or "data loss" in blob
+        or "findall" in blob
+        or "all matches" in blob
     ):
         return "structured_slot_truncation"
+    if any(m in blob for m in _GROUP_INDEX_MARKERS):
+        return "regex_group_index"
     if "indexerror" in blob or "off-by-one" in blob:
         return "index_bounds"
     if "duplicate" in blob and "import" in blob:
@@ -280,14 +296,14 @@ def infer_root_operation(*texts: str) -> str:
     blob = _blob_parts(*texts)
     if "try" in blob or "except" in blob or "uncaught" in blob or "exception scope" in blob:
         return "exception_scope"
+    if any(m in blob for m in _STRUCTURED_SLOT_MARKERS) or any(m in blob for m in _GROUP_INDEX_MARKERS):
+        return "indexing"
     if any(m in blob for m in _MISSING_BRANCH_MARKERS) or "dispatch" in blob or "mode" in blob:
         return "dispatch"
     if any(m in blob for m in _NONE_JOIN_MARKERS) or "join" in blob or "format" in blob:
         return "aggregation"
     if any(m in blob for m in _SECURITY_CLAIM_MARKERS) or "resource" in blob and "exhaust" in blob:
         return "resource_use"
-    if any(m in blob for m in _STRUCTURED_SLOT_MARKERS) or any(m in blob for m in _GROUP_INDEX_MARKERS):
-        return "indexing"
     if "serializ" in blob:
         return "serialization"
     if "contract" in blob or "return type" in blob or "return shape" in blob:
@@ -403,8 +419,8 @@ def semantic_finding_key(
     return ((file_path or "").strip().lower(), subject, family)
 
 
-def candidate_signature_key(candidate: CandidateFinding) -> tuple[str, str, str, str]:
-    """Candidate dedupe key: file + subject + behavioral symptom + root operation."""
+def candidate_signature_key(candidate: CandidateFinding) -> tuple[str, str, str, str, str]:
+    """Candidate dedupe key: file + subject + family + behavioral symptom + root operation."""
     normalized = candidate_with_behavioral_metadata(candidate)
     claim_content, _ = split_claim_and_post_context(normalized.content)
     subject = normalized_subject_for_key(
@@ -424,7 +440,14 @@ def candidate_signature_key(candidate: CandidateFinding) -> tuple[str, str, str,
             recommendation=normalized.recommendation or "",
         )
         symptom, root = _FAMILY_BEHAVIOR.get(family, ("other", "other"))
-    return ((normalized.file_path or "").strip().lower(), subject, symptom, root)
+    else:
+        family = _defect_family_for_dedupe(
+            content=claim_content,
+            failure_mode=normalized.failure_mode,
+            evidence_summary=normalized.evidence_summary,
+            recommendation=normalized.recommendation or "",
+        )
+    return ((normalized.file_path or "").strip().lower(), subject, family, symptom, root)
 
 
 def ensure_unique_finding_ids(findings: Sequence[ReviewFinding]) -> List[ReviewFinding]:
@@ -439,6 +462,21 @@ def ensure_unique_finding_ids(findings: Sequence[ReviewFinding]) -> List[ReviewF
             out.append(finding)
             continue
         out.append(finding.model_copy(update={"id": f"{base}__{count + 1}"}))
+    return out
+
+
+def ensure_unique_candidate_ids(candidates: Sequence[CandidateFinding]) -> List[CandidateFinding]:
+    """Guarantee distinct candidate ids before lifecycle tracking and dedupe."""
+    seen: dict[str, int] = {}
+    out: List[CandidateFinding] = []
+    for candidate in candidates:
+        base = (candidate.candidate_id or "candidate").strip() or "candidate"
+        count = seen.get(base, 0)
+        seen[base] = count + 1
+        if count == 0:
+            out.append(candidate)
+            continue
+        out.append(candidate.model_copy(update={"candidate_id": f"{base}__{count + 1}"}))
     return out
 
 
@@ -612,9 +650,9 @@ def dedupe_candidates_by_signature(
     git_diff: str = "",
 ) -> tuple[List[CandidateFinding], dict[str, list[str]]]:
     """Collapse same file/class/symptom/root-operation; keep strongest anchored candidate."""
-    kept: dict[tuple[str, str, str, str], CandidateFinding] = {}
+    kept: dict[tuple[str, str, str, str, str], CandidateFinding] = {}
     duplicates: dict[str, list[str]] = {}
-    order: list[tuple[str, str, str, str]] = []
+    order: list[tuple[str, str, str, str, str]] = []
 
     for cand in candidates:
         cand = candidate_with_behavioral_metadata(cand)
@@ -625,8 +663,9 @@ def dedupe_candidates_by_signature(
             continue
         primary = kept[key]
         preferred = pick_preferred_candidate(primary, cand, git_diff=git_diff)
-        dropped = cand if preferred is primary else primary
-        duplicates.setdefault(preferred.candidate_id, []).append(dropped.candidate_id)
+        dropped = primary if preferred.candidate_id == cand.candidate_id else cand
+        if preferred.candidate_id != dropped.candidate_id:
+            duplicates.setdefault(preferred.candidate_id, []).append(dropped.candidate_id)
         merged_mode = _merge_failure_mode_text(preferred.failure_mode, dropped.failure_mode)
         if merged_mode != preferred.failure_mode:
             preferred = preferred.model_copy(update={"failure_mode": merged_mode})
@@ -635,7 +674,7 @@ def dedupe_candidates_by_signature(
     return [kept[k] for k in order], duplicates
 
 
-def review_finding_semantic_key(finding: ReviewFinding) -> tuple[str, str, str]:
+def review_finding_semantic_key(finding: ReviewFinding) -> tuple[str, str, str, str, str]:
     claim_content, _ = split_claim_and_post_context(finding.content or "")
     recommendation = finding.recommendation or ""
     # Promoted findings often use stub content ("class Foo():") with the real claim in recommendation.
@@ -660,7 +699,11 @@ def review_finding_semantic_key(finding: ReviewFinding) -> tuple[str, str, str]:
             evidence_summary=claim_content,
             recommendation=recommendation,
         )
-    return ((finding.file_path or "").strip().lower(), subject, family)
+    symptom = infer_behavioral_symptom(combined)
+    root = infer_root_operation(combined)
+    if symptom == "other" and root == "other":
+        symptom, root = _FAMILY_BEHAVIOR.get(family, ("other", "other"))
+    return ((finding.file_path or "").strip().lower(), subject, family, symptom, root)
 
 
 def _finding_preference_score(finding: ReviewFinding, *, family: str) -> tuple:
@@ -689,10 +732,12 @@ def dedupe_review_findings_by_signature(
         if _finding_preference_score(finding, family=family) > _finding_preference_score(
             primary, family=family
         ):
-            duplicates.setdefault(finding.id, []).append(primary.id)
+            if finding.id != primary.id:
+                duplicates.setdefault(finding.id, []).append(primary.id)
             kept[key] = finding
         else:
-            duplicates.setdefault(primary.id, []).append(finding.id)
+            if primary.id != finding.id:
+                duplicates.setdefault(primary.id, []).append(finding.id)
 
     return [kept[k] for k in order], duplicates
 

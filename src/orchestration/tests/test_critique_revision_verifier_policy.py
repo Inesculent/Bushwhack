@@ -62,6 +62,7 @@ def test_apply_verifier_policy_refuted_forces_reject() -> None:
                     "verdict": "refuted",
                     "verification_scope": "concrete_behavior",
                     "harness_error": False,
+                    "product_verified": True,
                 }
             }
         },

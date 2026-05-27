@@ -19,7 +19,10 @@ from src.domain.verifier_schemas import VerifierReport
 from src.domain.state import GraphState
 from src.infrastructure.llm.factory import Models
 from src.infrastructure.llm.token_usage import extract_total_tokens_from_llm_result, parse_structured_output
-from src.orchestration.nodes.verifier.failure_class import verifier_refutation_applies
+from src.orchestration.nodes.verifier.failure_class import (
+    verifier_confidence_label,
+    verifier_refutation_applies,
+)
 from src.orchestration.context.context_packets import (
     build_critique_revision_shard_packet,
     packet_to_prompt_sections,
@@ -490,16 +493,30 @@ def _apply_verifier_policy_to_revisions(
         harness = bool(hint.get("harness_error"))
         v_verdict = str(hint.get("verdict") or "").lower()
         scope = str(hint.get("verification_scope") or "")
+        confidence = str(hint.get("confidence") or "")
         verdict = str(row.get("verdict") or "").lower()
         summary = str(row.get("updated_evidence_summary") or "")
+        cand = candidates_by_id.get(cid)
+        cand_dict = cand.model_dump(mode="json") if cand is not None else {"failure_mode": ""}
+        if not confidence:
+            confidence = verifier_confidence_label(
+                cand_dict,
+                verifier_verdict=v_verdict,
+                verification_scope=scope,
+                harness_error=harness,
+                product_verified=bool(hint.get("product_verified")),
+            )
         if harness:
             note = "runtime unverified (harness)"
             if note not in summary:
                 row["updated_evidence_summary"] = f"{summary} {note}".strip()
             warnings.append(f"critique_revision_harness:{cid}")
-        elif v_verdict == "refuted" and scope == "concrete_behavior" and verdict == "accept":
-            cand = candidates_by_id.get(cid)
-            cand_dict = cand.model_dump(mode="json") if cand is not None else {"failure_mode": ""}
+        elif (
+            v_verdict == "refuted"
+            and scope == "concrete_behavior"
+            and confidence == "clean_product_signal"
+            and verdict == "accept"
+        ):
             if verifier_refutation_applies(
                 cand_dict,
                 verifier_verdict=v_verdict,
@@ -516,6 +533,13 @@ def _apply_verifier_policy_to_revisions(
                 if note not in summary:
                     row["updated_evidence_summary"] = f"{summary} {note}".strip()
                 warnings.append(f"critique_revision_verifier_inconclusive_wrong_output:{cid}")
+        elif v_verdict == "refuted" and verdict == "accept":
+            note = f"runtime advisory only ({confidence})"
+            if note not in summary:
+                row["updated_evidence_summary"] = f"{summary} {note}".strip()
+            if confidence == "static_claim_not_runtime_refutable":
+                warnings.append(f"critique_revision_verifier_inconclusive_wrong_output:{cid}")
+            warnings.append(f"critique_revision_verifier_advisory:{cid}:{confidence}")
         adjusted.append(row)
     return adjusted, warnings
 

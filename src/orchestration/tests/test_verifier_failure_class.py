@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from src.orchestration.nodes.verifier.failure_class import (
     failure_mode_class,
+    verifier_confidence_label,
     verifier_refutation_applies,
 )
 
@@ -35,4 +36,29 @@ def test_verifier_refutation_crash_refuted_applies() -> None:
         verification_scope="concrete_behavior",
         harness_error=False,
         stdout="STATUS: SAFE",
+    )
+
+
+def test_verifier_confidence_requires_product_or_explicit_safe_signal() -> None:
+    assert (
+        verifier_confidence_label(
+            {"failure_mode": "IndexError when out of bounds"},
+            verifier_verdict="refuted",
+            verification_scope="concrete_behavior",
+            harness_error=False,
+            product_verified=False,
+            stdout="ordinary exit 0",
+        )
+        == "advisory"
+    )
+    assert (
+        verifier_confidence_label(
+            {"failure_mode": "IndexError when out of bounds"},
+            verifier_verdict="refuted",
+            verification_scope="concrete_behavior",
+            harness_error=False,
+            product_verified=False,
+            stdout="STATUS: SAFE",
+        )
+        == "clean_product_signal"
     )

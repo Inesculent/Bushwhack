@@ -941,6 +941,29 @@ def build_critiquer_packet(
         ),
         _section("code_evidence", 2, code_evidence, source="critique_probe"),
     ]
+    obligations = pipeline_slot.get("coverage_obligations")
+    if isinstance(obligations, list) and obligations:
+        lines = []
+        for raw in obligations[:20]:
+            if not isinstance(raw, dict):
+                continue
+            lines.append(
+                "- {surface} | {dimension} | file_complete={complete} | evidence={evidence}".format(
+                    surface=str(raw.get("surface") or ""),
+                    dimension=str(raw.get("dimension") or ""),
+                    complete=bool(raw.get("files_complete")),
+                    evidence=str(raw.get("evidence") or ""),
+                )
+            )
+        if lines:
+            sections.append(
+                _section(
+                    "coverage_obligations",
+                    3,
+                    "\n".join(lines),
+                    source="deterministic_code_shape",
+                )
+            )
     if struct_excerpt:
         sections.append(
             _section("structural_excerpt", 2, struct_excerpt, source="structural_graph")

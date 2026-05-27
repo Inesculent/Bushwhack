@@ -200,6 +200,7 @@ def verifier_finalize_node(state: GraphState) -> Dict[str, Any]:
         },
     )
 
+    from src.orchestration.nodes.verifier.failure_class import verifier_confidence_label
     from src.orchestration.routing.verifier_fanout import _lint_advisory_from_report
 
     meta = dict(state.get("metadata") or {})
@@ -212,6 +213,16 @@ def verifier_finalize_node(state: GraphState) -> Dict[str, Any]:
     )
     harness_error = hint_flags["harness_error"]
     product_verified = hint_flags["product_verified"]
+    last_attempt = report.attempts[-1] if report.attempts else None
+    confidence = verifier_confidence_label(
+        cand_dict,
+        verifier_verdict=report.verdict,
+        verification_scope=report.verification_scope,
+        harness_error=harness_error,
+        product_verified=product_verified,
+        stdout=last_attempt.stdout if last_attempt is not None else "",
+        stderr=last_attempt.stderr if last_attempt is not None else "",
+    )
     hints[report.candidate_id] = {
         "verdict": report.verdict,
         "verification_scope": report.verification_scope,
@@ -222,6 +233,7 @@ def verifier_finalize_node(state: GraphState) -> Dict[str, Any]:
         "lint_advisory": _lint_advisory_from_report(report),
         "harness_error": harness_error,
         "product_verified": product_verified,
+        "confidence": confidence,
     }
     meta["verifier_hints"] = hints
     vrun = dict(meta.get("verifier") or {})

@@ -10,6 +10,7 @@ from src.orchestration.routing.finding_dedupe import (
     ensure_unique_finding_ids,
     is_resolution_only_finding,
 )
+from src.orchestration.routing.review_obligations import recall_audit_for_final_findings
 
 trace_logger = logging.getLogger("research_pipeline.reviewer_trace")
 
@@ -46,13 +47,40 @@ def synthesizer_node(state: GraphState) -> Dict[str, Any]:
             continue
         passed_gate.append(finding)
 
+    passed_gate = ensure_unique_finding_ids(passed_gate)
     deduped, duplicate_map = dedupe_review_findings_by_signature(passed_gate)
     deduped = ensure_unique_finding_ids(deduped)
     dropped_ids = [fid for ids in duplicate_map.values() for fid in ids]
 
     reports = state.get("reviewer_worker_reports", []) or []
     reflection_reports = state.get("reflection_reports", []) or []
+    candidates = state.get("candidate_findings", []) or []
     metadata = dict(state.get("metadata", {}))
+    coverage_by_task = {}
+    pipe = metadata.get("critique_pipeline") if isinstance(metadata.get("critique_pipeline"), dict) else {}
+    by_task = pipe.get("by_task") if isinstance(pipe.get("by_task"), dict) else {}
+    for task_id, slot in by_task.items():
+        if isinstance(slot, dict) and isinstance(slot.get("coverage_evaluation"), dict):
+            coverage_by_task[str(task_id)] = slot["coverage_evaluation"]
+    cleanup_meta = metadata.get("adversarial_cleanup")
+    lifecycle = cleanup_meta.get("candidate_lifecycle", {}) if isinstance(cleanup_meta, dict) else {}
+    promoted_candidate_ids = {
+        str(candidate_id)
+        for candidate_id, entry in lifecycle.items()
+        if isinstance(entry, dict) and entry.get("decision") == "promoted"
+    }
+    final_ids = {finding.id for finding in deduped}
+    equivalent_keeper = {
+        str(dropped): str(keeper)
+        for keeper, ids in duplicate_map.items()
+        for dropped in ids
+        if str(dropped) != str(keeper)
+    }
+    lost_promoted_ids = sorted(
+        cid
+        for cid in promoted_candidate_ids
+        if cid not in final_ids and equivalent_keeper.get(cid) not in final_ids
+    )
     metadata["review_synthesizer"] = {
         "worker_count": len(reports),
         "reflection_report_count": len(reflection_reports),
@@ -61,6 +89,13 @@ def synthesizer_node(state: GraphState) -> Dict[str, Any]:
         "dropped_duplicate_ids": dropped_ids,
         "semantic_dedupe_duplicates": duplicate_map,
         "dropped_resolution_only_ids": dropped_resolution_ids,
+        "lost_promoted_candidate_ids": lost_promoted_ids,
+        "recall_audit": recall_audit_for_final_findings(
+            obligations_by_task=coverage_by_task,
+            candidates=candidates,
+            final_findings=deduped,
+            duplicate_map=duplicate_map,
+        ),
         "worker_reports": [report.model_dump() for report in reports],
         "reflection_reports": [
             r.model_dump() if hasattr(r, "model_dump") else r for r in reflection_reports

@@ -15,6 +15,7 @@ from src.orchestration.routing.finding_dedupe import (
     candidate_with_behavioral_metadata,
     dedupe_candidates_by_signature,
     defect_family,
+    ensure_unique_candidate_ids,
     extract_subject_class,
     is_security_or_unbounded_pattern_claim,
 )
@@ -310,6 +311,8 @@ def normalize_critiquer_candidates(
         completed = candidate_with_behavioral_metadata(strengthened)
         for split in _split_compound_candidate(completed):
             normalized.append(with_single_reflection_specialty(split))
+
+    normalized = ensure_unique_candidate_ids(normalized)
 
     anchored, anchor_warnings, dropped_ids = apply_line_anchor_policy(
         normalized,

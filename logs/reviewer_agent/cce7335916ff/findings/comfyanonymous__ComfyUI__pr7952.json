@@ -1,0 +1,101 @@
+[
+  {
+    "id": "logic_group_3-2",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 158,
+    "line_end": 183,
+    "content": "class StringCompare():...",
+    "severity": "high",
+    "feedback_type": "defect_detection",
+    "recommendation": "Add a terminal `else` clause that raises a `ValueError` or returns a default boolean value (e.g., `False`) with a warning. This ensures the return type contract `(IO.BOOLEAN,)` is always met.",
+    "references": []
+  },
+  {
+    "id": "general_group_1-1",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 159,
+    "line_end": 189,
+    "content": "StringCompare.execute lacks a return statement for the 'Ends With' mode branch. The method declares RETURN_TYPES = (IO.BOOLEAN,), but the 'Ends With' branch falls through without returning a value, resulting in implicit None return which violates the boolean contract.",
+    "severity": "high",
+    "feedback_type": "defect_detection",
+    "recommendation": "Add 'return a.endswith(b),' to the 'Ends With' branch to ensure all code paths return a boolean value matching the declared contract.",
+    "references": []
+  },
+  {
+    "id": "general_group_1_003",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 228,
+    "line_end": 284,
+    "content": "RegexExtract may lose group data in All Matches mode\n\nPost-context evidence: Runtime verifier confirmed STATUS: MISMATCH (wrong output reproduced) - Expected list, got <class 'str'>. The 'All Matches' mode uses re.findall() which returns tuples when the pattern has capture groups, but the code only extracts m[0] for each match, discarding additional capture groups. This is inconsistent with the mode name and the 'All Groups' mode which should handle multiple groups. The verifier's STATUS: MISMATCH confirms wrong output behavior. The harness errors in earlier attempts don't invalidate the final MISMATCH verdict on the 4th attempt. runtime unverified (harness)",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Clarify the intended behavior. If 'All Matches' should return full matches only, use match.group(0) instead of accessing tuple indices. If it should include groups, flatten all groups from all matches. Consider renaming modes to be more explicit about group handling.",
+    "references": []
+  },
+  {
+    "id": "review-logic-structured-extraction-001:orthogonal-2",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 228,
+    "line_end": 284,
+    "content": "class RegexExtract():",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "For 'All Groups' mode, either (1) flatten all groups from all matches (e.g., [g for m in matches for g in m]) and join them, or (2) clarify the contract to return only the first group and rename the mode. The current implementation silently drops data when regex patterns have multiple capturing groups.",
+    "references": []
+  },
+  {
+    "id": "security_group_1-2",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 228,
+    "line_end": 323,
+    "content": "class RegexExtract(): ... elif mode == 'All Groups': ... if match.groups() and len(match.groups()) >= group_index: ... result = match.group(group_index)",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Clarify group_index semantics: either disallow 0 (min=1) if only capture groups are desired, or document that 0 returns the full match. Ensure validation uses >= group_index + 1 if 1-based, or adjust logic to match 0-based expectations.",
+    "references": []
+  },
+  {
+    "id": "security_group_1_002",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 228,
+    "line_end": 323,
+    "content": "class RegexExtract: RegexExtract in 'All Groups' mode uses re.finditer which may cause ReDoS on malicious patterns. The loop iterates over all matches without limiting result count, potentially amplifying resource usage on large inputs.\n\nPost-context evidence: Static code evidence confirms RegexExtract.execute() with mode='All Groups' (lines 280-287) uses re.finditer() without match count limits, potentially causing resource exhaustion on malicious patterns or large inputs. Runtime verifier inconclusive due to harness errors (import/argument issues), not product behavior, so static evidence stands. The 'All Matches' mode similarly uses re.findall() without limits (lines 267-274). No timeout or resource guard exists within execute() method. This represents a plausible security risk despite unsuccessful runtime reproduction due to test harness limitations. runtime unverified (harness)",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Add maximum match count limit (e.g., 1000 matches) and consider adding pattern complexity checks before execution.",
+    "references": []
+  },
+  {
+    "id": "security_group_1_003",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 228,
+    "line_end": 323,
+    "content": "RegexExtract uses group_index parameter without validating it matches actual group count in 'First Group' mode. If group_index exceeds available groups, match.group() could raise IndexError despite the length check.",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Fix group index validation: use len(match.groups()) >= group_index and ensure group_index > 0, or use match.groups()[group_index-1] with proper bounds checking.",
+    "references": []
+  },
+  {
+    "id": "security_group_1_004",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 228,
+    "line_end": 323,
+    "content": "RegexExtract 'All Groups' mode builds results list without size limits. join_delimiter.join(results) could create extremely large strings from many matches, causing memory exhaustion on large inputs with matching patterns.",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Add maximum result count limit (e.g., 1000 items) and/or maximum total output size check before join operation.",
+    "references": []
+  },
+  {
+    "id": "security_group_1_006:orthogonal-2",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 228,
+    "line_end": 323,
+    "content": "RegexExtract 'All Matches' mode assumes matches[0] is either tuple or scalar uniformly. If regex has mixed group structures, isinstance check may not handle all edge cases correctly, potentially causing wrong output.\n\nPost-context evidence: Runtime verifier confirmed STATUS: MISMATCH with wrong output reproduced. Digest shows re.findall returns tuples for patterns with groups and strings for patterns without groups. The code assumes uniform structure based on matches[0], which fails when optional groups create mixed match structures (e.g., some matches are tuples, others strings). The verifier test 4 shows the code produced empty string instead of expected output when testing pattern with optional groups. This confirms the defect in handling non-uniform match structures. runtime unverified (harness)",
+    "severity": "low",
+    "feedback_type": "defect_detection",
+    "recommendation": "Handle each match individually rather than assuming uniform structure, or validate pattern structure before execution.",
+    "references": []
+  }
+]

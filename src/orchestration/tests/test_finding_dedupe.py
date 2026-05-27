@@ -9,6 +9,7 @@ from src.orchestration.routing.finding_dedupe import (
     candidate_signature_key,
     dedupe_candidates_by_signature,
     dedupe_review_findings_by_signature,
+    ensure_unique_candidate_ids,
     ensure_unique_finding_ids,
     extract_subject_class,
     extract_subject_class_from_claim,
@@ -89,6 +90,18 @@ def test_dedupe_keeps_findall_and_group_index_candidates() -> None:
     out, dups = dedupe_candidates_by_signature([findall_c, group_c])
     assert len(out) == 2
     assert not dups
+
+
+def test_unique_candidate_ids_prevent_self_duplicate_maps() -> None:
+    first = _cand(candidate_id="t:dup")
+    second = _cand(candidate_id="t:dup")
+
+    unique = ensure_unique_candidate_ids([first, second])
+    out, dups = dedupe_candidates_by_signature(unique)
+
+    assert [c.candidate_id for c in unique] == ["t:dup", "t:dup__2"]
+    assert len(out) == 1
+    assert dups == {"t:dup": ["t:dup__2"]}
 
 
 def test_candidate_signature_uses_symptom_and_root_operation() -> None:
@@ -199,7 +212,7 @@ def test_duplicate_redos_findings_dedupe_by_handler() -> None:
         feedback_type="defect_detection",
         recommendation="Add complexity heuristics or timeout",
     )
-    out, dups = dedupe_review_findings_by_signature([a, b])
+    out, dups = dedupe_review_findings_by_signature(ensure_unique_finding_ids([a, b]))
     assert len(out) == 1
     assert len(dups) == 1
 
@@ -349,6 +362,34 @@ def test_dedupe_review_findings_merges_distinct_family_content() -> None:
     assert not dups
 
 
+def test_final_dedupe_preserves_structured_data_and_aggregation_findings() -> None:
+    data_loss = ReviewFinding(
+        id="data",
+        file_path="pkg/h.py",
+        line_start=10,
+        line_end=20,
+        content="class Handler: All Matches keeps only m[0] from tuple rows",
+        severity="high",
+        feedback_type="defect_detection",
+        recommendation="Preserve all captured slots from findall tuple results.",
+    )
+    aggregation = ReviewFinding(
+        id="agg",
+        file_path="pkg/h.py",
+        line_start=21,
+        line_end=30,
+        content="class Handler: optional group may produce None before join() aggregation",
+        severity="high",
+        feedback_type="defect_detection",
+        recommendation="Normalize absent elements before joining results.",
+    )
+
+    out, dups = dedupe_review_findings_by_signature([data_loss, aggregation])
+
+    assert len(out) == 2
+    assert not dups
+
+
 def test_dedupe_merges_failure_mode_from_dropped_duplicate() -> None:
     c1 = _cand(
         candidate_id="t:1",
@@ -391,6 +432,10 @@ def test_resolution_only_detected() -> None:
     assert is_resolution_only_finding(
         "RegexExtract ok",
         "No action needed - else clause already handles invalid modes",
+    )
+    assert is_resolution_only_finding(
+        "CaseConverter has no critical defect found.",
+        "Consider logging conversion results for observability.",
     )
 
 
@@ -572,3 +617,31 @@ def test_synthesizer_drops_resolution_only() -> None:
     out = synthesizer_node({"findings": [finding], "metadata": {}})
     assert out["final_findings"] == []
     assert "x" in out["metadata"]["review_synthesizer"]["dropped_resolution_only_ids"]
+
+
+def test_synthesizer_duplicate_map_uses_distinct_ids() -> None:
+    base = ReviewFinding(
+        id="x",
+        file_path="f.py",
+        line_start=1,
+        line_end=2,
+        content="class Handler: missing return",
+        severity="high",
+        feedback_type="defect_detection",
+        recommendation="Add a terminal return.",
+    )
+    out = synthesizer_node(
+        {
+            "findings": [base, base.model_copy()],
+            "metadata": {
+                "adversarial_cleanup": {
+                    "candidate_lifecycle": {
+                        "x": {"decision": "promoted"},
+                    }
+                }
+            },
+        }
+    )
+    dupes = out["metadata"]["review_synthesizer"]["semantic_dedupe_duplicates"]
+    assert dupes == {"x": ["x__2"]}
+    assert out["metadata"]["review_synthesizer"]["lost_promoted_candidate_ids"] == []

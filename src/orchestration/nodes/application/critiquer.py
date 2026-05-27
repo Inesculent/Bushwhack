@@ -25,6 +25,10 @@ from src.orchestration.context.context_packets import (
 from src.orchestration.prompts.renderer import render_reviewer_prompt
 from src.orchestration.routing.critiquer_focus import auto_focus_requests
 from src.orchestration.routing.normalize_critiquer_candidates import normalize_critiquer_candidates
+from src.orchestration.routing.review_obligations import (
+    derive_review_obligations,
+    evaluate_review_obligations,
+)
 
 logger = logging.getLogger(__name__)
 trace_logger = logging.getLogger("research_pipeline.reviewer_trace")
@@ -274,6 +278,10 @@ def make_general_critiquer_node(
                 "task_evidence": bundle0.to_storage_dict(),
                 "direct_context": code_fb,
             }
+            pipeline_slot["coverage_obligations"] = derive_review_obligations(
+                task,
+                pipeline_slot["task_evidence"],
+            )
             ast_files = list(ctx0.ast_included_files)
 
         candidates: List[CandidateFinding] = []
@@ -411,6 +419,20 @@ def make_general_critiquer_node(
             )
 
         metadata = dict(state.get("metadata", {}) or {})
+        coverage_eval = evaluate_review_obligations(
+            pipeline_slot.get("coverage_obligations") or [],
+            candidates,
+            audit_coverage,
+        )
+        warnings.extend(coverage_eval.get("warnings") or [])
+        if coverage_eval.get("obligations"):
+            pipe_meta = dict(metadata.get("critique_pipeline", {}) or {})
+            by_task_meta = dict(pipe_meta.get("by_task", {}) or {})
+            slot_meta = dict(by_task_meta.get(task.id, {}) or {})
+            slot_meta["coverage_evaluation"] = coverage_eval
+            by_task_meta[task.id] = slot_meta
+            pipe_meta["by_task"] = by_task_meta
+            metadata["critique_pipeline"] = pipe_meta
         if ast_files:
             prev = metadata.get("ast_included_files")
             base = list(prev) if isinstance(prev, list) else []
@@ -430,6 +452,7 @@ def make_general_critiquer_node(
                 "warnings": warnings,
                 "initial_focus_requests": [r.model_dump() for r in initial_requests],
                 "audit_coverage": audit_coverage,
+                "coverage_obligations": coverage_eval,
             }
             anchor_warn = pipeline_slot.get("line_anchor_warnings")
             if isinstance(anchor_warn, list) and anchor_warn:
@@ -450,6 +473,7 @@ def make_general_critiquer_node(
         by_task[task.id] = {
             "candidate_ids": sorted(set(integrity_ids)),
             "candidate_count": len(candidates),
+            "coverage_counts": coverage_eval.get("counts", {}),
         }
         integrity["by_task"] = by_task
         metadata["candidate_integrity"] = integrity
