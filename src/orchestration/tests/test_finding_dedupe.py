@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from src.domain.schemas import CandidateFinding, ReviewFinding
+from src.domain.schemas import CandidateFinding, ReflectionReport, ReviewFinding
 from src.orchestration.nodes.application.cleanup import make_adversarial_cleanup_node
 from src.orchestration.nodes.application.synthesizer import synthesizer_node
 from src.orchestration.routing.finding_dedupe import (
@@ -151,6 +151,35 @@ def test_normalize_splits_compound_orthogonal_candidate() -> None:
     keys = {(c.behavioral_symptom, c.root_operation) for c in out}
     assert ("data_loss", "indexing") in keys
     assert ("crash", "aggregation") in keys
+    assert not any("line_anchor_dropped" in w for w in warnings)
+    crash = next(c for c in out if (c.behavioral_symptom, c.root_operation) == ("crash", "aggregation"))
+    assert "absent or optional capture" in crash.failure_mode.lower()
+
+
+def test_normalize_does_not_split_plain_join_as_aggregation_crash() -> None:
+    from src.domain.schemas import ReviewTask
+
+    task = ReviewTask(
+        id="logic-structured",
+        title="Structured extraction",
+        description="Audit structured extraction and aggregation.",
+        target_files=["src/x.py"],
+        specialty="logic",
+    )
+    raw = _cand(
+        candidate_id="c1",
+        patch_task_id="",
+        file_path="src/x.py",
+        content="class Handler: structured extraction issue",
+        failure_mode="Data loss: only the first slot is retained before join() output.",
+        evidence_summary="The code keeps m[0] from tuple rows.",
+        recommendation="Preserve fields before joining results.",
+    )
+    out, warnings, _ = normalize_critiquer_candidates(task, [raw])
+
+    keys = {(c.behavioral_symptom, c.root_operation) for c in out}
+    assert ("data_loss", "indexing") in keys
+    assert ("crash", "aggregation") not in keys
     assert not any("line_anchor_dropped" in w for w in warnings)
 
 
@@ -390,6 +419,44 @@ def test_final_dedupe_preserves_structured_data_and_aggregation_findings() -> No
     assert not dups
 
 
+def test_final_dedupe_preserves_structured_group_index_and_absent_aggregation() -> None:
+    data_loss = ReviewFinding(
+        id="data",
+        file_path="pkg/h.py",
+        line_start=10,
+        line_end=20,
+        content="class Handler: All Matches keeps only m[0] from tuple rows",
+        severity="high",
+        feedback_type="defect_detection",
+        recommendation="Preserve all captured slots from findall tuple results.",
+    )
+    group_index = ReviewFinding(
+        id="group",
+        file_path="pkg/h.py",
+        line_start=21,
+        line_end=30,
+        content="class Handler: group_index=0 handling is inconsistent with groups() semantics",
+        severity="high",
+        feedback_type="defect_detection",
+        recommendation="Handle group 0 explicitly.",
+    )
+    aggregation = ReviewFinding(
+        id="agg",
+        file_path="pkg/h.py",
+        line_start=31,
+        line_end=40,
+        content="class Handler: optional capture may produce an absent value before join() aggregation",
+        severity="high",
+        feedback_type="defect_detection",
+        recommendation="Normalize absent capture values before joining results.",
+    )
+
+    out, dups = dedupe_review_findings_by_signature([data_loss, group_index, aggregation])
+
+    assert {f.id for f in out} == {"data", "group", "agg"}
+    assert not dups
+
+
 def test_dedupe_merges_failure_mode_from_dropped_duplicate() -> None:
     c1 = _cand(
         candidate_id="t:1",
@@ -603,6 +670,226 @@ def test_cleanup_drops_broad_resource_risk_without_impact_path() -> None:
     )
 
 
+def test_cleanup_drops_resource_defect_without_concrete_impact_path() -> None:
+    node = make_adversarial_cleanup_node()
+    cand = _cand(
+        candidate_id="resource-defect",
+        patch_task_id="logic-risk",
+        file_path="src/x.py",
+        line_start=1,
+        line_end=8,
+        content="Parser may consume excessive memory.",
+        claim_type="defect",
+        failure_mode="Unbounded work during aggregation.",
+        evidence_summary="Large result lists may grow.",
+        recommendation="Add limits.",
+        suspected_category="logic",
+        reflection_specialties=["logic"],
+        behavioral_symptom="unbounded_work",
+        root_operation="resource_use",
+    )
+
+    out = node(
+        {
+            "run_id": "t",
+            "candidate_findings": [cand],
+            "reflection_reports": [
+                ReflectionReport(
+                    candidate_id=cand.candidate_id,
+                    reflector_specialty="logic",
+                    verdict="accept",
+                    rationale="accepted",
+                )
+            ],
+            "metadata": {},
+        }
+    )
+    assert out["findings"] == []
+    assert (
+        out["metadata"]["adversarial_cleanup"]["candidate_lifecycle"][cand.candidate_id]["reason"]
+        == "broad_risk_without_concrete_impact_path"
+    )
+
+
+def test_cleanup_keeps_resource_claim_with_concrete_boundary() -> None:
+    node = make_adversarial_cleanup_node()
+    cand = _cand(
+        candidate_id="resource-backed",
+        patch_task_id="logic-risk",
+        file_path="src/x.py",
+        line_start=1,
+        line_end=8,
+        content="Public request handler may consume excessive memory.",
+        claim_type="defect",
+        failure_mode="Unbounded work on external request input.",
+        evidence_summary="The request path forwards user-controlled values into an expensive operation.",
+        recommendation="Add a bounded execution path.",
+        suspected_category="logic",
+        reflection_specialties=["logic"],
+        behavioral_symptom="unbounded_work",
+        root_operation="resource_use",
+    )
+
+    out = node(
+        {
+            "run_id": "t",
+            "candidate_findings": [cand],
+            "reflection_reports": [
+                ReflectionReport(
+                    candidate_id=cand.candidate_id,
+                    reflector_specialty="logic",
+                    verdict="accept",
+                    rationale="accepted",
+                )
+            ],
+            "focused_context_results": {
+                "r1": {
+                    "request_id": "r1",
+                    "candidate_id": cand.candidate_id,
+                    "file_snippets": {"src/x.py": "public request path"},
+                }
+            },
+            "metadata": {},
+        }
+    )
+    assert [finding.id for finding in out["findings"]] == [cand.candidate_id]
+
+
+def test_cleanup_drops_reflection_pivot_without_followup() -> None:
+    node = make_adversarial_cleanup_node()
+    cand = _cand(
+        candidate_id="regex-pivot",
+        patch_task_id="logic-regex",
+        file_path="src/x.py",
+        line_start=10,
+        line_end=40,
+        content="class RegexExtract():",
+        claim_type="defect",
+        failure_mode="All Groups returns empty output when no capture groups exist.",
+        evidence_summary="The evidence describes All Groups behavior.",
+        recommendation="Handle All Groups output.",
+        suspected_category="logic",
+        reflection_specialties=["logic"],
+    )
+
+    out = node(
+        {
+            "run_id": "t",
+            "candidate_findings": [cand],
+            "reflection_reports": [
+                ReflectionReport(
+                    candidate_id=cand.candidate_id,
+                    reflector_specialty="logic",
+                    verdict="reject",
+                    rationale="The All Groups claim is not supported by the code.",
+                ),
+                ReflectionReport(
+                    candidate_id=cand.candidate_id,
+                    reflector_specialty="logic",
+                    verdict="accept",
+                    rationale="All Matches uses findall and keeps only m[0], losing tuple data.",
+                ),
+            ],
+            "metadata": {},
+        }
+    )
+    assert out["findings"] == []
+    assert (
+        out["metadata"]["adversarial_cleanup"]["candidate_lifecycle"][cand.candidate_id]["reason"]
+        == "reflection_family_conflict_without_followup"
+    )
+
+
+def test_cleanup_caps_resource_findings_per_symbol_operation() -> None:
+    node = make_adversarial_cleanup_node()
+    first = _cand(
+        candidate_id="resource-1",
+        file_path="src/x.py",
+        content="class RegexExtract(): public request path",
+        failure_mode="Unbounded work on external input.",
+        evidence_summary="Public request can trigger expensive work.",
+        recommendation="Add bounded execution.",
+        behavioral_symptom="unbounded_work",
+        root_operation="resource_use",
+    )
+    second = first.model_copy(
+        update={
+            "candidate_id": "resource-2",
+            "failure_mode": "Excessive memory use on external input.",
+            "evidence_summary": "Public request can trigger memory growth.",
+        }
+    )
+    logic = _cand(
+        candidate_id="logic-1",
+        file_path="src/x.py",
+        content="class RegexExtract():",
+        failure_mode="group_index=0 skips the full match.",
+        evidence_summary="groups() excludes the full match.",
+        recommendation="Handle full-match indexing explicitly.",
+        behavioral_symptom="wrong_output",
+        root_operation="indexing",
+    )
+
+    out = node(
+        {
+            "run_id": "t",
+            "candidate_findings": [first, second, logic],
+            "reflection_reports": [
+                ReflectionReport(
+                    candidate_id=candidate.candidate_id,
+                    reflector_specialty="logic",
+                    verdict="accept",
+                    rationale="accepted",
+                )
+                for candidate in (first, second, logic)
+            ],
+            "focused_context_results": {
+                "r1": {
+                    "request_id": "r1",
+                    "candidate_id": first.candidate_id,
+                    "file_snippets": {"src/x.py": "public request path"},
+                },
+                "r2": {
+                    "request_id": "r2",
+                    "candidate_id": second.candidate_id,
+                    "file_snippets": {"src/x.py": "public request path"},
+                },
+            },
+            "metadata": {},
+        }
+    )
+    ids = {finding.id for finding in out["findings"]}
+    assert len(ids & {"resource-1", "resource-2"}) == 1
+    assert "logic-1" in ids
+
+
+def test_final_dedupe_keeps_resource_and_incomplete_implementation_separate() -> None:
+    incomplete = ReviewFinding(
+        id="logic-incomplete",
+        file_path="src/x.py",
+        line_start=1,
+        line_end=20,
+        content="class RegexExtract(): handler implementation appears incomplete.",
+        severity="high",
+        feedback_type="defect_detection",
+        recommendation="Complete the missing handler return path.",
+    )
+    resource = ReviewFinding(
+        id="resource-use",
+        file_path="src/x.py",
+        line_start=1,
+        line_end=20,
+        content="class RegexExtract(): external input can cause excessive memory growth.",
+        severity="medium",
+        feedback_type="optimization",
+        recommendation="Bound resource use on the request path.",
+    )
+
+    kept, duplicates = dedupe_review_findings_by_signature([incomplete, resource])
+    assert {finding.id for finding in kept} == {"logic-incomplete", "resource-use"}
+    assert duplicates == {}
+
+
 def test_synthesizer_drops_resolution_only() -> None:
     finding = ReviewFinding(
         id="x",
@@ -645,3 +932,35 @@ def test_synthesizer_duplicate_map_uses_distinct_ids() -> None:
     dupes = out["metadata"]["review_synthesizer"]["semantic_dedupe_duplicates"]
     assert dupes == {"x": ["x__2"]}
     assert out["metadata"]["review_synthesizer"]["lost_promoted_candidate_ids"] == []
+
+
+def test_synthesizer_uses_cleanup_duplicate_map_for_lost_promoted_audit() -> None:
+    finding = ReviewFinding(
+        id="keeper",
+        file_path="f.py",
+        line_start=1,
+        line_end=2,
+        content="class Handler: missing return",
+        severity="high",
+        feedback_type="defect_detection",
+        recommendation="Add a terminal return.",
+    )
+    out = synthesizer_node(
+        {
+            "findings": [finding],
+            "candidate_findings": [],
+            "metadata": {
+                "adversarial_cleanup": {
+                    "candidate_lifecycle": {
+                        "keeper": {"decision": "promoted"},
+                        "dropped": {"decision": "promoted"},
+                    },
+                    "semantic_dedupe_finding_duplicates": {"keeper": ["dropped"]},
+                }
+            },
+        }
+    )
+
+    meta = out["metadata"]["review_synthesizer"]
+    assert meta["lost_promoted_candidate_ids"] == []
+    assert meta["recall_audit"]["duplicate_equivalents"] == {"dropped": "keeper"}

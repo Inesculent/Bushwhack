@@ -24,6 +24,7 @@ COVERAGE_DIMENSIONS: tuple[str, ...] = (
 )
 
 _CLASS_OR_DEF_RE = re.compile(r"^\s*(class|def)\s+([A-Za-z_][A-Za-z0-9_]*)\b")
+_CAMEL_SURFACE_RE = re.compile(r"\b[A-Z][A-Za-z0-9_]{2,}\b")
 
 
 def _norm_path(path: str) -> str:
@@ -46,12 +47,58 @@ def _surface_name(file_path: str, body: str) -> str:
     for line in body.splitlines():
         match = _CLASS_OR_DEF_RE.match(line)
         if match:
+            if match.group(1) == "class":
+                return match.group(2)
             names.append(match.group(2))
         if len(names) >= 3:
             break
     if names:
         return ", ".join(names)
     return _norm_path(file_path)
+
+
+def _task_surface_names(task: ReviewTask) -> set[str]:
+    text = f"{task.title} {task.description}"
+    ignored = {
+        "Audit",
+        "Review",
+        "Structured",
+        "Regex",
+        "String",
+        "Code",
+        "Handler",
+        "Task",
+    }
+    return {name for name in _CAMEL_SURFACE_RE.findall(text) if name not in ignored}
+
+
+def _class_blocks(body: str) -> dict[str, str]:
+    lines = body.splitlines()
+    starts: list[tuple[str, int, int]] = []
+    for index, raw in enumerate(lines):
+        match = re.match(r"^(\s*)class\s+([A-Za-z_][A-Za-z0-9_]*)\b", raw)
+        if match:
+            starts.append((match.group(2), index, len(match.group(1))))
+    blocks: dict[str, str] = {}
+    for pos, (name, start, indent) in enumerate(starts):
+        end = len(lines)
+        for _, next_start, next_indent in starts[pos + 1 :]:
+            if next_indent <= indent:
+                end = next_start
+                break
+        blocks[name] = "\n".join(lines[start:end])
+    return blocks
+
+
+def _body_for_task_surface(task: ReviewTask, body: str) -> str:
+    names = _task_surface_names(task)
+    if not names:
+        return body
+    blocks = _class_blocks(body)
+    selected = [blocks[name] for name in sorted(names) if name in blocks]
+    if selected:
+        return "\n\n".join(selected)
+    return body
 
 
 def _add_obligation(
@@ -98,7 +145,7 @@ def derive_review_obligations(
         file_path = _norm_path(str(raw_path))
         if not _path_in_task_scope(file_path, target_files):
             continue
-        body = str(raw_body or "")
+        body = _body_for_task_surface(task, str(raw_body or ""))
         if not body.strip():
             continue
         surface = _surface_name(file_path, body)

@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional, Sequence, Set
 from src.config import get_settings
 from src.domain.interfaces import IASTParser, ICodeSearcher, IGitHubContextProvider
 from src.domain.schemas import (
+    CandidateFinding,
     CodeEntity,
     FocusedContextRequest,
     FocusedContextResult,
@@ -551,6 +552,46 @@ class LazyReviewContextProvider:
         """Read a bounded prefix of a repository-relative file path."""
         return self._read_file(file_path)[:max_chars]
 
+    def read_file_window(
+        self,
+        file_path: str,
+        *,
+        line_start: int,
+        line_end: int,
+        padding: int = 40,
+        max_chars: int = 20000,
+    ) -> str:
+        """Read a bounded line window around a repository-relative file range."""
+        normalized = file_path.replace("\\", "/").lstrip("/")
+        if not normalized or ".." in normalized.split("/"):
+            return ""
+        try:
+            start = max(1, int(line_start) - int(padding))
+            end = max(start, int(line_end) + int(padding))
+        except (TypeError, ValueError):
+            return ""
+
+        if self._sandbox is not None:
+            script = f"sed -n '{start},{end}p' \"$1\""
+            return self._sandbox.execute(
+                ["sh", "-lc", script, "read-window", normalized],
+                workdir="/repo",
+            )[:max_chars]
+
+        if self._host_repo_path is None:
+            return ""
+
+        repo_root = Path(self._host_repo_path).resolve()
+        target = (repo_root / normalized).resolve()
+        try:
+            target.relative_to(repo_root)
+        except ValueError:
+            return ""
+        if not target.is_file():
+            return ""
+        lines = target.read_text(encoding="utf-8", errors="replace").splitlines()
+        return "\n".join(lines[start - 1 : end])[:max_chars]
+
     def read_full_file(self, file_path: str, *, max_chars: int) -> str:
         """Read a repository-relative file up to ``max_chars`` (whole-file reviews)."""
         normalized = file_path.replace("\\", "/").lstrip("/")
@@ -771,6 +812,35 @@ class LazyReviewContextProvider:
         return deduped[:12]
 
 
+def _candidate_for_focused_request(state: GraphState, candidate_id: str) -> CandidateFinding | None:
+    if not candidate_id:
+        return None
+    for raw in state.get("candidate_findings", []) or []:
+        candidate: CandidateFinding | None = None
+        if isinstance(raw, CandidateFinding):
+            candidate = raw
+        elif isinstance(raw, dict):
+            try:
+                candidate = CandidateFinding.model_validate(raw)
+            except Exception:
+                candidate = None
+        if candidate is not None and candidate.candidate_id == candidate_id:
+            return candidate
+    return None
+
+
+def _candidate_matches_focused_path(candidate: CandidateFinding | None, file_path: str) -> bool:
+    if candidate is None:
+        return False
+    candidate_path = _normalize_repo_path(candidate.file_path).lstrip("/")
+    focused_path = _normalize_repo_path(file_path).lstrip("/")
+    return bool(
+        candidate_path
+        and focused_path
+        and (candidate_path == focused_path or candidate_path.endswith("/" + focused_path))
+    )
+
+
 class BoundedReviewContextFulfiller:
     """Fulfill structured focused-context requests with hard caps (no arbitrary shell)."""
 
@@ -814,6 +884,7 @@ class BoundedReviewContextFulfiller:
 
         file_paths = request.file_paths[:MAX_FILES_PER_REQUEST]
         ast_done = _ast_included_paths_normalized(state.get("metadata") or {})
+        candidate = _candidate_for_focused_request(state, request.candidate_id)
         for fp in file_paths:
             if request.file_read_mode == "full":
                 body = self._provider.read_full_file(fp, max_chars=settings.review_full_file_max_chars)
@@ -839,7 +910,17 @@ class BoundedReviewContextFulfiller:
                     file_snippets[fp] = f"--- structural neighbors ---\n{neighbor}"[:MAX_FILE_SLICE_CHARS]
                     total_chars += len(file_snippets[fp])
             else:
-                body = self._provider.read_file_slice(fp, max_chars=MAX_FILE_SLICE_CHARS)
+                body = ""
+                read_window = getattr(self._provider, "read_file_window", None)
+                if callable(read_window) and _candidate_matches_focused_path(candidate, fp):
+                    body = read_window(
+                        fp,
+                        line_start=int(candidate.line_start),
+                        line_end=int(candidate.line_end),
+                        max_chars=MAX_FILE_SLICE_CHARS,
+                    )
+                if not body.strip():
+                    body = self._provider.read_file_slice(fp, max_chars=MAX_FILE_SLICE_CHARS)
                 if not body.strip():
                     read_full = getattr(self._provider, "read_full_file", None)
                     if callable(read_full):

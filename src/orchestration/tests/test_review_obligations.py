@@ -101,3 +101,39 @@ def test_obligations_stay_within_task_files_and_candidate_file() -> None:
     )
     evaluated = evaluate_review_obligations(obligations, [candidate], [])
     assert all(row["status"] != "candidate" for row in evaluated["obligations"])
+
+
+def test_obligations_prefer_task_named_class_when_whole_file_is_present() -> None:
+    task = ReviewTask(
+        id="logic-regex",
+        title="RegexExtract review",
+        description="Audit RegexExtract structured extraction behavior.",
+        target_files=["pkg/nodes.py"],
+        specialty="logic",
+    )
+    evidence = {
+        "file_contents": {
+            "pkg/nodes.py": "\n".join(
+                [
+                    "class StringConcatenate:",
+                    "    def execute(self, a, b):",
+                    "        return a + b",
+                    "",
+                    "class RegexExtract:",
+                    "    def execute(self, mode, rows):",
+                    "        if mode == 'All Matches':",
+                    "            return [row[0] for row in rows]",
+                    "        return '\\n'.join(rows)",
+                ]
+            )
+        },
+        "files_complete": {"pkg/nodes.py": True},
+    }
+
+    obligations = derive_review_obligations(task, evidence)
+    assert {row["surface"] for row in obligations} == {"RegexExtract"}
+    assert {row["dimension"] for row in obligations} >= {
+        "branch exhaustiveness",
+        "structured data preservation",
+        "aggregation/serialization safety",
+    }

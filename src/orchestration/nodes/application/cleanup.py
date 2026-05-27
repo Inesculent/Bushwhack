@@ -22,8 +22,10 @@ from src.orchestration.routing.finding_dedupe import (
     changed_files_from_diff,
     dedupe_candidates_by_signature,
     dedupe_review_findings_by_signature,
+    defect_family,
     ensure_unique_candidate_ids,
     ensure_unique_finding_ids,
+    infer_behavioral_symptom,
     infer_root_operation,
     is_required_upstream_none_guard_claim,
     is_resolution_only_finding,
@@ -97,6 +99,12 @@ _SCOPE_INSIDE_MARKERS = (
     "wrapped by try",
     "enclosed by try",
     "caught by",
+)
+_EXTRACTION_MODE_MARKERS = (
+    "all matches",
+    "all groups",
+    "first match",
+    "first group",
 )
 
 def _trace_enabled(state: GraphState) -> bool:
@@ -197,6 +205,68 @@ def _candidate_evidence_blob(candidate: CandidateFinding) -> str:
     ).lower()
 
 
+def _resource_oriented_candidate(candidate: CandidateFinding) -> bool:
+    normalized = candidate_with_behavioral_metadata(candidate)
+    root = normalized.root_operation or infer_root_operation(
+        candidate.content,
+        candidate.failure_mode,
+        candidate.evidence_summary,
+        candidate.recommendation or "",
+    )
+    symptom = normalized.behavioral_symptom or infer_behavioral_symptom(
+        candidate.content,
+        candidate.failure_mode,
+        candidate.evidence_summary,
+        candidate.recommendation or "",
+    )
+    if root == "resource_use" or symptom == "unbounded_work":
+        return True
+    if candidate.claim_type in {"security_risk", "performance_regression"}:
+        blob = _candidate_evidence_blob(candidate)
+        return any(marker in blob for marker in ("timeout", "cache", "memory", "limit", "unbounded"))
+    return False
+
+
+def _resource_oriented_finding(finding: ReviewFinding) -> bool:
+    blob = f"{finding.content or ''}\n{finding.recommendation or ''}"
+    return infer_root_operation(blob) == "resource_use" or infer_behavioral_symptom(blob) == "unbounded_work"
+
+
+def _extraction_modes(text: str) -> set[str]:
+    blob = (text or "").lower()
+    return {marker for marker in _EXTRACTION_MODE_MARKERS if marker in blob}
+
+
+def _reflection_family_or_surface_conflict(
+    candidate: CandidateFinding,
+    reports: Sequence[ReflectionReport],
+) -> bool:
+    """Detect accept/reject splits where the accept pivots to a different bug surface."""
+    accepts = [r for r in reports if r.verdict in {"accept", "reclassify"}]
+    rejects = [r for r in reports if r.verdict == "reject"]
+    if not accepts or not rejects:
+        return False
+
+    candidate_blob = " ".join(
+        [candidate.content, candidate.failure_mode, candidate.evidence_summary]
+    )
+    candidate_family = defect_family(candidate.failure_mode, candidate.evidence_summary, candidate.content)
+    candidate_modes = _extraction_modes(candidate_blob)
+    for report in accepts:
+        rationale = report.rationale or ""
+        rationale_family = defect_family(rationale)
+        if (
+            candidate_family != "general"
+            and rationale_family != "general"
+            and rationale_family != candidate_family
+        ):
+            return True
+        rationale_modes = _extraction_modes(rationale)
+        if candidate_modes and rationale_modes and candidate_modes.isdisjoint(rationale_modes):
+            return True
+    return False
+
+
 _INCOMPLETE_EVIDENCE_MARKERS = (
     "truncated code",
     "truncated context",
@@ -288,16 +358,7 @@ def _scope_claim_contradicted(state: GraphState, candidate: CandidateFinding) ->
 
 
 def _broad_risk_without_impact_path(candidate: CandidateFinding) -> bool:
-    if candidate.claim_type not in {"security_risk", "performance_regression"}:
-        return False
-    normalized = candidate_with_behavioral_metadata(candidate)
-    root = normalized.root_operation or infer_root_operation(
-        candidate.content,
-        candidate.failure_mode,
-        candidate.evidence_summary,
-        candidate.recommendation or "",
-    )
-    if root != "resource_use" and normalized.behavioral_symptom != "unbounded_work":
+    if not _resource_oriented_candidate(candidate):
         return False
     blob = _candidate_evidence_blob(candidate)
     if any(marker in blob for marker in _BROAD_RISK_BOUNDARY_MARKERS):
@@ -320,6 +381,8 @@ def _high_risk_claim_needs_external_context(candidate: CandidateFinding) -> bool
 def _candidate_requires_context(candidate: CandidateFinding) -> bool:
     if candidate.required_context:
         return True
+    if _resource_oriented_candidate(candidate):
+        return _high_risk_claim_needs_external_context(candidate)
     if candidate.claim_type not in CONTEXT_REQUIRED_CLAIM_TYPES:
         return False
     return _high_risk_claim_needs_external_context(candidate)
@@ -435,6 +498,7 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
                 candidates.append(raw)
             elif isinstance(raw, dict):
                 candidates.append(CandidateFinding.model_validate(raw))
+        raw_by_cand = _reports_by_candidate(state.get("reflection_reports", []) or [])
         reports = consolidate_reflection_reports(state.get("reflection_reports", []) or [])
         metadata = dict(state.get("metadata", {}))
         revisions = _revision_map(metadata)
@@ -553,6 +617,11 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
             relevant_reports = [
                 report for report in cand_reports if report.reflector_specialty in relevant_reflectors
             ]
+            raw_relevant_reports = [
+                report
+                for report in raw_by_cand.get(candidate.candidate_id, cand_reports)
+                if report.reflector_specialty in relevant_reflectors
+            ]
 
             abstaining_reflectors: frozenset[str] | None = None
             if missing_relevant:
@@ -601,6 +670,24 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
                     candidate,
                     "missing_relevant_reflection",
                     {"expected_reflectors": sorted(relevant_reflectors)},
+                )
+                continue
+
+            if (
+                _reflection_family_or_surface_conflict(candidate, raw_relevant_reports)
+                and not revision_accepted
+                and not has_focused_context
+                and not _verifier_concrete_behavior_verified(candidate.candidate_id, verifier_hints)
+            ):
+                drop(
+                    candidate,
+                    "reflection_family_conflict_without_followup",
+                    {
+                        "verdicts": [
+                            f"{report.reflector_specialty}:{report.verdict}"
+                            for report in raw_relevant_reports
+                        ],
+                    },
                 )
                 continue
 
@@ -889,24 +976,24 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
                 item.id,
             ),
         )
-        redos_kept: set[tuple[str, str]] = set()
-        redos_filtered: List[ReviewFinding] = []
-        dropped_redos_ids: List[str] = []
+        resource_kept: set[tuple[str, str, str]] = set()
+        resource_filtered: List[ReviewFinding] = []
+        dropped_resource_ids: List[str] = []
         for finding in promoted:
             key = review_finding_semantic_key(finding)
-            if key[2] == "redos":
-                scope = (key[0], key[1])
-                if scope in redos_kept:
-                    dropped_redos_ids.append(finding.id)
+            if _resource_oriented_finding(finding):
+                scope = (key[0], key[1], key[4])
+                if scope in resource_kept:
+                    dropped_resource_ids.append(finding.id)
                     continue
-                redos_kept.add(scope)
-            redos_filtered.append(finding)
-        redos_filtered = ensure_unique_finding_ids(redos_filtered)
-        promoted, finding_duplicates = dedupe_review_findings_by_signature(redos_filtered)
+                resource_kept.add(scope)
+            resource_filtered.append(finding)
+        resource_filtered = ensure_unique_finding_ids(resource_filtered)
+        promoted, finding_duplicates = dedupe_review_findings_by_signature(resource_filtered)
         promoted = ensure_unique_finding_ids(promoted)
         dropped_semantic_finding_ids = [
             fid for ids in finding_duplicates.values() for fid in ids
-        ] + dropped_redos_ids
+        ] + dropped_resource_ids
 
         if _trace_enabled(state):
             trace_logger.info(
@@ -928,6 +1015,8 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
         }
         if semantic_duplicates:
             cleanup_meta["semantic_dedupe_duplicates"] = semantic_duplicates
+        if finding_duplicates:
+            cleanup_meta["semantic_dedupe_finding_duplicates"] = finding_duplicates
         metadata["adversarial_cleanup"] = cleanup_meta
 
         return {

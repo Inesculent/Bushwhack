@@ -195,6 +195,66 @@ def test_bounded_fulfiller_respects_file_cap() -> None:
     assert calls["reads"] <= 5
 
 
+def test_bounded_fulfiller_prefers_candidate_line_window() -> None:
+    try:
+        from src.orchestration.context.review_context import BoundedReviewContextFulfiller
+    except ImportError as exc:
+        pytest.skip(f"review context stack unavailable ({exc})")
+
+    calls: list[str] = []
+
+    class StubProvider:
+        def _ensure_started(self, state: dict) -> None:
+            return None
+
+        def read_file_window(
+            self,
+            file_path: str,
+            *,
+            line_start: int,
+            line_end: int,
+            max_chars: int = 20000,
+        ) -> str:
+            calls.append(f"window:{file_path}:{line_start}-{line_end}")
+            return "elif mode == 'All Groups':\n    result = join_delimiter.join(results)"
+
+        def read_file_slice(self, file_path: str, *, max_chars: int = 20000) -> str:
+            calls.append(f"slice:{file_path}")
+            return "prefix only"
+
+        def search_bounded(self, query: str, *, max_hits: int, file_paths=None):
+            return []
+
+        def ast_entities_for_file(self, file_path: str, **kwargs):
+            return [], []
+
+    cand = CandidateFinding(
+        candidate_id="c1",
+        patch_task_id="t",
+        file_path="pkg/target.py",
+        line_start=280,
+        line_end=296,
+        content="class Handler",
+        claim_type="defect",
+        suspected_category="logic",
+        reflection_specialties=["logic"],
+    )
+    req = FocusedContextRequest(
+        request_id="r1",
+        candidate_id=cand.candidate_id,
+        requested_by_specialty="logic",
+        file_paths=["pkg/target.py"],
+    )
+
+    result = BoundedReviewContextFulfiller(StubProvider()).fulfill(  # type: ignore[arg-type]
+        {"run_id": "t", "metadata": {}, "candidate_findings": [cand]},
+        req,
+    )
+
+    assert calls == ["window:pkg/target.py:280-296"]
+    assert "All Groups" in result.file_snippets["pkg/target.py"]
+
+
 def test_bounded_fulfiller_scopes_searches_to_requested_files() -> None:
     try:
         from src.orchestration.context.review_context import BoundedReviewContextFulfiller
@@ -1064,6 +1124,37 @@ def test_auto_focus_request_created_for_defect_required_context() -> None:
     requests = auto_focus_requests(task, [cand])
     assert len(requests) == 1
     assert "group_index" in " ".join(requests[0].text_queries).lower()
+
+
+def test_auto_focus_request_adds_subject_symbol_query() -> None:
+    from src.orchestration.routing.critiquer_focus import auto_focus_requests
+
+    task = ReviewTask(
+        id="logic-string",
+        title="Logic",
+        description="Review string nodes.",
+        target_files=["comfy_extras/nodes_string.py"],
+        specialty="logic",
+    )
+    cand = CandidateFinding(
+        candidate_id="logic-string:regex",
+        patch_task_id="logic-string",
+        file_path="comfy_extras/nodes_string.py",
+        line_start=228,
+        line_end=296,
+        content="class RegexExtract():...",
+        claim_type="defect",
+        failure_mode="optional group may yield absent values before join aggregation",
+        evidence_summary="",
+        required_context=["Review complete handler body."],
+        suspected_category="logic",
+        reflection_specialties=["logic"],
+        recommendation="Normalize absent captures before joining.",
+    )
+
+    requests = auto_focus_requests(task, [cand])
+
+    assert requests[0].symbol_queries == ["RegexExtract"]
 
 
 def test_reflection_routes_candidates_only_to_declared_domains() -> None:

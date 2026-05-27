@@ -36,9 +36,19 @@ _HEDGE_PHRASES = (
     "document the expected",
     "consider documenting",
 )
+_NEGATING_PHRASES = (
+    "appears correct",
+    "correct behavior",
+    "correct as-is",
+    "not possible",
+    "no action needed",
+    "no action required",
+    "no defect",
+)
 _STRUCTURED_TRUNCATION_MARKERS = (
     "findall",
     "finditer",
+    "all matches",
     "matches[0]",
     "match[0]",
     "m[0]",
@@ -65,7 +75,21 @@ _COMPOUND_SPLIT_SPECS = (
     (
         "crash",
         "aggregation",
-        ("join(", "str.join", "none element", "nonetype", "none in aggregat", "typeerror"),
+        (
+            "join(",
+            "str.join",
+            "join_delimiter.join",
+            "none element",
+            "nonetype",
+            "none in aggregat",
+            "none before join",
+            "optional group",
+            "optional capture",
+            "absent element",
+            "absent value",
+            "absent capture",
+            "typeerror",
+        ),
     ),
     (
         "missing_return",
@@ -82,6 +106,21 @@ _COMPOUND_SPLIT_SPECS = (
         "resource_use",
         ("unbounded work", "resource exhaust", "expensive", "without limit", "without bound"),
     ),
+)
+_AGGREGATION_ACTION_MARKERS = ("join(", "str.join", "join_delimiter.join", "aggregat")
+_ABSENT_VALUE_MARKERS = (
+    "none element",
+    "none value",
+    "none before join",
+    "nonetype",
+    "optional group",
+    "optional capture",
+    "absent element",
+    "absent value",
+    "absent capture",
+    "missing group",
+    "missing capture",
+    "typeerror",
 )
 
 
@@ -159,7 +198,7 @@ def _repair_branch_return_conflation(
 
 
 def _strengthen_hedged_structured_data_loss(candidate: CandidateFinding) -> CandidateFinding:
-    """Replace hedge-only wording when evidence points at first-slot truncation on structured rows."""
+    """Retag explicit first-slot truncation without inventing replacement claim text."""
     rec = (candidate.recommendation or "").lower()
     blob = " ".join(
         [
@@ -173,6 +212,10 @@ def _strengthen_hedged_structured_data_loss(candidate: CandidateFinding) -> Cand
         return candidate
     if not any(phrase in rec for phrase in _HEDGE_PHRASES):
         return candidate
+    if any(phrase in blob for phrase in _NEGATING_PHRASES):
+        return candidate
+    if not any(marker in blob for marker in ("findall", "finditer", "all matches")):
+        return candidate
     if not any(marker in blob for marker in _STRUCTURED_TRUNCATION_MARKERS):
         return candidate
     if "[0]" not in blob and "first" not in blob and "m[0]" not in blob and "matches[0]" not in blob:
@@ -181,14 +224,6 @@ def _strengthen_hedged_structured_data_loss(candidate: CandidateFinding) -> Cand
     return candidate.model_copy(
         update={
             "claim_type": "defect",
-            "failure_mode": (
-                "Data loss: structured rows or tuples are normalized to a single index/slot "
-                "without an explicit contract allowing truncation."
-            )[:400],
-            "recommendation": (
-                "Retain all required slots per row, flatten safely, or narrow the contract and "
-                "enforce first-slot-only behavior in code."
-            ),
             "severity": "high",
             "reflection_specialties": ["logic"],
             "suspected_category": "logic",
@@ -230,8 +265,15 @@ def _split_compound_candidate(candidate: CandidateFinding) -> List[CandidateFind
             candidate.recommendation or "",
         ]
     ).lower()
+    if is_security_or_unbounded_pattern_claim(blob):
+        return [candidate_with_behavioral_metadata(candidate)]
     matches: List[tuple[str, str]] = []
     for symptom, root, markers in _COMPOUND_SPLIT_SPECS:
+        if symptom == "crash" and root == "aggregation" and not (
+            any(marker in blob for marker in _AGGREGATION_ACTION_MARKERS)
+            and any(marker in blob for marker in _ABSENT_VALUE_MARKERS)
+        ):
+            continue
         if any(marker in blob for marker in markers):
             matches.append((symptom, root))
     deduped: List[tuple[str, str]] = []
@@ -241,7 +283,9 @@ def _split_compound_candidate(candidate: CandidateFinding) -> List[CandidateFind
             continue
         seen.add(item)
         deduped.append(item)
-    if len(deduped) <= 1:
+    if not deduped:
+        return [candidate_with_behavioral_metadata(candidate)]
+    if len(deduped) == 1:
         return [candidate_with_behavioral_metadata(candidate)]
 
     out: List[CandidateFinding] = []
@@ -249,15 +293,75 @@ def _split_compound_candidate(candidate: CandidateFinding) -> List[CandidateFind
         suffix = f":orthogonal-{index}"
         cid = candidate.candidate_id
         out.append(
-            candidate.model_copy(
-                update={
-                    "candidate_id": cid if index == 1 else f"{cid}{suffix}",
-                    "behavioral_symptom": symptom,
-                    "root_operation": root,
-                }
+            _with_split_specific_claim(
+                candidate,
+                candidate_id=cid if index == 1 else f"{cid}{suffix}",
+                behavioral_symptom=symptom,
+                root_operation=root,
             )
         )
     return out
+
+
+def _with_split_specific_claim(
+    candidate: CandidateFinding,
+    *,
+    candidate_id: str,
+    behavioral_symptom: str,
+    root_operation: str,
+) -> CandidateFinding:
+    update: dict[str, str] = {
+        "candidate_id": candidate_id,
+        "behavioral_symptom": behavioral_symptom,
+        "root_operation": root_operation,
+    }
+    if behavioral_symptom == "data_loss" and root_operation == "indexing":
+        update.update(
+            {
+                "failure_mode": (
+                    "Data loss: structured match rows are reduced to one slot before output, "
+                    "discarding other captured data."
+                ),
+                "evidence_summary": (
+                    "The claim mentions tuple/row indexing such as m[0] or first-slot retention; "
+                    "review this independently from aggregation safety."
+                ),
+            }
+        )
+    elif behavioral_symptom == "wrong_output" and root_operation == "indexing":
+        update.update(
+            {
+                "failure_mode": (
+                    "Wrong output: group index handling can select the wrong regex group or skip "
+                    "a valid full-match/group case."
+                ),
+                "evidence_summary": (
+                    "The claim mentions group_index, group 0, groups(), or related boundary semantics; "
+                    "review this independently from data-loss flattening."
+                ),
+            }
+        )
+    elif behavioral_symptom == "crash" and root_operation == "aggregation":
+        update.update(
+            {
+                "failure_mode": (
+                    "Aggregation safety: absent or optional capture values can enter the result list "
+                    "and make string joining unsafe."
+                ),
+                "evidence_summary": (
+                    "The claim mentions optional/absent/None-like values together with join or "
+                    "aggregation; review this independently from group-index semantics."
+                ),
+            }
+        )
+    elif behavioral_symptom == "missing_return" and root_operation == "dispatch":
+        update.update(
+            {
+                "failure_mode": "Missing return: a dispatch branch or fallback path can fall through.",
+                "evidence_summary": "The claim mentions branch exhaustiveness or implicit None.",
+            }
+        )
+    return candidate.model_copy(update=update)
 
 
 def _is_structured_extraction_task(task: ReviewTask) -> bool:

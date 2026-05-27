@@ -27,6 +27,25 @@ def _trace_enabled(state: GraphState) -> bool:
     return bool(metadata.get("review_trace_enabled"))
 
 
+def _merge_duplicate_maps(*maps: Any) -> Dict[str, List[str]]:
+    merged: Dict[str, List[str]] = {}
+    for raw_map in maps:
+        if not isinstance(raw_map, dict):
+            continue
+        for raw_keeper, raw_ids in raw_map.items():
+            keeper = str(raw_keeper)
+            if not isinstance(raw_ids, list):
+                continue
+            for raw_id in raw_ids:
+                dropped = str(raw_id)
+                if dropped == keeper:
+                    continue
+                merged.setdefault(keeper, [])
+                if dropped not in merged[keeper]:
+                    merged[keeper].append(dropped)
+    return merged
+
+
 def synthesizer_node(state: GraphState) -> Dict[str, Any]:
     findings = state.get("findings", []) or []
     dropped_resolution_ids: List[str] = []
@@ -64,6 +83,19 @@ def synthesizer_node(state: GraphState) -> Dict[str, Any]:
             coverage_by_task[str(task_id)] = slot["coverage_evaluation"]
     cleanup_meta = metadata.get("adversarial_cleanup")
     lifecycle = cleanup_meta.get("candidate_lifecycle", {}) if isinstance(cleanup_meta, dict) else {}
+    cleanup_candidate_duplicates = (
+        cleanup_meta.get("semantic_dedupe_duplicates", {}) if isinstance(cleanup_meta, dict) else {}
+    )
+    cleanup_finding_duplicates = (
+        cleanup_meta.get("semantic_dedupe_finding_duplicates", {})
+        if isinstance(cleanup_meta, dict)
+        else {}
+    )
+    combined_duplicate_map = _merge_duplicate_maps(
+        cleanup_candidate_duplicates,
+        cleanup_finding_duplicates,
+        duplicate_map,
+    )
     promoted_candidate_ids = {
         str(candidate_id)
         for candidate_id, entry in lifecycle.items()
@@ -72,7 +104,7 @@ def synthesizer_node(state: GraphState) -> Dict[str, Any]:
     final_ids = {finding.id for finding in deduped}
     equivalent_keeper = {
         str(dropped): str(keeper)
-        for keeper, ids in duplicate_map.items()
+        for keeper, ids in combined_duplicate_map.items()
         for dropped in ids
         if str(dropped) != str(keeper)
     }
@@ -94,7 +126,7 @@ def synthesizer_node(state: GraphState) -> Dict[str, Any]:
             obligations_by_task=coverage_by_task,
             candidates=candidates,
             final_findings=deduped,
-            duplicate_map=duplicate_map,
+            duplicate_map=combined_duplicate_map,
         ),
         "worker_reports": [report.model_dump() for report in reports],
         "reflection_reports": [

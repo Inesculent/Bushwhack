@@ -166,7 +166,7 @@ def test_normalize_strengthens_hedged_findall_tuple_candidate() -> None:
         failure_mode="matches[0] tuple handling",
         evidence_summary="findall may return tuples; code uses matches[0]",
         recommendation=(
-            "The current logic appears correct. Consider adding explicit handling "
+            "Consider adding explicit handling "
             "when matches[0] is a tuple."
         ),
         reflection_specialties=["logic"],
@@ -175,8 +175,36 @@ def test_normalize_strengthens_hedged_findall_tuple_candidate() -> None:
     )
     out, _, _ = normalize_critiquer_candidates(task, [raw])
     assert out[0].severity == "high"
-    assert "data loss" in out[0].failure_mode.lower()
-    assert "appears correct" not in (out[0].recommendation or "").lower()
+    assert out[0].behavioral_symptom == "data_loss"
+    assert out[0].root_operation == "indexing"
+    assert "retain all required slots" not in (out[0].recommendation or "").lower()
+
+
+def test_normalize_does_not_invent_structured_loss_for_negated_all_groups_candidate() -> None:
+    task = ReviewTask(
+        id="logic-structured-extraction-005",
+        title="structured extraction",
+        description="RegexExtract findall tuples",
+        target_files=["comfy_extras/nodes_string.py"],
+    )
+    raw = CandidateFinding(
+        candidate_id="c1",
+        patch_task_id="logic-structured-extraction-005",
+        file_path="comfy_extras/nodes_string.py",
+        line_start=178,
+        line_end=242,
+        content="class RegexExtract():",
+        claim_type="defect",
+        failure_mode="All Groups returns empty output when no capture groups exist.",
+        evidence_summary="This is correct behavior for empty results; the evidence is about All Groups.",
+        recommendation="The current logic appears correct. Consider documenting the behavior.",
+        reflection_specialties=["logic"],
+        suspected_category="logic",
+        severity="medium",
+    )
+    out, _, _ = normalize_critiquer_candidates(task, [raw])
+    assert out[0].behavioral_symptom != "data_loss"
+    assert "retain all required slots" not in (out[0].recommendation or "").lower()
 
 
 def test_cleanup_misroute_recovered_when_redirect_parsed() -> None:

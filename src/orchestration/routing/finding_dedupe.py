@@ -40,6 +40,20 @@ _SECURITY_CLAIM_MARKERS = (
     "unvalidated pattern",
     "complexity analyzer",
 )
+_RESOURCE_CLAIM_MARKERS = (
+    "resource use",
+    "resource exhaust",
+    "resource-amplification",
+    "unbounded work",
+    "unbounded input",
+    "memory exhaustion",
+    "excessive memory",
+    "timeout",
+    "cache",
+    "caching",
+    "compile cost",
+    "bounded execution",
+)
 _STRUCTURED_SLOT_MARKERS = (
     "m[0]",
     "matches[0]",
@@ -62,18 +76,26 @@ _GROUP_INDEX_MARKERS = (
     "group 0",
     "capture group",
     "full match",
+    "full-match",
     "empty group",
     "falsy",
     "truthiness",
 )
 _NONE_JOIN_MARKERS = (
-    "join(",
-    "str.join",
     "nonetype",
     "optional group",
+    "optional capture",
+    "none before join",
     "none element",
+    "none value",
     "none in aggregat",
+    "absent element",
+    "absent value",
+    "absent capture",
+    "missing group",
+    "missing capture",
 )
+_AGGREGATION_ACTION_MARKERS = ("join(", "str.join", "join_delimiter.join", "join", "aggregat")
 
 _RESOLUTION_ONLY_MARKERS = (
     "no action needed",
@@ -144,6 +166,7 @@ _FAMILY_BEHAVIOR: dict[str, tuple[str, str]] = {
     "regex_group_index": ("wrong_output", "indexing"),
     "index_bounds": ("crash", "indexing"),
     "redos": ("unbounded_work", "resource_use"),
+    "resource_amplification": ("unbounded_work", "resource_use"),
     "empty_find_replace": ("wrong_output", "contract"),
     "duplicate_registration": ("contract_mismatch", "contract"),
 }
@@ -238,13 +261,21 @@ def is_security_or_unbounded_pattern_claim(*texts: str) -> bool:
     return any(m in blob for m in _SECURITY_CLAIM_MARKERS)
 
 
+def _has_absent_value_aggregation_claim(blob: str) -> bool:
+    return any(m in blob for m in _NONE_JOIN_MARKERS) and any(
+        m in blob for m in _AGGREGATION_ACTION_MARKERS
+    )
+
+
 def defect_family(*texts: str) -> str:
     blob = _blob_parts(*texts)
     if any(m in blob for m in _MISSING_BRANCH_MARKERS):
         return "missing_branch_return"
     if is_security_or_unbounded_pattern_claim(blob):
         return "redos"
-    if any(m in blob for m in _NONE_JOIN_MARKERS):
+    if any(m in blob for m in _RESOURCE_CLAIM_MARKERS):
+        return "resource_amplification"
+    if _has_absent_value_aggregation_claim(blob):
         return "aggregation_none_type"
     if any(m in blob for m in _STRUCTURED_SLOT_MARKERS) and (
         "[0]" in blob
@@ -275,9 +306,16 @@ def infer_behavioral_symptom(*texts: str) -> str:
         return "missing_return"
     if "uncaught" in blob or "not caught" in blob or "outside" in blob and "try" in blob:
         return "uncaught_exception"
-    if any(m in blob for m in _SECURITY_CLAIM_MARKERS) or "resource" in blob and "exhaust" in blob:
+    if any(m in blob for m in _SECURITY_CLAIM_MARKERS) or any(
+        m in blob for m in _RESOURCE_CLAIM_MARKERS
+    ):
         return "unbounded_work"
-    if any(m in blob for m in _NONE_JOIN_MARKERS) or "typeerror" in blob or "indexerror" in blob or "crash" in blob:
+    if (
+        _has_absent_value_aggregation_claim(blob)
+        or ("typeerror" in blob and "join" in blob)
+        or "indexerror" in blob
+        or "crash" in blob
+    ):
         return "crash"
     if any(m in blob for m in _STRUCTURED_SLOT_MARKERS) and (
         "data loss" in blob or "drop" in blob or "discard" in blob or "only the first" in blob
@@ -296,14 +334,18 @@ def infer_root_operation(*texts: str) -> str:
     blob = _blob_parts(*texts)
     if "try" in blob or "except" in blob or "uncaught" in blob or "exception scope" in blob:
         return "exception_scope"
+    if _has_absent_value_aggregation_claim(blob) or ("typeerror" in blob and "join" in blob):
+        return "aggregation"
     if any(m in blob for m in _STRUCTURED_SLOT_MARKERS) or any(m in blob for m in _GROUP_INDEX_MARKERS):
         return "indexing"
     if any(m in blob for m in _MISSING_BRANCH_MARKERS) or "dispatch" in blob or "mode" in blob:
         return "dispatch"
-    if any(m in blob for m in _NONE_JOIN_MARKERS) or "join" in blob or "format" in blob:
-        return "aggregation"
-    if any(m in blob for m in _SECURITY_CLAIM_MARKERS) or "resource" in blob and "exhaust" in blob:
+    if any(m in blob for m in _SECURITY_CLAIM_MARKERS) or any(
+        m in blob for m in _RESOURCE_CLAIM_MARKERS
+    ):
         return "resource_use"
+    if "join" in blob or "format" in blob:
+        return "aggregation"
     if "serializ" in blob:
         return "serialization"
     if "contract" in blob or "return type" in blob or "return shape" in blob:
@@ -356,7 +398,7 @@ def _patch_task_specialty(patch_task_id: str) -> str:
 def _specialty_rank_for_family(patch_task_id: str, family: str) -> int:
     """Lower is better when picking among duplicate candidates."""
     specialty = _patch_task_specialty(patch_task_id)
-    if family == "redos":
+    if family in {"redos", "resource_amplification"}:
         order = ("security", "logic", "performance", "general", "unknown")
     elif family in _LOGIC_DEFECT_FAMILIES:
         order = ("logic", "security", "performance", "general", "unknown")
@@ -637,7 +679,7 @@ def pick_preferred_candidate(
             line_anchor_score(cand, git_diff=git_diff),
             len(cand.evidence_summary or ""),
         )
-        if family in _LOGIC_DEFECT_FAMILIES or family == "redos":
+        if family in _LOGIC_DEFECT_FAMILIES or family in {"redos", "resource_amplification"}:
             return (-specialty_rank, -_severity_rank(cand.severity), *anchor)
         return (-_severity_rank(cand.severity), -specialty_rank, *anchor)
 
@@ -717,9 +759,9 @@ def dedupe_review_findings_by_signature(
     findings: Sequence[ReviewFinding],
 ) -> tuple[List[ReviewFinding], dict[str, list[str]]]:
     """Collapse same file/class/family; keep strongest row without merging unlike text."""
-    kept: dict[tuple[str, str, str], ReviewFinding] = {}
+    kept: dict[tuple[str, str, str, str, str], ReviewFinding] = {}
     duplicates: dict[str, list[str]] = {}
-    order: list[tuple[str, str, str]] = []
+    order: list[tuple[str, str, str, str, str]] = []
 
     for finding in findings:
         key = review_finding_semantic_key(finding)
