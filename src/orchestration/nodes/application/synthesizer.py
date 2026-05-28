@@ -46,6 +46,41 @@ def _merge_duplicate_maps(*maps: Any) -> Dict[str, List[str]]:
     return merged
 
 
+def _canonicalize_duplicate_map(
+    duplicate_map: Dict[str, List[str]],
+    final_ids: set[str],
+) -> Dict[str, List[str]]:
+    parent: Dict[str, str] = {}
+    for keeper, dropped_ids in duplicate_map.items():
+        for dropped in dropped_ids:
+            if dropped != keeper:
+                parent[dropped] = keeper
+
+    def resolve(item: str) -> str:
+        seen: set[str] = set()
+        current = item
+        while current in parent and current not in seen:
+            seen.add(current)
+            next_item = parent[current]
+            if next_item in final_ids:
+                return next_item
+            current = next_item
+        for candidate in seen:
+            if candidate in final_ids:
+                return candidate
+        return current
+
+    canonical: Dict[str, List[str]] = {}
+    for dropped in sorted(parent):
+        keeper = resolve(dropped)
+        if keeper == dropped:
+            continue
+        canonical.setdefault(keeper, [])
+        if dropped not in canonical[keeper]:
+            canonical[keeper].append(dropped)
+    return canonical
+
+
 def synthesizer_node(state: GraphState) -> Dict[str, Any]:
     findings = state.get("findings", []) or []
     dropped_resolution_ids: List[str] = []
@@ -91,7 +126,7 @@ def synthesizer_node(state: GraphState) -> Dict[str, Any]:
         if isinstance(cleanup_meta, dict)
         else {}
     )
-    combined_duplicate_map = _merge_duplicate_maps(
+    raw_combined_duplicate_map = _merge_duplicate_maps(
         cleanup_candidate_duplicates,
         cleanup_finding_duplicates,
         duplicate_map,
@@ -102,6 +137,7 @@ def synthesizer_node(state: GraphState) -> Dict[str, Any]:
         if isinstance(entry, dict) and entry.get("decision") == "promoted"
     }
     final_ids = {finding.id for finding in deduped}
+    combined_duplicate_map = _canonicalize_duplicate_map(raw_combined_duplicate_map, final_ids)
     equivalent_keeper = {
         str(dropped): str(keeper)
         for keeper, ids in combined_duplicate_map.items()

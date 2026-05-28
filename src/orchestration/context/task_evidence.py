@@ -24,6 +24,7 @@ from src.orchestration.routing.finding_dedupe import extract_subject_class
 _SYMBOL_NAME_RE = re.compile(r"\b([A-Z][a-zA-Z0-9_]{2,})\b")
 _CLASS_SCOPE_ISOLATION_PHRASE = "do not review any other class"
 _CLASS_SLICE_TAIL_LINES = 3
+_SIMPLE_CLASS_DEF_RE = re.compile(r"^class\s+([A-Za-z_][A-Za-z0-9_]*)\s*[:\(]", re.MULTILINE)
 
 
 @dataclass(frozen=True)
@@ -45,6 +46,7 @@ class TaskEvidenceBundle:
     char_total: int = 0
     byte_chop: bool = False
     rendered: str = ""
+    rendered_units: Dict[str, str] = field(default_factory=dict)
 
     def to_storage_dict(self) -> Dict[str, Any]:
         return {
@@ -52,6 +54,8 @@ class TaskEvidenceBundle:
             "file_contents": dict(self.file_contents),
             "files_complete": dict(self.files_complete),
             "symbols_included": list(self.symbols_included),
+            "rendered_units": dict(self.rendered_units),
+            "rendered": self.rendered,
             "diff_hunks": dict(self.diff_hunks),
             "warnings": list(self.warnings),
             "char_total": self.char_total,
@@ -132,6 +136,36 @@ def _line_slice_inclusive(file_text: str, line_start: int, line_end: int) -> str
 
 def _line_slice(file_text: str, line_start: int, line_end: int) -> str:
     return _line_slice_inclusive(file_text, line_start, line_end)
+
+
+def _fallback_class_line_range_with_tail(
+    file_text: str,
+    class_name: str,
+    *,
+    tail_lines: int = _CLASS_SLICE_TAIL_LINES,
+) -> Tuple[int, int] | None:
+    if not file_text.strip() or not class_name:
+        return None
+    lines = file_text.splitlines()
+    start: int | None = None
+    for idx, line in enumerate(lines, start=1):
+        match = _SIMPLE_CLASS_DEF_RE.match(line.strip())
+        if match and match.group(1) == class_name:
+            start = idx
+            break
+    if start is None:
+        return None
+    end = len(lines)
+    for idx in range(start + 1, len(lines) + 1):
+        if _SIMPLE_CLASS_DEF_RE.match(lines[idx - 1].strip()):
+            end = idx - 1
+            break
+    if tail_lines > 0:
+        for line_no in range(end + 1, min(len(lines), end + tail_lines) + 1):
+            if _SIMPLE_CLASS_DEF_RE.match(lines[line_no - 1].strip()):
+                break
+            end = line_no
+    return start, end
 
 
 def _is_class_scoped_task(task: ReviewTask) -> bool:
@@ -245,6 +279,18 @@ def _render_units(units: Sequence[EvidenceUnit]) -> str:
     return "\n\n".join(parts)
 
 
+def _units_by_file(units: Sequence[EvidenceUnit]) -> Dict[str, str]:
+    out: Dict[str, List[str]] = {}
+    for unit in units:
+        file_path = unit.label.split(":", 1)[0].strip()
+        if not file_path:
+            continue
+        out.setdefault(_normalize_path(file_path), []).append(
+            f"--- {unit.label} ---\n{unit.content}"
+        )
+    return {path: "\n\n".join(parts) for path, parts in out.items()}
+
+
 def build_task_evidence(
     state: GraphState,
     task: ReviewTask,
@@ -288,6 +334,8 @@ def build_task_evidence(
 
         if file_text:
             file_contents[fp] = file_text
+            if len(file_text) >= per_file_cap:
+                warnings.append(f"evidence_file_content_capped:{fp}")
 
         entities = ctx.entities_by_file.get(fp) or ctx.entities_by_file.get(fp.replace("/", "\\")) or []
 
@@ -300,8 +348,15 @@ def build_task_evidence(
                     file_text, class_name, tail_lines=_CLASS_SLICE_TAIL_LINES
                 )
                 if ranged is None:
-                    warnings.append(f"evidence_class_range_missing:{fp}:{class_name}")
-                    continue
+                    ranged = _fallback_class_line_range_with_tail(
+                        file_text,
+                        class_name,
+                        tail_lines=_CLASS_SLICE_TAIL_LINES,
+                    )
+                    if ranged is None:
+                        warnings.append(f"evidence_class_range_missing:{fp}:{class_name}")
+                        continue
+                    warnings.append(f"evidence_class_range_recovered:{fp}:{class_name}")
                 start, end = ranged
                 content = _line_slice_inclusive(file_text, start, end)
                 if not content.strip():
@@ -381,7 +436,9 @@ def build_task_evidence(
         for fp, snippet in ctx.file_snippets.items():
             norm = _normalize_path(fp)
             if snippet.strip():
-                file_contents[norm] = snippet
+                existing = file_contents.get(norm, "")
+                if len(snippet) > len(existing):
+                    file_contents[norm] = snippet
                 units.append(
                     EvidenceUnit(
                         priority=2,
@@ -395,6 +452,11 @@ def build_task_evidence(
     if not included and units:
         warnings.append("evidence_all_units_dropped_for_budget")
     rendered = _render_units(included)
+    rendered_units = _units_by_file(included)
+    for fp, body in rendered_units.items():
+        existing = file_contents.get(fp, "")
+        if body.strip() and existing.strip() and len(body) > len(existing):
+            warnings.append(f"evidence_rendered_units_preferred:{fp}")
 
     bundle = TaskEvidenceBundle(
         task_id=task.id,
@@ -406,6 +468,7 @@ def build_task_evidence(
         char_total=len(rendered),
         byte_chop=byte_chop,
         rendered=rendered,
+        rendered_units=rendered_units,
     )
     return bundle
 

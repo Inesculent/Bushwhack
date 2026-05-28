@@ -112,6 +112,24 @@ def test_repairs_content_when_lines_already_overlap_class() -> None:
     assert fixed.content == "class RegexExtract:"
 
 
+def test_repairs_overlapping_class_range_when_claimed_branch_is_outside_slice() -> None:
+    cand = _cand(
+        line_start=5,
+        line_end=9,
+        content="StringCompare.execute mode == 'Ends With': no return statement.",
+        failure_mode="missing_return",
+        evidence_summary="'Ends With' branch falls through.",
+        recommendation="Add return to the 'Ends With' branch.",
+    )
+    fixed, reason = anchor_candidate_lines(cand, file_text=_STRING_COMPARE_TAIL)
+    assert reason is None
+    assert fixed is not None
+    assert (fixed.line_start, fixed.line_end) == class_line_range_in_file(
+        _STRING_COMPARE_TAIL,
+        "StringCompare",
+    )
+
+
 def test_drops_when_class_absent_and_lines_far_from_diff_anchor() -> None:
     git_diff = "\n".join(
         [

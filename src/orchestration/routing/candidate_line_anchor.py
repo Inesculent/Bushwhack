@@ -76,6 +76,50 @@ def _ranges_overlap(a_start: int, a_end: int, b_start: int, b_end: int) -> bool:
     return a_start <= b_end and b_start <= a_end
 
 
+_MODE_COMPARISON_RE = re.compile(r"\bmode\s*==\s*['\"]([^'\"]{2,80})['\"]", re.IGNORECASE)
+
+
+def _line_slice(file_text: str, line_start: int, line_end: int) -> str:
+    if not file_text.strip() or line_start < 1 or line_end < line_start:
+        return ""
+    lines = file_text.splitlines()
+    return "\n".join(lines[line_start - 1 : min(len(lines), line_end)])
+
+
+def _branch_terms_from_claim(*parts: str) -> list[str]:
+    blob = " ".join(part for part in parts if part)
+    lowered = blob.lower()
+    if not any(marker in lowered for marker in ("branch", "mode", "return", "falls through", "fall through")):
+        return []
+    terms = [term.strip() for term in _MODE_COMPARISON_RE.findall(blob) if term.strip()]
+    for match in re.finditer(
+        r"['\"]([^'\"]{2,80})['\"].{0,80}?(?:branch|mode|return|falls?\s+through)",
+        blob,
+        flags=re.IGNORECASE | re.DOTALL,
+    ):
+        terms.append(match.group(1).strip())
+    return list(dict.fromkeys(terms))
+
+
+def _candidate_range_misses_claimed_branch(
+    file_text: str,
+    candidate: CandidateFinding,
+    class_start: int,
+    class_end: int,
+) -> bool:
+    terms = _branch_terms_from_claim(
+        candidate.content or "",
+        candidate.failure_mode or "",
+        candidate.evidence_summary or "",
+        candidate.recommendation or "",
+    )
+    if not terms:
+        return False
+    current = _line_slice(file_text, int(candidate.line_start or 1), int(candidate.line_end or 1)).lower()
+    class_body = _line_slice(file_text, class_start, class_end).lower()
+    return any(term.lower() in class_body and term.lower() not in current for term in terms)
+
+
 def anchor_candidate_lines(
     candidate: CandidateFinding,
     *,
@@ -102,11 +146,13 @@ def anchor_candidate_lines(
     if class_range is not None:
         c_start, c_end = class_range
         if _ranges_overlap(ls, le, c_start, c_end):
+            updates: dict[str, object] = {}
+            if _candidate_range_misses_claimed_branch(file_text, candidate, c_start, c_end):
+                updates.update({"line_start": c_start, "line_end": c_end})
             if subject.lower() not in (candidate.content or "").lower():
-                return (
-                    candidate.model_copy(update={"content": f"class {subject}:"}),
-                    None,
-                )
+                updates["content"] = f"class {subject}:"
+            if updates:
+                return candidate.model_copy(update=updates), None
             return candidate, None
         at_line = class_at_line(file_text, ls) if file_text.strip() else None
         if claim_subject and at_line and at_line != claim_subject:

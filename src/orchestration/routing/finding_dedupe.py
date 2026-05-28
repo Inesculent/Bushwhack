@@ -24,6 +24,9 @@ _MISSING_BRANCH_MARKERS = (
     "no final return",
     "implicit none",
     "implicitly return none",
+    "terminal else",
+    "add return",
+    "add return statement",
     "branch exhaust",
     "unhandled mode",
     "without a fallback",
@@ -743,14 +746,36 @@ def review_finding_semantic_key(finding: ReviewFinding) -> tuple[str, str, str, 
         )
     symptom = infer_behavioral_symptom(combined)
     root = infer_root_operation(combined)
-    if symptom == "other" and root == "other":
-        symptom, root = _FAMILY_BEHAVIOR.get(family, ("other", "other"))
+    family_symptom, family_root = _FAMILY_BEHAVIOR.get(family, ("other", "other"))
+    if family in _FAMILY_BEHAVIOR:
+        symptom, root = family_symptom, family_root
+    elif symptom == "other" and root == "other":
+        symptom, root = family_symptom, family_root
     return ((finding.file_path or "").strip().lower(), subject, family, symptom, root)
 
 
 def _finding_preference_score(finding: ReviewFinding, *, family: str) -> tuple:
+    blob = f"{finding.content or ''}\n{finding.recommendation or ''}".lower()
+    concrete = 0 if re.match(r"^\s*class\s+\w+\(?\)?:?\s*$", finding.content or "") else 1
+    terminal_dispatch = 1 if any(
+        marker in blob for marker in ("terminal else", "unexpected mode", "unhandled mode", "fallback")
+    ) else 0
+    contradicted_shape = -1 if any(
+        marker in blob for marker in ("incomplete in the diff", "diff is truncated", "code cuts off")
+    ) else 0
+    if family == "missing_branch_return":
+        return (
+            terminal_dispatch,
+            -_severity_rank(finding.severity),
+            concrete,
+            contradicted_shape,
+            len(finding.content or ""),
+        )
     return (
         -_severity_rank(finding.severity),
+        terminal_dispatch,
+        concrete,
+        contradicted_shape,
         len(finding.content or ""),
     )
 

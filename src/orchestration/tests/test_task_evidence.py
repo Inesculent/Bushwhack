@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 
 from src.domain.schemas import CodeEntity, ReviewTask
 from src.domain.state import GraphState
+from src.orchestration.context import task_evidence as task_evidence_module
 from src.orchestration.context.context_packets import build_critique_probe_packet, enforce_packet_budget
 from src.orchestration.context.task_evidence import (
     _pack_units,
@@ -166,6 +167,52 @@ def test_class_scoped_task_uses_file_slice_not_truncated_ast_body() -> None:
     assert "return string_a.endswith(string_b)," in bundle.rendered
     assert truncated_ast_body.strip() not in bundle.rendered
     assert bundle.files_complete.get("comfy_extras/nodes_string.py") is False
+    stored = bundle.to_storage_dict()
+    rendered_units = stored["rendered_units"]["comfy_extras/nodes_string.py"]
+    assert "return string_a.endswith(string_b)," in rendered_units
+    assert stored["rendered"] == bundle.rendered
+
+
+def test_class_slice_fallback_recovers_when_primary_range_lookup_fails(monkeypatch) -> None:
+    file_body = "\n".join(
+        [
+            "class StringCompare():",
+            "    def execute(self, mode):",
+            "        if mode == 'Equal':",
+            "            return True,",
+            "        elif mode == 'Ends With':",
+            "            return False,",
+        ]
+    )
+    provider = MagicMock()
+    provider.read_full_file.return_value = file_body
+    task = ReviewTask(
+        id="review-logic-StringCompare",
+        title="StringCompare.execute branch exhaustiveness",
+        description=(
+            "Branch-exhaustiveness on StringCompare.execute() only. "
+            "Do not review any other class in the target file."
+        ),
+        target_files=["comfy_extras/nodes_string.py"],
+        specialty="logic",
+    )
+    ctx = ReviewTaskContext(file_snippets={"comfy_extras/nodes_string.py": file_body})
+    monkeypatch.setattr(task_evidence_module, "class_line_range_with_tail", lambda *args, **kwargs: None)
+
+    bundle = build_task_evidence(
+        {
+            "run_id": "t",
+            "git_diff": "",
+            "metadata": {"mental_model": {"diff_surface_inventory": ["StringCompare"]}},
+        },
+        task,
+        provider,
+        ctx,
+    )
+
+    assert "return False," in bundle.rendered
+    assert not any("evidence_class_range_missing" in warning for warning in bundle.warnings)
+    assert any("evidence_class_range_recovered" in warning for warning in bundle.warnings)
 
 
 def test_execute_on_changed_lines_priority_zero() -> None:

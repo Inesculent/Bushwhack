@@ -100,6 +100,32 @@ _SCOPE_INSIDE_MARKERS = (
     "enclosed by try",
     "caught by",
 )
+_BRANCH_NO_RETURN_RE = re.compile(
+    r"(?:"
+    r"['\"]([^'\"]{2,80})['\"]\s+(?:branch|mode).{0,100}?"
+    r"(?:lacks|missing|no|without|does\s+not|doesn't)\s+(?:a\s+)?return"
+    r"|mode\s*==\s*['\"]([^'\"]{2,80})['\"].{0,100}?"
+    r"(?:lacks|missing|no|without|does\s+not|doesn't)\s+(?:a\s+)?return"
+    r"|['\"]([^'\"]{2,80})['\"]\s*:\s*"
+    r"(?:lacks|missing|no|without|does\s+not|doesn't)\s+(?:a\s+)?return"
+    r")",
+    re.IGNORECASE | re.DOTALL,
+)
+_MODE_COMPARISON_RE = re.compile(r"\bmode\s*==\s*['\"]([^'\"]{2,80})['\"]", re.IGNORECASE)
+_NO_RETURN_MARKERS = (
+    "lacks return",
+    "lacks a return",
+    "missing return",
+    "missing a return",
+    "no return",
+    "without return",
+    "without a return",
+    "does not return",
+    "doesn't return",
+    "implicit none",
+    "falls through",
+    "fall through",
+)
 _EXTRACTION_MODE_MARKERS = (
     "all matches",
     "all groups",
@@ -148,7 +174,11 @@ def _focused_hits_for_candidate(state: GraphState, candidate_id: str) -> bool:
         else:
             result = raw
         if getattr(result, "candidate_id", None) == candidate_id:
-            if getattr(result, "file_snippets", None) or getattr(result, "search_hits", None):
+            if (
+                getattr(result, "file_snippets", None)
+                or getattr(result, "file_contents_full", None)
+                or getattr(result, "search_hits", None)
+            ):
                 return True
     return False
 
@@ -200,6 +230,7 @@ def _candidate_evidence_blob(candidate: CandidateFinding) -> str:
             candidate.content,
             candidate.failure_mode,
             candidate.evidence_summary,
+            candidate.recommendation or "",
             " ".join(candidate.required_context),
         ]
     ).lower()
@@ -267,6 +298,19 @@ def _reflection_family_or_surface_conflict(
     return False
 
 
+def _family_matches_candidate(candidate: CandidateFinding, text: str) -> bool:
+    if not text.strip():
+        return True
+    candidate_family = defect_family(
+        candidate.failure_mode,
+        candidate.evidence_summary,
+        candidate.content,
+        candidate.recommendation or "",
+    )
+    text_family = defect_family(text)
+    return candidate_family == "general" or text_family == "general" or candidate_family == text_family
+
+
 _INCOMPLETE_EVIDENCE_MARKERS = (
     "truncated code",
     "truncated context",
@@ -278,11 +322,227 @@ _INCOMPLETE_EVIDENCE_MARKERS = (
     "needs verification",
     "needs more context",
 )
+_BOUNDARY_MISSING_BODY_MARKERS = (
+    "cut off",
+    "cuts off",
+    "truncated",
+    "incomplete",
+    "provided evidence",
+    "diff excerpt",
+    "line slice",
+    "branch lacks implementation",
+    "missing implementation",
+    "complete the",
+)
+_BRANCH_BODY_MARKERS = (
+    "return ",
+    "result =",
+    ".append(",
+    "yield ",
+    ".join(",
+    "raise ",
+)
 
 
 def _candidate_depends_on_incomplete_evidence(candidate: CandidateFinding) -> bool:
     blob = _candidate_evidence_blob(candidate)
     return any(marker in blob for marker in _INCOMPLETE_EVIDENCE_MARKERS)
+
+
+def _candidate_claims_boundary_missing_body(candidate: CandidateFinding) -> bool:
+    blob = _candidate_evidence_blob(candidate)
+    if not any(marker in blob for marker in _BOUNDARY_MISSING_BODY_MARKERS):
+        return False
+    return any(
+        marker in blob
+        for marker in (
+            "branch",
+            "body",
+            "implementation",
+            "return statement",
+            "missing return",
+            "falls through",
+            "fall through",
+        )
+    )
+
+
+def _branch_block_has_return(text: str, branch_name: str) -> bool:
+    if not text.strip() or not branch_name.strip():
+        return False
+    branch = re.escape(branch_name.strip())
+    header_re = re.compile(
+        rf"^\s*(?:if|elif)\s+.*['\"]{branch}['\"].*:\s*$",
+        re.IGNORECASE,
+    )
+    lines = text.splitlines()
+    for idx, raw in enumerate(lines):
+        if not header_re.match(raw):
+            continue
+        indent = len(raw) - len(raw.lstrip(" "))
+        for body_line in lines[idx + 1 :]:
+            stripped = body_line.strip()
+            if not stripped:
+                continue
+            body_indent = len(body_line) - len(body_line.lstrip(" "))
+            if body_indent <= indent and re.match(r"(elif|else|except|finally|def|class)\b", stripped):
+                break
+            if re.search(r"\breturn\b", stripped):
+                return True
+        continue
+    return False
+
+
+def _branch_return_claim_terms(text: str) -> list[str]:
+    blob = (text or "").lower()
+    if not any(marker in blob for marker in _NO_RETURN_MARKERS):
+        return []
+    terms: list[str] = []
+    for match in _BRANCH_NO_RETURN_RE.findall(blob):
+        for group in match:
+            if group and group.strip():
+                terms.append(group.strip())
+    if any(marker in blob for marker in ("branch", "mode", "implicit none", "falls through", "fall through")):
+        terms.extend(m.strip() for m in _MODE_COMPARISON_RE.findall(blob))
+    return list(dict.fromkeys(term for term in terms if term))
+
+
+def _branch_return_claim_contradicted_by_text(
+    state: GraphState,
+    candidate: CandidateFinding,
+    text_blob: str,
+) -> bool:
+    if "terminal else" in text_blob or "unexpected mode" in text_blob or "unhandled mode" in text_blob:
+        return False
+    matches = _branch_return_claim_terms(text_blob)
+    if not matches:
+        return False
+    text = _candidate_code_evidence_text(state, candidate)
+    return any(_branch_block_has_return(text, match) for match in matches)
+
+
+def _branch_return_claim_contradicted(state: GraphState, candidate: CandidateFinding) -> bool:
+    blob = _candidate_evidence_blob(candidate)
+    return _branch_return_claim_contradicted_by_text(state, candidate, blob)
+
+
+def _raw_reflection_reject_contradicted_by_code(
+    state: GraphState,
+    candidate: CandidateFinding,
+    reports: Sequence[ReflectionReport],
+) -> bool:
+    if _revision_accepts(candidate.candidate_id, _revision_map(state.get("metadata", {}) or {})):
+        return False
+    metadata = state.get("metadata", {}) if isinstance(state.get("metadata"), dict) else {}
+    verifier_hints: Dict[str, Any] = dict(metadata.get("verifier_hints") or {})
+    if _verifier_concrete_behavior_verified(candidate.candidate_id, verifier_hints):
+        return False
+    for report in reports:
+        if report.verdict != "reject":
+            continue
+        rationale = (report.rationale or "").lower()
+        if not any(
+            marker in rationale
+            for marker in (
+                "contradict",
+                "false positive",
+                "incorrect",
+                "code shows",
+                "actually present",
+                "has a return",
+                "have explicit returns",
+                "does have a return",
+            )
+        ):
+            continue
+        if _branch_return_claim_contradicted_by_text(state, candidate, rationale):
+            return True
+    return False
+
+
+def _branch_has_nontrivial_body(text: str, branch_name: str) -> bool:
+    if not text.strip() or not branch_name.strip():
+        return False
+    branch = re.escape(branch_name.strip())
+    header_re = re.compile(
+        rf"^\s*(?:if|elif)\s+.*['\"]{branch}['\"].*:\s*$",
+        re.IGNORECASE,
+    )
+    lines = text.splitlines()
+    for idx, raw in enumerate(lines):
+        if not header_re.match(raw):
+            continue
+        indent = len(raw) - len(raw.lstrip(" "))
+        for body_line in lines[idx + 1 :]:
+            stripped = body_line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            body_indent = len(body_line) - len(body_line.lstrip(" "))
+            if body_indent <= indent and re.match(r"(elif|else|except|finally|def|class)\b", stripped):
+                break
+            if any(marker in stripped for marker in _BRANCH_BODY_MARKERS):
+                return True
+        continue
+    return False
+
+
+def _focused_context_text_for_candidate(state: GraphState, candidate_id: str, file_path: str) -> str:
+    norm_fp = (file_path or "").replace("\\", "/").lstrip("/")
+    chunks: list[str] = []
+    for raw in (state.get("focused_context_results", {}) or {}).values():
+        if isinstance(raw, dict):
+            result = FocusedContextResult.model_validate(raw)
+        else:
+            result = raw
+        if getattr(result, "candidate_id", None) != candidate_id:
+            continue
+        for mapping_name in ("file_snippets", "file_contents_full"):
+            mapping = getattr(result, mapping_name, {}) or {}
+            if not isinstance(mapping, Mapping):
+                continue
+            for raw_path, body in mapping.items():
+                fp = str(raw_path).replace("\\", "/").lstrip("/")
+                if not norm_fp or fp == norm_fp or fp.endswith("/" + norm_fp) or norm_fp.endswith("/" + fp):
+                    chunks.append(str(body or ""))
+    return "\n\n".join(chunk for chunk in chunks if chunk.strip())
+
+
+def _incomplete_claim_contradicted_by_code_evidence(
+    state: GraphState,
+    candidate: CandidateFinding,
+) -> bool:
+    if not (
+        _candidate_depends_on_incomplete_evidence(candidate)
+        or _candidate_claims_boundary_missing_body(candidate)
+    ):
+        return False
+    text = _candidate_code_evidence_text(state, candidate)
+    if not text.strip():
+        return False
+    blob = _candidate_evidence_blob(candidate)
+    quoted = _quoted_scope_terms(blob)
+    branch_terms = [term for term in quoted if term.lower() in _EXTRACTION_MODE_MARKERS]
+    branch_terms.extend(term for term in _EXTRACTION_MODE_MARKERS if term in blob)
+    branch_terms = list(dict.fromkeys(branch_terms))
+    if branch_terms and any(_branch_has_nontrivial_body(text, term) for term in branch_terms):
+        return True
+    return False
+
+
+def _incomplete_claim_has_positive_absence_evidence(
+    state: GraphState,
+    candidate: CandidateFinding,
+) -> bool:
+    if not _candidate_claims_boundary_missing_body(candidate):
+        return True
+    text = _candidate_code_evidence_text(state, candidate)
+    blob = _candidate_evidence_blob(candidate)
+    branch_terms = [term for term in _quoted_scope_terms(blob) if term.lower() in _EXTRACTION_MODE_MARKERS]
+    branch_terms.extend(term for term in _EXTRACTION_MODE_MARKERS if term in blob)
+    branch_terms = list(dict.fromkeys(branch_terms))
+    if branch_terms:
+        return bool(text.strip()) and all(not _branch_has_nontrivial_body(text, term) for term in branch_terms)
+    return False
 
 
 def _task_evidence_file_text(state: GraphState, candidate: CandidateFinding) -> str:
@@ -291,17 +551,33 @@ def _task_evidence_file_text(state: GraphState, candidate: CandidateFinding) -> 
     by_task = pipe.get("by_task") if isinstance(pipe.get("by_task"), dict) else {}
     task_ids = [candidate.patch_task_id] + [tid for tid in by_task if tid != candidate.patch_task_id]
     norm_fp = (candidate.file_path or "").replace("\\", "/").lstrip("/")
+    chunks: list[str] = []
     for tid in task_ids:
         slot = by_task.get(tid) if isinstance(by_task, dict) else None
         if not isinstance(slot, dict):
             continue
         te = slot.get("task_evidence") if isinstance(slot.get("task_evidence"), dict) else {}
-        files = te.get("file_contents") if isinstance(te.get("file_contents"), dict) else {}
-        for raw_path, body in files.items():
-            fp = str(raw_path).replace("\\", "/").lstrip("/")
-            if fp == norm_fp or fp.endswith("/" + norm_fp):
-                return str(body or "")
-    return ""
+        for key in ("rendered_units", "file_contents"):
+            files = te.get(key) if isinstance(te.get(key), dict) else {}
+            for raw_path, body in files.items():
+                fp = str(raw_path).replace("\\", "/").lstrip("/")
+                if fp == norm_fp or fp.endswith("/" + norm_fp) or norm_fp.endswith("/" + fp):
+                    chunks.append(str(body or ""))
+        rendered = str(te.get("rendered") or "")
+        if rendered and norm_fp and norm_fp in rendered:
+            chunks.append(rendered)
+    return "\n\n".join(chunk for chunk in chunks if chunk.strip())
+
+
+def _candidate_code_evidence_text(state: GraphState, candidate: CandidateFinding) -> str:
+    return "\n\n".join(
+        chunk
+        for chunk in (
+            _task_evidence_file_text(state, candidate),
+            _focused_context_text_for_candidate(state, candidate.candidate_id, candidate.file_path),
+        )
+        if chunk.strip()
+    )
 
 
 def _quoted_scope_terms(text: str) -> list[str]:
@@ -366,6 +642,99 @@ def _broad_risk_without_impact_path(candidate: CandidateFinding) -> bool:
     if candidate.required_context:
         return False
     return True
+
+
+def _has_concrete_boundary_context(candidate: CandidateFinding) -> bool:
+    blob = _candidate_evidence_blob(candidate)
+    return any(marker in blob for marker in _BROAD_RISK_BOUNDARY_MARKERS)
+
+
+def _optimization_without_impact(candidate: CandidateFinding) -> bool:
+    if not _resource_oriented_candidate(candidate):
+        return False
+    blob = _candidate_evidence_blob(candidate)
+    optimization_markers = ("cache", "caching", "compile cost", "faster", "overhead", "optimization")
+    impact_markers = ("regression", "failure", "timeout", "exhaust", "crash", "wrong output", "data loss")
+    return any(marker in blob for marker in optimization_markers) and not any(
+        marker in blob for marker in impact_markers
+    )
+
+
+def _redirect_has_independent_support(
+    candidate: CandidateFinding,
+    raw_reports: Sequence[ReflectionReport],
+    redirect_category: ReviewCategory,
+    *,
+    has_focused_context: bool,
+    revision_accepted: bool,
+    verifier_concrete: bool,
+) -> bool:
+    if revision_accepted or verifier_concrete:
+        return True
+    domain_reports = [report for report in raw_reports if report.reflector_specialty == redirect_category]
+    if any(report.verdict in {"accept", "reclassify"} for report in domain_reports):
+        return True
+    if any(report.verdict in {"needs_context", "needs_verification"} for report in domain_reports):
+        return has_focused_context
+    if candidate.claim_type == "security_risk" and _has_concrete_boundary_context(candidate):
+        return True
+    return has_focused_context and _has_concrete_boundary_context(candidate) and not _optimization_without_impact(candidate)
+
+
+def _language_defined_preference_without_contract(
+    candidate: CandidateFinding,
+    reports: Sequence[ReflectionReport],
+) -> bool:
+    candidate_family = defect_family(
+        candidate.failure_mode,
+        candidate.evidence_summary,
+        candidate.content,
+        candidate.recommendation or "",
+    )
+    if candidate_family in {
+        "missing_branch_return",
+        "structured_slot_truncation",
+        "aggregation_none_type",
+        "regex_group_index",
+    }:
+        return False
+    blob = _candidate_evidence_blob(candidate)
+    if any(marker in blob for marker in ("return_types", "declared return", "must return", "documented project")):
+        return False
+    language_report = False
+    for report in reports:
+        rationale = (report.rationale or "").lower()
+        if any(
+            marker in rationale
+            for marker in (
+                "documented behavior",
+                "well-defined",
+                "valid regex",
+                "valid pattern",
+                "not a bug",
+                "not a defect",
+                "design choice",
+                "technically correct",
+                "default behavior",
+                "python semantics",
+            )
+        ):
+            language_report = True
+            break
+    if not language_report:
+        return False
+    return any(
+        marker in blob
+        for marker in (
+            "negative indices",
+            "out-of-range",
+            "out of range",
+            "empty pattern",
+            "empty regex",
+            "document the behavior",
+            "unexpected behavior",
+        )
+    )
 
 
 def _high_risk_claim_needs_external_context(candidate: CandidateFinding) -> bool:
@@ -442,6 +811,8 @@ def _revision_evidence_extra(
         evidence_summary=candidate.evidence_summary or "",
         revision_summary=summary,
     ):
+        return ""
+    if not _family_matches_candidate(candidate, summary):
         return ""
     return f"\n\nPost-context evidence: {summary}"
 
@@ -559,6 +930,12 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
             if _scope_claim_contradicted(state, candidate):
                 drop(candidate, "scope_claim_contradicted_by_code_evidence")
                 continue
+            if _branch_return_claim_contradicted(state, candidate):
+                drop(candidate, "branch_return_claim_contradicted_by_code_evidence")
+                continue
+            if _incomplete_claim_contradicted_by_code_evidence(state, candidate):
+                drop(candidate, "incomplete_claim_contradicted_by_code_evidence")
+                continue
             early_harness_error = _verifier_harness_error(candidate.candidate_id, verifier_hints)
             early_revision_accepted = _revision_accepts(candidate.candidate_id, revisions)
             if (
@@ -665,6 +1042,37 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
             if off_domain_rejections:
                 ignored_rejections[candidate.candidate_id] = off_domain_rejections
 
+            if (
+                any(report.verdict in {"accept", "reclassify"} for report in raw_relevant_reports)
+                and any(report.verdict == "reject" for report in raw_relevant_reports)
+                and _raw_reflection_reject_contradicted_by_code(
+                    state,
+                    candidate,
+                    raw_relevant_reports,
+                )
+                and not revision_accepted
+                and not _verifier_concrete_behavior_verified(candidate.candidate_id, verifier_hints)
+            ):
+                drop(
+                    candidate,
+                    "raw_reflection_reject_contradicted_by_code_evidence",
+                    {
+                        "verdicts": [
+                            f"{report.reflector_specialty}:{report.verdict}"
+                            for report in raw_relevant_reports
+                        ],
+                    },
+                )
+                continue
+
+            if (
+                _candidate_claims_boundary_missing_body(candidate)
+                and has_focused_context
+                and not _incomplete_claim_has_positive_absence_evidence(state, candidate)
+            ):
+                drop(candidate, "boundary_missing_body_without_positive_absence_evidence")
+                continue
+
             if not relevant_reports:
                 drop(
                     candidate,
@@ -716,6 +1124,22 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
                     and _candidate_has_actionability(candidate)
                     and candidate.claim_type in PROMOTABLE_CLAIM_TYPES
                 ):
+                    if not _redirect_has_independent_support(
+                        candidate,
+                        raw_by_cand.get(candidate.candidate_id, cand_reports),
+                        redirect_category,
+                        has_focused_context=has_focused_context,
+                        revision_accepted=revision_accepted,
+                        verifier_concrete=_verifier_concrete_behavior_verified(
+                            candidate.candidate_id, verifier_hints
+                        ),
+                    ):
+                        drop(
+                            candidate,
+                            "off_domain_redirect_without_independent_support",
+                            {"redirect_category": redirect_category},
+                        )
+                        continue
                     if (
                         candidate.claim_type == "security_risk"
                         and _verifier_harness_error(candidate.candidate_id, verifier_hints)
@@ -796,6 +1220,10 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
                 drop(candidate, "non_promotable_claim_type")
                 continue
 
+            if _language_defined_preference_without_contract(candidate, raw_relevant_reports):
+                drop(candidate, "language_defined_behavior_without_project_contract")
+                continue
+
             if not _candidate_has_actionability(candidate):
                 drop(
                     candidate,
@@ -817,6 +1245,13 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
             needs_context = any(r.verdict == "needs_context" for r in relevant_reports)
             requires_context = _candidate_requires_context(candidate)
             harness_error = _verifier_harness_error(candidate.candidate_id, verifier_hints)
+            if (
+                _optimization_without_impact(candidate)
+                and not revision_accepted
+                and not _verifier_concrete_behavior_verified(candidate.candidate_id, verifier_hints)
+            ):
+                drop(candidate, "optimization_without_concrete_impact")
+                continue
             if (
                 candidate.claim_type == "security_risk"
                 and harness_error

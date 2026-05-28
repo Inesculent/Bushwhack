@@ -326,6 +326,10 @@ def _with_split_specific_claim(
                     "The claim mentions tuple/row indexing such as m[0] or first-slot retention; "
                     "review this independently from aggregation safety."
                 ),
+                "recommendation": (
+                    "Preserve the relevant captured values from each structured match row, or make "
+                    "the single-slot contract explicit in code."
+                ),
             }
         )
     elif behavioral_symptom == "wrong_output" and root_operation == "indexing":
@@ -339,6 +343,10 @@ def _with_split_specific_claim(
                     "The claim mentions group_index, group 0, groups(), or related boundary semantics; "
                     "review this independently from data-loss flattening."
                 ),
+                "recommendation": (
+                    "Define the accepted group-index semantics explicitly and validate/select groups "
+                    "against that contract."
+                ),
             }
         )
     elif behavioral_symptom == "crash" and root_operation == "aggregation":
@@ -351,6 +359,9 @@ def _with_split_specific_claim(
                 "evidence_summary": (
                     "The claim mentions optional/absent/None-like values together with join or "
                     "aggregation; review this independently from group-index semantics."
+                ),
+                "recommendation": (
+                    "Normalize or filter absent capture values before passing results into string aggregation."
                 ),
             }
         )

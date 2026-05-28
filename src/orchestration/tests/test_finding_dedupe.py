@@ -863,6 +863,596 @@ def test_cleanup_caps_resource_findings_per_symbol_operation() -> None:
     assert "logic-1" in ids
 
 
+def test_cleanup_drops_branch_specific_return_claim_contradicted_by_evidence() -> None:
+    node = make_adversarial_cleanup_node()
+    cand = _cand(
+        candidate_id="branch-false",
+        patch_task_id="logic-task",
+        file_path="src/nodes.py",
+        line_start=1,
+        line_end=20,
+        content="class StringCompare():",
+        failure_mode="The 'Ends With' branch lacks a return statement.",
+        evidence_summary="'Ends With' branch has no return.",
+        recommendation="Add return to the 'Ends With' branch.",
+        behavioral_symptom="missing_return",
+        root_operation="dispatch",
+    )
+
+    out = node(
+        {
+            "run_id": "t",
+            "candidate_findings": [cand],
+            "reflection_reports": [
+                ReflectionReport(
+                    candidate_id=cand.candidate_id,
+                    reflector_specialty="logic",
+                    verdict="accept",
+                    rationale="accepted",
+                )
+            ],
+            "metadata": {
+                "critique_pipeline": {
+                    "by_task": {
+                        "logic-task": {
+                            "task_evidence": {
+                                "file_contents": {
+                                    "src/nodes.py": "\n".join(
+                                        [
+                                            "def execute(mode):",
+                                            "    if mode == 'Equal':",
+                                            "        return True",
+                                            "    elif mode == 'Ends With':",
+                                            "        return False",
+                                        ]
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+        }
+    )
+    assert out["findings"] == []
+    assert (
+        out["metadata"]["adversarial_cleanup"]["candidate_lifecycle"][cand.candidate_id]["reason"]
+        == "branch_return_claim_contradicted_by_code_evidence"
+    )
+
+
+def test_cleanup_drops_mode_return_claim_variants_contradicted_by_evidence() -> None:
+    variants = [
+        (
+            "mode-equals",
+            "StringCompare.execute mode == 'Ends With': no return statement.",
+            "mode == 'Ends With' falls through to implicit None.",
+        ),
+        (
+            "quoted-no-return",
+            "StringCompare.execute has a defect in 'Ends With': no return statement.",
+            "'Ends With': no return statement.",
+        ),
+        (
+            "does-not-return",
+            "StringCompare.execute 'Ends With' branch does not return a value.",
+            "The 'Ends With' branch does not return.",
+        ),
+    ]
+    for cid, content, evidence in variants:
+        node = make_adversarial_cleanup_node()
+        cand = _cand(
+            candidate_id=cid,
+            patch_task_id="logic-task",
+            file_path="src/nodes.py",
+            line_start=1,
+            line_end=20,
+            content=content,
+            failure_mode="missing_return",
+            evidence_summary=evidence,
+            recommendation="Add return to the handled branch.",
+            behavioral_symptom="missing_return",
+            root_operation="dispatch",
+        )
+
+        out = node(
+            {
+                "run_id": "t",
+                "candidate_findings": [cand],
+                "reflection_reports": [
+                    ReflectionReport(
+                        candidate_id=cand.candidate_id,
+                        reflector_specialty="logic",
+                        verdict="accept",
+                        rationale="accepted",
+                    )
+                ],
+                "metadata": {
+                    "critique_pipeline": {
+                        "by_task": {
+                            "logic-task": {
+                                "task_evidence": {
+                                    "file_contents": {
+                                        "src/nodes.py": "\n".join(
+                                            [
+                                                "def execute(mode):",
+                                                "    if mode == 'Equal':",
+                                                "        return True",
+                                                "    elif mode == 'Ends With':",
+                                                "        return False",
+                                            ]
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+            }
+        )
+        assert out["findings"] == []
+        assert (
+            out["metadata"]["adversarial_cleanup"]["candidate_lifecycle"][cand.candidate_id]["reason"]
+            == "branch_return_claim_contradicted_by_code_evidence"
+        )
+
+
+def test_cleanup_raw_reject_with_visible_contradiction_beats_consolidated_accept() -> None:
+    node = make_adversarial_cleanup_node()
+    cand = _cand(
+        candidate_id="conflicted-branch",
+        patch_task_id="logic-task",
+        file_path="src/nodes.py",
+        line_start=1,
+        line_end=20,
+        content="StringCompare.execute violates the boolean return contract.",
+        failure_mode="missing_return",
+        evidence_summary="A handled comparison mode is reported as falling through.",
+        recommendation="Add return to the handled branch.",
+        behavioral_symptom="missing_return",
+        root_operation="dispatch",
+    )
+
+    out = node(
+        {
+            "run_id": "t",
+            "candidate_findings": [cand],
+            "reflection_reports": [
+                ReflectionReport(
+                    candidate_id=cand.candidate_id,
+                    reflector_specialty="logic",
+                    verdict="reject",
+                    rationale=(
+                        "The candidate is a false positive: it claims mode == 'Ends With' "
+                        "has no return, but code shows that branch returns."
+                    ),
+                ),
+                ReflectionReport(
+                    candidate_id=cand.candidate_id,
+                    reflector_specialty="logic",
+                    verdict="accept",
+                    rationale="The handled mode does not return.",
+                ),
+            ],
+            "metadata": {
+                "critique_pipeline": {
+                    "by_task": {
+                        "logic-task": {
+                            "task_evidence": {
+                                "file_contents": {
+                                    "src/nodes.py": "\n".join(
+                                        [
+                                            "def execute(mode):",
+                                            "    if mode == 'Equal':",
+                                            "        return True",
+                                            "    elif mode == 'Ends With':",
+                                            "        return False",
+                                        ]
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+        }
+    )
+    assert out["findings"] == []
+    assert (
+        out["metadata"]["adversarial_cleanup"]["candidate_lifecycle"][cand.candidate_id]["reason"]
+        == "raw_reflection_reject_contradicted_by_code_evidence"
+    )
+
+
+def test_cleanup_keeps_terminal_fallback_return_claim() -> None:
+    node = make_adversarial_cleanup_node()
+    cand = _cand(
+        candidate_id="terminal-missing",
+        patch_task_id="logic-task",
+        file_path="src/nodes.py",
+        line_start=1,
+        line_end=20,
+        content="class StringCompare():",
+        failure_mode="Missing terminal else: unexpected mode falls through.",
+        evidence_summary="All visible branches return, but no fallback handles unexpected mode.",
+        recommendation="Add a terminal else for unexpected mode values.",
+        behavioral_symptom="missing_return",
+        root_operation="dispatch",
+    )
+
+    out = node(
+        {
+            "run_id": "t",
+            "candidate_findings": [cand],
+            "reflection_reports": [
+                ReflectionReport(
+                    candidate_id=cand.candidate_id,
+                    reflector_specialty="logic",
+                    verdict="accept",
+                    rationale="accepted",
+                )
+            ],
+            "metadata": {
+                "critique_pipeline": {
+                    "by_task": {
+                        "logic-task": {
+                            "task_evidence": {
+                                "file_contents": {
+                                    "src/nodes.py": "\n".join(
+                                        [
+                                            "def execute(mode):",
+                                            "    if mode == 'Equal':",
+                                            "        return True",
+                                            "    elif mode == 'Ends With':",
+                                            "        return False",
+                                        ]
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+        }
+    )
+    assert [finding.id for finding in out["findings"]] == [cand.candidate_id]
+
+
+def test_cleanup_drops_incomplete_branch_claim_when_body_is_visible() -> None:
+    node = make_adversarial_cleanup_node()
+    cand = _cand(
+        candidate_id="truncated-branch",
+        patch_task_id="logic-regex",
+        file_path="src/nodes.py",
+        line_start=1,
+        line_end=20,
+        content="RegexExtract.execute 'All Groups' mode is incomplete in the diff.",
+        failure_mode="Incomplete code: 'All Groups' branch lacks implementation.",
+        evidence_summary="The diff is truncated after the branch header.",
+        recommendation="Complete the 'All Groups' branch implementation.",
+        behavioral_symptom="missing_return",
+        root_operation="dispatch",
+    )
+
+    out = node(
+        {
+            "run_id": "t",
+            "candidate_findings": [cand],
+            "reflection_reports": [
+                ReflectionReport(
+                    candidate_id=cand.candidate_id,
+                    reflector_specialty="logic",
+                    verdict="needs_verification",
+                    rationale="Needs full context because the diff is truncated.",
+                )
+            ],
+            "focused_context_results": {
+                "r1": {
+                    "request_id": "r1",
+                    "candidate_id": cand.candidate_id,
+                    "file_snippets": {"src/nodes.py": "All Groups body visible"},
+                }
+            },
+            "metadata": {
+                "critique_pipeline": {
+                    "by_task": {
+                        "logic-regex": {
+                            "task_evidence": {
+                                "file_contents": {
+                                    "src/nodes.py": "\n".join(
+                                        [
+                                            "def execute(mode):",
+                                            "    if mode == 'All Matches':",
+                                            "        result = ''",
+                                            "    elif mode == 'All Groups':",
+                                            "        results = []",
+                                            "        results.append('x')",
+                                            "        result = '\\n'.join(results)",
+                                            "    return result,",
+                                        ]
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+        }
+    )
+    assert out["findings"] == []
+    assert (
+        out["metadata"]["adversarial_cleanup"]["candidate_lifecycle"][cand.candidate_id]["reason"]
+        == "incomplete_claim_contradicted_by_code_evidence"
+    )
+
+
+def test_cleanup_drops_incomplete_branch_claim_when_focused_context_has_body() -> None:
+    node = make_adversarial_cleanup_node()
+    cand = _cand(
+        candidate_id="general_registration_003",
+        patch_task_id="logic-regex",
+        file_path="src/nodes.py",
+        line_start=1,
+        line_end=20,
+        content="RegexExtract.execute has incomplete code for 'All Groups' mode - the branch is cut off in the provided evidence.",
+        failure_mode="missing_return",
+        evidence_summary="The code evidence shows the 'All Groups' branch starts but is truncated.",
+        recommendation="Verify the complete implementation of 'All Groups' mode returns the expected value.",
+        behavioral_symptom="crash",
+        root_operation="dispatch",
+    )
+
+    out = node(
+        {
+            "run_id": "t",
+            "candidate_findings": [cand],
+            "reflection_reports": [
+                ReflectionReport(
+                    candidate_id=cand.candidate_id,
+                    reflector_specialty="logic",
+                    verdict="needs_verification",
+                    rationale="The branch is cut off in the provided evidence and needs verification.",
+                )
+            ],
+            "focused_context_results": {
+                "r1": {
+                    "request_id": "r1",
+                    "candidate_id": cand.candidate_id,
+                    "file_contents_full": {
+                        "src/nodes.py": "\n".join(
+                            [
+                                "def execute(mode):",
+                                "    if mode == 'All Matches':",
+                                "        result = ''",
+                                "    elif mode == 'All Groups':",
+                                "        matches = []",
+                                "        results = []",
+                                "        for match in matches:",
+                                "            results.append(match)",
+                                "        result = '\\n'.join(results)",
+                                "    else:",
+                                "        result = ''",
+                                "    return result,",
+                            ]
+                        )
+                    },
+                }
+            },
+            "metadata": {
+                "critique_pipeline": {
+                    "by_task": {
+                        "logic-regex": {
+                            "task_evidence": {
+                                "file_contents": {"src/nodes.py": "elif mode == 'All Groups':\n"}
+                            }
+                        }
+                    }
+                },
+                "verifier_hints": {
+                    cand.candidate_id: {
+                        "verdict": "refuted",
+                        "harness_error": True,
+                        "product_verified": False,
+                    }
+                },
+            },
+        }
+    )
+    assert out["findings"] == []
+    assert (
+        out["metadata"]["adversarial_cleanup"]["candidate_lifecycle"][cand.candidate_id]["reason"]
+        == "incomplete_claim_contradicted_by_code_evidence"
+    )
+
+
+def test_cleanup_uses_rendered_units_when_file_contents_are_malformed() -> None:
+    node = make_adversarial_cleanup_node()
+    cand = _cand(
+        candidate_id="rendered-unit-body",
+        patch_task_id="logic-regex",
+        file_path="src/nodes.py",
+        line_start=10,
+        line_end=20,
+        content="Handler.execute is incomplete in the provided evidence; 'All Groups' is cut off.",
+        failure_mode="Incomplete code: 'All Groups' branch lacks implementation.",
+        evidence_summary="The stored file evidence is truncated after the branch header.",
+        recommendation="Complete the 'All Groups' branch implementation.",
+        behavioral_symptom="missing_return",
+        root_operation="dispatch",
+    )
+
+    out = node(
+        {
+            "run_id": "t",
+            "candidate_findings": [cand],
+            "reflection_reports": [
+                ReflectionReport(
+                    candidate_id=cand.candidate_id,
+                    reflector_specialty="logic",
+                    verdict="needs_verification",
+                    rationale="Needs complete body.",
+                )
+            ],
+            "metadata": {
+                "critique_pipeline": {
+                    "by_task": {
+                        "logic-regex": {
+                            "task_evidence": {
+                                "file_contents": {"src/nodes.py": "Groups\":\n"},
+                                "rendered_units": {
+                                    "src/nodes.py": "\n".join(
+                                        [
+                                            "--- src/nodes.py: class Handler (L1-L20) ---",
+                                            "class Handler:",
+                                            "    def execute(self, mode):",
+                                            "        if mode == 'All Groups':",
+                                            "            results = []",
+                                            "            results.append('x')",
+                                            "            result = '\\n'.join(results)",
+                                            "        return result,",
+                                        ]
+                                    )
+                                },
+                            }
+                        }
+                    }
+                }
+            },
+        }
+    )
+    assert out["findings"] == []
+    assert (
+        out["metadata"]["adversarial_cleanup"]["candidate_lifecycle"][cand.candidate_id]["reason"]
+        == "incomplete_claim_contradicted_by_code_evidence"
+    )
+
+
+def test_revision_evidence_from_different_family_is_not_appended() -> None:
+    node = make_adversarial_cleanup_node()
+    cand = _cand(
+        candidate_id="agg",
+        file_path="src/nodes.py",
+        content="class RegexExtract(): optional capture may reach join().",
+        failure_mode="Aggregation safety: absent capture values can enter string joining.",
+        evidence_summary="Optional captures are appended before join().",
+        recommendation="Normalize absent capture values before joining.",
+        behavioral_symptom="crash",
+        root_operation="aggregation",
+    )
+
+    out = node(
+        {
+            "run_id": "t",
+            "candidate_findings": [cand],
+            "reflection_reports": [
+                ReflectionReport(
+                    candidate_id=cand.candidate_id,
+                    reflector_specialty="logic",
+                    verdict="needs_verification",
+                    rationale="Needs proof.",
+                )
+            ],
+            "focused_context_results": {
+                "r1": {
+                    "request_id": "r1",
+                    "candidate_id": cand.candidate_id,
+                    "file_snippets": {"src/nodes.py": "join path"},
+                }
+            },
+            "metadata": {
+                "critique_revision": {
+                    "revisions": [
+                        {
+                            "candidate_id": cand.candidate_id,
+                            "verdict": "accept",
+                            "updated_evidence_summary": "All Matches uses findall and keeps only m[0] from tuple rows.",
+                        }
+                    ]
+                }
+            },
+        }
+    )
+    assert len(out["findings"]) == 1
+    assert "Post-context evidence" not in out["findings"][0].content
+
+
+def test_cleanup_drops_off_domain_redirect_without_independent_support() -> None:
+    node = make_adversarial_cleanup_node()
+    cand = _cand(
+        candidate_id="perf-redirect",
+        file_path="src/nodes.py",
+        content="class RegexExtract(): external request path",
+        failure_mode="Repeated compilation overhead.",
+        evidence_summary="Pattern compilation happens on every call.",
+        recommendation="Cache compiled patterns.",
+        behavioral_symptom="unbounded_work",
+        root_operation="resource_use",
+    )
+
+    out = node(
+        {
+            "run_id": "t",
+            "candidate_findings": [cand],
+            "reflection_reports": [
+                ReflectionReport(
+                    candidate_id=cand.candidate_id,
+                    reflector_specialty="logic",
+                    verdict="not_applicable",
+                    reclassified_category="performance",
+                    rationale="This is a performance optimization concern, not logic.",
+                )
+            ],
+            "metadata": {},
+        }
+    )
+    assert out["findings"] == []
+    assert (
+        out["metadata"]["adversarial_cleanup"]["candidate_lifecycle"][cand.candidate_id]["reason"]
+        == "off_domain_redirect_without_independent_support"
+    )
+
+
+def test_cleanup_drops_language_defined_behavior_without_contract() -> None:
+    node = make_adversarial_cleanup_node()
+    cand = _cand(
+        candidate_id="slice-pref",
+        file_path="src/nodes.py",
+        content="StringSubstring.execute allows negative indices.",
+        failure_mode="Negative indices may produce unexpected behavior.",
+        evidence_summary="Python slicing accepts out-of-range indexes.",
+        recommendation="Clamp indexes or document the behavior.",
+        behavioral_symptom="wrong_output",
+        root_operation="indexing",
+    )
+
+    out = node(
+        {
+            "run_id": "t",
+            "candidate_findings": [cand],
+            "reflection_reports": [
+                ReflectionReport(
+                    candidate_id=cand.candidate_id,
+                    reflector_specialty="logic",
+                    verdict="not_applicable",
+                    rationale="Python string slicing behavior is well-defined and documented behavior, not a defect.",
+                ),
+                ReflectionReport(
+                    candidate_id=cand.candidate_id,
+                    reflector_specialty="logic",
+                    verdict="accept",
+                    rationale="Could be unexpected to users.",
+                ),
+            ],
+            "metadata": {},
+        }
+    )
+    assert out["findings"] == []
+    assert (
+        out["metadata"]["adversarial_cleanup"]["candidate_lifecycle"][cand.candidate_id]["reason"]
+        == "language_defined_behavior_without_project_contract"
+    )
+
+
 def test_final_dedupe_keeps_resource_and_incomplete_implementation_separate() -> None:
     incomplete = ReviewFinding(
         id="logic-incomplete",
@@ -888,6 +1478,33 @@ def test_final_dedupe_keeps_resource_and_incomplete_implementation_separate() ->
     kept, duplicates = dedupe_review_findings_by_signature([incomplete, resource])
     assert {finding.id for finding in kept} == {"logic-incomplete", "resource-use"}
     assert duplicates == {}
+
+
+def test_final_dedupe_merges_missing_return_root_variants() -> None:
+    branch = ReviewFinding(
+        id="branch",
+        file_path="src/x.py",
+        line_start=1,
+        line_end=20,
+        content="class Handler():",
+        severity="high",
+        feedback_type="defect_detection",
+        recommendation="Add return to handled branch.",
+    )
+    fallback = ReviewFinding(
+        id="fallback",
+        file_path="src/x.py",
+        line_start=1,
+        line_end=20,
+        content="class Handler lacks a terminal else for unexpected mode values.",
+        severity="medium",
+        feedback_type="defect_detection",
+        recommendation="Add a terminal else fallback for unhandled mode.",
+    )
+
+    kept, duplicates = dedupe_review_findings_by_signature([branch, fallback])
+    assert [finding.id for finding in kept] == ["fallback"]
+    assert duplicates == {"fallback": ["branch"]}
 
 
 def test_synthesizer_drops_resolution_only() -> None:
@@ -964,3 +1581,40 @@ def test_synthesizer_uses_cleanup_duplicate_map_for_lost_promoted_audit() -> Non
     meta = out["metadata"]["review_synthesizer"]
     assert meta["lost_promoted_candidate_ids"] == []
     assert meta["recall_audit"]["duplicate_equivalents"] == {"dropped": "keeper"}
+
+
+def test_synthesizer_canonicalizes_duplicate_cycles_to_final_keeper() -> None:
+    finding = ReviewFinding(
+        id="keeper",
+        file_path="f.py",
+        line_start=1,
+        line_end=2,
+        content="class Handler: missing return",
+        severity="high",
+        feedback_type="defect_detection",
+        recommendation="Add a terminal return.",
+    )
+    out = synthesizer_node(
+        {
+            "findings": [finding],
+            "candidate_findings": [],
+            "metadata": {
+                "adversarial_cleanup": {
+                    "candidate_lifecycle": {
+                        "keeper": {"decision": "promoted"},
+                        "middle": {"decision": "promoted"},
+                        "dropped": {"decision": "promoted"},
+                    },
+                    "semantic_dedupe_duplicates": {"middle": ["dropped"]},
+                    "semantic_dedupe_finding_duplicates": {"keeper": ["middle"], "middle": ["keeper"]},
+                }
+            },
+        }
+    )
+
+    meta = out["metadata"]["review_synthesizer"]
+    assert meta["lost_promoted_candidate_ids"] == []
+    assert meta["recall_audit"]["duplicate_equivalents"] == {
+        "dropped": "keeper",
+        "middle": "keeper",
+    }
