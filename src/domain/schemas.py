@@ -716,6 +716,9 @@ class CommunityWorkItem(BaseModel):
         default_factory=list,
         description="Community ids of outbound cross-boundary targets (same order as targets when possible).",
     )
+    total_files: int = Field(default=0, ge=0)
+    total_symbols: int = Field(default=0, ge=0)
+    total_unverified_targets: int = Field(default=0, ge=0)
 
 
 class CommunityAgentOutput(BaseModel):

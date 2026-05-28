@@ -12,7 +12,10 @@ from src.domain.schemas import (
     CommunityAgentOutput,
     CommunitySemanticSummary,
     CommunityWorkItem,
+    FileSemanticSummary,
     StructuralTopologySummary,
+    SymbolSemanticSummary,
+    UnverifiedCallTarget,
 )
 from src.domain.state import GraphState
 from src.infrastructure.snapshot_writer import SnapshotWriter
@@ -100,6 +103,23 @@ def test_route_semantic_dispatch_batches_queue() -> None:
     routed = route_semantic_dispatch(state)
     assert isinstance(routed, list)
     assert len(routed) == Settings().semantic_max_parallel_agents
+
+
+def test_route_semantic_dispatch_uses_stored_batch_size() -> None:
+    state: GraphState = {  # type: ignore[typeddict-item]
+        "run_id": "t1",
+        "repo_path": "r",
+        "git_diff": "",
+        "metadata": {"semantic_phase2": {"max_parallel_agents": 3}},
+        "semantic_community_work_queue": [
+            {"community_id": i, "file_paths": [], "symbol_context_lines": []}
+            for i in range(6)
+        ],
+        "semantic_dispatch_cursor": 0,
+    }
+    routed = route_semantic_dispatch(state)
+    assert isinstance(routed, list)
+    assert len(routed) == 3
 
 
 def test_semantic_dispatch_advances_cursor_for_next_wave() -> None:
@@ -200,6 +220,212 @@ def test_community_agent_waits_on_active_local_server_timeout(monkeypatch: pytes
     assert out["metadata"]["semantic_phase2"]["community_7"]["attempts"] == 2
     assert out["metadata"]["semantic_phase2"]["community_7"]["warnings"] == ["llm_timeout_server_active"]
     assert out["community_summaries"][0].purpose == "Completed after a patient retry."
+
+
+def test_community_agent_retries_length_finish_with_compact_prompt(monkeypatch: pytest.MonkeyPatch) -> None:
+    settings = Settings(
+        redis_enabled=False,
+        semantic_agent_max_retries=0,
+        semantic_agent_retry_backoff_seconds=0,
+    )
+    prompts: list[str] = []
+
+    class LengthFinishReasonError(Exception):
+        pass
+
+    class FakeLlm:
+        def invoke(self, prompt: str) -> CommunityAgentOutput:
+            prompts.append(prompt)
+            if len(prompts) == 1:
+                raise LengthFinishReasonError("length limit was reached")
+            return CommunityAgentOutput(
+                summary=CommunitySemanticSummary(
+                    community_id=-1,
+                    label="Compact Map",
+                    purpose="Completed after compact retry.",
+                    file_summaries=[],
+                    symbol_summaries=[],
+                    unverified_calls=[],
+                    cross_community_dependencies=[],
+                    confidence=0.8,
+                ),
+                warnings=[],
+            )
+
+    monkeypatch.setattr(
+        "src.orchestration.nodes.exploration.community_semantic_agent.Models.worker",
+        lambda *_args, **_kwargs: FakeLlm(),
+    )
+
+    agent = make_community_semantic_agent_node(settings=settings)
+    out = agent(
+        {
+            "run_id": "t1",
+            "repo_path": "r",
+            "git_diff": "",
+            "semantic_community_work_item": {
+                "community_id": 7,
+                "file_paths": ["src/demo.py"],
+                "symbol_context_lines": ["stub"],
+                "outbound_cross_community_targets": [],
+                "target_communities_hint": [],
+            },
+        }
+    )
+
+    assert len(prompts) == 2
+    assert "retry - required" in prompts[1]
+    meta = out["metadata"]["semantic_phase2"]["community_7"]
+    assert "community_semantic_llm_retry:reason=length" in meta["warnings"]
+    assert out["community_summaries"][0].purpose == "Completed after compact retry."
+
+
+def test_community_agent_uses_deterministic_fallback_after_compact_length(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = Settings(
+        redis_enabled=False,
+        semantic_agent_max_retries=2,
+        semantic_agent_retry_backoff_seconds=0,
+    )
+    prompts: list[str] = []
+
+    class LengthFinishReasonError(Exception):
+        pass
+
+    class FakeLlm:
+        def invoke(self, prompt: str) -> CommunityAgentOutput:
+            prompts.append(prompt)
+            raise LengthFinishReasonError("length limit was reached")
+
+    monkeypatch.setattr(
+        "src.orchestration.nodes.exploration.community_semantic_agent.Models.worker",
+        lambda *_args, **_kwargs: FakeLlm(),
+    )
+
+    agent = make_community_semantic_agent_node(settings=settings)
+    out = agent(
+        {
+            "run_id": "t1",
+            "repo_path": "r",
+            "git_diff": "",
+            "semantic_community_work_item": {
+                "community_id": 7,
+                "file_paths": ["src/a.py", "src/b.py", "src/c.py", "src/d.py"],
+                "symbol_context_lines": [
+                    "symbol:a:A | A | def A():\n" + ("x" * 1000),
+                    "symbol:b:B | B | def B():\n" + ("x" * 1000),
+                ],
+                "outbound_cross_community_targets": ["X", "Y"],
+                "target_communities_hint": [2],
+                "total_files": 4,
+                "total_symbols": 2,
+                "total_unverified_targets": 2,
+            },
+        }
+    )
+
+    assert len(prompts) == 2
+    assert "x" * 1000 not in prompts[1]
+    summary = out["community_summaries"][0]
+    assert summary.label == "Community 7"
+    assert "Deterministic high-level fallback" in summary.purpose
+    meta = out["metadata"]["semantic_phase2"]["community_7"]
+    assert meta["attempts"] == 2
+    assert "community_semantic_deterministic_fallback:reason=length" in meta["warnings"]
+    assert meta["summary_truncated"] is True
+
+
+def test_community_agent_clamps_summary_and_reports_coverage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = Settings(redis_enabled=False)
+
+    def many_file_summaries() -> list[FileSemanticSummary]:
+        return [
+            FileSemanticSummary(
+                file_node_id=f"file:src/f{i}.py",
+                purpose=f"File {i}.",
+                key_symbols=[],
+                confidence=0.7,
+            )
+            for i in range(10)
+        ]
+
+    def many_symbol_summaries() -> list[SymbolSemanticSummary]:
+        return [
+            SymbolSemanticSummary(
+                symbol_node_id=f"symbol:{i}:S{i}",
+                purpose=f"Symbol {i}.",
+                confidence=0.7,
+            )
+            for i in range(17)
+        ]
+
+    def many_unverified_calls() -> list[UnverifiedCallTarget]:
+        return [
+            UnverifiedCallTarget(
+                source_symbol_id="symbol:src:Source",
+                target_name=f"target_{i}",
+                source_community_id=-1,
+            )
+            for i in range(23)
+        ]
+
+    class FakeLlm:
+        def invoke(self, _prompt: str) -> CommunityAgentOutput:
+            return CommunityAgentOutput(
+                summary=CommunitySemanticSummary(
+                    community_id=-1,
+                    label="Large Map",
+                    purpose="Large summary.",
+                    file_summaries=many_file_summaries(),
+                    symbol_summaries=many_symbol_summaries(),
+                    unverified_calls=many_unverified_calls(),
+                    cross_community_dependencies=[],
+                    confidence=0.8,
+                ),
+                warnings=[f"warning-{i}" for i in range(8)],
+            )
+
+    monkeypatch.setattr(
+        "src.orchestration.nodes.exploration.community_semantic_agent.Models.worker",
+        lambda *_args, **_kwargs: FakeLlm(),
+    )
+
+    agent = make_community_semantic_agent_node(settings=settings)
+    out = agent(
+        {
+            "run_id": "t1",
+            "repo_path": "r",
+            "git_diff": "",
+            "semantic_community_work_item": {
+                "community_id": 9,
+                "file_paths": [f"src/f{i}.py" for i in range(12)],
+                "symbol_context_lines": [f"symbol:{i}:S{i}" for i in range(18)],
+                "outbound_cross_community_targets": [f"target_{i}" for i in range(25)],
+                "target_communities_hint": [1],
+                "total_files": 12,
+                "total_symbols": 18,
+                "total_unverified_targets": 25,
+            },
+        }
+    )
+
+    summary = out["community_summaries"][0]
+    assert len(summary.file_summaries) == 8
+    assert len(summary.symbol_summaries) == 15
+    assert len(summary.unverified_calls) == 20
+    meta = out["metadata"]["semantic_phase2"]["community_9"]
+    assert meta["summary_truncated"] is True
+    assert meta["total_files"] == 12
+    assert meta["summarized_files"] == 8
+    assert meta["omitted_files"] == 4
+    assert meta["total_symbols"] == 18
+    assert meta["omitted_symbols"] == 3
+    assert meta["total_unverified_targets"] == 25
+    assert meta["omitted_unverified_targets"] == 5
+    assert len(meta["warnings"]) == 5
 
 
 @pytest.mark.skipif(

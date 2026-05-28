@@ -1,0 +1,79 @@
+[
+  {
+    "id": "task_2_001__2",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 180,
+    "line_end": 200,
+    "content": "StringCompare.execute has a missing terminal else for invalid mode values. The function declares RETURN_TYPES as (IO.BOOLEAN,) but does not return anything when mode is not Equal, Starts With, or Ends With, resulting in implicit None return which violates the contract.",
+    "severity": "high",
+    "feedback_type": "defect_detection",
+    "recommendation": "Add a terminal else clause that raises ValueError or returns False for invalid mode values to ensure all code paths return a boolean value.",
+    "references": []
+  },
+  {
+    "id": "task_2_002__2",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 200,
+    "line_end": 240,
+    "content": "RegexExtract.execute has a missing terminal else for invalid mode values. The function declares RETURN_TYPES as (IO.STRING,) but does not return anything when mode is not First Match, All Matches, First Group, or All Groups, resulting in implicit None return which violates the contract.",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Verify that the else clause at line 235 correctly handles all invalid mode cases by returning an empty string.",
+    "references": []
+  },
+  {
+    "id": "task_4_1",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 228,
+    "line_end": 323,
+    "content": "class RegexExtract():...\n\nPost-context evidence: Static evidence confirms ReDoS risk: user-controlled regex_pattern passed to re.findall/re.finditer without timeout or complexity limits. Harness errors prevent runtime confirmation, but code path vulnerability is evident. No existing timeout mechanism found in diff or context. runtime unverified (harness)",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Implement a timeout mechanism for regex operations or limit the maximum number of matches returned. Consider using a regex complexity analyzer to reject patterns likely to cause ReDoS.",
+    "references": []
+  },
+  {
+    "id": "task_6_001:orthogonal-2",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 228,
+    "line_end": 323,
+    "content": "RegexExtract's 'All Groups' mode uses re.finditer() but fails to handle cases where match.groups() is empty or group_index exceeds available groups. The code checks 'if match.groups() and len(match.groups()) >= group_index' but match.groups() can be an empty tuple, which is falsy, causing valid matches with no groups to be silently skipped. This results in data loss when the regex pattern has no capturing groups but the user expects first-match behavior.",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Define the accepted group-index semantics explicitly and validate/select groups against that contract.",
+    "references": []
+  },
+  {
+    "id": "task_6_002__2",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 228,
+    "line_end": 323,
+    "content": "In 'All Matches' mode, when matches contains tuples (from patterns with capturing groups), the code extracts only the first element (m[0]) from each tuple. However, if the user expects all captured groups to be returned, this truncates the result. The 'group_index' parameter exists but is not used in 'All Matches' mode, creating inconsistent behavior between modes.\n\nPost-context evidence: Static evidence confirms data loss: 'All Matches' mode truncates tuples to m[0] while ignoring group_index parameter. 'All Groups' mode correctly uses group_index. Inconsistent behavior between modes creates bug where captured groups beyond index 0 are lost despite parameter existing. runtime unverified (harness)",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Preserve the relevant captured values from each structured match row, or make the single-slot contract explicit in code.",
+    "references": []
+  },
+  {
+    "id": "task_6_003",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 228,
+    "line_end": 323,
+    "content": "class RegexExtract():",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Validate that `group_index` is within the valid range for the match object. For group 0 (full match), check `group_index <= len(match.groups()) + 1`. For groups 1+, check `group_index <= len(match.groups())`. Also, handle the case where `group_index=0` is explicitly requested (full match).",
+    "references": []
+  },
+  {
+    "id": "task_6_2",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 228,
+    "line_end": 323,
+    "content": "In 'All Groups' mode, the code iterates matches and appends match.group(group_index) only when len(match.groups()) >= group_index. However, if group_index is 0 (valid, min=0), match.groups() returns all groups excluding group 0, so len(match.groups()) will be less than group_index=0 is false, but group(0) is the full match. The condition fails for group_index=0, returning empty string instead of full match.",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Fix the condition to handle group_index=0 correctly. Use: if match and (group_index == 0 or len(match.groups()) >= group_index).",
+    "references": []
+  }
+]

@@ -1,0 +1,167 @@
+[
+  {
+    "id": "logic_01b_001",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 151,
+    "line_end": 172,
+    "content": "class StringCompare():",
+    "severity": "high",
+    "feedback_type": "defect_detection",
+    "recommendation": "Add return statement in 'Ends With' branch: return a.endswith(b),",
+    "references": []
+  },
+  {
+    "id": "general_01_001__2",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 159,
+    "line_end": 189,
+    "content": "StringCompare.execute lacks a return statement in the 'Ends With' branch, causing implicit None return when mode is 'Ends With'. This violates the declared RETURN_TYPES contract of (IO.BOOLEAN,).",
+    "severity": "high",
+    "feedback_type": "defect_detection",
+    "recommendation": "Add 'return a.endswith(b),' to the 'Ends With' branch to match the return contract.",
+    "references": []
+  },
+  {
+    "id": "security_01_001__2",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 190,
+    "line_end": 227,
+    "content": "class RegexMatch: ReDoS vulnerability in RegexMatch: User-provided regex_pattern is compiled without timeout or length limits, enabling denial-of-service attacks via malicious patterns.\n\nPost-context evidence: Digest evidence supports ReDoS risk: user-controlled regex_pattern passed to re.search/re.findall/re.finditer without timeout/complexity limits. Python re module known vulnerable to catastrophic backtracking. One verifier attempt showed STATUS: SAFE but was inconclusive overall due to harness errors. Static analysis confirms missing safeguards (timeout, complexity check) for resource exhaustion attack vector. runtime unverified (harness)",
+    "severity": "high",
+    "feedback_type": "defect_detection",
+    "recommendation": "Add re.compile() with timeout parameter (Python 3.11+) or implement pattern length limits. Consider using a regex engine with built-in ReDoS protection.",
+    "references": []
+  },
+  {
+    "id": "general_01_002__2",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 228,
+    "line_end": 284,
+    "content": "RegexExtract.execute 'All Groups' mode is incomplete in the diff. The branch lacks implementation logic, which will cause a crash or incorrect behavior when this mode is selected.",
+    "severity": "high",
+    "feedback_type": "defect_detection",
+    "recommendation": "Complete the 'All Groups' branch implementation to extract and join all regex groups from matches.",
+    "references": []
+  },
+  {
+    "id": "security_01_redundant_finding",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 228,
+    "line_end": 323,
+    "content": "class RegexExtract: RegexExtract does not validate regex pattern complexity or length, allowing potential ReDoS attacks with malicious patterns. While re.error is caught, catastrophic backtracking can still cause resource exhaustion before the exception is raised.",
+    "severity": "high",
+    "feedback_type": "defect_detection",
+    "recommendation": "Add pattern length limits (e.g., max 1000 chars), consider implementing regex timeout using signal.alarm or threading with timeout, and validate pattern complexity before execution. Document that regex patterns should be from trusted sources or implement sandboxing.",
+    "references": []
+  },
+  {
+    "id": "general_01_003__2",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 22,
+    "line_end": 39,
+    "content": "StringSubstring.execute lacks boundary validation for start/end indices. Negative indices or values exceeding string length may cause silent truncation or unexpected behavior.",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Add boundary validation to clamp start/end indices to valid range [0, len(string)] or raise an informative error.",
+    "references": []
+  },
+  {
+    "id": "general_01_001__2__2",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 159,
+    "line_end": 189,
+    "content": "class StringCompare():",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Add a terminal else clause that raises an exception or returns a default value when mode doesn't match any expected option. This ensures the method always returns a value matching the RETURN_TYPES contract (IO.BOOLEAN,).",
+    "references": []
+  },
+  {
+    "id": "general_01_002",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 228,
+    "line_end": 284,
+    "content": "class RegexExtract():",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Ensure all four mode branches have explicit return statements and add a terminal else clause to handle unexpected mode values, returning an empty string or raising an exception.",
+    "references": []
+  },
+  {
+    "id": "review-logic-structured-extraction-001__2",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 228,
+    "line_end": 323,
+    "content": "RegexExtract node has structured data preservation issues in 'All Groups' mode where match.groups() may contain None values that will break join operations\n\nPost-context evidence: Digest confirms 'All Matches' mode ignores group_index and extracts m[0] from tuples (lines 280-282). Runtime verifier inconclusive due to harness errors, but static evidence supports the defect claim. The bug causes data loss when users expect a specific group index but get the first group instead. runtime unverified (harness)",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Filter out None values before joining: results = [m for m in results if m is not None] before the join operation. Also add explicit None handling in 'All Matches' mode when iterating tuples.",
+    "references": []
+  },
+  {
+    "id": "review-logic-structured-extraction-1",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 228,
+    "line_end": 323,
+    "content": "In RegexExtract.execute, the 'All Matches' mode uses re.findall which can return tuples when the pattern has capture groups. The code checks isinstance(matches[0], tuple) and extracts m[0]. This truncates data by only keeping the first group, ignoring subsequent capture groups that the user might expect when using 'All Matches' mode with patterns containing multiple groups. The 'All Groups' mode attempts to handle groups but uses group_index which defaults to 1, potentially causing confusion with 'All Matches' behavior.",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "For 'All Matches' mode with tuples, consider joining all groups per match (e.g., flatten or format as 'group1|group2') instead of truncating to m[0]. Clarify if 'All Matches' should return full match strings or all captured groups.",
+    "references": []
+  },
+  {
+    "id": "security_01_002__2",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 228,
+    "line_end": 323,
+    "content": "Data loss in RegexExtract 'All Groups' mode: When match.groups() is empty or group_index exceeds available groups, the code may skip valid matches or return incomplete results.\n\nPost-context evidence: Runtime verifier confirmed STATUS: MISMATCH (wrong output reproduced). Static analysis shows group_index=0 returns full match instead of first capture group in 'All Groups' mode, and out-of-range group_index returns empty string instead of error. Both digest shards support the logic defect claim. runtime unverified (harness)",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Adjust group_index handling: group(0) for full match, groups() for capture groups. Clarify if group_index=0 should extract full match or first capture group.",
+    "references": []
+  },
+  {
+    "id": "security_01_branch_audit",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 228,
+    "line_end": 323,
+    "content": "class RegexExtract: RegexExtract execute method has incomplete branch audit - the 'All Groups' mode uses re.finditer which can be resource-intensive with large inputs and complex patterns, but there's no limit on the number of matches collected.",
+    "severity": "medium",
+    "feedback_type": "optimization",
+    "recommendation": "Add a maximum match count limit (e.g., 1000 matches) to prevent excessive memory consumption. Consider streaming results instead of collecting all matches in memory for large inputs.",
+    "references": []
+  },
+  {
+    "id": "performance_01_regex_extract_compilation:orthogonal-2",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 232,
+    "line_end": 280,
+    "content": "class RegexExtract: def execute(self, string, regex_pattern, mode, case_insensitive, multiline, dotall, group_index, **kwargs):",
+    "severity": "medium",
+    "feedback_type": "optimization",
+    "recommendation": "Cache compiled regex patterns using lru_cache or a pattern-to-compiled-regex dictionary keyed by (regex_pattern, flags). This would reduce compilation overhead from O(n) to O(1) per unique pattern.",
+    "references": []
+  },
+  {
+    "id": "security_01_3__2",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 228,
+    "line_end": 323,
+    "content": "class RegexExtract: RegexExtract 'All Groups' mode uses re.finditer() which may be slower than re.findall() for large inputs. No limit on number of matches collected before joining.\n\nPost-context evidence: Digest confirms 'All Groups' mode uses re.finditer() and collects all matches into a list before joining, with no limit on match count. Input allows large strings (multiline=True), and no global output limits exist. This supports the performance regression claim for large inputs with many matches.",
+    "severity": "low",
+    "feedback_type": "optimization",
+    "recommendation": "Consider adding a maximum match count limit or using re.findall() with appropriate grouping to avoid memory accumulation.",
+    "references": []
+  },
+  {
+    "id": "security_01_6__2",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 228,
+    "line_end": 323,
+    "content": "class RegexExtract: RegexExtract does not handle the case where regex_pattern itself is empty string. Empty pattern may match at every position, causing unexpected results or performance issues.\n\nPost-context evidence: Digest confirms regex_pattern is required but empty string is valid in Python regex and causes matches at every position. Code passes pattern directly without validation, leading to potentially massive output in 'All Matches'/'All Groups' modes. This is a logic defect with wrong_output symptom.",
+    "severity": "low",
+    "feedback_type": "defect_detection",
+    "recommendation": "Add validation to reject empty regex_pattern or document the behavior explicitly.",
+    "references": []
+  }
+]

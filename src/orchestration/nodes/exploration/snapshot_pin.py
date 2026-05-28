@@ -17,6 +17,7 @@ from src.infrastructure.snapshot_pointer_store import SnapshotPointerStore
 from src.infrastructure.snapshot_writer import SnapshotWriter
 
 logger = logging.getLogger(__name__)
+trace_logger = logging.getLogger("research_pipeline.reviewer_trace")
 
 
 def _coerce_summaries(raw: Sequence[Any]) -> List[CommunitySemanticSummary]:
@@ -57,6 +58,54 @@ def _coerce_calls(state: GraphState) -> List[UnverifiedCallTarget]:
     return rows
 
 
+def _exploration_context_ready(
+    state: GraphState,
+    *,
+    source: str,
+    snapshot_id: str | None,
+) -> Dict[str, Any]:
+    topo = state.get("structural_topology")
+    community_count = 0
+    if isinstance(topo, StructuralTopologySummary):
+        community_count = int(topo.community_count)
+    elif isinstance(topo, dict):
+        community_count = int(topo.get("community_count") or len(topo.get("communities") or []))
+    if not community_count:
+        community_count = len(state.get("community_summaries") or [])
+    return {
+        "source": source,
+        "snapshot_id": snapshot_id or "",
+        "has_graph": isinstance(state.get("structural_graph_node_link"), dict),
+        "has_topology": bool(topo),
+        "community_count": community_count,
+        "has_global_summary": bool(str(state.get("global_summary") or "").strip()),
+    }
+
+
+def _stamp_exploration_context_ready(
+    state: GraphState,
+    metadata: Dict[str, Any],
+    *,
+    source: str,
+    snapshot_id: str | None,
+) -> Dict[str, Any]:
+    ready = _exploration_context_ready(state, source=source, snapshot_id=snapshot_id)
+    metadata["exploration_context_ready"] = ready
+    if metadata.get("review_trace_enabled"):
+        trace_logger.info(
+            "TRACE exploration_context_ready run_id=%s source=%s snapshot_id=%s has_graph=%s "
+            "has_topology=%s community_count=%s has_global_summary=%s",
+            state.get("run_id", "unknown"),
+            ready["source"],
+            ready["snapshot_id"],
+            ready["has_graph"],
+            ready["has_topology"],
+            ready["community_count"],
+            ready["has_global_summary"],
+        )
+    return metadata
+
+
 def make_snapshot_pin_node(
     writer: SnapshotWriter,
     pointer_store: SnapshotPointerStore,
@@ -80,7 +129,14 @@ def make_snapshot_pin_node(
             if inner_meta:
                 snap_out["metadata"] = inner_meta
             meta["exploration_snapshot"] = snap_out
+            meta = _stamp_exploration_context_ready(
+                state,
+                meta,
+                source="loaded",
+                snapshot_id=str(state.get("snapshot_id") or ""),
+            )
             return {
+                "snapshot_source": "loaded",
                 "metadata": meta,
                 "node_history": ["snapshot_pin:loaded_passthrough"],
                 "next_step": "plan",
@@ -136,10 +192,21 @@ def make_snapshot_pin_node(
             m["behavioral_spec_ref"] = state["behavioral_spec_ref"]
             snap_dump["metadata"] = m
         meta["exploration_snapshot"] = snap_dump
+        live_state: GraphState = dict(state)
+        live_state["snapshot_id"] = snap.snapshot_id
+        live_state["snapshot_root"] = root
+        live_state["snapshot_source"] = "explore"
+        meta = _stamp_exploration_context_ready(
+            live_state,
+            meta,
+            source="explore",
+            snapshot_id=snap.snapshot_id,
+        )
 
         return {
             "snapshot_root": root,
             "snapshot_id": snap.snapshot_id,
+            "snapshot_source": "explore",
             "next_step": "plan",
             "metadata": meta,
             "node_history": ["snapshot_pin"],

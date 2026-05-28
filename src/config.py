@@ -688,7 +688,13 @@ class Settings(BaseSettings):
 	semantic_max_tokens_per_community: int = Field(
 		default=8000,
 		ge=500,
-		description="Approximate max prompt characters budget per community agent (rough token proxy).",
+		description="Approximate prompt token budget per community agent, converted to a rough character cap.",
+	)
+	semantic_agent_max_completion_tokens: int = Field(
+		default=4096,
+		ge=512,
+		le=32768,
+		description="Completion token cap for high-level community semantic summaries.",
 	)
 	semantic_max_files_per_agent: int = Field(
 		default=20,

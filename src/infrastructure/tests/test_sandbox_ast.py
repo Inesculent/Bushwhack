@@ -45,3 +45,24 @@ def test_collect_sandbox_file_entities_invokes_script() -> None:
     assert out == payload
     assert sandbox.last_command is not None
     assert sandbox.last_command[0] == "python"
+
+
+def test_collect_sandbox_file_entities_recovers_json_from_noisy_output() -> None:
+    payload = {
+        "files": {
+            "a.py": [
+                {
+                    "name": "A",
+                    "type": "class",
+                    "signature": "class A:",
+                    "body": "class A:\n    pass",
+                    "dependencies": [],
+                    "definition_line": 1,
+                }
+            ]
+        },
+        "gaps": [],
+    }
+    sandbox = _FakeSandbox(f"warning: optional parser unavailable\n{json.dumps(payload)}\ntrailing noise")
+    out = collect_sandbox_file_entities(sandbox, ["a.py"])
+    assert out == payload

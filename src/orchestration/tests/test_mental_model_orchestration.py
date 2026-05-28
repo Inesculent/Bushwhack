@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from src.config import Settings
-from src.domain.schemas import BehavioralSpec
+from src.domain.schemas import BehavioralSpec, ExplorationSnapshot, StructuralTopologySummary
 from src.domain.state import GraphState
 from src.infrastructure.behavioral_spec_store import BehavioralSpecStore
 from src.orchestration.prompts.ledger_formatter import format_exploration_ledger_for_prompt
@@ -126,6 +126,13 @@ def test_snapshot_pin_skips_write_when_snapshot_source_loaded() -> None:
             "snapshot_source": "loaded",
             "snapshot_id": "snap1",
             "snapshot_root": "/snap/root",
+            "structural_graph_node_link": {"nodes": [], "edges": []},
+            "structural_topology": StructuralTopologySummary(
+                algorithm="test",
+                community_count=2,
+                communities=[],
+            ),
+            "global_summary": "loaded summary",
             "behavioral_spec_ref": "file:/tmp/spec.json",
             "metadata": {"exploration_snapshot": {"snapshot_id": "old"}},
         }
@@ -136,3 +143,70 @@ def test_snapshot_pin_skips_write_when_snapshot_source_loaded() -> None:
     meta_snap = out["metadata"]["exploration_snapshot"]
     assert meta_snap["snapshot_id"] == "snap1"
     assert meta_snap["metadata"]["behavioral_spec_ref"] == "file:/tmp/spec.json"
+    assert out["snapshot_source"] == "loaded"
+    assert out["metadata"]["exploration_context_ready"] == {
+        "source": "loaded",
+        "snapshot_id": "snap1",
+        "has_graph": True,
+        "has_topology": True,
+        "community_count": 2,
+        "has_global_summary": True,
+    }
+
+
+def test_snapshot_pin_stamps_live_exploration_context_ready() -> None:
+    import sys
+    import types
+    from unittest.mock import MagicMock
+
+    if "redis" not in sys.modules:
+        _redis_stub = types.ModuleType("redis")
+        _redis_stub.Redis = MagicMock  # type: ignore[attr-defined]
+        sys.modules["redis"] = _redis_stub
+
+    from src.config import Settings
+    from src.orchestration.nodes.exploration.snapshot_pin import make_snapshot_pin_node
+
+    snap = ExplorationSnapshot(
+        snapshot_id="live-snap",
+        run_id="live-run",
+        snapshot_root="/snap/live",
+        status="exploration_complete",
+        community_count=1,
+        total_nodes=2,
+        total_edges=1,
+        unresolved_call_count=0,
+        extraction_gap_count=0,
+    )
+    writer = MagicMock()
+    writer.write_snapshot.return_value = (snap, "/snap/live")
+    ptr = MagicMock()
+    node = make_snapshot_pin_node(writer, ptr, settings=Settings())
+
+    out = node(
+        {
+            "run_id": "live-run",
+            "repo_path": "/repo",
+            "git_diff": "",
+            "structural_graph_node_link": {"nodes": [{"id": "n"}], "edges": []},
+            "structural_topology": StructuralTopologySummary(
+                algorithm="test",
+                community_count=1,
+                communities=[],
+            ),
+            "community_summaries": [],
+            "global_summary": "live summary",
+            "metadata": {},
+        }
+    )
+
+    assert out["snapshot_source"] == "explore"
+    assert out["snapshot_id"] == "live-snap"
+    assert out["metadata"]["exploration_context_ready"] == {
+        "source": "explore",
+        "snapshot_id": "live-snap",
+        "has_graph": True,
+        "has_topology": True,
+        "community_count": 1,
+        "has_global_summary": True,
+    }

@@ -1,0 +1,123 @@
+[
+  {
+    "id": "review-logic-structured-extraction-001",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 228,
+    "line_end": 284,
+    "content": "class RegexExtract():",
+    "severity": "high",
+    "feedback_type": "defect_detection",
+    "recommendation": "Complete the 'All Groups' implementation to properly extract group_index from all regex matches and join them with the delimiter. Verify the logic handles cases where some matches have fewer groups than group_index specifies.",
+    "references": []
+  },
+  {
+    "id": "security_regex-1__2",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 228,
+    "line_end": 323,
+    "content": "class RegexExtract():\n\nPost-context evidence: Static analysis confirms user-controlled regex_pattern is passed directly to re.search/re.findall/re.finditer without timeout, complexity limits, or length validation. Runtime verifier inconclusive due to harness errors, but static evidence supports ReDoS vulnerability. One verifier attempt reported STATUS: SAFE but did not test malicious patterns specifically. runtime unverified (harness)",
+    "severity": "high",
+    "feedback_type": "defect_detection",
+    "recommendation": "Add regex pattern length limits (e.g., max 1000 chars) and consider implementing timeout mechanisms for regex operations. Use Python's regex module with timeout support or wrap operations with signal-based timeouts for production use.",
+    "references": []
+  },
+  {
+    "id": "logic_basic_string_ops_001",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 139,
+    "line_end": 159,
+    "content": "class StringCompare(): ...\n\nPost-context evidence: The missing terminal else clause in StringCompare.execute() is a valid defect. While the runtime verifier reported 'STATUS: SAFE' in attempt 4, this only confirms behavior with valid inputs from the UI schema. The verifier's harness errors in attempts 1-3 indicate environment setup issues, not validation of the edge case. The code structure (lines 139-159) shows three mode branches without a terminal else, which violates the RETURN_TYPES = (IO.BOOLEAN,) contract when an unexpected mode value is passed. Other nodes in the same file (CaseConverter, StringTrim) include else fallbacks, establishing a pattern for defensive coding. The 'concrete_behavior' scope of the verifier did not test invalid mode values, so the static analysis finding remains valid. runtime unverified (harness)",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Add a terminal else clause that raises an exception or returns a default boolean value (e.g., False) to ensure all code paths return a boolean as promised by RETURN_TYPES.",
+    "references": []
+  },
+  {
+    "id": "review-logic-structured-extraction-5",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 159,
+    "line_end": 188,
+    "content": "StringCompare.execute: `if mode == 'Equal': return a == b, elif mode == 'Starts With': return a.startswith(b), elif mode == 'Ends With': return a.endswith(b)`. There is no `else` branch. If `mode` is unexpected (e.g., UI bug or manual edit), the function falls through and returns `None` implicitly. RETURN_TYPES is `(IO.BOOLEAN,)`, so returning `None` violates the contract. This is a defect.",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Add an `else` branch to raise ValueError or return False. Given the input is a COMBO, invalid modes should not occur in normal flow, but defensive coding suggests handling it.",
+    "references": []
+  },
+  {
+    "id": "security_regex_002__2",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 190,
+    "line_end": 227,
+    "content": "class RegexMatch():\n\n(runtime unverified: verifier harness error)",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Add input length limits for both regex_pattern and string parameters (e.g., max 10KB or configurable). Consider adding a timeout mechanism for regex operations. Document the ReDoS risk and recommend users validate patterns in production environments.",
+    "references": []
+  },
+  {
+    "id": "general_registration_003",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 228,
+    "line_end": 284,
+    "content": "RegexExtract.execute has incomplete code for 'All Groups' mode - the branch is cut off in the provided evidence.",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Verify the complete implementation of 'All Groups' mode returns the expected value.",
+    "references": []
+  },
+  {
+    "id": "review-logic-structured-extraction-2",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 228,
+    "line_end": 296,
+    "content": "RegexExtract 'All Groups' mode: `results.append(match.group(group_index))`. If `group_index` exceeds available groups, `match.group()` raises IndexError. The check `len(match.groups()) >= group_index` is incorrect because `match.groups()` returns tuple of *captured* groups (index 1..N), excluding group 0. If `group_index` is 1 and regex has 0 groups, `len(match.groups())` is 0, check fails (correct). But if `group_index` is 0, `len(match.groups())` is 0, check fails (incorrect, group 0 exists). Also, if `group_index` is 5 and regex has 3 groups, `len` is 3, 3 >= 5 is False (correct). Wait, `re",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Correct the group index validation. Use `group_index` directly against the number of available groups. If `group_index` is 0, it's always valid (full match). If > 0, check `group_index <= len(match.groups())`. Or use `try/except IndexError` around `match.group(group_index)`.",
+    "references": []
+  },
+  {
+    "id": "exploration_fetch_code_002",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 230,
+    "line_end": 260,
+    "content": "class RegexExtract: ...",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Preserve the relevant captured values from each structured match row, or make the single-slot contract explicit in code.",
+    "references": []
+  },
+  {
+    "id": "logic_basic_string_ops_005",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 267,
+    "line_end": 320,
+    "content": "RegexExtract.execute() All Matches branch handles tuple results from findall (when pattern has groups), but it only extracts [m[0] for m in matches] - the first group/capture. If the pattern has multiple groups and user wants all captures, this loses data.",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Add a mode option to extract all groups from all matches, or document that All Matches only returns the first group when pattern has groups. Consider flattening all groups: [g for m in matches for g in m] if tuples.",
+    "references": []
+  },
+  {
+    "id": "logic_basic_string_ops_002",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 160,
+    "line_end": 190,
+    "content": "class RegexMatch(): ...",
+    "severity": "low",
+    "feedback_type": "defect_detection",
+    "recommendation": "Consider broadening exception handling to catch generic Exception if runtime type violations are possible despite schema declarations.",
+    "references": []
+  },
+  {
+    "id": "review-logic-structured-extraction-3",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 228,
+    "line_end": 296,
+    "content": "RegexExtract 'All Matches' mode: `if isinstance(matches[0], tuple): result = join_delimiter.join([m[0] for m in matches])`. `re.findall` returns list of strings if no groups, list of tuples if groups exist. If matches list is empty, `matches[0]` raises IndexError. The code checks `if matches:` before accessing `matches[0]`, so this is safe. However, if `matches` is not empty but `matches[0]` is a tuple with multiple groups, `m[0]` takes the first group. This might be intended (first group of each match). But if the user expects full match or all groups, this truncates. The mode 'All Groups' is",
+    "severity": "low",
+    "feedback_type": "defect_detection",
+    "recommendation": "Document that 'All Matches' with groups returns only the first capturing group. Or add a mode to return all groups per match. Current behavior is not a crash but potential data loss if user expects full match with groups.",
+    "references": []
+  }
+]

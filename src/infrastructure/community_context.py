@@ -120,6 +120,44 @@ def _collect_cross_boundary_targets(
     return names, comms
 
 
+def _normalize_path(path: str) -> str:
+    return path.strip().replace("\\", "/")
+
+
+def _prioritize_file_paths(file_paths: Sequence[str], changed_file_paths: Set[str]) -> List[str]:
+    changed = {_normalize_path(p) for p in changed_file_paths if p}
+    ordered = sorted({_normalize_path(p) for p in file_paths if p})
+    return sorted(ordered, key=lambda p: (0 if p in changed else 1, p))
+
+
+def _prioritize_symbol_ids(
+    graph: nx.DiGraph,
+    symbol_ids: Sequence[str],
+    *,
+    community_id: int,
+    node_to_community: Dict[str, int],
+    changed_file_paths: Set[str],
+) -> List[str]:
+    changed = {_normalize_path(p) for p in changed_file_paths if p}
+    index = {sid: i for i, sid in enumerate(symbol_ids)}
+
+    def rank(sid: str) -> Tuple[int, int, int, int]:
+        if not graph.has_node(sid):
+            return (1, 0, 0, index.get(sid, 0))
+        attrs = graph.nodes[sid]
+        file_path = _normalize_path(str(attrs.get("file_path", "")))
+        changed_rank = 0 if file_path in changed else 1
+        cross_edges = 0
+        for neighbor in set(graph.successors(sid)) | set(graph.predecessors(sid)):
+            other = _node_community(str(neighbor), node_to_community)
+            if other is not None and other != community_id:
+                cross_edges += 1
+        degree = graph.in_degree(sid) + graph.out_degree(sid)
+        return (changed_rank, -cross_edges, -degree, index.get(sid, 0))
+
+    return sorted(symbol_ids, key=rank)
+
+
 def _symbol_context_lines(
     graph: nx.DiGraph,
     symbol_ids: Sequence[str],
@@ -152,27 +190,38 @@ def build_community_work_item(
     graph: nx.DiGraph,
     topology: StructuralTopologySummary,
     settings: Settings,
+    changed_file_paths: Set[str] | None = None,
 ) -> Optional[CommunityWorkItem]:
     """Build a single work item, or None if the community has nothing to analyze."""
     node_to_community = dict(topology.node_to_community)
     max_chars = min(settings.semantic_max_tokens_per_community * 4, 96_000)
+    changed = changed_file_paths or set()
 
-    file_paths = sorted(
+    all_file_paths = _prioritize_file_paths(
         {
             str(graph.nodes[n].get("file_path", ""))
             for n in community.node_ids
             if graph.has_node(n) and graph.nodes[n].get("node_type") == "file" and graph.nodes[n].get("file_path")
-        }
+        },
+        changed,
     )
-    symbol_ids = [
+    all_symbol_ids = [
         n
         for n in community.node_ids
         if graph.has_node(n) and graph.nodes[n].get("node_type") == "symbol"
     ]
-    if not symbol_ids and not file_paths:
+    if not all_symbol_ids and not all_file_paths:
         return None
 
-    file_paths = file_paths[: settings.semantic_max_files_per_agent]
+    symbol_ids = _prioritize_symbol_ids(
+        graph,
+        all_symbol_ids,
+        community_id=community.community_id,
+        node_to_community=node_to_community,
+        changed_file_paths=changed,
+    )
+
+    file_paths = all_file_paths[: settings.semantic_max_files_per_agent]
     symbol_ids = symbol_ids[: settings.semantic_max_symbols_per_agent]
 
     targets, target_communities = _collect_cross_boundary_targets(
@@ -195,6 +244,9 @@ def build_community_work_item(
         symbol_context_lines=lines,
         outbound_cross_community_targets=targets[:200],
         target_communities_hint=target_communities[:200],
+        total_files=len(all_file_paths),
+        total_symbols=len(all_symbol_ids),
+        total_unverified_targets=len(targets),
     )
 
 
@@ -202,6 +254,7 @@ def plan_community_dispatch(
     topology: StructuralTopologySummary,
     graph_payload: Dict[str, Any],
     settings: Settings,
+    changed_file_paths: Set[str] | None = None,
 ) -> Tuple[List[CommunitySemanticSummary], List[CommunityWorkItem]]:
     """
     Partition communities into trivial synthetic summaries vs LLM work items.
@@ -216,7 +269,13 @@ def plan_community_dispatch(
         if is_trivial_init_community(community, graph, skip_trivial=settings.skip_trivial_communities):
             trivial.append(synthetic_trivial_community_summary(community.community_id))
             continue
-        item = build_community_work_item(community, graph, topology, settings)
+        item = build_community_work_item(
+            community,
+            graph,
+            topology,
+            settings,
+            changed_file_paths=changed_file_paths,
+        )
         if item is not None:
             work.append(item)
 

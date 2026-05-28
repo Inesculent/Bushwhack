@@ -14,6 +14,14 @@ Output guidance:
 - unverified_calls: emit entries for callees referenced by name but not visible with bodies here.
 - confidence: high only when the supplied symbol context directly supports the summary.
 
+Output budget:
+- This is a high-level navigation summary, not an exhaustive inventory.
+- Return at most 8 file_summaries.
+- Return at most 15 symbol_summaries.
+- Return at most 20 unverified_calls.
+- Return at most 5 short warnings.
+- Keep purpose concise; do not include prose outside the JSON schema.
+
 Evidence and safety rules:
 - Do not infer hidden implementation details from a callee name alone.
 - Do not summarize files or symbols that are not provided in this prompt.

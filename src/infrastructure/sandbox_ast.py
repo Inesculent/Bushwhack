@@ -210,6 +210,18 @@ def collect_sandbox_file_entities(
     try:
         return json.loads(payload)
     except json.JSONDecodeError as exc:
+        decoder = json.JSONDecoder()
+        for idx, char in enumerate(payload):
+            if char != "{":
+                continue
+            try:
+                recovered, _ = decoder.raw_decode(payload[idx:])
+            except json.JSONDecodeError:
+                continue
+            if isinstance(recovered, dict) and (
+                isinstance(recovered.get("files"), dict) or isinstance(recovered.get("gaps"), list)
+            ):
+                return recovered
         return {
             "files": {},
             "gaps": [{"filepath": "*", "reason": "invalid_json", "detail": f"{exc.__class__.__name__}: {exc}"}],

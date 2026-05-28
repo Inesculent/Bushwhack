@@ -191,10 +191,14 @@ def _load_pr_urls(
     limit: Optional[int],
     logger: logging.Logger,
     pr_url: Optional[str] = None,
+    pr_urls: Optional[List[str]] = None,
     dataset_range: Optional[DatasetRange] = None,
 ) -> List[str]:
     if dataset_range is not None:
         dataset_range.validate()
+
+    if pr_url and pr_urls:
+        raise ValueError("Specify only one of pr_url or pr_urls")
 
     if isinstance(source, pd.DataFrame):
         df = source
@@ -204,8 +208,45 @@ def _load_pr_urls(
 
     if "pr_url" not in df.columns:
         raise ValueError("AACR-Bench dataframe is missing required 'pr_url' column")
+    if "target_language" not in df.columns:
+        raise ValueError("AACR-Bench dataframe is missing required 'target_language' column")
 
-    url_series = df["pr_url"].dropna().astype(str).map(str.strip).loc[lambda s: s != ""]
+    working_df = df.copy()
+    working_df["pr_url"] = working_df["pr_url"].fillna("").astype(str).map(str.strip)
+    working_df["target_language"] = working_df["target_language"].fillna("").astype(str).map(str.strip).str.lower()
+
+    if pr_urls:
+        requested_urls = [url.strip() for url in pr_urls if url and url.strip()]
+        if not requested_urls:
+            raise ValueError("pr_urls must contain at least one non-empty PR URL")
+
+        unique_requested_urls = list(dict.fromkeys(requested_urls))
+        selected_urls: List[str] = []
+        missing_urls: List[str] = []
+        non_python_urls: List[str] = []
+
+        for requested_url in unique_requested_urls:
+            matches = working_df.loc[working_df["pr_url"] == requested_url]
+            if matches.empty:
+                missing_urls.append(requested_url)
+                continue
+            if not (matches["target_language"] == "python").all():
+                non_python_urls.append(requested_url)
+                continue
+            selected_urls.append(requested_url)
+
+        if missing_urls:
+            raise ValueError(
+                "Requested PR URLs not found in AACR-Bench dataset: " + ", ".join(missing_urls)
+            )
+        if non_python_urls:
+            raise ValueError(
+                "Requested PR URLs are not python PRs in AACR-Bench dataset: "
+                + ", ".join(non_python_urls)
+            )
+        return selected_urls
+
+    url_series = working_df["pr_url"].loc[lambda s: s != ""]
     if pr_url:
         requested_url = pr_url.strip()
         url_series = url_series.loc[lambda s: s == requested_url]
@@ -414,6 +455,20 @@ def _invoke_for_pr(
     
     # Inject snapshot data if provided
     if snapshot_data:
+        topology = snapshot_data["topology"]
+        community_count = int(getattr(topology, "community_count", 0) or 0)
+        if not community_count and isinstance(topology, dict):
+            community_count = int(topology.get("community_count") or len(topology.get("communities") or []))
+        if not community_count:
+            community_count = len(snapshot_data.get("community_summaries") or [])
+        exploration_context_ready = {
+            "source": "loaded",
+            "snapshot_id": snapshot_data["snapshot_id"],
+            "has_graph": isinstance(snapshot_data.get("graph_payload"), dict),
+            "has_topology": bool(topology),
+            "community_count": community_count,
+            "has_global_summary": bool(str(snapshot_data.get("global_summary") or "").strip()),
+        }
         preflight_summary = PreflightSummary(
             manifest_id=f"snapshot_{snapshot_data['snapshot_id']}",
             total_files_changed=0,
@@ -442,6 +497,7 @@ def _invoke_for_pr(
                 **snapshot_repo_extra,
                 "snapshot_loaded": True,
                 "snapshot_source": "loaded",
+                "exploration_context_ready": exploration_context_ready,
                 "docs_prebrief": {
                     "status": "skipped_snapshot_resume",
                     "reason": "snapshot_resume_uses_precomputed_context",
@@ -476,6 +532,7 @@ def run_aacr_reviewer(
     run_id: Optional[str] = None,
     limit: Optional[int] = None,
     pr_url: Optional[str] = None,
+    pr_urls: Optional[List[str]] = None,
     dataset_range: Optional[DatasetRange] = None,
     output_root: Optional[Path] = None,
     repo_root: Optional[Path] = None,
@@ -511,16 +568,17 @@ def run_aacr_reviewer(
         use_basic_graph,
     )
 
-    pr_urls = _load_pr_urls(
+    selected_pr_urls = _load_pr_urls(
         dataset_path,
         limit=limit,
         logger=logger,
         pr_url=pr_url,
+        pr_urls=pr_urls,
         dataset_range=dataset_range,
     )
     # Preserve CLI filter before the loop shadows `pr_url` with each row's URL.
     pr_url_filter_for_meta = pr_url.strip() if pr_url else ""
-    logger.info("Reviewer-graph AACR run will process %s unique PR URLs", len(pr_urls))
+    logger.info("Reviewer-graph AACR run will process %s unique PR URLs", len(selected_pr_urls))
 
     enricher = GitHubPullRequestEnricher(
         logger=logger,
@@ -533,7 +591,7 @@ def run_aacr_reviewer(
     run_started = time.perf_counter()
     total_llm_tokens = 0
 
-    for idx, pr_url in enumerate(pr_urls, start=1):
+    for idx, pr_url in enumerate(selected_pr_urls, start=1):
         slug = _slug_for_pr_url(pr_url)
         pr_started_at = _utc_now_iso()
         row: dict[str, Any] = {
@@ -558,7 +616,7 @@ def run_aacr_reviewer(
             row["error"] = "github_pr_context_unavailable"
             manifest_rows.append(row)
             failed += 1
-            logger.warning("[%s/%s] Skipping %s: enrichment failed", idx, len(pr_urls), pr_url)
+            logger.warning("[%s/%s] Skipping %s: enrichment failed", idx, len(selected_pr_urls), pr_url)
             continue
 
         # Validate repo match if using snapshot
@@ -572,7 +630,7 @@ def run_aacr_reviewer(
                 failed += 1
                 logger.error(
                     "[%s/%s] Snapshot repo mismatch for %s: expected %s, got %s",
-                    idx, len(pr_urls), pr_url, expected_repo_url, snapshot_data["repo_path"]
+                    idx, len(selected_pr_urls), pr_url, expected_repo_url, snapshot_data["repo_path"]
                 )
                 continue
 
@@ -604,7 +662,7 @@ def run_aacr_reviewer(
             )
             manifest_rows.append(row)
             failed += 1
-            logger.exception("[%s/%s] Reviewer-graph run failed for %s", idx, len(pr_urls), pr_url)
+            logger.exception("[%s/%s] Reviewer-graph run failed for %s", idx, len(selected_pr_urls), pr_url)
             continue
 
         elapsed_ms = int((time.perf_counter() - started) * 1000)
@@ -637,7 +695,7 @@ def run_aacr_reviewer(
         logger.info(
             "[%s/%s] %s ok findings=%s token_usage=%s elapsed_ms=%s",
             idx,
-            len(pr_urls),
+            len(selected_pr_urls),
             slug,
             len(findings),
             pr_tokens,
@@ -672,7 +730,7 @@ def run_aacr_reviewer(
         "redis_checkpoint_cleanup_enabled": (
             settings.redis_enabled and settings.reviewer_cleanup_redis_checkpoints
         ),
-        "total_prs": len(pr_urls),
+        "total_prs": len(selected_pr_urls),
         "manifest_total_rows": len(manifest_df),
         "succeeded": succeeded,
         "failed": failed,

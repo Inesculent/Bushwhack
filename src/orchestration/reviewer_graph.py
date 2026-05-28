@@ -271,10 +271,10 @@ def _route_initial_context(state: GraphState) -> str:
             route = "semantic_dispatch"
         elif (
             not settings.reviewer_legacy_planner_mode
-            and state.get("snapshot_source") == "loaded"
+            and state.get("snapshot_source") in {"loaded", "explore"}
         ):
-            # Snapshot resume: exploration is precomputed, but Phase 0 + actor-critic are orthogonal
-            # and can run on loaded graph/summaries without re-running semantic_merge.
+            # Exploration context is ready, regardless of whether it was loaded or built live.
+            # Phase 0 + actor-critic run on the normalized graph/summaries without re-running semantic_merge.
             route = "intent_extractor"
         else:
             route = "review_planner"

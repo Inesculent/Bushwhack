@@ -1,0 +1,90 @@
+[
+  {
+    "id": "task_logic_1_001__2",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 165,
+    "line_end": 185,
+    "content": "StringCompare.execute() has a missing return in the 'Ends With' branch. The method declares RETURN_TYPES = (IO.BOOLEAN,) but the elif chain for mode == 'Ends With' does not return a value, causing implicit None return which breaks the contract.",
+    "severity": "high",
+    "feedback_type": "defect_detection",
+    "recommendation": "Add return statement to 'Ends With' branch: return a.endswith(b),",
+    "references": []
+  },
+  {
+    "id": "task_security_1_003",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 190,
+    "line_end": 227,
+    "content": "class RegexMatch():",
+    "severity": "high",
+    "feedback_type": "defect_detection",
+    "recommendation": "Add regex pattern validation to reject excessively long patterns (>1000 chars) and implement timeout mechanisms using re.compile with timeout (Python 3.11+) or signal-based timeouts for older versions. Consider using a regex complexity analyzer to detect known ReDoS patterns before execution.",
+    "references": []
+  },
+  {
+    "id": "task_security_1_001",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 228,
+    "line_end": 323,
+    "content": "class RegexExtract: RegexExtract\n\nPost-context evidence: Runtime verifier inconclusive/refuted due to harness errors (missing typing_extensions, import issues) and not testing ReDoS with malicious patterns. Static evidence confirms ReDoS risk: user-controlled regex_pattern passed to re.search/findall/finditer without length limits, complexity analysis, or timeout. Verifier 'refuted' verdicts are based on STATUS: SAFE with benign inputs, not disproving the vulnerability class. Digest confirms no upstream mitigations. This is a valid high-severity security risk. runtime unverified (harness)",
+    "severity": "high",
+    "feedback_type": "defect_detection",
+    "recommendation": "Implement a timeout mechanism for regex compilation and execution. Consider using a regex complexity analyzer to reject patterns that are likely to cause ReDoS (e.g., nested quantifiers). Alternatively, use a library like `regex` module which supports timeouts, or wrap the regex operations in a separate process/thread with a timeout limit.",
+    "references": []
+  },
+  {
+    "id": "task_security_1_002",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 228,
+    "line_end": 323,
+    "content": "RegexExtract\n\nPost-context evidence: Runtime verifier inconclusive due to harness errors (import/module issues, argument mismatches). Static evidence from diff confirms data loss bug: 'All Matches' mode uses re.findall which returns tuples when groups exist, but code extracts only m[0], discarding other groups. This violates user expectation that 'All Matches' returns complete match data. 'All Groups' mode is separate and requires explicit group_index. Digest confirms no tests validate this behavior. Valid high-severity logic defect. runtime unverified (harness)",
+    "severity": "high",
+    "feedback_type": "defect_detection",
+    "recommendation": "Preserve the relevant captured values from each structured match row, or make the single-slot contract explicit in code.",
+    "references": []
+  },
+  {
+    "id": "task_logic_1_001",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 145,
+    "line_end": 175,
+    "content": "class StringCompare(): ...",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Add explicit return statement to 'Ends With' branch: return a.endswith(b),",
+    "references": []
+  },
+  {
+    "id": "task_logic_4_2",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 228,
+    "line_end": 323,
+    "content": "In 'All Groups' mode, when group_index exceeds available groups, the code appends match.group(group_index) without checking if the index is valid, potentially causing IndexError.",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Use match.lastindex or check group_index < len(match.groups()) + 1 (since group 0 is the full match). Alternatively, wrap match.group(group_index) in try/except IndexError.",
+    "references": []
+  },
+  {
+    "id": "task_logic_4_001:orthogonal-2__2",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 230,
+    "line_end": 285,
+    "content": "RegexExtract's 'All Matches' and 'All Groups' modes may lose data or crash on complex regex groups. In 'All Matches', when matches are tuples (multiple groups), only index 0 is used. In 'All Groups', if group_index exceeds available groups, it silently returns empty string instead of handling the mismatch explicitly. Additionally, if match.groups() is empty but group_index is 0, it may fail.",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Define the accepted group-index semantics explicitly and validate/select groups against that contract.",
+    "references": []
+  },
+  {
+    "id": "task_logic_4_003:orthogonal-2",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 230,
+    "line_end": 285,
+    "content": "RegexExtract's aggregation path may include None values if regex groups can be None. When using `match.group(group_index)`, if that group didn't participate in the match, it returns None. The code then joins these with newlines, which will include the string 'None' in output.",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Normalize or filter absent capture values before passing results into string aggregation.",
+    "references": []
+  }
+]

@@ -16,6 +16,21 @@ from src.orchestration.routing.send_payload import payload_for_send
 logger = logging.getLogger(__name__)
 
 
+def _changed_file_paths_from_diff(git_diff: str) -> set[str]:
+    """Extract repo-relative paths from a unified git diff."""
+    paths: set[str] = set()
+    for raw_line in (git_diff or "").splitlines():
+        line = raw_line.strip()
+        if line.startswith("diff --git "):
+            parts = line.split()
+            for part in parts[2:4]:
+                if part.startswith(("a/", "b/")):
+                    paths.add(part[2:])
+        elif line.startswith(("+++ b/", "--- a/")):
+            paths.add(line[6:])
+    return {p for p in paths if p and p != "/dev/null"}
+
+
 def make_semantic_dispatch_node(settings: Settings | None = None):
     """Prepare a bounded wave queue for non-trivial communities."""
 
@@ -56,12 +71,19 @@ def make_semantic_dispatch_node(settings: Settings | None = None):
                 "semantic_dispatch_cursor": 0,
             }
 
-        trivial, work = plan_community_dispatch(topo, graph_payload, resolved_settings)
+        changed_file_paths = _changed_file_paths_from_diff(state.get("git_diff", "") or "")
+        trivial, work = plan_community_dispatch(
+            topo,
+            graph_payload,
+            resolved_settings,
+            changed_file_paths=changed_file_paths,
+        )
         meta["semantic_phase2"] = {
             "dispatch": "ok",
             "trivial_communities": len(trivial),
             "pending_community_agents": len(work),
             "max_parallel_agents": resolved_settings.semantic_max_parallel_agents,
+            "changed_file_count": len(changed_file_paths),
             "dispatch_cursor": 0,
             "dispatch_total": len(work),
         }
@@ -82,11 +104,14 @@ def route_semantic_dispatch(state: GraphState) -> Any:
     queue = state.get("semantic_community_work_queue") or []
     if not queue:
         return "unverified_call_resolver"
-    settings = get_settings()
+    meta = (state.get("metadata") or {}).get("semantic_phase2", {})
+    batch_size = meta.get("max_parallel_agents")
+    if not isinstance(batch_size, int):
+        batch_size = get_settings().semantic_max_parallel_agents
     cursor = int(state.get("semantic_dispatch_cursor") or 0)
     if cursor >= len(queue):
         return "unverified_call_resolver"
-    end = min(cursor + max(1, settings.semantic_max_parallel_agents), len(queue))
+    end = min(cursor + max(1, batch_size), len(queue))
     return [
         Send(
             "community_semantic_agent",
