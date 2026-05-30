@@ -13,6 +13,7 @@ opencode.json
 .cursor/
 .scripts/
 .logs/
+logs/
 
 # Keep template env files if added.
 !.env.example
