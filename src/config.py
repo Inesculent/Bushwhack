@@ -733,7 +733,7 @@ class Settings(BaseSettings):
 		description="Completion token cap for high-level community semantic summaries.",
 	)
 	repository_kb_distillation_max_completion_tokens: int = Field(
-		default=2048,
+		default=4096,
 		ge=512,
 		le=8192,
 		description="Completion token cap for bounded Repository KB distillation calls.",

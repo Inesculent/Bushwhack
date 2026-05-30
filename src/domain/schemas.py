@@ -736,15 +736,15 @@ class RepositoryKBCommunityDistillationItem(BaseModel):
     community_id: int
     label: str = Field(default="", max_length=120)
     purpose: str = Field(default="", max_length=1200)
-    responsibilities: List[str] = Field(default_factory=list, max_length=8)
-    public_contracts: List[str] = Field(default_factory=list, max_length=8)
-    bridge_symbols: List[str] = Field(default_factory=list, max_length=8)
-    important_facts: List[str] = Field(default_factory=list, max_length=8)
-    data_shape_notes: List[str] = Field(default_factory=list, max_length=8)
-    risk_surfaces: List[str] = Field(default_factory=list, max_length=8)
-    uncertainties: List[str] = Field(default_factory=list, max_length=5)
-    retrieval_hints: List[str] = Field(default_factory=list, max_length=8)
-    source_record_ids: List[str] = Field(default_factory=list, max_length=24)
+    responsibilities: List[str] = Field(default_factory=list, max_length=16)
+    public_contracts: List[str] = Field(default_factory=list, max_length=16)
+    bridge_symbols: List[str] = Field(default_factory=list, max_length=16)
+    important_facts: List[str] = Field(default_factory=list, max_length=16)
+    data_shape_notes: List[str] = Field(default_factory=list, max_length=16)
+    risk_surfaces: List[str] = Field(default_factory=list, max_length=16)
+    uncertainties: List[str] = Field(default_factory=list, max_length=10)
+    retrieval_hints: List[str] = Field(default_factory=list, max_length=16)
+    source_record_ids: List[str] = Field(default_factory=list, max_length=48)
 
 
 class RepositoryKBCommunityDistillationOutput(BaseModel):
@@ -757,14 +757,14 @@ class RepositoryKBShardDistillationItem(BaseModel):
     shard_id: str
     lane: str = ""
     summary: str = Field(default="", max_length=500)
-    responsibilities: List[str] = Field(default_factory=list, max_length=4)
-    public_contracts: List[str] = Field(default_factory=list, max_length=4)
-    important_facts: List[str] = Field(default_factory=list, max_length=4)
-    data_shape_notes: List[str] = Field(default_factory=list, max_length=4)
-    risk_surfaces: List[str] = Field(default_factory=list, max_length=4)
-    uncertainties: List[str] = Field(default_factory=list, max_length=3)
-    retrieval_hints: List[str] = Field(default_factory=list, max_length=4)
-    source_record_ids: List[str] = Field(default_factory=list, max_length=12)
+    responsibilities: List[str] = Field(default_factory=list, max_length=8)
+    public_contracts: List[str] = Field(default_factory=list, max_length=8)
+    important_facts: List[str] = Field(default_factory=list, max_length=8)
+    data_shape_notes: List[str] = Field(default_factory=list, max_length=8)
+    risk_surfaces: List[str] = Field(default_factory=list, max_length=8)
+    uncertainties: List[str] = Field(default_factory=list, max_length=6)
+    retrieval_hints: List[str] = Field(default_factory=list, max_length=8)
+    source_record_ids: List[str] = Field(default_factory=list, max_length=24)
 
 
 class RepositoryKBShardDistillationOutput(BaseModel):
@@ -773,7 +773,7 @@ class RepositoryKBShardDistillationOutput(BaseModel):
 
 
 class RepositoryKBRepoDistillationOutput(BaseModel):
-    summary: str = Field(default="", max_length=1200)
+    summary: str = Field(default="", max_length=2400)
     top_subsystems: List[str] = Field(default_factory=list)
     public_contracts: List[str] = Field(default_factory=list)
     dependency_flow: List[str] = Field(default_factory=list)
