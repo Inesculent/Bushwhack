@@ -10,7 +10,8 @@ from src.config import get_settings
 from src.domain.schemas import ReviewTask, StructuralTopologySummary
 from src.domain.state import GraphState
 from src.infrastructure.llm.factory import Models
-from src.infrastructure.llm.token_usage import extract_total_tokens_from_llm_result, parse_structured_output
+from src.infrastructure.llm.token_usage import parse_structured_output
+from src.infrastructure.llm.trace import append_trace, trace_from_exception, trace_llm_call
 from src.orchestration.context.context_packets import (
     build_draft_planner_packet,
     classes_introduced_in_diff,
@@ -993,13 +994,14 @@ def run_planner_generation(
     *,
     model_key: str | None = None,
     use_llm: bool = True,
-) -> tuple[List[ReviewTask], str, List[str], int]:
+) -> tuple[List[ReviewTask], str, List[str], int, List[Dict[str, Any]]]:
     """Run LLM planner (or deterministic fallback) and return normalized leaf tasks."""
     run_id = state.get("run_id", "unknown")
     tasks = _default_tasks(state)
     summary = "Default parallel review plan."
     warnings: List[str] = []
     llm_tokens = 0
+    llm_trace: List[Dict[str, Any]] = []
 
     if use_llm:
         selected_model = model_key or getattr(get_settings(), "reviewer_planner_model_key", None)
@@ -1011,14 +1013,26 @@ def run_planner_generation(
                     run_id,
                     selected_model,
                     len(prompt),
-                )
+            )
             llm = Models.planner(ReviewPlanOutput, model_key=selected_model)
-            invoke_result = llm.invoke(prompt)
+            traced = trace_llm_call(
+                llm,
+                prompt,
+                state=state,
+                node_name="review_planner",
+                model_key=selected_model,
+                schema_name="ReviewPlanOutput",
+                request_label="primary",
+                input_summary={"target_files": _target_files(state)},
+            )
+            invoke_result = traced.result
             response = parse_structured_output(invoke_result, ReviewPlanOutput)
-            llm_tokens = extract_total_tokens_from_llm_result(invoke_result)
+            llm_tokens = traced.tokens
+            llm_trace = append_trace(llm_trace, traced)
             tasks = _normalize_tasks(response.tasks, state)
             summary = response.summary or summary
         except Exception as exc:  # noqa: BLE001 - planner fallback keeps review runs alive
+            llm_trace.extend(trace_from_exception(exc))
             warnings.append(f"planner_llm_failed:{exc.__class__.__name__}: {exc}")
             logger.warning(
                 "review_planner failed run_id=%s reason=%s: %s",
@@ -1029,13 +1043,25 @@ def run_planner_generation(
             try:
                 fallback_prompt = _render_planner_prompt(state, max_diff_chars=8000)
                 llm = Models.planner(ReviewPlanOutput, model_key=selected_model)
-                invoke_result = llm.invoke(fallback_prompt)
+                traced = trace_llm_call(
+                    llm,
+                    fallback_prompt,
+                    state=state,
+                    node_name="review_planner",
+                    model_key=selected_model,
+                    schema_name="ReviewPlanOutput",
+                    request_label="fallback_short_prompt",
+                    input_summary={"target_files": _target_files(state)},
+                )
+                invoke_result = traced.result
                 response = parse_structured_output(invoke_result, ReviewPlanOutput)
-                llm_tokens = extract_total_tokens_from_llm_result(invoke_result)
+                llm_tokens = traced.tokens
+                llm_trace = append_trace(llm_trace, traced)
                 tasks = _normalize_tasks(response.tasks, state)
                 summary = response.summary or summary
                 warnings.append("planner_llm_retry:shorter_prompt")
             except Exception as exc2:  # noqa: BLE001 - planner fallback keeps review runs alive
+                llm_trace.extend(trace_from_exception(exc2))
                 warnings.append(f"planner_llm_fallback:{exc2.__class__.__name__}: {exc2}")
                 logger.warning(
                     "review_planner fallback to deterministic plan run_id=%s reason=%s: %s",
@@ -1044,7 +1070,7 @@ def run_planner_generation(
                     exc2,
                 )
 
-    return tasks, summary, warnings, llm_tokens
+    return tasks, summary, warnings, llm_tokens, llm_trace
 
 
 def build_planner_state_update(
@@ -1053,6 +1079,7 @@ def build_planner_state_update(
     summary: str,
     warnings: List[str],
     llm_tokens: int,
+    llm_trace: List[Dict[str, Any]] | None = None,
     *,
     node_history_name: str = "review_planner",
     metadata_extra: Dict[str, Any] | None = None,
@@ -1109,12 +1136,13 @@ def build_planner_state_update(
         "node_history": [node_history_name],
         "next_step": "review",
         "token_usage": llm_tokens,
+        "llm_trace": list(llm_trace or []),
     }
 
 
 def make_review_planner_node(model_key: str | None = None, use_llm: bool = True):
     def review_planner_node(state: GraphState) -> Dict[str, Any]:
-        tasks, summary, warnings, llm_tokens = run_planner_generation(
+        tasks, summary, warnings, llm_tokens, llm_trace = run_planner_generation(
             state, model_key=model_key, use_llm=use_llm
         )
         return build_planner_state_update(
@@ -1123,6 +1151,7 @@ def make_review_planner_node(model_key: str | None = None, use_llm: bool = True)
             summary,
             warnings,
             llm_tokens,
+            llm_trace,
             node_history_name="review_planner",
         )
 

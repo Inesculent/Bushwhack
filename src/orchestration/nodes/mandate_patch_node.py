@@ -12,7 +12,8 @@ from src.domain.schemas import BehavioralEvidenceRef, BehavioralSpec
 from src.domain.state import GraphState
 from src.infrastructure.behavioral_spec_store import BehavioralSpecStore
 from src.infrastructure.llm.factory import Models
-from src.infrastructure.llm.token_usage import extract_total_tokens_from_llm_result, parse_structured_output
+from src.infrastructure.llm.token_usage import parse_structured_output
+from src.infrastructure.llm.trace import append_trace, trace_from_exception, trace_llm_call
 from src.orchestration.context.mandate_loop_context import (
     bootstrap_digest,
     build_bootstrap_digest,
@@ -99,6 +100,7 @@ def make_mandate_patch_node(settings: Settings | None = None, *, use_llm: bool =
         delta_text = format_delta_ledger_for_patch(state)
         spec_excerpt = spec_excerpt_for_prompt(ref_str, resolved)
         llm_tokens = 0
+        llm_trace: List[Dict[str, Any]] = []
         warnings: List[str] = []
         patch_out = MandatePatchOutput()
 
@@ -114,10 +116,25 @@ def make_mandate_patch_node(settings: Settings | None = None, *, use_llm: bool =
                     },
                 )
                 llm = Models.worker(MandatePatchOutput, model_key=resolved.reviewer_worker_model_key)
-                invoke_result = llm.invoke(prompt)
+                traced = trace_llm_call(
+                    llm,
+                    prompt,
+                    state=state,
+                    node_name=node_name,
+                    model_key=resolved.reviewer_worker_model_key,
+                    schema_name="MandatePatchOutput",
+                    request_label=patch_mode,
+                    input_summary={
+                        "patch_mode": patch_mode,
+                        "delta_entries": len(ledger_since_last_patch(state)),
+                    },
+                )
+                invoke_result = traced.result
                 patch_out = parse_structured_output(invoke_result, MandatePatchOutput)
-                llm_tokens = extract_total_tokens_from_llm_result(invoke_result)
+                llm_tokens = traced.tokens
+                llm_trace = append_trace(llm_trace, traced)
             except Exception as exc:  # noqa: BLE001
+                llm_trace.extend(trace_from_exception(exc))
                 warnings.append(f"{node_name}_llm_fallback:{exc.__class__.__name__}")
                 logger.warning("%s fallback: %s", node_name, exc)
 
@@ -189,6 +206,7 @@ def make_mandate_patch_node(settings: Settings | None = None, *, use_llm: bool =
             "metadata": meta,
             "node_history": [f"{node_name}:{patch_mode}"],
             "token_usage": llm_tokens,
+            "llm_trace": llm_trace,
         }
 
     return mandate_patch_node

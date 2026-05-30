@@ -10,7 +10,8 @@ from pydantic import BaseModel, Field
 from src.config import Settings, get_settings
 from src.domain.state import GraphState
 from src.infrastructure.llm.factory import Models
-from src.infrastructure.llm.token_usage import extract_total_tokens_from_llm_result, parse_structured_output
+from src.infrastructure.llm.token_usage import parse_structured_output
+from src.infrastructure.llm.trace import trace_from_exception, trace_llm_call
 from src.orchestration.context.mandate_loop_context import (
     already_observed_paths,
     explorer_mode,
@@ -158,30 +159,45 @@ def run_explorer_step(
     *,
     settings: Settings | None = None,
     use_llm: bool = True,
-) -> tuple[MandateExplorerStepOutput | None, int, List[Dict[str, Any]], List[str]]:
-    """Single agent step; returns (parsed, tokens, ledger_patch, warnings)."""
+) -> tuple[MandateExplorerStepOutput | None, int, List[Dict[str, Any]], List[str], List[Dict[str, Any]]]:
+    """Single agent step; returns (parsed, tokens, ledger_patch, warnings, llm_trace)."""
     settings = settings or get_settings()
     warnings: List[str] = []
     ledger_patch: List[Dict[str, Any]] = []
+    llm_trace: List[Dict[str, Any]] = []
     if not use_llm:
         return (
             MandateExplorerStepOutput(action="finish", finish_summary="LLM disabled."),
             0,
             ledger_patch,
             warnings,
+            llm_trace,
         )
     meta, slot = mm_meta(state)
     step = int(state.get("mandate_explorer_step_idx") or 0) + 1
     retry = str(state.get("mandate_explorer_retry_feedback") or "")
     try:
         llm = Models.worker(MandateExplorerStepOutput, model_key=settings.reviewer_worker_model_key)
-        invoke_result = llm.invoke(render_explorer_prompt(state, retry_feedback=retry))
+        prompt = render_explorer_prompt(state, retry_feedback=retry)
+        traced = trace_llm_call(
+            llm,
+            prompt,
+            state=state,
+            node_name="mandate_explorer",
+            model_key=settings.reviewer_worker_model_key,
+            schema_name="MandateExplorerStepOutput",
+            request_label=_explorer_mode(state),
+            input_summary={"step": step, "mode": _explorer_mode(state)},
+        )
+        invoke_result = traced.result
         parsed = parse_structured_output(invoke_result, MandateExplorerStepOutput)
-        tokens = extract_total_tokens_from_llm_result(invoke_result)
+        tokens = traced.tokens
+        llm_trace.extend(traced.trace_records)
     except Exception as exc:  # noqa: BLE001
+        llm_trace.extend(trace_from_exception(exc))
         warnings.append(f"mandate_explorer_llm_failed:{exc.__class__.__name__}")
         logger.warning("mandate_explorer step failed: %s", exc)
-        return None, 0, ledger_patch, warnings
+        return None, 0, ledger_patch, warnings, llm_trace
 
     if parsed.action == "tool" and parsed.tool_call is not None:
         executor = MandateToolExecutor(provider, settings=settings)
@@ -198,7 +214,7 @@ def run_explorer_step(
                     step=step,
                 )
             )
-    return parsed, tokens, ledger_patch, warnings
+    return parsed, tokens, ledger_patch, warnings, llm_trace
 
 
 def make_mandate_explorer_node(
@@ -218,7 +234,7 @@ def make_mandate_explorer_node(
         inv[mode] = int(inv.get(mode, 0)) + 1
         loop["explorer_invocations"] = inv
 
-        parsed, tokens, ledger_patch, warnings = run_explorer_step(
+        parsed, tokens, ledger_patch, warnings, llm_trace = run_explorer_step(
             state, context_provider, settings=resolved, use_llm=use_llm
         )
         prev_idx = int(state.get("mandate_explorer_step_idx") or 0)
@@ -264,6 +280,7 @@ def make_mandate_explorer_node(
             "mandate_explorer_last_summary": last_summary,
             "node_history": [f"mandate_explorer:{mode}:{step_idx}"],
             "token_usage": tokens,
+            "llm_trace": llm_trace,
         }
         if ledger_patch:
             out["exploration_ledger"] = ledger_patch

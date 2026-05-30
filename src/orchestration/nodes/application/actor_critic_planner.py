@@ -10,7 +10,8 @@ from src.config import Settings, get_settings
 from src.domain.schemas import ReviewTask
 from src.domain.state import GraphState
 from src.infrastructure.llm.factory import Models
-from src.infrastructure.llm.token_usage import extract_total_tokens_from_llm_result, parse_structured_output
+from src.infrastructure.llm.token_usage import parse_structured_output
+from src.infrastructure.llm.trace import append_trace, trace_from_exception, trace_llm_call
 from src.orchestration.nodes.application.planner import (
     ReviewPlanOutput,
     _normalize_tasks,
@@ -36,7 +37,7 @@ def make_draft_planner_node(settings: Settings | None = None, *, use_llm: bool =
 
     def draft_planner_node(state: GraphState) -> Dict[str, Any]:
         resolved = settings or get_settings()
-        tasks, summary, warnings, llm_tokens = run_planner_generation(
+        tasks, summary, warnings, llm_tokens, llm_trace = run_planner_generation(
             state, model_key=resolved.reviewer_planner_model_key, use_llm=use_llm
         )
         meta = dict(state.get("metadata", {}) or {})
@@ -58,6 +59,7 @@ def make_draft_planner_node(settings: Settings | None = None, *, use_llm: bool =
             "metadata": meta,
             "node_history": [node_name],
             "token_usage": llm_tokens,
+            "llm_trace": llm_trace,
         }
 
     return draft_planner_node
@@ -73,6 +75,7 @@ def make_plan_critic_node(settings: Settings | None = None, *, use_llm: bool = T
         draft_raw = ac.get("draft_tasks") or []
         draft_tasks = [ReviewTask.model_validate(row) for row in draft_raw]
         llm_tokens = 0
+        llm_trace: List[Dict[str, Any]] = []
         aligned = True
         gaps = ""
         rev_instr = ""
@@ -89,9 +92,19 @@ def make_plan_critic_node(settings: Settings | None = None, *, use_llm: bool = T
                     packet_to_prompt_sections(critic_packet),
                 )
                 llm = Models.worker(JointPlanCritiqueOutput, model_key=resolved.reviewer_planner_model_key)
-                invoke_result = llm.invoke(prompt)
+                traced = trace_llm_call(
+                    llm,
+                    prompt,
+                    state=state,
+                    node_name=node_name,
+                    model_key=resolved.reviewer_planner_model_key,
+                    schema_name="JointPlanCritiqueOutput",
+                    input_summary={"draft_task_count": len(draft_tasks)},
+                )
+                invoke_result = traced.result
                 out = parse_structured_output(invoke_result, JointPlanCritiqueOutput)
-                llm_tokens = extract_total_tokens_from_llm_result(invoke_result)
+                llm_tokens = traced.tokens
+                llm_trace = append_trace(llm_trace, traced)
                 aligned = bool(out.aligned)
                 gaps = out.gaps.strip()
                 rev_instr = out.revision_instructions.strip()
@@ -100,6 +113,7 @@ def make_plan_critic_node(settings: Settings | None = None, *, use_llm: bool = T
                     r.model_dump(mode="json") for r in (out.exploration_requests or [])
                 ]
             except Exception as exc:  # noqa: BLE001
+                llm_trace.extend(trace_from_exception(exc))
                 warnings.append(f"{node_name}_llm_fallback:{exc.__class__.__name__}")
                 logger.warning("%s LLM fallback aligned=True: %s", node_name, exc)
                 aligned = True
@@ -115,7 +129,7 @@ def make_plan_critic_node(settings: Settings | None = None, *, use_llm: bool = T
         mm = dict(meta.get("mental_model_metrics") or {})
         mm["plan_critic_aligned"] = aligned
         meta["mental_model_metrics"] = mm
-        return {"metadata": meta, "node_history": [node_name], "token_usage": llm_tokens}
+        return {"metadata": meta, "node_history": [node_name], "token_usage": llm_tokens, "llm_trace": llm_trace}
 
     return plan_critic_node
 
@@ -131,6 +145,7 @@ def make_plan_revision_node(settings: Settings | None = None, *, use_llm: bool =
         draft_tasks = [ReviewTask.model_validate(row) for row in draft_raw]
         critique = dict(ac.get("last_critique") or {})
         llm_tokens = 0
+        llm_trace: List[Dict[str, Any]] = []
         warnings: List[str] = list(ac.get("warnings") or [])
         new_tasks = draft_tasks
 
@@ -159,12 +174,23 @@ def make_plan_revision_node(settings: Settings | None = None, *, use_llm: bool =
                     },
                 )
                 llm = Models.planner(ReviewPlanOutput, model_key=resolved.reviewer_planner_model_key)
-                invoke_result = llm.invoke(prompt)
+                traced = trace_llm_call(
+                    llm,
+                    prompt,
+                    state=state,
+                    node_name=node_name,
+                    model_key=resolved.reviewer_planner_model_key,
+                    schema_name="ReviewPlanOutput",
+                    input_summary={"draft_task_count": len(draft_tasks)},
+                )
+                invoke_result = traced.result
                 response = parse_structured_output(invoke_result, ReviewPlanOutput)
-                llm_tokens = extract_total_tokens_from_llm_result(invoke_result)
+                llm_tokens = traced.tokens
+                llm_trace = append_trace(llm_trace, traced)
                 new_tasks = _normalize_tasks(response.tasks, state)
                 ac["summary"] = response.summary or ac.get("summary", "")
             except Exception as exc:  # noqa: BLE001
+                llm_trace.extend(trace_from_exception(exc))
                 warnings.append(f"{node_name}_llm_fallback:{exc.__class__.__name__}")
                 logger.warning("%s LLM fallback keeping draft: %s", node_name, exc)
 
@@ -178,7 +204,7 @@ def make_plan_revision_node(settings: Settings | None = None, *, use_llm: bool =
 
         cycle_update = increment_coupled_cycle({**state, "metadata": meta})
         meta = cycle_update.get("metadata", meta)
-        return {"metadata": meta, "node_history": [node_name], "token_usage": llm_tokens}
+        return {"metadata": meta, "node_history": [node_name], "token_usage": llm_tokens, "llm_trace": llm_trace}
 
     return plan_revision_node
 
@@ -220,7 +246,7 @@ def make_plan_emit_node():
         summary = str(ac.get("summary") or "Actor-critic review plan.")
         warnings = [str(w) for w in (ac.get("warnings") or []) if w]
         if not tasks:
-            tasks, summary, warn2, _t = run_planner_generation(state, use_llm=False)
+            tasks, summary, warn2, _t, _trace = run_planner_generation(state, use_llm=False)
             warnings.extend(warn2)
         out = build_planner_state_update(
             state,
@@ -228,6 +254,7 @@ def make_plan_emit_node():
             summary,
             warnings,
             0,
+            [],
             node_history_name=node_name,
         )
         meta2 = dict(out["metadata"])

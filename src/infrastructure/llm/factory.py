@@ -152,9 +152,17 @@ class Models:
         )
 
     @staticmethod
-    def synthesizer(schema: Type[BaseModel], model_key: Optional[str] = None):
+    def synthesizer(
+        schema: Type[BaseModel],
+        model_key: Optional[str] = None,
+        max_completion_tokens: int | None = None,
+    ):
         selected_model = model_key or Models.DEFAULT_ROLE_MODELS["synthesizer"]
-        return Models.get_structured(selected_model, schema)
+        return Models.get_structured(
+            selected_model,
+            schema,
+            max_completion_tokens=max_completion_tokens,
+        )
 
 
 def _get_model_config(model_key: str) -> LLMConfig:

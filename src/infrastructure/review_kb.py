@@ -298,7 +298,12 @@ def _extract_fact_records(repo_root: Path, file_path: str, file_record_id: str) 
         line = raw.strip()
         if not line or len(line) > 500 or not _FACT_LINE_RE.search(line):
             continue
-        if not line.startswith(("#", "//", "/*", "*", '"""', "'''")) and ":" not in line:
+        source_like_fact = (
+            line.startswith(("#", "//", "/*", "*", '"""', "'''", "raise "))
+            or ":" in line
+            or "=" in line
+        )
+        if not source_like_fact:
             continue
         summary = line.lstrip("#/* '\"").strip()
         if len(summary) < 12:
@@ -405,6 +410,7 @@ def build_review_kb(
     file_record_by_path: Dict[str, ReviewKBRecord] = {}
     symbol_record_by_node: Dict[str, ReviewKBRecord] = {}
     symbol_ids_by_file: Dict[str, List[str]] = defaultdict(list)
+    signature_facts_by_file: Dict[str, List[ReviewKBRecord]] = defaultdict(list)
 
     for node_id, attrs in sorted(graph.nodes(data=True), key=lambda item: str(item[0])):
         if attrs.get("node_type") != "file":
@@ -475,6 +481,31 @@ def build_review_kb(
         symbol_record_by_node[str(node_id)] = record
         if file_path:
             symbol_ids_by_file[file_path].append(record.id)
+        if file_path and signature:
+            fact_summary = f"Signature contract for {name}: {signature}"
+            signature_facts_by_file[file_path].append(
+                ReviewKBRecord(
+                    id=_stable_id("fact", file_path, name, signature),
+                    kind="fact",
+                    summary=fact_summary[:400],
+                    evidence=[
+                        ReviewKBEvidence(
+                            file_path=file_path,
+                            line_start=int(line) if isinstance(line, int) else None,
+                            line_end=int(line) if isinstance(line, int) else None,
+                            graph_node_id=str(node_id),
+                            note="symbol signature fact",
+                        )
+                    ],
+                    confidence="structural",
+                    tags=sorted(set(["fact", "signature", *_tags_for_text(file_path, name, signature)])),
+                    metadata={
+                        "file_path": file_path,
+                        "symbol_node_id": str(node_id),
+                        "symbol_name": name,
+                    },
+                )
+            )
 
     for source, target, attrs in sorted(
         graph.edges(data=True),
@@ -517,7 +548,10 @@ def build_review_kb(
     for file_record in files:
         file_path = str(file_record.metadata.get("file_path") or "")
         file_record.metadata["symbols"] = sorted(symbol_ids_by_file.get(file_path, []))
-        file_facts = _extract_fact_records(repo_root, file_path, file_record.id)
+        file_facts = [
+            *signature_facts_by_file.get(file_path, []),
+            *_extract_fact_records(repo_root, file_path, file_record.id),
+        ]
         facts.extend(file_facts)
         file_record.metadata["facts"] = [f.id for f in file_facts]
         if file_facts:
@@ -829,6 +863,13 @@ def query_loaded_review_kb(
     facts: List[ReviewKBRecord] = list(kb.get("facts") or [])
     edges: List[ReviewKBRecord] = list(kb.get("edges") or [])
     summaries: List[ReviewKBRecord] = list(kb.get("summaries") or [])
+    if not use_review_overlay:
+        summaries = [
+            record
+            for record in summaries
+            if str(record.metadata.get("distillation_scope") or "core_repository")
+            not in {"review_neighborhood", "on_demand"}
+        ]
     communities: List[ReviewKBRecord] = list(kb.get("communities") or [])
     lexical: Dict[str, List[str]] = dict(kb.get("lexical_index") or {})
     review_overlay: Dict[str, Any] = dict(kb.get("review_overlay") or {})
@@ -839,6 +880,12 @@ def query_loaded_review_kb(
 
     def add(record: ReviewKBRecord | None, *, primary: bool = True) -> None:
         if record is None or record.id in seen:
+            return
+        if (
+            record.kind == "summary"
+            and not use_review_overlay
+            and str(record.metadata.get("distillation_scope") or "core_repository") in {"review_neighborhood", "on_demand"}
+        ):
             return
         seen.add(record.id)
         (selected if primary else related).append(record)

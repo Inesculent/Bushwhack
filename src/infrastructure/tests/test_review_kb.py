@@ -4,6 +4,7 @@ from pathlib import Path
 from src.config import Settings
 from src.domain.schemas import (
     CodeEntity,
+    GlobalSemanticSynthesisOutput,
     RepositoryKBCommunityDistillationOutput,
     RepositoryKBCommunityDistillationItem,
     RepositoryKBRepoDistillationOutput,
@@ -27,6 +28,7 @@ from src.infrastructure.review_kb import (
     query_loaded_review_kb,
 )
 from src.orchestration.nodes.exploration.repository_kb_distillation import distill_repository_kb
+from src.orchestration.nodes.exploration.semantic_merge import make_semantic_merge_node
 from src.infrastructure.snapshot_writer import SnapshotWriter
 from src.infrastructure.structural_graph import StructuralGraphBuilder
 from src.tools.review_kb_tools import query_repository_kb, query_review_kb
@@ -414,6 +416,8 @@ def test_repository_kb_hierarchical_distillation_preserves_failed_shards(monkeyp
     distilled, _tokens, warnings = distill_repository_kb(
         bundle,
         settings=Settings(
+            snapshot_base_path=tmp_path / "snapshots",
+            repository_kb_distillation_mode="full",
             repository_kb_distillation_max_prompt_chars=2000,
             repository_kb_distillation_max_shards_per_community=8,
         ),
@@ -509,6 +513,7 @@ def test_repository_kb_shard_length_failure_retries_compact(monkeypatch, tmp_pat
     distilled, _tokens, warnings = distill_repository_kb(
         bundle,
         settings=Settings(
+            snapshot_base_path=tmp_path / "snapshots",
             repository_kb_distillation_max_prompt_chars=2000,
             repository_kb_distillation_max_shards_per_community=8,
         ),
@@ -518,6 +523,333 @@ def test_repository_kb_shard_length_failure_retries_compact(monkeypatch, tmp_pat
     assert shard_summaries
     assert not any(r.metadata.get("llm_distillation_status") == "failed" for r in shard_summaries)
     assert any("retry:reason=length" in w for w in warnings)
+
+
+def test_repository_kb_shard_compact_retry_cap_scales_with_prompt(monkeypatch, tmp_path: Path) -> None:
+    payload, topo = _massive_fixture_graph(tmp_path, file_count=40)
+    bundle = build_review_kb(
+        run_id="r1",
+        repo_path=str(tmp_path),
+        graph_payload=payload,
+        topology=topo,
+    )
+    caps: list[int | None] = []
+    prompts: list[str] = []
+
+    class LengthFinishReasonError(Exception):
+        pass
+
+    class FakeLlm:
+        def __init__(self, schema, cap):
+            self.schema = schema
+            self.cap = cap
+
+        def invoke(self, prompt: str):
+            if self.schema is RepositoryKBShardDistillationOutput:
+                prompts.append(prompt)
+                if len(prompts) == 1:
+                    raise LengthFinishReasonError("length limit was reached")
+                shard_id = re.search(r'"shard_id": "([^"]+)"', prompt).group(1)
+                lane = re.search(r'"lane": "([^"]+)"', prompt).group(1)
+                return RepositoryKBShardDistillationOutput(
+                    shards=[
+                        RepositoryKBShardDistillationItem(
+                            community_id=0,
+                            shard_id=shard_id,
+                            lane=lane,
+                            summary="Compact shard summary.",
+                            source_record_ids=["community:0"],
+                        )
+                    ]
+                )
+            if self.schema is RepositoryKBCommunityDistillationOutput:
+                return RepositoryKBCommunityDistillationOutput(
+                    communities=[
+                        RepositoryKBCommunityDistillationItem(
+                            community_id=0,
+                            label="Merged",
+                            purpose="Merged after adaptive retry.",
+                            source_record_ids=["summary:community:0:shard:overview_files:0"],
+                        )
+                    ]
+                )
+            return RepositoryKBRepoDistillationOutput(summary="Repo summary", source_record_ids=["repo"])
+
+    def fake_worker(schema, **kwargs):
+        caps.append(kwargs.get("max_completion_tokens"))
+        return FakeLlm(schema, kwargs.get("max_completion_tokens"))
+
+    monkeypatch.setattr(
+        "src.orchestration.nodes.exploration.repository_kb_distillation.Models.worker",
+        fake_worker,
+    )
+
+    distill_repository_kb(
+        bundle,
+        settings=Settings(
+            snapshot_base_path=tmp_path / "snapshots",
+            repository_kb_distillation_mode="full",
+            repository_kb_distillation_max_completion_tokens=4096,
+            repository_kb_distillation_max_prompt_chars=12000,
+            repository_kb_distillation_max_shards_per_community=3,
+        ),
+    )
+
+    retry_cap = caps[1]
+    first_prompt_tokens = max(1, int(len(prompts[0]) / 4))
+    assert retry_cap is not None
+    assert retry_cap >= min(4096, max(1536, int(first_prompt_tokens * 0.5)))
+    assert retry_cap > 1024
+
+
+def test_repository_kb_budget_deferred_keeps_inferred_summaries(tmp_path: Path) -> None:
+    payload, topo = _fixture_graph(tmp_path)
+    bundle = build_review_kb(
+        run_id="r1",
+        repo_path=str(tmp_path),
+        graph_payload=payload,
+        topology=topo,
+    )
+
+    distilled, tokens, warnings = distill_repository_kb(
+        bundle,
+        settings=Settings(
+            snapshot_base_path=tmp_path / "snapshots",
+            repository_kb_distillation_mode="full",
+            repository_kb_distillation_hard_token_ceiling=1,
+        ),
+    )
+
+    community_summaries = [
+        r for r in distilled.summaries if r.metadata.get("summary_scope") == "community"
+    ]
+    assert tokens == 0
+    assert community_summaries
+    assert all(r.metadata.get("llm_distillation_status") == "budget_deferred" for r in community_summaries)
+    assert all(r.confidence == "inferred" for r in community_summaries)
+    assert any("deferred:budget" in w for w in warnings)
+    assert distilled.manifest.diagnostics["distillation_coverage"]["deferred"] >= len(community_summaries)
+
+
+def test_repository_kb_distillation_cache_avoids_second_llm_call(monkeypatch, tmp_path: Path) -> None:
+    payload, topo = _fixture_graph(tmp_path)
+    settings = Settings(
+        snapshot_base_path=tmp_path / "snapshots",
+        repository_kb_distillation_mode="full",
+    )
+    calls = {"count": 0}
+
+    class FakeLlm:
+        def __init__(self, schema):
+            self.schema = schema
+
+        def invoke(self, _prompt: str):
+            calls["count"] += 1
+            if self.schema is RepositoryKBCommunityDistillationOutput:
+                cid = 0 if calls["count"] == 1 else 1
+                return RepositoryKBCommunityDistillationOutput(
+                    communities=[
+                        RepositoryKBCommunityDistillationItem(
+                            community_id=cid,
+                            label=f"Community {cid}",
+                            purpose=f"Distilled community {cid}.",
+                            source_record_ids=[f"community:{cid}"],
+                        )
+                    ]
+                )
+            return RepositoryKBRepoDistillationOutput(summary="Cached repo summary.", source_record_ids=["repo"])
+
+    monkeypatch.setattr(
+        "src.orchestration.nodes.exploration.repository_kb_distillation.Models.worker",
+        lambda schema, **_kwargs: FakeLlm(schema),
+    )
+    first_bundle = build_review_kb(
+        run_id="r1",
+        repo_path=str(tmp_path),
+        graph_payload=payload,
+        topology=topo,
+    )
+    distill_repository_kb(first_bundle, settings=settings)
+    first_count = calls["count"]
+    assert first_count > 0
+
+    def fail_worker(*_args, **_kwargs):
+        raise AssertionError("cache miss")
+
+    monkeypatch.setattr(
+        "src.orchestration.nodes.exploration.repository_kb_distillation.Models.worker",
+        fail_worker,
+    )
+    second_bundle = build_review_kb(
+        run_id="r1",
+        repo_path=str(tmp_path),
+        graph_payload=payload,
+        topology=topo,
+    )
+    distilled, _tokens, warnings = distill_repository_kb(second_bundle, settings=settings)
+
+    assert any("cache_hit" in w for w in warnings)
+    assert any(r.metadata.get("llm_distillation_status") == "cache_hit" for r in distilled.summaries)
+
+
+def test_query_repository_kb_filters_review_neighborhood_summaries(monkeypatch, tmp_path: Path) -> None:
+    payload, topo = _fixture_graph(tmp_path)
+    bundle = build_review_kb(
+        run_id="r1",
+        repo_path=str(tmp_path),
+        graph_payload=payload,
+        topology=topo,
+        changed_file_paths={"comfy_extras/nodes_train.py"},
+    )
+
+    class FakeLlm:
+        def __init__(self, schema):
+            self.schema = schema
+
+        def invoke(self, _prompt: str):
+            if self.schema is RepositoryKBCommunityDistillationOutput:
+                return RepositoryKBCommunityDistillationOutput(
+                    communities=[
+                        RepositoryKBCommunityDistillationItem(
+                            community_id=0,
+                            label="Review neighborhood",
+                            purpose="Review-neighborhood-only distilled summary.",
+                            source_record_ids=["community:0"],
+                        )
+                    ]
+                )
+            return RepositoryKBRepoDistillationOutput(
+                summary="Review-neighborhood-only repo map.",
+                source_record_ids=["repo"],
+            )
+
+    monkeypatch.setattr(
+        "src.orchestration.nodes.exploration.repository_kb_distillation.Models.worker",
+        lambda schema, **_kwargs: FakeLlm(schema),
+    )
+    distilled, _tokens, _warnings = distill_repository_kb(
+        bundle,
+        settings=Settings(snapshot_base_path=tmp_path / "snapshots"),
+    )
+    loaded = {
+        "repo": distilled.repo,
+        "communities": distilled.communities,
+        "files": distilled.files,
+        "symbols": distilled.symbols,
+        "facts": distilled.facts,
+        "edges": distilled.edges,
+        "summaries": distilled.summaries,
+        "lexical_index": distilled.lexical_index,
+        "review_overlay": distilled.review_overlay,
+        "by_id": {
+            record.id: record
+            for record in [
+                distilled.repo,
+                *distilled.communities,
+                *distilled.files,
+                *distilled.symbols,
+                *distilled.facts,
+                *distilled.edges,
+                *distilled.summaries,
+            ]
+        },
+    }
+
+    repo_result = query_loaded_review_kb(
+        loaded,
+        query="review-neighborhood-only",
+        use_review_overlay=False,
+        max_results=10,
+    )
+    review_result = query_loaded_review_kb(
+        loaded,
+        query="review-neighborhood-only",
+        use_review_overlay=True,
+        max_results=10,
+    )
+
+    assert not any(
+        r.metadata.get("distillation_scope") == "review_neighborhood"
+        for r in [*repo_result.primary_records, *repo_result.related_records]
+    )
+    assert any(
+        r.metadata.get("distillation_scope") == "review_neighborhood"
+        for r in [*review_result.primary_records, *review_result.related_records]
+    )
+
+
+def test_semantic_merge_deterministic_summary_without_llm(tmp_path: Path) -> None:
+    payload, topo = _fixture_graph(tmp_path)
+    bundle = build_review_kb(
+        run_id="r1",
+        repo_path=str(tmp_path),
+        graph_payload=payload,
+        topology=topo,
+    )
+    node = make_semantic_merge_node(settings=Settings(redis_enabled=False), use_llm=False)
+
+    out = node(
+        {
+            "run_id": "r1",
+            "repo_path": str(tmp_path),
+            "structural_graph_node_link": payload,
+            "structural_topology": topo,
+            "community_summaries": compatibility_summaries_from_kb(bundle),
+            "repository_kb_summary_records": [r.model_dump(mode="json") for r in bundle.summaries],
+        }
+    )
+
+    assert "Semantic coverage" in out["global_summary"]
+    assert "Global synthesis failed" not in out["global_summary"]
+
+
+def test_semantic_merge_timeout_preserves_deterministic_summary(monkeypatch, tmp_path: Path) -> None:
+    payload, topo = _fixture_graph(tmp_path)
+    bundle = build_review_kb(
+        run_id="r1",
+        repo_path=str(tmp_path),
+        graph_payload=payload,
+        topology=topo,
+    )
+    calls = {"count": 0}
+
+    class FakeLlm:
+        def invoke(self, _prompt: str):
+            calls["count"] += 1
+            raise TimeoutError("Request timed out.")
+
+    monkeypatch.setattr(
+        "src.orchestration.nodes.exploration.semantic_merge.Models.synthesizer",
+        lambda *args, **kwargs: FakeLlm(),
+    )
+    monkeypatch.setattr(
+        "src.orchestration.nodes.exploration.semantic_merge.local_llm_server_active",
+        lambda _settings: (True, "healthy"),
+    )
+    monkeypatch.setattr(
+        "src.orchestration.nodes.exploration.semantic_merge.sleep_for_retry",
+        lambda *_args, **_kwargs: None,
+    )
+    node = make_semantic_merge_node(
+        settings=Settings(redis_enabled=False, semantic_agent_retry_backoff_seconds=0),
+        use_llm=True,
+    )
+
+    out = node(
+        {
+            "run_id": "r1",
+            "repo_path": str(tmp_path),
+            "structural_graph_node_link": payload,
+            "structural_topology": topo,
+            "community_summaries": compatibility_summaries_from_kb(bundle),
+            "repository_kb_summary_records": [r.model_dump(mode="json") for r in bundle.summaries],
+        }
+    )
+
+    assert calls["count"] == 2
+    assert "Semantic coverage" in out["global_summary"]
+    assert "Global synthesis failed" not in out["global_summary"]
+    assert out["metadata"]["semantic_phase2"]["global_summary_llm_status"] == "timeout_failed"
 
 
 def test_review_kb_compatibility_summaries_need_no_llm(tmp_path: Path) -> None:

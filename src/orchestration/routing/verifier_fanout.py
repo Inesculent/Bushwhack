@@ -125,6 +125,7 @@ def make_verifier_subgraph_node():
         {
             "verifier_reports",
             "metadata",
+            "llm_trace",
             "token_usage",
             "node_history",
         }

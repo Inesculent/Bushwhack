@@ -70,7 +70,7 @@ The primary research command with comprehensive options for dataset-driven analy
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--trace` | boolean | `False` | Emit reviewer graph tracing logs for planning, worker dispatch, and synthesis. Verbose output for debugging agent behavior. |
+| `--trace` | boolean | `False` | Emit reviewer graph tracing logs, including bounded LLM request/response summaries and per-call token usage. Verbose output for debugging agent behavior. |
 | `--basic-graph` | boolean | `False` | Use the basic reviewer graph without adversarial critique/reflection nodes. |
 
 #### LLM Configuration Overrides

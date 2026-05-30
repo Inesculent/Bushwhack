@@ -10,7 +10,8 @@ from src.config import get_settings
 from src.domain.schemas import CodeEntity, ReviewFinding, ReviewTask, ReviewerWorkerReport, SearchResult
 from src.domain.state import GraphState
 from src.infrastructure.llm.factory import Models
-from src.infrastructure.llm.token_usage import extract_total_tokens_from_llm_result, parse_structured_output
+from src.infrastructure.llm.token_usage import parse_structured_output
+from src.infrastructure.llm.trace import append_trace, trace_from_exception, trace_llm_call
 from src.orchestration.prompts.renderer import render_reviewer_prompt
 
 logger = logging.getLogger(__name__)
@@ -142,6 +143,7 @@ def make_specialist_worker_node(
             return {"node_history": [f"{node_name}:skipped"]}
 
         llm_tokens = 0
+        llm_trace: List[Dict[str, Any]] = []
 
         if _trace_enabled(state):
             trace_logger.info(
@@ -162,13 +164,29 @@ def make_specialist_worker_node(
             selected_model = model_key or getattr(get_settings(), "reviewer_worker_model_key", None)
             try:
                 llm = Models.worker(WorkerReviewOutput, model_key=selected_model)
-                invoke_result = llm.invoke(_render_worker_prompt(state, task, context, specialty))
+                prompt = _render_worker_prompt(state, task, context, specialty)
+                traced = trace_llm_call(
+                    llm,
+                    prompt,
+                    state=state,
+                    node_name=node_name,
+                    model_key=selected_model,
+                    schema_name="WorkerReviewOutput",
+                    input_summary={
+                        "task_id": task.id,
+                        "specialty": task.specialty,
+                        "target_files": task.target_files,
+                    },
+                )
+                invoke_result = traced.result
                 response = parse_structured_output(invoke_result, WorkerReviewOutput)
-                llm_tokens = extract_total_tokens_from_llm_result(invoke_result)
+                llm_tokens = traced.tokens
+                llm_trace = append_trace(llm_trace, traced)
                 findings = _normalize_findings(task=task, findings=response.findings)
                 warnings.extend(response.warnings)
                 summary = response.summary
             except Exception as exc:  # noqa: BLE001 - a single specialist should not fail the whole review
+                llm_trace.extend(trace_from_exception(exc))
                 warning = f"worker_llm_failed:{exc.__class__.__name__}: {exc}"
                 warnings.append(warning)
                 logger.warning(
@@ -217,6 +235,7 @@ def make_specialist_worker_node(
             "task_status_by_id": {task.id: "completed"},
             "node_history": [node_name],
             "token_usage": llm_tokens,
+            "llm_trace": llm_trace,
             "metadata": metadata,
         }
 

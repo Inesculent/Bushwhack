@@ -19,6 +19,7 @@ from src.domain.verifier_schemas import VerifierReport
 from src.domain.state import GraphState
 from src.infrastructure.llm.factory import Models
 from src.infrastructure.llm.token_usage import extract_total_tokens_from_llm_result, parse_structured_output
+from src.infrastructure.llm.trace import append_trace, trace_from_exception, trace_llm_call
 from src.orchestration.nodes.verifier.failure_class import (
     verifier_confidence_label,
     verifier_refutation_applies,
@@ -594,8 +595,8 @@ def _invoke_reduce_batch(
     use_llm: bool,
     batch_index: int,
     batch_count: int,
-) -> tuple[List[Dict[str, Any]], List[str], int, bool]:
-    """Run one reduce LLM call for a candidate batch; return rows, warnings, tokens, failed."""
+) -> tuple[List[Dict[str, Any]], List[str], int, List[Dict[str, Any]], bool]:
+    """Run one reduce LLM call; return rows, warnings, tokens, trace, failed."""
     run_id = state.get("run_id", "unknown")
     settings = get_settings()
     warnings: List[str] = []
@@ -628,18 +629,30 @@ def _invoke_reduce_batch(
         )
 
     if not use_llm:
-        return [], warnings, llm_tokens, False
+        return [], warnings, llm_tokens, [], False
 
     selected_model = model_key or getattr(settings, "reviewer_worker_model_key", None)
+    llm_trace: List[Dict[str, Any]] = []
     try:
         llm = Models.worker(
             CritiqueRevisionOutput,
             model_key=selected_model,
             max_completion_tokens=_critique_revision_completion_cap(settings),
         )
-        invoke_result = llm.invoke(prompt)
+        traced = trace_llm_call(
+            llm,
+            prompt,
+            state=state,
+            node_name="critique_revision_reduce",
+            model_key=selected_model,
+            schema_name="CritiqueRevisionOutput",
+            request_label=f"batch_{batch_index + 1}_of_{batch_count}",
+            input_summary={"candidate_ids": list(batch_ids), "batch_index": batch_index},
+        )
+        invoke_result = traced.result
         response = parse_structured_output(invoke_result, CritiqueRevisionOutput)
-        llm_tokens = extract_total_tokens_from_llm_result(invoke_result)
+        llm_tokens = traced.tokens
+        llm_trace = append_trace(llm_trace, traced)
         rows, norm_warnings = _normalize_revision_rows(response.revisions, expected_ids)
         warnings.extend(norm_warnings)
         warnings.extend(response.warnings)
@@ -652,8 +665,9 @@ def _invoke_reduce_batch(
                 len(rows),
                 llm_tokens,
             )
-        return rows, warnings, llm_tokens, False
+        return rows, warnings, llm_tokens, llm_trace, False
     except Exception as exc:  # noqa: BLE001
+        llm_trace.extend(trace_from_exception(exc))
         w = f"critique_revision_reduce_batch_failed:{batch_index}:{exc.__class__.__name__}: {exc}"
         warnings.append(w)
         logger.warning(
@@ -663,7 +677,7 @@ def _invoke_reduce_batch(
             batch_count,
             exc,
         )
-        return [], warnings, llm_tokens, True
+        return [], warnings, llm_tokens, llm_trace, True
 
 
 def make_critique_revision_digest_node(model_key: str | None = None, use_llm: bool = True):
@@ -710,6 +724,7 @@ def make_critique_revision_digest_node(model_key: str | None = None, use_llm: bo
         warnings: List[str] = []
         digest: CritiqueRevisionDigest
         llm_tokens = 0
+        llm_trace: List[Dict[str, Any]] = []
 
         if use_llm:
             selected_model = model_key or getattr(settings, "reviewer_worker_model_key", None)
@@ -719,9 +734,19 @@ def make_critique_revision_digest_node(model_key: str | None = None, use_llm: bo
                     model_key=selected_model,
                     max_completion_tokens=_critique_revision_completion_cap(settings),
                 )
-                invoke_result = llm.invoke(prompt)
+                traced = trace_llm_call(
+                    llm,
+                    prompt,
+                    state=state,
+                    node_name=node_name,
+                    model_key=selected_model,
+                    schema_name="CritiqueRevisionDigestOutput",
+                    input_summary={"shard_id": shard.shard_id, "candidate_id": shard.candidate_id},
+                )
+                invoke_result = traced.result
                 response = parse_structured_output(invoke_result, CritiqueRevisionDigestOutput)
-                llm_tokens = extract_total_tokens_from_llm_result(invoke_result)
+                llm_tokens = traced.tokens
+                llm_trace = append_trace(llm_trace, traced)
                 if response.candidate_id != shard.candidate_id:
                     warnings.append(
                         f"digest_candidate_mismatch:expected={shard.candidate_id} got={response.candidate_id}"
@@ -736,6 +761,7 @@ def make_critique_revision_digest_node(model_key: str | None = None, use_llm: bo
                     warnings=list(response.warnings) + warnings,
                 )
             except Exception as exc:  # noqa: BLE001
+                llm_trace.extend(trace_from_exception(exc))
                 w = f"critique_revision_digest_llm_failed:{exc.__class__.__name__}: {exc}"
                 warnings.append(w)
                 logger.warning("%s failed run_id=%s shard=%s reason=%s", node_name, run_id, shard.shard_id, exc)
@@ -769,6 +795,7 @@ def make_critique_revision_digest_node(model_key: str | None = None, use_llm: bo
             "critique_revision_digests": {shard.shard_id: digest},
             "node_history": [node_name],
             "token_usage": llm_tokens,
+            "llm_trace": llm_trace,
         }
 
     return critique_revision_digest_node
@@ -835,10 +862,11 @@ def make_critique_revision_reduce_node(model_key: str | None = None, use_llm: bo
         raw_revisions: List[Dict[str, Any]] = []
         warnings: List[str] = []
         llm_tokens = 0
+        llm_trace: List[Dict[str, Any]] = []
         failed_batches = 0
 
         for batch_index, batch_ids in enumerate(batches):
-            rows, batch_warnings, batch_tokens, batch_failed = _invoke_reduce_batch(
+            rows, batch_warnings, batch_tokens, batch_trace, batch_failed = _invoke_reduce_batch(
                 state=state,
                 batch_ids=batch_ids,
                 digests=digests,
@@ -849,6 +877,7 @@ def make_critique_revision_reduce_node(model_key: str | None = None, use_llm: bo
                 batch_count=len(batches),
             )
             llm_tokens += batch_tokens
+            llm_trace.extend(batch_trace)
             warnings.extend(batch_warnings)
             if batch_failed:
                 failed_batches += 1
@@ -899,6 +928,7 @@ def make_critique_revision_reduce_node(model_key: str | None = None, use_llm: bo
             "metadata": metadata,
             "node_history": [node_name],
             "token_usage": llm_tokens,
+            "llm_trace": llm_trace,
         }
 
     return critique_revision_reduce_node

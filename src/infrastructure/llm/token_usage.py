@@ -11,8 +11,60 @@ from pydantic import BaseModel
 T = TypeVar("T", bound=BaseModel)
 
 
+def _int_or_none(value: Any) -> int | None:
+    return value if isinstance(value, int) else None
+
+
+def _first_int(*values: Any) -> int | None:
+    for value in values:
+        if isinstance(value, int):
+            return value
+    return None
+
+
+def extract_token_usage_details_from_message(message: Any) -> dict[str, int | None]:
+    """Return prompt/completion/total token counts when present on a chat message."""
+    details: dict[str, int | None] = {
+        "prompt_tokens": None,
+        "completion_tokens": None,
+        "total_tokens": None,
+    }
+    metadata = getattr(message, "usage_metadata", None)
+    if isinstance(metadata, dict):
+        details["prompt_tokens"] = _first_int(metadata.get("input_tokens"), metadata.get("prompt_tokens"))
+        details["completion_tokens"] = _first_int(
+            metadata.get("output_tokens"),
+            metadata.get("completion_tokens"),
+        )
+        details["total_tokens"] = _int_or_none(metadata.get("total_tokens"))
+        if details["total_tokens"] is not None:
+            return details
+
+    response_metadata = getattr(message, "response_metadata", None)
+    if isinstance(response_metadata, dict):
+        token_usage = response_metadata.get("token_usage") or response_metadata.get("usage")
+        if isinstance(token_usage, dict):
+            details["prompt_tokens"] = _first_int(token_usage.get("prompt_tokens"), token_usage.get("input_tokens"))
+            details["completion_tokens"] = _first_int(
+                token_usage.get("completion_tokens"),
+                token_usage.get("output_tokens"),
+            )
+            details["total_tokens"] = _int_or_none(token_usage.get("total_tokens"))
+    return details
+
+
+def extract_token_usage_details_from_llm_result(invoke_result: Any) -> dict[str, int | None]:
+    """Token details from a raw invoke or structured-output include_raw payload."""
+    if isinstance(invoke_result, dict) and invoke_result.get("raw") is not None:
+        return extract_token_usage_details_from_message(invoke_result["raw"])
+    return extract_token_usage_details_from_message(invoke_result)
+
+
 def extract_total_tokens_from_message(message: Any) -> int:
     """Return total token count from an AIMessage / BaseMessage or similar."""
+    details = extract_token_usage_details_from_message(message)
+    if isinstance(details.get("total_tokens"), int):
+        return int(details["total_tokens"])
     metadata = getattr(message, "usage_metadata", None)
     if isinstance(metadata, dict):
         total = metadata.get("total_tokens")

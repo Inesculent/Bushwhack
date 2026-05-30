@@ -87,7 +87,7 @@ def verifier_generate_node(state: GraphState) -> Dict[str, Any]:
 
     git_excerpt = (state.get("git_diff", "") or "")[:8000]
 
-    code, tok = generate_test_script(
+    generated = generate_test_script(
         candidate=cand_dict,
         focused_context_snippets=state.get("verifier_focused_context_text", ""),
         git_diff_excerpt=git_excerpt,
@@ -97,12 +97,18 @@ def verifier_generate_node(state: GraphState) -> Dict[str, Any]:
         settings=settings,
         use_llm=state.get("use_llm", True),
     )
+    if len(generated) == 2:
+        code, tok = generated
+        llm_trace = []
+    else:
+        code, tok, llm_trace = generated
 
     if not code.strip():
         return {
             "verifier_attempt_idx": attempt_idx,
             "verifier_last_rationale": "Test generation failed or returned empty code.",
             "token_usage": tok,
+            "llm_trace": llm_trace,
             "node_history": ["verifier_generate"],
         }
 
@@ -110,6 +116,7 @@ def verifier_generate_node(state: GraphState) -> Dict[str, Any]:
         "verifier_attempt_idx": attempt_idx,
         "verifier_current_test_code": code,
         "token_usage": tok,
+        "llm_trace": llm_trace,
         "node_history": ["verifier_generate"],
     }
 

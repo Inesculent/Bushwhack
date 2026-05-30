@@ -24,7 +24,8 @@ from src.infrastructure.llm.local_status import (
     sleep_for_retry,
     status_urls,
 )
-from src.infrastructure.llm.token_usage import extract_total_tokens_from_llm_result, parse_structured_output
+from src.infrastructure.llm.token_usage import parse_structured_output
+from src.infrastructure.llm.trace import trace_from_exception, trace_llm_call
 from src.orchestration.prompts.exploration_prompts import render_community_semantic_prompt
 
 logger = logging.getLogger(__name__)
@@ -232,6 +233,7 @@ def make_community_semantic_agent_node(
             item=_compact_retry_item(item),
         )
         llm_tokens = 0
+        llm_trace: List[Dict[str, Any]] = []
         warnings: List[str] = []
         attempts = 0
         last_exc: Exception | None = None
@@ -256,9 +258,23 @@ def make_community_semantic_agent_node(
                     max_completion_tokens=resolved_settings.semantic_agent_max_completion_tokens,
                 )
                 prompt = f"{compact_prompt}{_COMPACT_RETRY_APPENDIX}" if compact_retry else base_prompt
-                invoke_result = llm.invoke(prompt)
+                traced = trace_llm_call(
+                    llm,
+                    prompt,
+                    state=state,
+                    node_name="community_semantic_agent",
+                    model_key=selected_model,
+                    schema_name="CommunityAgentOutput",
+                    request_label=f"community_{item.community_id}:{'compact' if compact_retry else 'primary'}",
+                    input_summary={
+                        "community_id": item.community_id,
+                        "file_count": len(item.file_paths),
+                    },
+                )
+                invoke_result = traced.result
                 parsed = parse_structured_output(invoke_result, CommunityAgentOutput)
-                llm_tokens += extract_total_tokens_from_llm_result(invoke_result)
+                llm_tokens += traced.tokens
+                llm_trace.extend(traced.trace_records)
                 warnings = [*warnings, *parsed.warnings[:MAX_SUMMARY_WARNINGS]]
                 summary = parsed.summary
                 summary = summary.model_copy(
@@ -273,6 +289,7 @@ def make_community_semantic_agent_node(
                 last_exc = None
                 break
             except Exception as exc:  # noqa: BLE001
+                llm_trace.extend(trace_from_exception(exc))
                 last_exc = exc
                 timeout_with_patience_left = (
                     _is_timeout_exception(exc)
@@ -399,6 +416,7 @@ def make_community_semantic_agent_node(
             "metadata": meta,
             "node_history": [f"community_semantic_agent:{item.community_id}"],
             "token_usage": llm_tokens,
+            "llm_trace": llm_trace,
         }
 
     return community_semantic_agent_node

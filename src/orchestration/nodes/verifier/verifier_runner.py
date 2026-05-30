@@ -106,7 +106,7 @@ def invoke_verifier_for_candidate(
         }
 
     for attempt_idx in range(1, settings.verifier_max_attempts + 1):
-        code, tok = generate_test_script(
+        generated = generate_test_script(
             candidate=cand_dict,
             focused_context_snippets=focused_context_snippets,
             git_diff_excerpt=git_diff_excerpt,
@@ -115,6 +115,11 @@ def invoke_verifier_for_candidate(
             settings=settings,
             use_llm=use_llm,
         )
+        if len(generated) == 2:
+            code, tok = generated
+            _trace = []
+        else:
+            code, tok, _trace = generated
         total_tokens += tok
         if not code.strip():
             last_rationale = "Test generation failed or returned empty code."

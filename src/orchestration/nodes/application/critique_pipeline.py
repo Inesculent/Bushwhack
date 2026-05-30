@@ -228,6 +228,7 @@ _CRITIQUE_PARENT_UPDATE_KEYS = frozenset(
     {
         "metadata",
         "node_history",
+        "llm_trace",
         "token_usage",
         "exploration_ledger",
         "candidate_findings",

@@ -82,11 +82,14 @@ def make_semantic_dispatch_node(settings: Settings | None = None, *, use_llm: bo
             changed_file_paths=changed_file_paths,
         )
         llm_tokens = 0
+        llm_trace: List[Dict[str, Any]] = []
         distillation_warnings: List[str] = []
         kb_bundle, llm_tokens, distillation_warnings = distill_repository_kb(
             kb_bundle,
             settings=resolved_settings,
             use_llm=use_llm,
+            state=state,
+            llm_trace=llm_trace,
         )
         compatibility = compatibility_summaries_from_kb(kb_bundle)
         trivial, work = plan_community_dispatch(
@@ -110,6 +113,12 @@ def make_semantic_dispatch_node(settings: Settings | None = None, *, use_llm: bo
                 "coverage": dict(kb_bundle.manifest.coverage),
                 "kb_scope": "repository",
                 "overlay_changed_files": len(kb_bundle.review_overlay.get("changed_files") or []),
+                "distillation_mode": kb_bundle.manifest.diagnostics.get("distillation_mode", ""),
+                "distillation_coverage": kb_bundle.manifest.diagnostics.get("distillation_coverage", {}),
+                "distillation_selected_communities": kb_bundle.manifest.diagnostics.get(
+                    "distillation_selected_communities",
+                    [],
+                ),
                 "distillation_warnings": distillation_warnings[:20],
             },
         }
@@ -123,6 +132,7 @@ def make_semantic_dispatch_node(settings: Settings | None = None, *, use_llm: bo
             "semantic_community_work_queue": [],
             "semantic_dispatch_cursor": 0,
             "token_usage": llm_tokens,
+            "llm_trace": llm_trace,
         }
         return out
 

@@ -21,7 +21,8 @@ from src.infrastructure.llm.local_status import (
     local_llm_server_active,
     sleep_for_retry,
 )
-from src.infrastructure.llm.token_usage import extract_total_tokens_from_llm_result, parse_structured_output
+from src.infrastructure.llm.token_usage import parse_structured_output
+from src.infrastructure.llm.trace import append_trace, trace_from_exception, trace_llm_call
 from src.orchestration.context.focus_request_scope import (
     allowed_review_paths,
     clamp_focused_context_request,
@@ -219,7 +220,7 @@ def _reflect_specialty_batches(
     resolved_settings: Settings,
     mental_model_ledger_snippet: str,
     use_llm: bool,
-) -> tuple[List[ReflectionReport], List[FocusedContextRequest], List[str], int]:
+) -> tuple[List[ReflectionReport], List[FocusedContextRequest], List[str], int, List[Dict[str, Any]]]:
     """Invoke reflection in bounded batches; retry singletons for missing candidate ids."""
     if not use_llm or not specialty_candidates:
         return [], [], [], 0
@@ -229,6 +230,7 @@ def _reflect_specialty_batches(
     all_requests: List[FocusedContextRequest] = []
     warnings: List[str] = []
     llm_tokens = 0
+    llm_trace: List[Dict[str, Any]] = []
 
     def _invoke_batch(batch: List[CandidateFinding]) -> None:
         nonlocal llm_tokens
@@ -244,17 +246,30 @@ def _reflect_specialty_batches(
             attempt += 1
             try:
                 llm = Models.worker(ReflectionBatchOutput, model_key=selected_model)
-                invoke_result = llm.invoke(
-                    _render_reflection_prompt(
-                        state,
-                        specialty,
-                        batch,
-                        mental_model_ledger_snippet=mental_model_ledger_snippet,
-                        compact=compact,
-                    )
+                prompt = _render_reflection_prompt(
+                    state,
+                    specialty,
+                    batch,
+                    mental_model_ledger_snippet=mental_model_ledger_snippet,
+                    compact=compact,
                 )
+                traced = trace_llm_call(
+                    llm,
+                    prompt,
+                    state=state,
+                    node_name="adversarial_reflection",
+                    model_key=selected_model,
+                    schema_name="ReflectionBatchOutput",
+                    request_label=f"{specialty}:{'compact' if compact else 'primary'}",
+                    input_summary={
+                        "specialty": specialty,
+                        "candidate_ids": [c.candidate_id for c in batch],
+                    },
+                )
+                invoke_result = traced.result
                 response = parse_structured_output(invoke_result, ReflectionBatchOutput)
-                llm_tokens += extract_total_tokens_from_llm_result(invoke_result)
+                llm_tokens += traced.tokens
+                llm_trace.extend(traced.trace_records)
                 reps, reqs, norm_warnings = _normalize_reports(
                     state, response, specialty, batch_candidates=batch
                 )
@@ -264,6 +279,7 @@ def _reflect_specialty_batches(
                 warnings.extend(norm_warnings)
                 return
             except Exception as exc:  # noqa: BLE001
+                llm_trace.extend(trace_from_exception(exc))
                 timeout_with_patience_left = (
                     is_timeout_exception(exc)
                     and timeout_deadline is not None
@@ -322,7 +338,7 @@ def _reflect_specialty_batches(
             )
         )
 
-    return all_reports, all_requests, warnings, llm_tokens
+    return all_reports, all_requests, warnings, llm_tokens, llm_trace
 
 
 def _normalize_reports(
@@ -395,6 +411,7 @@ def make_adversarial_reflection_node(
         all_requests: List[FocusedContextRequest] = []
         warnings: List[str] = []
         llm_tokens = 0
+        llm_trace: List[Dict[str, Any]] = []
 
         if _trace_enabled(state):
             trace_logger.info(
@@ -424,7 +441,7 @@ def make_adversarial_reflection_node(
                 mm["reflection_ledger_formatter_rendered"] = int(mm.get("reflection_ledger_formatter_rendered", 0)) + stats.rendered
                 metadata_merged["mental_model_metrics"] = mm
                 state = {**state, "metadata": metadata_merged}
-                reps, reqs, batch_warnings, batch_tokens = _reflect_specialty_batches(
+                reps, reqs, batch_warnings, batch_tokens, batch_trace = _reflect_specialty_batches(
                     state=state,
                     specialty=specialty,
                     specialty_candidates=specialty_candidates,
@@ -437,6 +454,7 @@ def make_adversarial_reflection_node(
                 all_requests.extend(reqs)
                 warnings.extend(batch_warnings)
                 llm_tokens += batch_tokens
+                llm_trace.extend(batch_trace)
 
         if _trace_enabled(state):
             trace_logger.info(
@@ -486,6 +504,7 @@ def make_adversarial_reflection_node(
             "metadata": metadata,
             "node_history": [node_name],
             "token_usage": llm_tokens,
+            "llm_trace": llm_trace,
         }
 
     return adversarial_reflection_node

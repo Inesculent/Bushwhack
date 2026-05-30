@@ -129,4 +129,4 @@ if [ ${#ARGS[@]} -eq 0 ]; then
   ARGS=("--limit" "1" "--trace")
 fi
 
-python3 src/reviewer_agent/main.py --remote "${ARGS[@]}"
+PYTHONUNBUFFERED=1 python3 -u src/reviewer_agent/main.py --remote "${ARGS[@]}"

@@ -156,6 +156,7 @@ class GraphState(TypedDict, total=False):
     # Data for debugging and analysis
     current_task_id: NotRequired[str]
     metadata: Annotated[Dict[str, Any], merge_graph_metadata]
+    llm_trace: Annotated[List[Dict[str, Any]], operator.add]
     token_usage: Annotated[int, operator.add]
     node_history: Annotated[List[str], operator.add]
 

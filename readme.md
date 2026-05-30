@@ -150,7 +150,7 @@ Use `--local` (Docker sandbox, compose Redis, LLM via SSH port-forward) or `--re
 Useful flags:
 
 - `--basic-graph` to skip critique/reflection nodes.
-- `--trace` to emit review-trace logs.
+- `--trace` to emit review-trace logs, including bounded LLM I/O summaries and per-call token usage.
 - `--limit 10` for smoke runs.
 
 ## 5) Run the Solo Agent (Dataset Harness)

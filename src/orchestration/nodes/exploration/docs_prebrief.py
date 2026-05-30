@@ -12,7 +12,8 @@ from src.domain.interfaces import IGitHubContextProvider
 from src.domain.schemas import GitHubIssueContext, GitHubPullRequestContext, RepoDocument
 from src.domain.state import GraphState
 from src.infrastructure.llm.factory import Models
-from src.infrastructure.llm.token_usage import extract_total_tokens_from_llm_result, parse_structured_output
+from src.infrastructure.llm.token_usage import parse_structured_output
+from src.infrastructure.llm.trace import trace_llm_call
 from src.orchestration.prompts.exploration_prompts import render_docs_prebrief_prompt
 
 logger = logging.getLogger(__name__)
@@ -75,9 +76,23 @@ def make_docs_prebrief_node(
         )
 
         llm = Models.synthesizer(DocsPrebriefOutput, model_key=resolved_settings.docs_prebrief_model_key)
-        invoke_result = llm.invoke(prompt)
+        traced = trace_llm_call(
+            llm,
+            prompt,
+            state=state,
+            node_name="docs_prebrief",
+            model_key=resolved_settings.docs_prebrief_model_key,
+            schema_name="DocsPrebriefOutput",
+            input_summary={
+                "repo": f"{owner}/{repo}",
+                "doc_count": len(docs),
+                "issue_count": len(issues),
+                "comment_count": len(comments),
+            },
+        )
+        invoke_result = traced.result
         response = parse_structured_output(invoke_result, DocsPrebriefOutput)
-        tokens = extract_total_tokens_from_llm_result(invoke_result)
+        tokens = traced.tokens
 
         summary = response.summary or ""
         insights = response.insights or ([summary] if summary else [])
@@ -104,6 +119,7 @@ def make_docs_prebrief_node(
             "metadata": meta,
             "node_history": ["docs_prebrief"],
             "token_usage": tokens,
+            "llm_trace": traced.trace_records,
         }
 
     return docs_prebrief_node

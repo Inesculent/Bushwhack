@@ -14,7 +14,8 @@ from src.domain.schemas import BehavioralEvidenceRef, BehavioralSpec
 from src.domain.state import GraphState
 from src.infrastructure.behavioral_spec_store import BehavioralSpecStore
 from src.infrastructure.llm.factory import Models
-from src.infrastructure.llm.token_usage import extract_total_tokens_from_llm_result, parse_structured_output
+from src.infrastructure.llm.token_usage import parse_structured_output
+from src.infrastructure.llm.trace import append_trace, trace_from_exception, trace_llm_call
 from src.orchestration.context.context_packets import (
     build_intent_extractor_packet,
     build_mandate_synthesizer_packet,
@@ -137,6 +138,7 @@ def make_intent_extractor_node(settings: Settings | None = None, *, use_llm: boo
         resolved = settings or get_settings()
         meta, slot = mm_meta(state)
         llm_tokens = 0
+        llm_trace: List[Dict[str, Any]] = []
         intent_summary = ""
         non_goals = ""
         warnings: List[str] = []
@@ -149,12 +151,23 @@ def make_intent_extractor_node(settings: Settings | None = None, *, use_llm: boo
                     packet_to_prompt_sections(packet),
                 )
                 llm = Models.worker(IntentExtractorOutput, model_key=resolved.reviewer_worker_model_key)
-                invoke_result = llm.invoke(prompt)
+                traced = trace_llm_call(
+                    llm,
+                    prompt,
+                    state=state,
+                    node_name=node_name,
+                    model_key=resolved.reviewer_worker_model_key,
+                    schema_name="IntentExtractorOutput",
+                    input_summary={"changed_files": _extract_files_from_diff(state.get("git_diff", "") or "")},
+                )
+                invoke_result = traced.result
                 out = parse_structured_output(invoke_result, IntentExtractorOutput)
-                llm_tokens = extract_total_tokens_from_llm_result(invoke_result)
+                llm_tokens = traced.tokens
+                llm_trace = append_trace(llm_trace, traced)
                 intent_summary = out.intent_summary.strip()
                 non_goals = out.non_goals.strip()
             except Exception as exc:  # noqa: BLE001
+                llm_trace.extend(trace_from_exception(exc))
                 warnings.append(f"{node_name}_llm_fallback:{exc.__class__.__name__}")
                 logger.warning("%s LLM fallback: %s", node_name, exc)
 
@@ -184,6 +197,7 @@ def make_intent_extractor_node(settings: Settings | None = None, *, use_llm: boo
             "metadata": meta,
             "node_history": [node_name],
             "token_usage": llm_tokens,
+            "llm_trace": llm_trace,
         }
 
     return intent_extractor_node
@@ -198,6 +212,7 @@ def make_mandate_synthesizer_node(settings: Settings | None = None, *, use_llm: 
         meta, slot = mm_meta(state)
         intent = dict(slot.get("intent_extractor") or {})
         llm_tokens = 0
+        llm_trace: List[Dict[str, Any]] = []
         expectations = ""
         risks = ""
         guidance = (
@@ -217,15 +232,26 @@ def make_mandate_synthesizer_node(settings: Settings | None = None, *, use_llm: 
                     packet_to_prompt_sections(synth_packet),
                 )
                 llm = Models.worker(MandateSynthesizerOutput, model_key=resolved.reviewer_worker_model_key)
-                invoke_result = llm.invoke(prompt)
+                traced = trace_llm_call(
+                    llm,
+                    prompt,
+                    state=state,
+                    node_name=node_name,
+                    model_key=resolved.reviewer_worker_model_key,
+                    schema_name="MandateSynthesizerOutput",
+                    input_summary={"intent_chars": len(str(intent.get("intent_summary", "")))},
+                )
+                invoke_result = traced.result
                 out = parse_structured_output(invoke_result, MandateSynthesizerOutput)
-                llm_tokens = extract_total_tokens_from_llm_result(invoke_result)
+                llm_tokens = traced.tokens
+                llm_trace = append_trace(llm_trace, traced)
                 expectations = out.behavioral_expectations.strip()
                 risks = out.risk_hypotheses.strip()
                 if out.reviewer_guidance.strip():
                     guidance = f"{out.reviewer_guidance.strip()} {DECLARED_INPUT_CONTRACT_GUIDANCE}"
                 uncertainties = out.uncertainties.strip()
             except Exception as exc:  # noqa: BLE001
+                llm_trace.extend(trace_from_exception(exc))
                 warnings.append(f"{node_name}_llm_fallback:{exc.__class__.__name__}")
                 logger.warning("%s LLM fallback: %s", node_name, exc)
 
@@ -275,6 +301,7 @@ def make_mandate_synthesizer_node(settings: Settings | None = None, *, use_llm: 
             "metadata": meta,
             "node_history": [node_name],
             "token_usage": llm_tokens,
+            "llm_trace": llm_trace,
         }
 
     return mandate_synthesizer_node

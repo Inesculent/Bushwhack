@@ -738,6 +738,28 @@ class Settings(BaseSettings):
 		le=8192,
 		description="Completion token cap for bounded Repository KB distillation calls.",
 	)
+	repository_kb_distillation_mode: Literal["review_neighborhood", "on_demand", "full", "off"] = Field(
+		default="review_neighborhood",
+		description=(
+			"Repository KB LLM enrichment mode. review_neighborhood distills only review-adjacent "
+			"communities by default; full opts into whole-repo distillation."
+		),
+	)
+	repository_kb_distillation_budget_mode: Literal["adaptive", "unbounded"] = Field(
+		default="adaptive",
+		description="Budget strategy for Repository KB distillation. Adaptive may defer work instead of failing.",
+	)
+	repository_kb_distillation_hard_token_ceiling: Optional[int] = Field(
+		default=None,
+		ge=1,
+		description="Optional hard token ceiling for Repository KB distillation. Disabled by default.",
+	)
+	repository_kb_distillation_review_neighborhood_max_communities: int = Field(
+		default=8,
+		ge=1,
+		le=64,
+		description="Max communities to LLM-distill in the default review-neighborhood mode.",
+	)
 	repository_kb_distillation_communities_per_call: int = Field(
 		default=1,
 		ge=1,
@@ -761,6 +783,18 @@ class Settings(BaseSettings):
 		ge=2000,
 		le=80000,
 		description="Approximate prompt character cap for merging shard summaries into a community summary.",
+	)
+	semantic_merge_max_prompt_chars: int = Field(
+		default=24000,
+		ge=2000,
+		le=120000,
+		description="Approximate prompt character cap for global semantic merge synthesis.",
+	)
+	semantic_merge_max_completion_tokens: int = Field(
+		default=2048,
+		ge=512,
+		le=8192,
+		description="Completion token cap for global semantic merge synthesis.",
 	)
 	semantic_max_files_per_agent: int = Field(
 		default=20,

@@ -11,6 +11,7 @@ _STRIP_KEYS = frozenset(
     {
         "behavioral_spec",
         "exploration_ledger_full",
+        "llm_trace",
     }
 )
 

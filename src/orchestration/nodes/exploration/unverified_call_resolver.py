@@ -18,7 +18,8 @@ from src.domain.schemas import (
 )
 from src.domain.state import GraphState
 from src.infrastructure.llm.factory import Models
-from src.infrastructure.llm.token_usage import extract_total_tokens_from_llm_result, parse_structured_output
+from src.infrastructure.llm.token_usage import parse_structured_output
+from src.infrastructure.llm.trace import trace_from_exception, trace_llm_call
 from src.infrastructure.search.definition_fallback import find_symbol_definitions_regex
 from src.infrastructure.structural_graph import StructuralGraphBuilder
 from src.orchestration.prompts.exploration_prompts import render_unverified_call_resolver_prompt
@@ -124,6 +125,7 @@ def make_unverified_call_resolver_node(
             by_name[t.target_name.lower()].append(t)
 
         llm_tokens = 0
+        llm_trace: List[Dict[str, Any]] = []
         new_gaps: List[KnowledgeGap] = []
         merged: List[UnverifiedCallTarget] = []
 
@@ -163,13 +165,29 @@ def make_unverified_call_resolver_node(
                                 symbol_node_id=node_id,
                                 body_text=body_text,
                             )
-                            invoke_result = llm.invoke(prompt)
+                            traced = trace_llm_call(
+                                llm,
+                                prompt,
+                                state=state,
+                                node_name="unverified_call_resolver",
+                                model_key=selected_model,
+                                schema_name="ResolverSymbolSummaryOutput",
+                                request_label="signature",
+                                input_summary={
+                                    "source_symbol_id": call.source_symbol_id,
+                                    "target_name": call.target_name,
+                                    "symbol": entity_name,
+                                },
+                            )
+                            invoke_result = traced.result
                             parsed = parse_structured_output(invoke_result, ResolverSymbolSummaryOutput)
-                            llm_tokens += extract_total_tokens_from_llm_result(invoke_result)
+                            llm_tokens += traced.tokens
+                            llm_trace.extend(traced.trace_records)
                             resolved_flag = True
                             resolved_id = node_id
                             resolution_summary = parsed.one_line_summary
                         except Exception as exc:  # noqa: BLE001
+                            llm_trace.extend(trace_from_exception(exc))
                             logger.warning("resolver LLM failed run_id=%s sym=%s err=%s", run_id, entity_name, exc)
 
             # Tier 2b: repo-wide definition lookup (AST / Jedi / regex fallback)
@@ -220,9 +238,24 @@ def make_unverified_call_resolver_node(
                                 symbol_node_id=synthetic_id,
                                 body_text=body_text[:120_000],
                             )
-                            invoke_result = llm.invoke(prompt)
+                            traced = trace_llm_call(
+                                llm,
+                                prompt,
+                                state=state,
+                                node_name="unverified_call_resolver",
+                                model_key=selected_model,
+                                schema_name="ResolverSymbolSummaryOutput",
+                                request_label="body",
+                                input_summary={
+                                    "source_symbol_id": call.source_symbol_id,
+                                    "target_name": call.target_name,
+                                    "symbol": entity_name,
+                                },
+                            )
+                            invoke_result = traced.result
                             parsed = parse_structured_output(invoke_result, ResolverSymbolSummaryOutput)
-                            llm_tokens += extract_total_tokens_from_llm_result(invoke_result)
+                            llm_tokens += traced.tokens
+                            llm_trace.extend(traced.trace_records)
                             resolved_flag = True
                             resolved_id = synthetic_id
                             resolution_summary = (
@@ -230,6 +263,7 @@ def make_unverified_call_resolver_node(
                                 f"(definition {best.file_path}:{best.line_start} via {best.source})"
                             )
                         except Exception as exc:  # noqa: BLE001
+                            llm_trace.extend(trace_from_exception(exc))
                             logger.warning(
                                 "resolver LLM failed after definition lookup run_id=%s name=%s err=%s",
                                 run_id,
@@ -287,6 +321,7 @@ def make_unverified_call_resolver_node(
             "metadata": meta,
             "node_history": ["unverified_call_resolver"],
             "token_usage": llm_tokens,
+            "llm_trace": llm_trace,
         }
 
     return unverified_call_resolver_node

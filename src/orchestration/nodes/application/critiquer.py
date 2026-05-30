@@ -10,10 +10,10 @@ from src.domain.schemas import CandidateFinding, CritiquerOutput, FocusedContext
 from src.domain.state import GraphState
 from src.infrastructure.llm.factory import Models
 from src.infrastructure.llm.token_usage import (
-    extract_total_tokens_from_llm_result,
     parse_structured_output,
     salvage_structured_output_from_raw,
 )
+from src.infrastructure.llm.trace import append_trace, trace_from_exception, trace_llm_call
 from src.orchestration.context.focus_request_scope import (
     allowed_review_paths,
     clamp_focused_context_request,
@@ -162,7 +162,7 @@ def _invoke_critiquer_llm(
     model_key: str | None,
     compact: bool,
     appendix: str = "",
-) -> tuple[Any, int]:
+) -> tuple[Any, int, List[Dict[str, Any]]]:
     settings = get_settings()
     prompt = _render_critiquer_prompt(state, task, pipeline_slot)
     if compact:
@@ -174,9 +174,24 @@ def _invoke_critiquer_llm(
         model_key=model_key,
         max_completion_tokens=settings.reviewer_critiquer_max_completion_tokens,
     )
-    invoke_result = llm.invoke(prompt)
-    tokens = extract_total_tokens_from_llm_result(invoke_result)
-    return invoke_result, tokens
+    label = "compact" if compact else "primary"
+    if appendix:
+        label = f"{label}+appendix"
+    traced = trace_llm_call(
+        llm,
+        prompt,
+        state=state,
+        node_name="general_critiquer",
+        model_key=model_key,
+        schema_name="CritiquerOutput",
+        request_label=label,
+        input_summary={
+            "task_id": task.id,
+            "specialty": task.specialty,
+            "target_files": task.target_files,
+        },
+    )
+    return traced.result, traced.tokens, traced.trace_records
 
 
 def _needs_orthogonal_recall(response: CritiquerOutput) -> bool:
@@ -221,6 +236,7 @@ def make_general_critiquer_node(
             return {"node_history": [f"{node_name}:skipped"]}
 
         llm_tokens = 0
+        llm_trace: List[Dict[str, Any]] = []
 
         if _trace_enabled(state):
             trace_logger.info(
@@ -292,13 +308,14 @@ def make_general_critiquer_node(
             selected_model = model_key or getattr(get_settings(), "reviewer_worker_model_key", None)
             invoke_result: Any = None
             try:
-                invoke_result, llm_tokens = _invoke_critiquer_llm(
+                invoke_result, llm_tokens, call_trace = _invoke_critiquer_llm(
                     state=state,
                     task=task,
                     pipeline_slot=pipeline_slot,
                     model_key=selected_model,
                     compact=False,
                 )
+                llm_trace.extend(call_trace)
                 try:
                     response = parse_structured_output(invoke_result, CritiquerOutput)
                 except (ValueError, TypeError) as parse_exc:
@@ -315,7 +332,7 @@ def make_general_critiquer_node(
                         raise
                 if _needs_orthogonal_recall(response):
                     try:
-                        recall_result, recall_tokens = _invoke_critiquer_llm(
+                        recall_result, recall_tokens, call_trace = _invoke_critiquer_llm(
                             state=state,
                             task=task,
                             pipeline_slot=pipeline_slot,
@@ -324,13 +341,16 @@ def make_general_critiquer_node(
                             appendix=_ORTHOGONAL_RECALL_APPENDIX,
                         )
                         llm_tokens += recall_tokens
+                        llm_trace.extend(call_trace)
                         recall_response = parse_structured_output(recall_result, CritiquerOutput)
                         response = _merge_recall_response(response, recall_response)
                     except Exception as recall_exc:  # noqa: BLE001
+                        llm_trace.extend(trace_from_exception(recall_exc))
                         warnings.append(
                             f"orthogonal_recall_pass_failed:{recall_exc.__class__.__name__}: {recall_exc}"
                         )
             except Exception as exc:  # noqa: BLE001
+                llm_trace.extend(trace_from_exception(exc))
                 if _is_length_finish_error(exc) or (
                     isinstance(exc, (ValueError, TypeError))
                     and invoke_result is not None
@@ -339,7 +359,7 @@ def make_general_critiquer_node(
                 ):
                     try:
                         warnings.append("critiquer_llm_retry:reason=length")
-                        invoke_result, retry_tokens = _invoke_critiquer_llm(
+                        invoke_result, retry_tokens, call_trace = _invoke_critiquer_llm(
                             state=state,
                             task=task,
                             pipeline_slot=pipeline_slot,
@@ -347,6 +367,7 @@ def make_general_critiquer_node(
                             compact=True,
                         )
                         llm_tokens += retry_tokens
+                        llm_trace.extend(call_trace)
                         response = parse_structured_output(invoke_result, CritiquerOutput)
                         candidates = _normalize_candidates(
                             task=task,
@@ -368,6 +389,7 @@ def make_general_critiquer_node(
                             + auto_focus_requests(task, candidates),
                         )
                     except Exception as retry_exc:  # noqa: BLE001
+                        llm_trace.extend(trace_from_exception(retry_exc))
                         exc = retry_exc
                         warning = f"critiquer_llm_failed:{exc.__class__.__name__}: {exc}"
                         warnings.append(warning)
@@ -485,6 +507,7 @@ def make_general_critiquer_node(
             "metadata": metadata,
             "node_history": [node_name],
             "token_usage": llm_tokens,
+            "llm_trace": llm_trace,
         }
 
     return general_critiquer_node

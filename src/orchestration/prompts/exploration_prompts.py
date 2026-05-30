@@ -118,15 +118,23 @@ def render_repository_kb_repo_distill_prompt(*, pack_json: str) -> str:
     )
 
 
-def render_semantic_merge_from_kb_prompt(summaries: Sequence[ReviewKBRecord]) -> str:
+def render_semantic_merge_from_kb_prompt(
+    summaries: Sequence[ReviewKBRecord],
+    *,
+    max_chars: int | None = None,
+) -> str:
     """Prompt global synthesis from Repository KB summary records."""
     lines = []
-    for record in summaries[:400]:
+    budget = max_chars or 120000
+    for record in summaries:
         source_ids = ", ".join(str(x) for x in record.metadata.get("source_record_ids") or [])
-        lines.append(
+        line = (
             f"- {record.id} ({record.confidence}; sources: {source_ids or 'none'}): "
-            f"{record.summary[:900]}"
+            f"{record.summary[:500]}"
         )
+        if len("\n".join([*lines, line])) > budget:
+            break
+        lines.append(line)
     return _fill_template(
         load_exploration_prompt("semantic_merge.md"),
         community_summaries="\n".join(lines),

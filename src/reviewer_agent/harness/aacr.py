@@ -94,6 +94,7 @@ def _write_raw(raw_dir: Path, slug: str, result: dict[str, Any]) -> Path:
     payload = {
         "metadata": metadata,
         "node_history": result.get("node_history", []),
+        "llm_trace": result.get("llm_trace", []),
         "worker_reports": [report.model_dump() for report in result.get("reviewer_worker_reports", []) or []],
         "candidate_findings": [
             item.model_dump() if hasattr(item, "model_dump") else item
@@ -435,6 +436,7 @@ def _invoke_for_pr(
         "reflection_reports": [],
         "focused_context_requests": [],
         "focused_context_results": {},
+        "llm_trace": [],
         "token_usage": 0,
         "node_history": [],
         "metadata": {
