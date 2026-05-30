@@ -20,6 +20,20 @@ logger = logging.getLogger(__name__)
 trace_logger = logging.getLogger("research_pipeline.reviewer_trace")
 
 
+def _changed_file_paths_from_diff(git_diff: str) -> set[str]:
+    paths: set[str] = set()
+    for raw_line in (git_diff or "").splitlines():
+        line = raw_line.strip()
+        if line.startswith("diff --git "):
+            parts = line.split()
+            for part in parts[2:4]:
+                if part.startswith(("a/", "b/")):
+                    paths.add(part[2:])
+        elif line.startswith(("+++ b/", "--- a/")):
+            paths.add(line[6:])
+    return {p for p in paths if p and p != "/dev/null"}
+
+
 def _coerce_summaries(raw: Sequence[Any]) -> List[CommunitySemanticSummary]:
     out: List[CommunitySemanticSummary] = []
     for item in raw:
@@ -173,6 +187,8 @@ def make_snapshot_pin_node(
             diagnostics=diagnostics,
             unresolved_calls=calls,
             extraction_gap_count=extraction_gap_count,
+            changed_file_paths=_changed_file_paths_from_diff(state.get("git_diff", "") or ""),
+            repository_kb_summary_records=state.get("repository_kb_summary_records") or [],
         )
 
         try:

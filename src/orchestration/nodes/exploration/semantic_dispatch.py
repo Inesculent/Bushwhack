@@ -11,6 +11,8 @@ from src.config import Settings, get_settings
 from src.domain.schemas import StructuralTopologySummary
 from src.domain.state import GraphState
 from src.infrastructure.community_context import plan_community_dispatch
+from src.infrastructure.review_kb import build_review_kb, compatibility_summaries_from_kb
+from src.orchestration.nodes.exploration.repository_kb_distillation import distill_repository_kb
 from src.orchestration.routing.send_payload import payload_for_send
 
 logger = logging.getLogger(__name__)
@@ -31,7 +33,7 @@ def _changed_file_paths_from_diff(git_diff: str) -> set[str]:
     return {p for p in paths if p and p != "/dev/null"}
 
 
-def make_semantic_dispatch_node(settings: Settings | None = None):
+def make_semantic_dispatch_node(settings: Settings | None = None, *, use_llm: bool = True):
     """Prepare a bounded wave queue for non-trivial communities."""
 
     def semantic_dispatch_node(state: GraphState) -> Dict[str, Any]:
@@ -72,6 +74,21 @@ def make_semantic_dispatch_node(settings: Settings | None = None):
             }
 
         changed_file_paths = _changed_file_paths_from_diff(state.get("git_diff", "") or "")
+        kb_bundle = build_review_kb(
+            run_id=str(state.get("run_id") or ""),
+            repo_path=str(state.get("repo_path") or ""),
+            graph_payload=graph_payload,
+            topology=topo,
+            changed_file_paths=changed_file_paths,
+        )
+        llm_tokens = 0
+        distillation_warnings: List[str] = []
+        kb_bundle, llm_tokens, distillation_warnings = distill_repository_kb(
+            kb_bundle,
+            settings=resolved_settings,
+            use_llm=use_llm,
+        )
+        compatibility = compatibility_summaries_from_kb(kb_bundle)
         trivial, work = plan_community_dispatch(
             topo,
             graph_payload,
@@ -79,20 +96,33 @@ def make_semantic_dispatch_node(settings: Settings | None = None):
             changed_file_paths=changed_file_paths,
         )
         meta["semantic_phase2"] = {
-            "dispatch": "ok",
+            "dispatch": "review_kb",
             "trivial_communities": len(trivial),
-            "pending_community_agents": len(work),
+            "pending_community_agents": 0,
+            "legacy_pending_community_agents": len(work),
             "max_parallel_agents": resolved_settings.semantic_max_parallel_agents,
             "changed_file_count": len(changed_file_paths),
             "dispatch_cursor": 0,
-            "dispatch_total": len(work),
+            "dispatch_total": 0,
+            "review_kb": {
+                "schema_version": kb_bundle.manifest.schema_version,
+                "counts": dict(kb_bundle.manifest.counts),
+                "coverage": dict(kb_bundle.manifest.coverage),
+                "kb_scope": "repository",
+                "overlay_changed_files": len(kb_bundle.review_overlay.get("changed_files") or []),
+                "distillation_warnings": distillation_warnings[:20],
+            },
         }
         out: Dict[str, Any] = {
-            "community_summaries": trivial,
+            "community_summaries": compatibility or trivial,
+            "repository_kb_summary_records": [
+                r.model_dump(mode="json") for r in kb_bundle.summaries
+            ],
             "metadata": meta,
-            "node_history": ["semantic_dispatch"],
-            "semantic_community_work_queue": [w.model_dump(mode="json") for w in work],
+            "node_history": ["semantic_dispatch:review_kb"],
+            "semantic_community_work_queue": [],
             "semantic_dispatch_cursor": 0,
+            "token_usage": llm_tokens,
         }
         return out
 

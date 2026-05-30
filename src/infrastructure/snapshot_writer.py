@@ -6,16 +6,18 @@ import hashlib
 import json
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Sequence
+from typing import Any, Dict, Iterable, List, Sequence
 
 from src.config import Settings
 from src.domain.schemas import (
     CommunitySemanticSummary,
     ExplorationSnapshot,
+    ReviewKBRecord,
     SnapshotDiagnostics,
     StructuralTopologySummary,
     UnverifiedCallTarget,
 )
+from src.infrastructure.review_kb import build_review_kb, rebuild_review_kb_lexical_index, write_review_kb
 from src.infrastructure.structural_graph import StructuralGraphBuilder
 
 
@@ -83,6 +85,8 @@ class SnapshotWriter:
         diagnostics: SnapshotDiagnostics,
         unresolved_calls: Sequence[UnverifiedCallTarget],
         extraction_gap_count: int,
+        changed_file_paths: Iterable[str] = (),
+        repository_kb_summary_records: Sequence[Dict[str, Any]] = (),
     ) -> tuple[ExplorationSnapshot, str]:
         run_dir_name = _safe_path_segment(run_id)
         base = Path(self._settings.snapshot_base_path).resolve() / run_dir_name
@@ -96,6 +100,38 @@ class SnapshotWriter:
 
         graph = StructuralGraphBuilder.deserialize(enriched_graph_payload)
         partition = dict(topology.node_to_community)
+        kb_bundle = build_review_kb(
+            run_id=run_id,
+            repo_path=repo_path,
+            graph_payload=enriched_graph_payload,
+            topology=topology,
+            changed_file_paths=changed_file_paths,
+            repo_identity=repo_path,
+        )
+        if repository_kb_summary_records:
+            parsed_summaries: List[ReviewKBRecord] = []
+            expected = {r.id for r in kb_bundle.summaries}
+            for raw in repository_kb_summary_records:
+                try:
+                    record = ReviewKBRecord.model_validate(raw)
+                except Exception:
+                    continue
+                if record.kind == "summary" and (
+                    record.id in expected or record.metadata.get("summary_scope") == "community_shard"
+                ):
+                    parsed_summaries.append(record)
+            if parsed_summaries:
+                by_id = {r.id: r for r in kb_bundle.summaries}
+                appended_ids: List[str] = []
+                for record in parsed_summaries:
+                    if record.id not in by_id:
+                        appended_ids.append(record.id)
+                    by_id[record.id] = record
+                kb_bundle.summaries = [by_id[r.id] for r in kb_bundle.summaries] + [
+                    by_id[rid] for rid in appended_ids
+                ]
+                kb_bundle.manifest.counts["summaries"] = len(kb_bundle.summaries)
+                rebuild_review_kb_lexical_index(kb_bundle)
 
         # Full graph
         full_path = graph_dir / "full_graph.json"
@@ -109,6 +145,8 @@ class SnapshotWriter:
             topology.model_dump_json(indent=2),
             encoding="utf-8",
         )
+
+        kb_dir = write_review_kb(base, kb_bundle)
 
         cross_path = graph_dir / "cross_community_edges.json"
         cross_path.write_text(
@@ -177,6 +215,8 @@ class SnapshotWriter:
             "total_edges": len(enriched_graph_payload.get("edges", [])),
             "unresolved_call_count": unresolved_count,
             "extraction_gap_count": extraction_gap_count,
+            "review_kb_path": str(kb_dir),
+            "repository_kb_path": str(kb_dir),
         }
         snapshot_id = hashlib.sha256(
             json.dumps(pointer_body, sort_keys=True).encode("utf-8")
@@ -194,7 +234,15 @@ class SnapshotWriter:
             total_edges=int(pointer_body["total_edges"]),
             unresolved_call_count=int(unresolved_count),
             extraction_gap_count=int(extraction_gap_count),
-            metadata={"repo_path": repo_path, "run_dir_name": run_dir_name},
+            metadata={
+                "repo_path": repo_path,
+                "run_dir_name": run_dir_name,
+                "review_kb_path": str(kb_dir),
+                "repository_kb_path": str(kb_dir),
+                "review_kb": kb_bundle.manifest.model_dump(mode="json"),
+                "repository_kb": kb_bundle.manifest.model_dump(mode="json"),
+                "review_overlay": kb_bundle.review_overlay,
+            },
         )
 
         snapshot_json = base / "snapshot.json"

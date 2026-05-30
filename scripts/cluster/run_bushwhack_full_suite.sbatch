@@ -4,9 +4,9 @@
 #SBATCH --gres=gpu:2
 #SBATCH -C h100
 #SBATCH --nodes=1
-#SBATCH --time=12:00:00
-#SBATCH --cpus-per-task=32
-#SBATCH --mem=256G
+#SBATCH --time=24:00:00
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=128G
 #SBATCH --output=slurm_logs/bushwhack-full-%j.out
 #SBATCH --error=slurm_logs/bushwhack-full-%j.err
 

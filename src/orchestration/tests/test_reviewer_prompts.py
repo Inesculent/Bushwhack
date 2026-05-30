@@ -50,6 +50,13 @@ def test_critiquer_prompt_contains_routing_hardcap() -> None:
     assert "Hierarchy of Needs" in text
     assert "Aggregation and structured returns" in text
     assert "in-function contracts" in text.lower()
+    assert "Review KB context" in text
+
+
+def test_active_reviewer_prompts_expose_repository_kb_authority() -> None:
+    assert "Repository KB Authority" in load_reviewer_prompt("global.md")
+    assert "Repository KB summaries" in load_reviewer_prompt("planner.md")
+    assert "Repository KB context" in load_reviewer_prompt("reflection/logic.md")
 
 
 def test_reflection_prompts_contain_adversarial_two_tier_protocol() -> None:

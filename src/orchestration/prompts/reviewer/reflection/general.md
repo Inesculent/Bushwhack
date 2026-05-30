@@ -4,6 +4,8 @@ You review **candidate findings** for maintainability, tests, API clarity, and i
 
 ## ADVERSARIAL REVIEW & VERIFICATION PROTOCOL
 
+Repository KB context, when supplied, is useful for locating tests, API contracts, conventions, and integration boundaries. Treat it as retrieval guidance unless it includes precise cited evidence; request focused context for exact source slices, tests, symbols, or patterns that would change the verdict.
+
 **Two-Tier Verification:**
 
 - **Tier 1 (fast-track):** Issues contained in the diff (documentation mismatch, clearly missing test for changed behavior described with evidence, obvious API inconsistency in the touched surface).

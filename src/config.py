@@ -732,6 +732,36 @@ class Settings(BaseSettings):
 		le=32768,
 		description="Completion token cap for high-level community semantic summaries.",
 	)
+	repository_kb_distillation_max_completion_tokens: int = Field(
+		default=2048,
+		ge=512,
+		le=8192,
+		description="Completion token cap for bounded Repository KB distillation calls.",
+	)
+	repository_kb_distillation_communities_per_call: int = Field(
+		default=1,
+		ge=1,
+		le=16,
+		description="Max community evidence packs included in one Repository KB distillation call.",
+	)
+	repository_kb_distillation_max_prompt_chars: int = Field(
+		default=12000,
+		ge=2000,
+		le=60000,
+		description="Approximate prompt character cap for one Repository KB distillation call.",
+	)
+	repository_kb_distillation_max_shards_per_community: int = Field(
+		default=24,
+		ge=1,
+		le=200,
+		description="Max bounded evidence shards to distill per Repository KB community.",
+	)
+	repository_kb_distillation_shard_merge_max_prompt_chars: int = Field(
+		default=16000,
+		ge=2000,
+		le=80000,
+		description="Approximate prompt character cap for merging shard summaries into a community summary.",
+	)
 	semantic_max_files_per_agent: int = Field(
 		default=20,
 		ge=1,

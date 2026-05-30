@@ -13,6 +13,11 @@ from src.domain.schemas import (
     CommunitySemanticSummary,
     CommunityWorkItem,
     FileSemanticSummary,
+    RepositoryKBCommunityDistillationOutput,
+    RepositoryKBCommunityDistillationItem,
+    RepositoryKBRepoDistillationOutput,
+    RepositoryKBShardDistillationOutput,
+    RepositoryKBShardDistillationItem,
     StructuralTopologySummary,
     SymbolSemanticSummary,
     UnverifiedCallTarget,
@@ -148,7 +153,7 @@ def test_semantic_dispatch_plans_when_reducer_supplies_empty_queue() -> None:
     topo = StructuralTopologySummary.model_validate(
         json.loads((Path("plots") / "structural_topology.json").read_text(encoding="utf-8"))
     )
-    node = make_semantic_dispatch_node(Settings(redis_enabled=False))
+    node = make_semantic_dispatch_node(Settings(redis_enabled=False), use_llm=False)
     state: GraphState = {  # type: ignore[typeddict-item]
         "run_id": "t1",
         "repo_path": "r",
@@ -158,9 +163,78 @@ def test_semantic_dispatch_plans_when_reducer_supplies_empty_queue() -> None:
         "semantic_community_work_queue": [],
     }
     out = node(state)
-    assert out["metadata"]["semantic_phase2"]["dispatch"] == "ok"
-    assert out["metadata"]["semantic_phase2"]["pending_community_agents"] > 0
-    assert out["semantic_community_work_queue"]
+    assert out["metadata"]["semantic_phase2"]["dispatch"] == "review_kb"
+    assert out["metadata"]["semantic_phase2"]["pending_community_agents"] == 0
+    assert out["metadata"]["semantic_phase2"]["legacy_pending_community_agents"] > 0
+    assert out["semantic_community_work_queue"] == []
+    assert out["community_summaries"]
+
+
+@pytest.mark.skipif(
+    not (Path("plots") / "structural_graph.json").is_file(),
+    reason="plots artifacts",
+)
+def test_semantic_dispatch_distills_repository_kb_with_llm(monkeypatch: pytest.MonkeyPatch) -> None:
+    graph_payload = json.loads((Path("plots") / "structural_graph.json").read_text(encoding="utf-8"))
+    topo = StructuralTopologySummary.model_validate(
+        json.loads((Path("plots") / "structural_topology.json").read_text(encoding="utf-8"))
+    )
+
+    class FakeLlm:
+        def __init__(self, schema):
+            self.schema = schema
+
+        def invoke(self, _prompt: str):
+            if self.schema is RepositoryKBShardDistillationOutput:
+                return RepositoryKBShardDistillationOutput(
+                    shards=[
+                        RepositoryKBShardDistillationItem(
+                            community_id=0,
+                            shard_id="overview_files:0",
+                            lane="overview_files",
+                            summary="Shard summary.",
+                            source_record_ids=["community:0"],
+                        )
+                    ]
+                )
+            if self.schema is RepositoryKBCommunityDistillationOutput:
+                return RepositoryKBCommunityDistillationOutput(
+                    communities=[
+                        RepositoryKBCommunityDistillationItem(
+                            community_id=0,
+                            label="Distilled Community",
+                            purpose="Distilled repository subsystem.",
+                            responsibilities=["Owns bounded evidence"],
+                            source_record_ids=["community:0"],
+                        )
+                    ]
+                )
+            return RepositoryKBRepoDistillationOutput(
+                summary="Distilled repository map.",
+                top_subsystems=["distilled community"],
+                source_record_ids=["repo", "summary:community:0"],
+            )
+
+    monkeypatch.setattr(
+        "src.orchestration.nodes.exploration.repository_kb_distillation.Models.worker",
+        lambda schema, **_kwargs: FakeLlm(schema),
+    )
+    node = make_semantic_dispatch_node(Settings(redis_enabled=False))
+    state: GraphState = {  # type: ignore[typeddict-item]
+        "run_id": "t1",
+        "repo_path": "r",
+        "git_diff": "",
+        "structural_graph_node_link": graph_payload,
+        "structural_topology": topo,
+        "semantic_community_work_queue": [],
+    }
+
+    out = node(state)
+
+    records = out["repository_kb_summary_records"]
+    assert any(r["confidence"] == "llm_synthesized" for r in records)
+    assert any("Distilled repository" in r["summary"] for r in records)
+    assert out["semantic_community_work_queue"] == []
 
 
 def test_community_agent_waits_on_active_local_server_timeout(monkeypatch: pytest.MonkeyPatch) -> None:

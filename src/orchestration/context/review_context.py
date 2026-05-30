@@ -27,6 +27,7 @@ from src.infrastructure.sandbox import RepoSandbox, build_repo_sandbox
 from src.infrastructure.sandbox_ast import collect_sandbox_file_entities, entities_from_sandbox_payload
 from src.infrastructure.search.ripgrep import RipgrepSearcher
 from src.orchestration.context.focused_query_sanitize import sanitize_focused_context_request
+from src.tools.review_kb_tools import query_repository_kb
 from src.orchestration.nodes.application.worker import ReviewTaskContext
 
 logger = logging.getLogger(__name__)
@@ -883,6 +884,40 @@ class BoundedReviewContextFulfiller:
         )
 
         file_paths = request.file_paths[:MAX_FILES_PER_REQUEST]
+        kb_topics = [
+            t
+            for t in [
+                request.requested_by_specialty,
+                "contract",
+                "signature",
+                "tensor-shape",
+            ]
+            if t
+        ]
+        kb_symbol = request.symbol_queries[0] if request.symbol_queries else None
+        kb_query = " ".join(
+            [
+                request.reason,
+                " ".join(request.symbol_queries[:MAX_SYMBOL_QUERIES]),
+                " ".join(request.text_queries[:MAX_TEXT_QUERIES]),
+            ]
+        ).strip()
+        if kb_query or file_paths or kb_symbol:
+            kb_result = query_repository_kb(
+                state=state,
+                query=kb_query or "focused context repository contracts",
+                path=file_paths[0] if file_paths else None,
+                symbol=kb_symbol,
+                topics=kb_topics,
+                max_results=6,
+                caller="focused_context",
+            )
+            if not kb_result.get("skipped") and str(kb_result.get("answer") or "").strip():
+                file_snippets["repository_kb_context"] = str(kb_result["answer"])[:MAX_FILE_SLICE_CHARS]
+                total_chars += len(file_snippets["repository_kb_context"])
+            elif kb_result.get("skip_reason"):
+                warnings.append(f"repository_kb_skipped:{kb_result.get('skip_reason')}")
+
         ast_done = _ast_included_paths_normalized(state.get("metadata") or {})
         candidate = _candidate_for_focused_request(state, request.candidate_id)
         for fp in file_paths:

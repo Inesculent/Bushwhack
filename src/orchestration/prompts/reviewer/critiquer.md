@@ -33,6 +33,7 @@ Rules:
 - For each candidate, set `behavioral_symptom` and `root_operation` with generic labels. Use symptoms such as `wrong_output`, `data_loss`, `crash`, `missing_return`, `uncaught_exception`, `unbounded_work`, or `contract_mismatch`; use operations such as `dispatch`, `indexing`, `aggregation`, `exception_scope`, `resource_use`, `serialization`, or `contract`.
 - `line_start`/`line_end` must cover the cited class or method in the diff, not a nearby unrelated class. Downstream validation may repair or drop candidates whose lines do not bracket the cited symbol.
 - Prefer **symbol-local** evidence from `code_evidence` (whole class or method units) over inferring behavior from a truncated diff hunk alone.
+- Treat **Review KB context** as retrieved repository knowledge for cross-file contracts, signatures, expected shapes, entrypoints, and dependency hints. It can guide candidate framing, but exact code evidence/focused context is required when the finding hinges on behavior not shown in the prompt.
 - Produce candidates only for actionable negative claims: defects, security risks, performance regressions, or meaningful missing tests. Do not emit candidates for positive observations, resolutions, or "no action needed" conclusions, even when refuting an earlier hypothesis.
 - Set `claim_type` accurately:
   - `defect`: changed behavior can be wrong or crash.
@@ -42,7 +43,7 @@ Rules:
   - `positive_observation`: use only when explicitly asked; these will not be promoted.
   - `uncertain`: evidence is too weak; these will not be promoted unless focused context resolves them.
 - Every promotable candidate must include `failure_mode`, `evidence_summary`, and `recommendation`.
-- Use `required_context` for facts that must be checked before promotion (callers, authorization checks, escaping, existing service contracts, tests, or config limits).
+- Use `required_context` for facts that must be checked before promotion (callers, authorization checks, escaping, existing service contracts, tests, config limits, or exact source/AST evidence behind a KB hint).
 - Use `suspected_category` to hint security / logic / performance / general / other (aligned with your single `reflection_specialties` choice).
 - **Aggregation and structured returns:** When the diff builds lists then joins/serializes (`join`, `", ".join`, formatters), check for `None` elements, wrong index into tuples/records/rows, and mismatch with the entry point's return contract. When indexing into structured API results (rows, parsed nodes, result objects), state whether the bug is **wrong output/data loss** vs **crash** in `failure_mode`; do not over-claim exceptions the diff does not support.
 - For each **`elif` chain** on a discriminant (`mode`, `op`, `kind`, ...), run the **branch audit** below before any missing-return candidate.

@@ -5,8 +5,8 @@
 #SBATCH -C h100
 #SBATCH --nodes=1
 #SBATCH --time=04:00:00
-#SBATCH --cpus-per-task=32
-#SBATCH --mem=256G
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=128G
 #SBATCH --output=slurm_logs/bushwhack-%j.out
 #SBATCH --error=slurm_logs/bushwhack-%j.err
 

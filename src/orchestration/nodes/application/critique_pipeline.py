@@ -19,6 +19,7 @@ from src.orchestration.context.review_context import LazyReviewContextProvider
 from src.orchestration.nodes.application.critiquer import make_general_critiquer_node
 from src.orchestration.routing.review_obligations import derive_review_obligations
 from src.tools.mental_model_tools import query_mental_model
+from src.tools.review_kb_tools import query_review_kb
 
 _MANDATE_BULLET_MAX = 5
 
@@ -185,6 +186,23 @@ def make_mental_model_context_enricher_node():
             slot["mental_model_skip_reason"] = str(result.get("skip_reason") or "")
             if not excerpt.strip() and not result.get("skipped"):
                 slot["mental_model_skip_reason"] = "empty_mandate_answer"
+
+        kb_result = query_review_kb(
+            state=state,
+            query=(
+                f"Review-relevant contracts, signatures, dependencies, and specs for task "
+                f"{task.id}: {task.title}. {task.description}"
+            ),
+            path=task.target_files[0] if task.target_files else None,
+            topics=[task.specialty, "contract", "signature"],
+            max_results=8,
+            task_id=task.id,
+            caller=node_name,
+        )
+        slot["review_kb_excerpt"] = str(kb_result.get("answer") or "")
+        slot["review_kb_skipped"] = bool(kb_result.get("skipped"))
+        slot["review_kb_skip_reason"] = str(kb_result.get("skip_reason") or "")
+        ledger_patch.extend(kb_result.get("exploration_ledger") or [])
 
         by_task[task.id] = slot
         pipe["by_task"] = by_task

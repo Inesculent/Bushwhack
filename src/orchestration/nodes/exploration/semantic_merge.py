@@ -10,6 +10,7 @@ from src.domain.schemas import (
     CommunitySemanticSummary,
     GlobalSemanticSynthesisOutput,
     KnowledgeGap,
+    ReviewKBRecord,
     StructuralTopologySummary,
 )
 from src.domain.state import GraphState
@@ -18,7 +19,10 @@ from src.infrastructure.llm.factory import Models
 from src.infrastructure.llm.token_usage import extract_total_tokens_from_llm_result, parse_structured_output
 from src.infrastructure.semantic_annotator import SemanticGraphAnnotator
 from src.infrastructure.structural_graph import StructuralGraphBuilder
-from src.orchestration.prompts.exploration_prompts import render_semantic_merge_prompt
+from src.orchestration.prompts.exploration_prompts import (
+    render_semantic_merge_from_kb_prompt,
+    render_semantic_merge_prompt,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -83,8 +87,25 @@ def make_semantic_merge_node(
 
         llm_tokens = 0
         global_summary = "Semantic enrichment disabled."
-        if use_llm and summaries:
-            prompt = render_semantic_merge_prompt(summaries)
+        kb_summary_records: List[ReviewKBRecord] = []
+        for raw in state.get("repository_kb_summary_records") or []:
+            try:
+                record = raw if isinstance(raw, ReviewKBRecord) else ReviewKBRecord.model_validate(raw)
+            except Exception:
+                continue
+            if record.kind == "summary":
+                kb_summary_records.append(record)
+
+        repo_summary = next((r for r in kb_summary_records if r.id == "summary:repo"), None)
+        if repo_summary is not None:
+            global_summary = repo_summary.summary or global_summary
+
+        if use_llm and (kb_summary_records or summaries):
+            prompt = (
+                render_semantic_merge_from_kb_prompt(kb_summary_records)
+                if kb_summary_records
+                else render_semantic_merge_prompt(summaries)
+            )
             try:
                 selected = model_key or resolved_settings.semantic_merge_model_key
                 llm = Models.synthesizer(GlobalSemanticSynthesisOutput, model_key=selected)

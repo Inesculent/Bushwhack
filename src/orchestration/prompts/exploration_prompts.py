@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Sequence
 
-from src.domain.schemas import CommunitySemanticSummary, CommunityWorkItem
+from src.domain.schemas import CommunitySemanticSummary, CommunityWorkItem, ReviewKBRecord
 
 from src.orchestration.prompts.renderer import load_exploration_prompt
 
@@ -83,4 +83,51 @@ def render_semantic_merge_prompt(summaries: Sequence[CommunitySemanticSummary]) 
     return _fill_template(
         load_exploration_prompt("semantic_merge.md"),
         community_summaries=block,
+    )
+
+
+def render_repository_kb_community_distill_prompt(*, pack_json: str) -> str:
+    """Prompt bounded community-level Repository KB distillation."""
+    return _fill_template(
+        load_exploration_prompt("repository_kb_community_distill.md"),
+        pack_json=pack_json,
+    )
+
+
+def render_repository_kb_shard_distill_prompt(*, pack_json: str) -> str:
+    """Prompt bounded lane/shard Repository KB distillation."""
+    return _fill_template(
+        load_exploration_prompt("repository_kb_shard_distill.md"),
+        pack_json=pack_json,
+    )
+
+
+def render_repository_kb_community_merge_prompt(*, pack_json: str) -> str:
+    """Prompt community-level synthesis from shard summary records."""
+    return _fill_template(
+        load_exploration_prompt("repository_kb_community_merge.md"),
+        pack_json=pack_json,
+    )
+
+
+def render_repository_kb_repo_distill_prompt(*, pack_json: str) -> str:
+    """Prompt bounded repo-level Repository KB distillation."""
+    return _fill_template(
+        load_exploration_prompt("repository_kb_repo_distill.md"),
+        pack_json=pack_json,
+    )
+
+
+def render_semantic_merge_from_kb_prompt(summaries: Sequence[ReviewKBRecord]) -> str:
+    """Prompt global synthesis from Repository KB summary records."""
+    lines = []
+    for record in summaries[:400]:
+        source_ids = ", ".join(str(x) for x in record.metadata.get("source_record_ids") or [])
+        lines.append(
+            f"- {record.id} ({record.confidence}; sources: {source_ids or 'none'}): "
+            f"{record.summary[:900]}"
+        )
+    return _fill_template(
+        load_exploration_prompt("semantic_merge.md"),
+        community_summaries="\n".join(lines),
     )

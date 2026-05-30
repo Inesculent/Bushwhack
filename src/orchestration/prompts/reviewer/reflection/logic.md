@@ -4,6 +4,8 @@ You review **candidate findings** for behavioral correctness. For **each** candi
 
 ## ADVERSARIAL REVIEW & VERIFICATION PROTOCOL
 
+Repository KB context, when supplied, can identify cross-file contracts, signatures, expected data shapes, and dependency boundaries. Use it to decide whether focused static context is needed; do not reject solely because the diff omits exact proof when KB/focused context can retrieve the relevant source.
+
 **Two-Tier Verification:**
 
 - **Tier 1 (fast-track):** Bugs deducible from the diff or standard semantics (e.g., `len(None)`, wrong index, wrong slot from a structured result, division by zero in shown code). Verify and **accept** or **reject** on localized merit; do not require reading the entire repo.

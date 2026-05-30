@@ -105,6 +105,7 @@ class GraphState(TypedDict, total=False):
     semantic_community_work_item: NotRequired[Dict[str, Any]]
     semantic_community_work_queue: Annotated[List[Dict[str, Any]], replace_list_reducer]
     semantic_dispatch_cursor: NotRequired[int]
+    repository_kb_summary_records: NotRequired[List[Dict[str, Any]]]
 
     # Mental model (externalized spec; ref only — never full BehavioralSpec on state for Send payloads)
     behavioral_spec_ref: NotRequired[str]

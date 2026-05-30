@@ -70,6 +70,7 @@ SECTION_HEADINGS: Dict[str, str] = {
     "structured_extraction_checklist": "Structured extraction checklist (mandatory)",
     "diff_hunk": "Git Diff Excerpt",
     "mental_model_hypothesis": "Mental model excerpt (optional, pull-based)",
+    "review_kb_context": "Review KB context (retrieved)",
     "exploration_ledger": "Mental model query log (bounded)",
     "reflector_specialty": "Reflector Specialty",
     "candidate_findings_json": "Candidate Findings (JSON lines)",
@@ -918,6 +919,7 @@ def build_critiquer_packet(
         or str(pipeline_slot.get("direct_context") or "")
     )
     mental_excerpt = str(pipeline_slot.get("mental_model_excerpt") or "")
+    review_kb_excerpt = str(pipeline_slot.get("review_kb_excerpt") or "")
     principles = section_content_from_storage(stored, "review_principles") or principles_for_specialty(
         task.specialty
     )
@@ -980,6 +982,15 @@ def build_critiquer_packet(
                 4,
                 mental_excerpt.strip(),
                 source="mental_model_query",
+            )
+        )
+    if review_kb_excerpt.strip():
+        sections.append(
+            _section(
+                "review_kb_context",
+                2,
+                review_kb_excerpt.strip(),
+                source="review_kb_query",
             )
         )
     if principles.strip():

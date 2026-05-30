@@ -15,6 +15,8 @@ Use only these specialties: security, logic, performance, general.
 
 Prefer one focused task per specialty unless the diff clearly contains independent risk clusters that need separate review. Keep target files limited to the changed files or directly implicated context files.
 
+Use Repository KB summaries, when present, to identify directly related subsystems, contracts, and dependency boundaries. Use the PR diff/review overlay for task anchoring. Do not create broad repository-wide tasks unless KB evidence shows the changed surface depends on that subsystem or contract.
+
 Balance the plan across **security, correctness (logic), performance, and general** (APIs, tests, integration). Do **not** let every task read as “security and defensive programming only”; surface non-security defects (wrong outputs, missing branches, type/None handling, API mismatches) and maintainability issues with equal weight when the diff supports them.
 
 ### Required baseline: diff-local general correctness
