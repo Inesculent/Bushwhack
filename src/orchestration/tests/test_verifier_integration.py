@@ -84,14 +84,14 @@ def test_collect_verifier_send_payloads_eligible() -> None:
     with patch("src.orchestration.routing.verifier_fanout.get_settings") as gs:
         m = MagicMock()
         m.verifier_enabled = True
-        m.verifier_skip_if_no_docker = True
+        m.verifier_skip_if_no_sandbox = True
         m.verifier_run_on_defect = True
         m.verifier_run_on_security = False
         m.verifier_run_on_performance = False
         m.verifier_total_budget_per_pr = 10
         m.verifier_require_focused_evidence = True
         gs.return_value = m
-        with patch("src.orchestration.routing.verifier_fanout._docker_available", return_value=True):
+        with patch("src.orchestration.routing.verifier_fanout.sandbox_runtime_available", return_value=True):
             sends = collect_verifier_send_payloads(state)
     assert len(sends) == 1
     assert sends[0].node == "verifier_subgraph"
@@ -307,14 +307,14 @@ def test_collect_verifier_send_payloads_no_focused_when_required() -> None:
     with patch("src.orchestration.routing.verifier_fanout.get_settings") as gs:
         m = MagicMock()
         m.verifier_enabled = True
-        m.verifier_skip_if_no_docker = True
+        m.verifier_skip_if_no_sandbox = True
         m.verifier_run_on_defect = True
         m.verifier_run_on_security = False
         m.verifier_run_on_performance = False
         m.verifier_total_budget_per_pr = 10
         m.verifier_require_focused_evidence = True
         gs.return_value = m
-        with patch("src.orchestration.routing.verifier_fanout._docker_available", return_value=True):
+        with patch("src.orchestration.routing.verifier_fanout.sandbox_runtime_available", return_value=True):
             assert collect_verifier_send_payloads(state) == []
 
 
@@ -344,14 +344,14 @@ def test_collect_verifier_send_payloads_without_focused_when_relaxed() -> None:
     with patch("src.orchestration.routing.verifier_fanout.get_settings") as gs:
         m = MagicMock()
         m.verifier_enabled = True
-        m.verifier_skip_if_no_docker = True
+        m.verifier_skip_if_no_sandbox = True
         m.verifier_run_on_defect = True
         m.verifier_run_on_security = False
         m.verifier_run_on_performance = False
         m.verifier_total_budget_per_pr = 10
         m.verifier_require_focused_evidence = False
         gs.return_value = m
-        with patch("src.orchestration.routing.verifier_fanout._docker_available", return_value=True):
+        with patch("src.orchestration.routing.verifier_fanout.sandbox_runtime_available", return_value=True):
             sends = collect_verifier_send_payloads(state)
     assert len(sends) == 1
     assert sends[0].node == "verifier_subgraph"
@@ -463,14 +463,14 @@ def test_collect_verifier_send_payloads_needs_verification_bypasses_focused_requ
     with patch("src.orchestration.routing.verifier_fanout.get_settings") as gs:
         m = MagicMock()
         m.verifier_enabled = True
-        m.verifier_skip_if_no_docker = True
+        m.verifier_skip_if_no_sandbox = True
         m.verifier_run_on_defect = True
         m.verifier_run_on_security = False
         m.verifier_run_on_performance = False
         m.verifier_total_budget_per_pr = 10
         m.verifier_require_focused_evidence = True
         gs.return_value = m
-        with patch("src.orchestration.routing.verifier_fanout._docker_available", return_value=True):
+        with patch("src.orchestration.routing.verifier_fanout.sandbox_runtime_available", return_value=True):
             sends = collect_verifier_send_payloads(state)
     assert len(sends) == 1
     assert sends[0].node == "verifier_subgraph"
@@ -656,8 +656,12 @@ def test_review_sandbox_default_image_is_agent_fs_stack() -> None:
     """Review context uses RepoSandbox() default image (git+rg stack per docker_mcp/fs-mcp); verifier uses verifier_image."""
     from src.infrastructure.sandbox import RepoSandbox
 
-    with patch("src.infrastructure.sandbox.docker.from_env"):
-        assert RepoSandbox().image_name == "agent-fs-sandbox"
+    from src.config import Settings
+    from src.infrastructure.sandbox import build_repo_sandbox
+
+    with patch("src.infrastructure.sandbox_docker.docker.from_env"):
+        sandbox = build_repo_sandbox(Settings(sandbox_backend="docker"))
+        assert sandbox.image_name == "agent-fs-sandbox"
 
 
 def test_build_test_generator_prompt_escapes_python_braces() -> None:
@@ -766,13 +770,13 @@ def test_invoke_verifier_runner_metadata_harness_flags() -> None:
         stderr="",
         sandbox_mode="harness_preflight",
     )
-    with patch("src.orchestration.nodes.verifier.verifier_runner._docker_ok", return_value=True), \
+    with patch("src.orchestration.nodes.verifier.verifier_runner._sandbox_ok", return_value=True), \
          patch("src.orchestration.nodes.verifier.verifier_runner.generate_test_script", return_value=("code", 0)), \
          patch("src.orchestration.nodes.verifier.verifier_runner.execute_test_script", return_value=harness), \
          patch("src.orchestration.nodes.verifier.verifier_runner.get_settings") as gs:
         m = MagicMock()
         m.verifier_enabled = True
-        m.verifier_skip_if_no_docker = True
+        m.verifier_skip_if_no_sandbox = True
         m.verifier_max_attempts = 1
         gs.return_value = m
         report = invoke_verifier_for_candidate(

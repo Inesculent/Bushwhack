@@ -5,10 +5,10 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List
 
-import docker
 from langgraph.types import Send
 
 from src.config import get_settings
+from src.infrastructure.sandbox import sandbox_runtime_available
 from src.domain.schemas import CandidateFinding
 from src.domain.state import GraphState
 from src.domain.verifier_schemas import VerifierReport
@@ -50,13 +50,6 @@ def _coerce_candidate(raw: object) -> CandidateFinding | None:
     return None
 
 
-def _docker_available() -> bool:
-    try:
-        return bool(docker.from_env().ping())
-    except Exception:  # noqa: BLE001
-        return False
-
-
 def _claim_type_eligible(candidate: CandidateFinding, settings) -> bool:
     ct = candidate.claim_type
     if ct == "defect" and settings.verifier_run_on_defect:
@@ -81,8 +74,11 @@ def collect_verifier_send_payloads(state: GraphState) -> List[Send]:
     if not settings.verifier_enabled:
         return []
 
-    if settings.verifier_skip_if_no_docker and not _docker_available():
-        logger.info("Verifier skipped: Docker not available.")
+    if settings.verifier_skip_if_no_sandbox and not sandbox_runtime_available(settings):
+        logger.info(
+            "Verifier skipped: sandbox runtime not available (backend=%s).",
+            settings.sandbox_backend,
+        )
         return []
 
     need_ids = set(_needs_revision_candidates(state))

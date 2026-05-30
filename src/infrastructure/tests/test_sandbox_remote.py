@@ -44,12 +44,12 @@ class _FakeClient:
 
 
 def test_start_from_remote_bootstraps_repo(monkeypatch: pytest.MonkeyPatch) -> None:
-    from src.infrastructure.sandbox import RepoSandbox
-
     fake_client = _FakeClient()
-    monkeypatch.setattr("src.infrastructure.sandbox.docker.from_env", lambda: fake_client)
+    monkeypatch.setattr("src.infrastructure.sandbox_docker.docker.from_env", lambda: fake_client)
 
-    sandbox = RepoSandbox(image_name="agent-fs-sandbox")
+    from src.infrastructure.sandbox_docker import DockerRepoSandbox
+
+    sandbox = DockerRepoSandbox(image_name="agent-fs-sandbox")
 
     commands = []
 
@@ -78,12 +78,12 @@ def test_start_from_remote_bootstraps_repo(monkeypatch: pytest.MonkeyPatch) -> N
 
 
 def test_start_from_remote_cleans_up_on_failure(monkeypatch: pytest.MonkeyPatch) -> None:
-    from src.infrastructure.sandbox import RepoSandbox
-
     fake_client = _FakeClient()
-    monkeypatch.setattr("src.infrastructure.sandbox.docker.from_env", lambda: fake_client)
+    monkeypatch.setattr("src.infrastructure.sandbox_docker.docker.from_env", lambda: fake_client)
 
-    sandbox = RepoSandbox(image_name="agent-fs-sandbox")
+    from src.infrastructure.sandbox_docker import DockerRepoSandbox
+
+    sandbox = DockerRepoSandbox(image_name="agent-fs-sandbox")
 
     def _failing_execute(cmd, workdir=None, check_exit_code=False):
         raise RuntimeError("clone failed")
@@ -101,7 +101,8 @@ def test_start_from_remote_cleans_up_on_failure(monkeypatch: pytest.MonkeyPatch)
 
 @pytest.mark.integration
 def test_start_from_remote_smoke_if_configured() -> None:
-    from src.infrastructure.sandbox import RepoSandbox
+    from src.infrastructure.sandbox import build_repo_sandbox
+    from src.config import Settings
 
     repo_url = os.getenv("SANDBOX_REMOTE_TEST_URL", "").strip()
     commit_hash = os.getenv("SANDBOX_REMOTE_TEST_COMMIT", "").strip()
@@ -109,7 +110,7 @@ def test_start_from_remote_smoke_if_configured() -> None:
     if not repo_url or not commit_hash:
         pytest.skip("Set SANDBOX_REMOTE_TEST_URL and SANDBOX_REMOTE_TEST_COMMIT to run this test")
 
-    sandbox = RepoSandbox()
+    sandbox = build_repo_sandbox(Settings(sandbox_backend="docker"))
     try:
         sandbox.start_from_remote(repo_url, commit_hash)
         listing = sandbox.execute(["ls", "-1", "/repo"], check_exit_code=True)

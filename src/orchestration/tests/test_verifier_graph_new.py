@@ -42,7 +42,7 @@ def test_verifier_preflight_node_enabled() -> None:
     with patch("src.orchestration.verifier_graph.get_settings") as gs:
         m = MagicMock()
         m.verifier_enabled = True
-        m.verifier_skip_if_no_docker = False
+        m.verifier_skip_if_no_sandbox = False
         gs.return_value = m
         with patch("src.orchestration.verifier_graph._infer_verifier_repo_root", return_value="/repo"):
             with patch("src.orchestration.routing.verifier_fanout.focused_context_text_for_candidate", return_value="ctx"):
@@ -213,11 +213,11 @@ def test_verifier_graph_retries_after_harness_failure() -> None:
     with patch("src.orchestration.verifier_graph.get_settings") as gs:
         m = MagicMock()
         m.verifier_enabled = True
-        m.verifier_skip_if_no_docker = False
+        m.verifier_skip_if_no_sandbox = False
         m.verifier_max_attempts = 3
         gs.return_value = m
 
-        with patch("src.orchestration.verifier_graph._docker_ok", return_value=True), \
+        with patch("src.orchestration.verifier_graph._sandbox_ok", return_value=True), \
              patch("src.orchestration.verifier_graph._infer_verifier_repo_root", return_value="/repo"), \
              patch("src.orchestration.routing.verifier_fanout.focused_context_text_for_candidate", return_value="ctx"), \
              patch("src.orchestration.verifier_graph.generate_test_script", side_effect=_fake_generate), \
@@ -241,11 +241,11 @@ def test_compiled_verifier_graph_integration() -> None:
     with patch("src.orchestration.verifier_graph.get_settings") as gs:
         m = MagicMock()
         m.verifier_enabled = True
-        m.verifier_skip_if_no_docker = False
+        m.verifier_skip_if_no_sandbox = False
         m.verifier_max_attempts = 1
         gs.return_value = m
         
-        with patch("src.orchestration.verifier_graph._docker_ok", return_value=True), \
+        with patch("src.orchestration.verifier_graph._sandbox_ok", return_value=True), \
              patch("src.orchestration.verifier_graph._infer_verifier_repo_root", return_value="/repo"), \
              patch("src.orchestration.routing.verifier_fanout.focused_context_text_for_candidate", return_value="ctx"), \
              patch("src.orchestration.verifier_graph.generate_test_script", return_value=("print('ok')", 50)), \

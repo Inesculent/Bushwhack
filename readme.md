@@ -103,11 +103,13 @@ Useful settings to get started:
 
 ## 2.1) Run Redis For LangGraph Checkpointing (Optional)
 
-Start Redis from repo root:
+**Local profile (`--local`, default):** start Redis from repo root:
 
 ```powershell
 docker compose -f docker-compose.redis.yml up -d
 ```
+
+**Cluster profile (`--remote`):** use loopback Redis in the Slurm job — see [documentation/apptainer_cluster_guide.md](documentation/apptainer_cluster_guide.md).
 
 Stop Redis:
 
@@ -142,6 +144,8 @@ Parallel reviewer graph over the processed AACR dataset:
 ```powershell
 python -m src.reviewer_agent.main --dataset aacr
 ```
+
+Use `--local` (Docker sandbox, compose Redis, LLM via SSH port-forward) or `--remote` (Apptainer on Slurm). See [documentation/apptainer_cluster_guide.md](documentation/apptainer_cluster_guide.md).
 
 Useful flags:
 

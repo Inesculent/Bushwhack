@@ -1,6 +1,8 @@
 """Redis health checks for LangGraph checkpointing."""
 from __future__ import annotations
 
+import os
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from uuid import uuid4
@@ -24,20 +26,26 @@ def _prefix_key(namespace: str, key: str) -> str:
 
 def assert_redis_checkpoint_writable(redis_url: str, *, namespace: str) -> None:
     """Fail fast when Redis is reachable but configured to reject writes."""
-    client: Redis | None = None
-    probe_key = f"{namespace}:checkpoint_probe:{uuid4().hex}"
-
-    try:
-        client = Redis.from_url(redis_url)
-        client.set(probe_key, "1", ex=30)
-        client.delete(probe_key)
-    except Exception as exc:
-        raise RedisCheckpointUnavailable(
-            f"Redis checkpoint writes unavailable: {exc.__class__.__name__}: {exc}"
-        ) from exc
-    finally:
-        if client is not None:
-            client.close()
+    retries = 3 if os.environ.get("SLURM_JOB_ID") else 1
+    last_exc: Exception | None = None
+    for attempt in range(retries):
+        client: Redis | None = None
+        probe_key = f"{namespace}:checkpoint_probe:{uuid4().hex}"
+        try:
+            client = Redis.from_url(redis_url)
+            client.set(probe_key, "1", ex=30)
+            client.delete(probe_key)
+            return
+        except Exception as exc:
+            last_exc = exc
+            if attempt < retries - 1:
+                time.sleep(2)
+        finally:
+            if client is not None:
+                client.close()
+    raise RedisCheckpointUnavailable(
+        f"Redis checkpoint writes unavailable: {last_exc.__class__.__name__}: {last_exc}"
+    ) from last_exc
 
 
 @contextmanager

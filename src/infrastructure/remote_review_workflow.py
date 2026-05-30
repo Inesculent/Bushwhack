@@ -11,7 +11,8 @@ import networkx as nx
 from src.config import get_settings
 from src.domain.schemas import DiffManifest, PreflightRequest, RunMetadata
 from src.infrastructure.preflight.service import PreflightManifestService
-from src.infrastructure.sandbox import RepoSandbox
+from src.config import get_settings
+from src.infrastructure.sandbox import RepoSandbox, build_repo_sandbox
 from src.infrastructure.structural_graph import StructuralGraphBuilder
 from src.infrastructure.structural_topology import (
     apply_community_attributes,
@@ -747,7 +748,7 @@ def run_remote_review_workflow(
 
     resolved_base_commit = (base_commit or f"{head_commit}^").strip()
     own_sandbox = sandbox is None
-    resolved_sandbox = sandbox or RepoSandbox()
+    resolved_sandbox = sandbox or build_repo_sandbox(get_settings())
     resolved_preflight = preflight_service or PreflightManifestService()
 
     try:

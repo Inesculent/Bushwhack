@@ -23,7 +23,7 @@ from src.domain.schemas import (
     StructuralTopologySummary,
 )
 from src.domain.state import GraphState
-from src.infrastructure.sandbox import RepoSandbox
+from src.infrastructure.sandbox import RepoSandbox, build_repo_sandbox
 from src.infrastructure.sandbox_ast import collect_sandbox_file_entities, entities_from_sandbox_payload
 from src.infrastructure.search.ripgrep import RipgrepSearcher
 from src.orchestration.context.focused_query_sanitize import sanitize_focused_context_request
@@ -696,7 +696,7 @@ class LazyReviewContextProvider:
 
             try:
                 # Review sandbox: clone or RO-mount at /repo for ripgrep + file reads (image must include git when cloning).
-                sandbox = RepoSandbox()
+                sandbox = build_repo_sandbox(get_settings())
                 if Path(repo_path).is_dir():
                     self._host_repo_path = str(Path(repo_path).resolve())
                     sandbox.start(self._host_repo_path)

@@ -43,11 +43,11 @@ def test_verifier_sandbox_writes_and_executes_python(repo_root: Path) -> None:
 
     from docker.errors import ImageNotFound
 
-    from src.infrastructure.sandbox import RepoSandbox
+    from src.infrastructure.sandbox import build_repo_sandbox, resolve_verifier_sandbox_image
 
     settings = get_settings()
-    image = settings.verifier_image
-    sandbox = RepoSandbox(image_name=image)
+    image = resolve_verifier_sandbox_image(settings, needs_clone=False)
+    sandbox = build_repo_sandbox(settings, image_name=image)
     try:
         try:
             sandbox.start(str(repo_root))

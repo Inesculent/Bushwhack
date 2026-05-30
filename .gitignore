@@ -6,8 +6,13 @@
 __pycache__/
 bushwhack_runs/
 documentation/
+!documentation/apptainer_cluster_guide.md
+!scripts/cluster/
+containers/*.sif
 opencode.json
 .cursor/
+.scripts/
+.logs/
 
 # Keep template env files if added.
 !.env.example

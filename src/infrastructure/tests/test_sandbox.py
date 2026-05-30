@@ -29,9 +29,10 @@ def sandbox_session(repo_root: Path):
     if not _docker_daemon_available():
         pytest.skip("Docker daemon not available")
 
-    from src.infrastructure.sandbox import RepoSandbox
+    from src.config import Settings
+    from src.infrastructure.sandbox import build_repo_sandbox
 
-    sandbox = RepoSandbox()
+    sandbox = build_repo_sandbox(Settings(sandbox_backend="docker"))
     try:
         sandbox.start(str(repo_root))
         yield sandbox

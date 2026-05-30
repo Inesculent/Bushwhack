@@ -1,0 +1,79 @@
+[
+  {
+    "id": "performance-001-regex-data-loss",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 228,
+    "line_end": 323,
+    "content": "In RegexExtract's 'All Matches' and 'All Groups' modes, when matches contain tuples (multiple capture groups), only the first element (index 0) of each tuple is retained. This causes data loss for patterns with multiple capture groups where all groups should be preserved. The code checks if matches[0] is a tuple and extracts m[0], but this discards groups 1-N.",
+    "severity": "high",
+    "feedback_type": "defect_detection",
+    "recommendation": "Preserve the relevant captured values from each structured match row, or make the single-slot contract explicit in code.",
+    "references": []
+  },
+  {
+    "id": "security-001-1__2",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 228,
+    "line_end": 323,
+    "content": "RegexExtract uses user-provided regex_pattern directly in re.search/findall/finditer without timeout or length limits. Malicious patterns can cause ReDoS (Regular Expression Denial of Service) by consuming excessive CPU time.\n\nPost-context evidence: Runtime verifier inconclusive due to harness errors; static analysis confirms ReDoS risk. User-provided regex_pattern is passed directly to re.search/findall/finditer without timeout or length validation. The digest shard explicitly supports this vulnerability pattern. No runtime test successfully executed to refute the static finding. runtime unverified (harness)",
+    "severity": "high",
+    "feedback_type": "defect_detection",
+    "recommendation": "Add pattern length validation (e.g., max 1000 chars) and consider using regex compilation with timeout if available. Document ReDoS risk for users.",
+    "references": []
+  },
+  {
+    "id": "general-001-001",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 159,
+    "line_end": 189,
+    "content": "Missing return for invalid mode values in StringCompare.execute",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Add a terminal else clause that raises ValueError with a clear message about invalid mode, or returns False with a warning. Example: `else: raise ValueError(f\"Invalid mode: {mode}. Expected one of: Equal, Starts With, Ends With\")`",
+    "references": []
+  },
+  {
+    "id": "performance-001-001",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 190,
+    "line_end": 227,
+    "content": "class RegexMatch():",
+    "severity": "medium",
+    "feedback_type": "optimization",
+    "recommendation": "Implement regex pattern caching using lru_cache or a module-level cache dictionary keyed by (pattern, flags). This reduces redundant compilation overhead in hot paths.",
+    "references": []
+  },
+  {
+    "id": "logic-002-03:orthogonal-2",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 226,
+    "line_end": 275,
+    "content": "RegexExtract.execute() in 'All Groups' mode may produce None elements in the results list if match.group(group_index) returns None for some matches. The join operation will then fail with a TypeError.",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Normalize or filter absent capture values before passing results into string aggregation.",
+    "references": []
+  },
+  {
+    "id": "security-001-2",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 228,
+    "line_end": 323,
+    "content": "group_index parameter has min:0, max:100 but negative values or values exceeding actual group count could cause IndexError in 'First Group' and 'All Groups' modes.",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Add explicit validation: if group_index < 0 or group_index > len(match.groups()), return empty string. Consider raising ValueError for invalid indices.",
+    "references": []
+  },
+  {
+    "id": "logic-002-002",
+    "file_path": "comfy_extras/nodes_string.py",
+    "line_start": 229,
+    "line_end": 268,
+    "content": "RegexExtract.execute() 'All Groups' mode (lines 254-259) uses re.finditer and joins results with newline. However, the group_index validation check `len(match.groups()) >= group_index` is inconsistent with 'First Group' mode which checks `len(match.groups()) >= group_index` before calling group(). More critically, if match.groups() is empty, match.group(group_index) will raise IndexError. The code should validate group_index against the number of groups available.",
+    "severity": "medium",
+    "feedback_type": "defect_detection",
+    "recommendation": "Define the accepted group-index semantics explicitly and validate/select groups against that contract.",
+    "references": []
+  }
+]

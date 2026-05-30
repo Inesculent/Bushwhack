@@ -6,9 +6,8 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-import docker
-
 from src.config import Settings, get_settings
+from src.infrastructure.sandbox import sandbox_runtime_available
 from src.domain.schemas import CandidateFinding
 from src.domain.state import GraphState
 from src.domain.verifier_schemas import VerifierReport, VerifierVerdict
@@ -24,12 +23,9 @@ from src.orchestration.nodes.verifier.test_generator import generate_test_script
 logger = logging.getLogger(__name__)
 
 
-def _docker_ok() -> bool:
-    try:
-        client = docker.from_env()
-        return bool(client.ping())
-    except Exception:  # noqa: BLE001
-        return False
+def _sandbox_ok(settings: Settings | None = None) -> bool:
+    resolved = settings or get_settings()
+    return sandbox_runtime_available(resolved)
 
 
 def _coerce_candidate_dict(candidate: Dict[str, Any] | CandidateFinding) -> Dict[str, Any]:
@@ -76,14 +72,16 @@ def invoke_verifier_for_candidate(
             metadata={"llm_tokens": 0, "verifier_repo_root": repo_root},
         )
 
-    if settings.verifier_skip_if_no_docker and not _docker_ok():
+    if settings.verifier_skip_if_no_sandbox and not _sandbox_ok(settings):
         return VerifierReport(
             run_id=run_id,
             candidate_id=candidate_id,
             verdict="inconclusive",
             verification_scope=scope,
-            final_rationale="Docker unavailable; skipped verifier.",
-            skipped_reason="no_docker",
+            final_rationale=(
+                f"Sandbox runtime unavailable (backend={settings.sandbox_backend}); skipped verifier."
+            ),
+            skipped_reason="no_sandbox_runtime",
             metadata={"llm_tokens": 0, "verifier_repo_root": repo_root},
         )
 

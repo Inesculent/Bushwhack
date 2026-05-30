@@ -1,7 +1,7 @@
 import sys
 from functools import lru_cache
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -102,6 +102,38 @@ class Settings(BaseSettings):
 	reviewer_cleanup_redis_checkpoints: bool = Field(
 		default=True,
 		description="Delete per-PR reviewer graph Redis checkpoints after artifacts are written.",
+	)
+	sandbox_backend: Literal["docker", "apptainer"] = Field(
+		default="docker",
+		description="Sandbox runtime: docker (--local) or apptainer (--remote).",
+	)
+	run_profile: Optional[Literal["local", "remote"]] = Field(
+		default=None,
+		description="Last applied execution profile (local or remote), if set via CLI or env.",
+	)
+	apptainer_binary: str = Field(
+		default="apptainer",
+		description="Apptainer/Singularity executable name on PATH.",
+	)
+	apptainer_image: str = Field(
+		default="",
+		description="Path to review sandbox .sif (git, ripgrep, python). Used when sandbox_backend=apptainer.",
+	)
+	apptainer_verifier_image: str = Field(
+		default="",
+		description="Path to verifier .sif; falls back to apptainer_image when empty.",
+	)
+	apptainer_instance_dir: Optional[str] = Field(
+		default=None,
+		description="Optional Apptainer instance state directory on the compute node.",
+	)
+	apptainer_bind_tmpfs: bool = Field(
+		default=True,
+		description="Use --writable-tmpfs for Apptainer instances (in-container RW for clones).",
+	)
+	apptainer_extra_bind: List[str] = Field(
+		default_factory=list,
+		description="Extra Apptainer bind mounts (host:container[:opts]).",
 	)
 	github_personal_access_token: Optional[str] = Field(
 		default=None,
@@ -557,7 +589,7 @@ class Settings(BaseSettings):
 		default=True,
 		description=(
 			"Enable verifier after focused_context or post_reflection_evidence_pass for eligible claim types. "
-			"When true, runs only for claim types allowed below; use verifier_skip_if_no_docker to no-op when Docker is absent."
+			"When true, runs only for claim types allowed below; use verifier_skip_if_no_sandbox to no-op when the sandbox runtime is absent."
 		),
 	)
 	verifier_image: str = Field(
@@ -634,9 +666,13 @@ class Settings(BaseSettings):
 		le=50,
 		description="Max verifier Send branches per focused_context wave.",
 	)
-	verifier_skip_if_no_docker: bool = Field(
+	verifier_skip_if_no_sandbox: bool = Field(
 		default=True,
-		description="If Docker is unreachable, skip verifier and continue the reviewer graph.",
+		validation_alias=AliasChoices(
+			"REVIEW_VERIFIER_SKIP_IF_NO_SANDBOX",
+			"REVIEW_VERIFIER_SKIP_IF_NO_DOCKER",
+		),
+		description="If the active sandbox runtime is unavailable, skip verifier and continue the reviewer graph.",
 	)
 	verifier_require_focused_evidence: bool = Field(
 		default=True,
@@ -688,7 +724,13 @@ class Settings(BaseSettings):
 	semantic_max_tokens_per_community: int = Field(
 		default=8000,
 		ge=500,
-		description="Approximate max prompt characters budget per community agent (rough token proxy).",
+		description="Approximate prompt token budget per community agent, converted to a rough character cap.",
+	)
+	semantic_agent_max_completion_tokens: int = Field(
+		default=8192,
+		ge=512,
+		le=32768,
+		description="Completion token cap for high-level community semantic summaries.",
 	)
 	semantic_max_files_per_agent: int = Field(
 		default=20,

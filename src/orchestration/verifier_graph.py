@@ -24,7 +24,7 @@ from src.orchestration.nodes.verifier.result_judge import (
 )
 from src.orchestration.nodes.verifier.sandbox_executor import execute_test_script
 from src.orchestration.nodes.verifier.test_generator import generate_test_script
-from src.orchestration.nodes.verifier.verifier_runner import _docker_ok, _infer_verifier_repo_root
+from src.orchestration.nodes.verifier.verifier_runner import _infer_verifier_repo_root, _sandbox_ok
 
 logger = logging.getLogger(__name__)
 
@@ -56,12 +56,14 @@ def verifier_preflight_node(state: GraphState) -> Dict[str, Any]:
             "node_history": ["verifier_preflight"],
         }
 
-    if settings.verifier_skip_if_no_docker and not _docker_ok():
+    if settings.verifier_skip_if_no_sandbox and not _sandbox_ok(settings):
         return {
-            "verifier_skipped_reason": "no_docker",
+            "verifier_skipped_reason": "no_sandbox_runtime",
             "verifier_scope": scope,
             "verifier_repo_root": repo_root,
-            "verifier_last_rationale": "Docker unavailable; skipped verifier.",
+            "verifier_last_rationale": (
+                f"Sandbox runtime unavailable (backend={settings.sandbox_backend}); skipped verifier."
+            ),
             "verifier_focused_context_text": fc,
             "node_history": ["verifier_preflight"],
         }

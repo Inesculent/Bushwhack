@@ -16,11 +16,16 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeout
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from src.config import Settings, get_settings
 from src.domain.verifier_schemas import VerificationStatus, VerifierAttemptRecord, VerifierLintRun
-from src.infrastructure.sandbox import RepoSandbox
+from src.infrastructure.sandbox import (
+    RepoSandbox,
+    SandboxRuntime,
+    build_repo_sandbox,
+    resolve_verifier_sandbox_image,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -128,12 +133,11 @@ def _verifier_sandbox_image(
     repo_path: str,
     graph_state: Optional[Dict[str, Any]],
 ) -> str:
-    """Pick image: clone-capable stack for remote PR checkout, else verifier test image."""
-    if _needs_remote_clone(repo_path, graph_state, settings):
-        clone_img = (settings.verifier_clone_image or "").strip()
-        if clone_img:
-            return clone_img
-    return settings.verifier_image
+    """Pick image or SIF: clone-capable stack for remote PR checkout, else verifier test image."""
+    return resolve_verifier_sandbox_image(
+        settings,
+        needs_clone=_needs_remote_clone(repo_path, graph_state, settings),
+    )
 
 
 def _start_verifier_sandbox(
@@ -192,14 +196,16 @@ def execute_test_script(
     attempt_number: int,
     test_code: str,
     settings: Settings | None = None,
-    sandbox_factory: type[RepoSandbox] | None = None,
+    sandbox_factory: Callable[[Settings, str], SandboxRuntime] | None = None,
     graph_state: Optional[Dict[str, Any]] = None,
 ) -> VerifierAttemptRecord:
     """Write script to /tmp and run ``python`` with timeout; stop sandbox after."""
     settings = settings or get_settings()
-    sb_cls = sandbox_factory or RepoSandbox
+    make_sandbox = sandbox_factory or (
+        lambda s, image: build_repo_sandbox(s, image_name=image)
+    )
     image_name = _verifier_sandbox_image(settings, repo_path, graph_state)
-    sandbox = sb_cls(image_name=image_name)
+    sandbox = make_sandbox(settings, image_name)
     frag = _safe_candidate_path_fragment(candidate_id)
     remote_path = f"/tmp/verify_{frag}_{attempt_number}.py"
     record = VerifierAttemptRecord(

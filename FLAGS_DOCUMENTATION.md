@@ -230,6 +230,28 @@ All environment variables must be prefixed with `REVIEW_` and can be set in a `.
 
 ---
 
+### Execution profiles (`--local` / `--remote`)
+
+| CLI flag | `REVIEW_SANDBOX_BACKEND` | Typical use |
+|----------|--------------------------|-------------|
+| `--local` (default) | `docker` | Laptop / dev: Docker sandbox, `docker-compose.redis.yml`, LLM via SSH port-forward |
+| `--remote` | `apptainer` | Slurm node: Apptainer `.sif`, in-job `redis-server`, job-local vLLM |
+
+See [documentation/apptainer_cluster_guide.md](documentation/apptainer_cluster_guide.md) for SIF builds and `sbatch` examples.
+
+| Variable | Type | Default | Description |
+|----------|------|---------|-------------|
+| `REVIEW_RUN_PROFILE` | string | _(unset)_ | Optional preset: `local` or `remote` (same as CLI flags). |
+| `REVIEW_SANDBOX_BACKEND` | string | `docker` | Sandbox runtime: `docker` or `apptainer`. |
+| `REVIEW_APPTAINER_BINARY` | string | `apptainer` | Apptainer executable on PATH. |
+| `REVIEW_APPTAINER_IMAGE` | string | _(empty)_ | Path to review sandbox `.sif`. |
+| `REVIEW_APPTAINER_VERIFIER_IMAGE` | string | _(empty)_ | Path to verifier `.sif`. |
+| `REVIEW_APPTAINER_INSTANCE_DIR` | string | _(unset)_ | Optional Apptainer instance state directory. |
+| `REVIEW_APPTAINER_BIND_TMPFS` | boolean | `true` | Use `--writable-tmpfs` for Apptainer instances. |
+| `REVIEW_APPTAINER_EXTRA_BIND` | list | `[]` | Extra bind mounts (`host:container[:opts]`). |
+
+---
+
 ### Redis Configuration
 
 #### Connection & Checkpointing
@@ -241,12 +263,19 @@ All environment variables must be prefixed with `REVIEW_` and can be set in a `.
 | `REVIEW_REDIS_NAMESPACE` | string | `langgraph` | Namespace prefix for Redis checkpoint keys. Prevents key collisions in shared instances. |
 | `REVIEW_REDIS_TTL_SECONDS` | integer | `3600` | TTL for Redis checkpoint entries. In seconds. |
 
-#### Example Docker Compose Setup
+#### Example Docker Compose Setup (`--local`)
 
 ```bash
 docker-compose -f docker-compose.redis.yml up -d
 export REVIEW_REDIS_URL=redis://localhost:6379/0
 export REVIEW_REDIS_ENABLED=true
+```
+
+#### Example cluster loopback Redis (`--remote`)
+
+```bash
+source scripts/cluster/start_local_redis.sh
+python -m src.reviewer_agent.main --remote ...
 ```
 
 ---
