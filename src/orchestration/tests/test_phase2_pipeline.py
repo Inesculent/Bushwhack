@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -198,14 +199,17 @@ def test_semantic_dispatch_distills_repository_kb_with_llm(monkeypatch: pytest.M
                     ]
                 )
             if self.schema is RepositoryKBCommunityDistillationOutput:
+                cid_match = re.search(r'"community_id":\s*(\d+)', _prompt)
+                cid = int(cid_match.group(1)) if cid_match else 0
                 return RepositoryKBCommunityDistillationOutput(
                     communities=[
                         RepositoryKBCommunityDistillationItem(
-                            community_id=0,
-                            label="Distilled Community",
-                            purpose="Distilled repository subsystem.",
-                            responsibilities=["Owns bounded evidence"],
-                            source_record_ids=["community:0"],
+                            community_id=cid,
+                            label="Distilled Boundary",
+                            purpose="Distilled repository boundary.",
+                            boundary_points=["changed boundary"],
+                            cascade_paths=["caller to callee"],
+                            source_record_ids=[],
                         )
                     ]
                 )
@@ -219,11 +223,22 @@ def test_semantic_dispatch_distills_repository_kb_with_llm(monkeypatch: pytest.M
         "src.orchestration.nodes.exploration.repository_kb_distillation.Models.worker",
         lambda schema, **_kwargs: FakeLlm(schema),
     )
-    node = make_semantic_dispatch_node(Settings(redis_enabled=False))
+    node = make_semantic_dispatch_node(
+        Settings(
+            redis_enabled=False,
+            repository_kb_distillation_mode="review_neighborhood",
+            repository_kb_distillation_max_prompt_chars=60000,
+        )
+    )
+    changed_path = next(
+        str(node.get("file_path"))
+        for node in graph_payload["nodes"]
+        if node.get("node_type") == "file" and node.get("file_path")
+    )
     state: GraphState = {  # type: ignore[typeddict-item]
         "run_id": "t1",
         "repo_path": "r",
-        "git_diff": "",
+        "git_diff": f"diff --git a/{changed_path} b/{changed_path}\n--- a/{changed_path}\n+++ b/{changed_path}\n",
         "structural_graph_node_link": graph_payload,
         "structural_topology": topo,
         "semantic_community_work_queue": [],
@@ -233,8 +248,48 @@ def test_semantic_dispatch_distills_repository_kb_with_llm(monkeypatch: pytest.M
 
     records = out["repository_kb_summary_records"]
     assert any(r["confidence"] == "llm_synthesized" for r in records)
-    assert any("Distilled repository" in r["summary"] for r in records)
+    assert any("Distilled repository boundary" in r["summary"] for r in records)
     assert out["semantic_community_work_queue"] == []
+
+
+@pytest.mark.skipif(
+    not (Path("plots") / "structural_graph.json").is_file(),
+    reason="plots artifacts",
+)
+def test_semantic_dispatch_default_repository_kb_is_llm_light(monkeypatch: pytest.MonkeyPatch) -> None:
+    graph_payload = json.loads((Path("plots") / "structural_graph.json").read_text(encoding="utf-8"))
+    topo = StructuralTopologySummary.model_validate(
+        json.loads((Path("plots") / "structural_topology.json").read_text(encoding="utf-8"))
+    )
+
+    def fail_worker(*_args, **_kwargs):
+        raise AssertionError("default repository KB dispatch should not call LLM distillation")
+
+    monkeypatch.setattr(
+        "src.orchestration.nodes.exploration.repository_kb_distillation.Models.worker",
+        fail_worker,
+    )
+    changed_path = next(
+        str(node.get("file_path"))
+        for node in graph_payload["nodes"]
+        if node.get("node_type") == "file" and node.get("file_path")
+    )
+    node = make_semantic_dispatch_node(Settings(redis_enabled=False))
+    out = node(
+        {
+            "run_id": "t1",
+            "repo_path": "r",
+            "git_diff": f"diff --git a/{changed_path} b/{changed_path}\n--- a/{changed_path}\n+++ b/{changed_path}\n",
+            "structural_graph_node_link": graph_payload,
+            "structural_topology": topo,
+            "semantic_community_work_queue": [],
+        }
+    )
+
+    records = out["repository_kb_summary_records"]
+    assert out["token_usage"] == 0
+    assert any(r["metadata"].get("summary_scope") == "boundary" for r in records)
+    assert not any(r["confidence"] == "llm_synthesized" for r in records)
 
 
 def test_community_agent_waits_on_active_local_server_timeout(monkeypatch: pytest.MonkeyPatch) -> None:

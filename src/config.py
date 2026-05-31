@@ -771,16 +771,16 @@ class Settings(BaseSettings):
 		description="Completion token cap for high-level community semantic summaries.",
 	)
 	repository_kb_distillation_max_completion_tokens: int = Field(
-		default=4096,
+		default=2048,
 		ge=512,
 		le=8192,
 		description="Completion token cap for bounded Repository KB distillation calls.",
 	)
 	repository_kb_distillation_mode: Literal["review_neighborhood", "on_demand", "full", "off"] = Field(
-		default="review_neighborhood",
+		default="on_demand",
 		description=(
-			"Repository KB LLM enrichment mode. review_neighborhood distills only review-adjacent "
-			"communities by default; full opts into whole-repo distillation."
+			"Repository KB LLM enrichment mode. on_demand skips upfront distillation; "
+			"review_neighborhood distills review boundary packs; full opts into whole-repo distillation."
 		),
 	)
 	repository_kb_distillation_budget_mode: Literal["adaptive", "unbounded"] = Field(
@@ -788,15 +788,15 @@ class Settings(BaseSettings):
 		description="Budget strategy for Repository KB distillation. Adaptive may defer work instead of failing.",
 	)
 	repository_kb_distillation_hard_token_ceiling: Optional[int] = Field(
-		default=None,
+		default=200_000,
 		ge=1,
-		description="Optional hard token ceiling for Repository KB distillation. Disabled by default.",
+		description="Optional hard token ceiling for adaptive Repository KB distillation.",
 	)
 	repository_kb_distillation_review_neighborhood_max_communities: int = Field(
-		default=8,
+		default=4,
 		ge=1,
 		le=64,
-		description="Max communities to LLM-distill in the default review-neighborhood mode.",
+		description="Max review-neighborhood communities used to select boundary packs for LLM distillation.",
 	)
 	repository_kb_distillation_communities_per_call: int = Field(
 		default=1,
@@ -805,13 +805,13 @@ class Settings(BaseSettings):
 		description="Max community evidence packs included in one Repository KB distillation call.",
 	)
 	repository_kb_distillation_max_prompt_chars: int = Field(
-		default=12000,
+		default=8000,
 		ge=2000,
 		le=60000,
 		description="Approximate prompt character cap for one Repository KB distillation call.",
 	)
 	repository_kb_distillation_max_shards_per_community: int = Field(
-		default=24,
+		default=6,
 		ge=1,
 		le=200,
 		description="Max bounded evidence shards to distill per Repository KB community.",

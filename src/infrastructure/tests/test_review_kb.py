@@ -161,12 +161,13 @@ def test_review_kb_builds_profiles_and_dependency_query(tmp_path: Path) -> None:
 
     assert bundle.manifest.counts["files"] == 2
     assert bundle.manifest.counts["symbols"] == 2
-    assert bundle.manifest.counts["summaries"] == 4
+    assert bundle.manifest.counts["summaries"] == 6
     assert bundle.manifest.diagnostics["kb_scope"] == "repository"
     assert bundle.review_overlay["changed_files"] == ["comfy_extras/nodes_train.py"]
     assert any("tensor-shape" in fact.tags for fact in bundle.facts)
     assert all(r.kind == "summary" for r in bundle.summaries)
     assert all(r.metadata.get("source_record_ids") for r in bundle.summaries)
+    assert any(r.metadata.get("summary_scope") == "boundary" for r in bundle.summaries)
 
     loaded = {
         "repo": bundle.repo,
@@ -201,6 +202,7 @@ def test_review_kb_builds_profiles_and_dependency_query(tmp_path: Path) -> None:
     summaries = "\n".join(
         record.summary for record in [*result.primary_records, *result.related_records]
     ).lower()
+    assert "boundary map" in summaries
     assert "load_lora" in summaries
     assert "tensor shape" in summaries
 
@@ -211,6 +213,49 @@ def test_review_kb_builds_profiles_and_dependency_query(tmp_path: Path) -> None:
         max_results=4,
     )
     assert any(r.id == "community:0" for r in community_zero.related_records)
+
+
+def test_query_review_kb_ignores_large_telemetry_metadata(tmp_path: Path) -> None:
+    payload, topo = _fixture_graph(tmp_path)
+    bundle = build_review_kb(
+        run_id="r1",
+        repo_path=str(tmp_path),
+        graph_payload=payload,
+        topology=topo,
+        changed_file_paths={"comfy_extras/nodes_train.py"},
+    )
+    bundle.summaries[0].metadata["omitted_record_ids"] = ["oversizedmetadatatoken"]
+    loaded = {
+        "repo": bundle.repo,
+        "communities": bundle.communities,
+        "files": bundle.files,
+        "symbols": bundle.symbols,
+        "facts": bundle.facts,
+        "edges": bundle.edges,
+        "summaries": bundle.summaries,
+        "lexical_index": bundle.lexical_index,
+        "by_id": {
+            record.id: record
+            for record in [
+                bundle.repo,
+                *bundle.communities,
+                *bundle.files,
+                *bundle.symbols,
+                *bundle.facts,
+                *bundle.edges,
+                *bundle.summaries,
+            ]
+        },
+    }
+
+    result = query_loaded_review_kb(
+        loaded,
+        query="oversizedmetadatatoken",
+        max_results=5,
+    )
+
+    assert not result.primary_records
+    assert not result.related_records
 
 
 def test_repository_kb_core_records_ignore_diff_overlay(tmp_path: Path) -> None:
@@ -232,7 +277,12 @@ def test_repository_kb_core_records_ignore_diff_overlay(tmp_path: Path) -> None:
 
     assert [r.model_dump() for r in base.files] == [r.model_dump() for r in with_overlay.files]
     assert [r.model_dump() for r in base.communities] == [r.model_dump() for r in with_overlay.communities]
-    assert [r.model_dump() for r in base.summaries] == [r.model_dump() for r in with_overlay.summaries]
+    base_core_summaries = [r.model_dump() for r in base.summaries if r.metadata.get("summary_scope") != "boundary"]
+    overlay_core_summaries = [
+        r.model_dump() for r in with_overlay.summaries if r.metadata.get("summary_scope") != "boundary"
+    ]
+    assert base_core_summaries == overlay_core_summaries
+    assert any(r.metadata.get("summary_scope") == "boundary" for r in with_overlay.summaries)
     assert base.manifest.coverage == with_overlay.manifest.coverage
     assert with_overlay.review_overlay["changed_files"] == ["comfy_extras/nodes_train.py"]
 
@@ -572,6 +622,7 @@ def test_repository_kb_shard_length_failure_retries_compact(monkeypatch, tmp_pat
         bundle,
         settings=Settings(
             snapshot_base_path=tmp_path / "snapshots",
+            repository_kb_distillation_mode="full",
             repository_kb_distillation_max_prompt_chars=2000,
             repository_kb_distillation_max_shards_per_community=8,
         ),
@@ -775,6 +826,8 @@ def test_query_repository_kb_filters_review_neighborhood_summaries(monkeypatch, 
                             community_id=0,
                             label="Review neighborhood",
                             purpose="Review-neighborhood-only distilled summary.",
+                            boundary_points=["changed file boundary"],
+                            cascade_paths=["caller to adapter boundary"],
                             source_record_ids=["community:0"],
                         )
                     ]
@@ -790,7 +843,10 @@ def test_query_repository_kb_filters_review_neighborhood_summaries(monkeypatch, 
     )
     distilled, _tokens, _warnings = distill_repository_kb(
         bundle,
-        settings=Settings(snapshot_base_path=tmp_path / "snapshots"),
+        settings=Settings(
+            snapshot_base_path=tmp_path / "snapshots",
+            repository_kb_distillation_mode="review_neighborhood",
+        ),
     )
     loaded = {
         "repo": distilled.repo,
@@ -831,10 +887,12 @@ def test_query_repository_kb_filters_review_neighborhood_summaries(monkeypatch, 
 
     assert not any(
         r.metadata.get("distillation_scope") == "review_neighborhood"
+        and r.metadata.get("summary_scope") != "boundary"
         for r in [*repo_result.primary_records, *repo_result.related_records]
     )
     assert any(
         r.metadata.get("distillation_scope") == "review_neighborhood"
+        and r.metadata.get("summary_scope") == "boundary"
         for r in [*review_result.primary_records, *review_result.related_records]
     )
 
@@ -1000,7 +1058,7 @@ def test_snapshot_writer_persists_review_kb_and_tool_queries_it(tmp_path: Path) 
     assert Path(root, "review_kb", "summaries.jsonl").is_file()
     assert Path(root, "review_kb", "review_overlay.json").is_file()
     assert snap.metadata["review_kb"]["counts"]["symbols"] == 2
-    assert snap.metadata["repository_kb"]["counts"]["summaries"] == 4
+    assert snap.metadata["repository_kb"]["counts"]["summaries"] == 6
     core_file = [
         record
         for record in kb["files"]

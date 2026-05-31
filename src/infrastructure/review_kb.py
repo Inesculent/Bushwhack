@@ -294,6 +294,219 @@ def build_summary_records(
     return summaries
 
 
+def _record_by_id(
+    *,
+    repo: ReviewKBRecord,
+    communities: Sequence[ReviewKBRecord],
+    files: Sequence[ReviewKBRecord],
+    symbols: Sequence[ReviewKBRecord],
+    facts: Sequence[ReviewKBRecord],
+    edges: Sequence[ReviewKBRecord],
+) -> Dict[str, ReviewKBRecord]:
+    return {record.id: record for record in [repo, *communities, *files, *symbols, *facts, *edges]}
+
+
+def _symbol_records_for_file(symbols: Sequence[ReviewKBRecord], file_path: str) -> List[ReviewKBRecord]:
+    return [
+        record
+        for record in symbols
+        if _norm_path(str(record.metadata.get("file_path") or "")) == file_path
+    ]
+
+
+def _edge_records_for_symbols(
+    edges: Sequence[ReviewKBRecord],
+    symbol_records: Sequence[ReviewKBRecord],
+) -> tuple[List[ReviewKBRecord], List[ReviewKBRecord], List[ReviewKBRecord]]:
+    symbol_ids = {record.id for record in symbol_records}
+    inbound: List[ReviewKBRecord] = []
+    outbound: List[ReviewKBRecord] = []
+    boundary: List[ReviewKBRecord] = []
+    for edge in edges:
+        source_id = str(edge.metadata.get("source_record_id") or "")
+        target_id = str(edge.metadata.get("target_record_id") or "")
+        if source_id in symbol_ids:
+            outbound.append(edge)
+        if target_id in symbol_ids:
+            inbound.append(edge)
+        if source_id in symbol_ids or target_id in symbol_ids:
+            boundary.append(edge)
+    return inbound, outbound, boundary
+
+
+def _compact_ids(records: Sequence[ReviewKBRecord], limit: int = 12) -> List[str]:
+    return [record.id for record in records[:limit]]
+
+
+def build_boundary_summary_records(
+    *,
+    repo: ReviewKBRecord,
+    communities: Sequence[ReviewKBRecord],
+    files: Sequence[ReviewKBRecord],
+    symbols: Sequence[ReviewKBRecord],
+    facts: Sequence[ReviewKBRecord],
+    edges: Sequence[ReviewKBRecord],
+    changed_file_paths: Iterable[str],
+) -> List[ReviewKBRecord]:
+    """Build deterministic maps of changed-file boundaries and cascade routes."""
+    changed = sorted({_norm_path(path) for path in changed_file_paths if path})
+    if not changed:
+        return []
+
+    files_by_path = {str(record.metadata.get("file_path") or ""): record for record in files}
+    facts_by_path: Dict[str, List[ReviewKBRecord]] = defaultdict(list)
+    for fact in facts:
+        facts_by_path[_norm_path(str(fact.metadata.get("file_path") or ""))].append(fact)
+
+    by_id = _record_by_id(repo=repo, communities=communities, files=files, symbols=symbols, facts=facts, edges=edges)
+    records: List[ReviewKBRecord] = []
+    touched: Dict[int, List[ReviewKBRecord]] = defaultdict(list)
+
+    for file_path in changed:
+        file_record = files_by_path.get(file_path)
+        if file_record is None:
+            continue
+        cid = _metadata_int(file_record, "community_id")
+        touched[cid].append(file_record)
+        file_symbols = _symbol_records_for_file(symbols, file_path)
+        nearby_facts = sorted(
+            facts_by_path.get(file_path, []),
+            key=lambda r: (0 if {"contract", "tensor-shape", "signature"} & set(r.tags) else 1, r.id),
+        )
+        inbound, outbound, boundary_edges = _edge_records_for_symbols(edges, file_symbols)
+        dependency_cids: set[int] = set()
+        cross_edges: List[ReviewKBRecord] = []
+        for edge in boundary_edges:
+            edge_crosses = False
+            for key in ("source_record_id", "target_record_id"):
+                other = by_id.get(str(edge.metadata.get(key) or ""))
+                other_cid = _metadata_int(other, "community_id") if other is not None else -1
+                if other_cid not in {-1, cid}:
+                    dependency_cids.add(other_cid)
+                    edge_crosses = True
+            if edge_crosses:
+                cross_edges.append(edge)
+
+        anchors = ", ".join(str(s.metadata.get("symbol_name") or s.id) for s in file_symbols[:6])
+        if not anchors:
+            anchors = "file-level change"
+        cascade: List[str] = []
+        if outbound:
+            cascade.append(f"{len(outbound)} outbound dependency edges can propagate changed behavior.")
+        if inbound:
+            cascade.append(f"{len(inbound)} inbound callers may observe changed contracts.")
+        if dependency_cids:
+            cascade.append(f"Crosses communities {', '.join(str(x) for x in sorted(dependency_cids)[:6])}.")
+        if nearby_facts:
+            cascade.append("Nearby signature/contract facts should anchor exact-code review.")
+        summary = (
+            f"Boundary map for changed file {file_path} in community {cid}: anchors {anchors}. "
+            f"fan_in={len(inbound)}, fan_out={len(outbound)}, cross_community_edges={len(cross_edges)}. "
+            + " ".join(cascade)
+        ).strip()
+        source_ids = [
+            file_record.id,
+            *_compact_ids(file_symbols, 8),
+            *_compact_ids(nearby_facts, 6),
+            *_compact_ids(boundary_edges, 8),
+        ]
+        records.append(
+            ReviewKBRecord(
+                id=_stable_id("summary:boundary:file", file_path),
+                kind="summary",
+                summary=summary,
+                evidence=file_record.evidence,
+                confidence="inferred",
+                tags=sorted(
+                    set(
+                        [
+                            "summary",
+                            "boundary",
+                            "cascade",
+                            "risk-surface",
+                            *_tags_for_text(file_path, anchors, summary),
+                        ]
+                    )
+                ),
+                metadata={
+                    "summary_scope": "boundary",
+                    "boundary_scope": "file",
+                    "file_path": file_path,
+                    "community_id": cid,
+                    "changed_symbol_ids": _compact_ids(file_symbols, 16),
+                    "fact_record_ids": _compact_ids(nearby_facts, 12),
+                    "inbound_edge_ids": _compact_ids(inbound, 12),
+                    "outbound_edge_ids": _compact_ids(outbound, 12),
+                    "cross_community_edge_ids": _compact_ids(cross_edges, 12),
+                    "dependency_community_ids": sorted(dependency_cids)[:12],
+                    "fan_in": len(inbound),
+                    "fan_out": len(outbound),
+                    "source_record_ids": list(dict.fromkeys(source_ids))[:32],
+                    "llm_distillation_status": "not_run",
+                },
+            )
+        )
+
+    community_by_id = {_metadata_int(record, "community_id"): record for record in communities}
+    for cid, changed_files in sorted(touched.items()):
+        community = community_by_id.get(cid)
+        if community is None:
+            continue
+        source_records: List[ReviewKBRecord] = [community, *changed_files]
+        symbol_records: List[ReviewKBRecord] = []
+        fact_records: List[ReviewKBRecord] = []
+        inbound_total = 0
+        outbound_total = 0
+        dependency_cids: set[int] = set()
+        for file_record in changed_files:
+            file_path = str(file_record.metadata.get("file_path") or "")
+            file_symbols = _symbol_records_for_file(symbols, file_path)
+            symbol_records.extend(file_symbols)
+            facts_for_file = facts_by_path.get(file_path, [])[:4]
+            fact_records.extend(facts_for_file)
+            inbound, outbound, boundary_edges = _edge_records_for_symbols(edges, file_symbols)
+            inbound_total += len(inbound)
+            outbound_total += len(outbound)
+            source_records.extend([*file_symbols[:4], *facts_for_file, *boundary_edges[:4]])
+            for edge in boundary_edges:
+                for key in ("source_record_id", "target_record_id"):
+                    other = by_id.get(str(edge.metadata.get(key) or ""))
+                    other_cid = _metadata_int(other, "community_id") if other is not None else -1
+                    if other_cid not in {-1, cid}:
+                        dependency_cids.add(other_cid)
+        file_list = ", ".join(str(r.metadata.get("file_path") or r.id) for r in changed_files[:8])
+        summary = (
+            f"Boundary map for touched community {cid}: changed files {file_list}. "
+            f"fan_in={inbound_total}, fan_out={outbound_total}, "
+            f"dependency_communities={', '.join(str(x) for x in sorted(dependency_cids)[:8]) or 'none'}."
+        )
+        records.append(
+            ReviewKBRecord(
+                id=f"summary:boundary:community:{cid}",
+                kind="summary",
+                summary=summary,
+                evidence=community.evidence,
+                confidence="inferred",
+                tags=sorted(set(["summary", "boundary", "cascade", "risk-surface", *_tags_for_text(file_list)])),
+                metadata={
+                    "summary_scope": "boundary",
+                    "boundary_scope": "community",
+                    "community_id": cid,
+                    "changed_files": [str(r.metadata.get("file_path") or "") for r in changed_files[:16]],
+                    "changed_symbol_ids": _compact_ids(symbol_records, 24),
+                    "fact_record_ids": _compact_ids(fact_records, 16),
+                    "dependency_community_ids": sorted(dependency_cids)[:12],
+                    "fan_in": inbound_total,
+                    "fan_out": outbound_total,
+                    "source_record_ids": list(dict.fromkeys(r.id for r in source_records))[:40],
+                    "llm_distillation_status": "not_run",
+                },
+            )
+        )
+
+    return records
+
+
 def _line_for_signature(repo_root: Path, file_path: str, signature: str, symbol_name: str) -> int | None:
     if not repo_root.is_dir() or not file_path:
         return None
@@ -428,8 +641,9 @@ def build_review_kb(
     node_to_community = {str(k): int(v) for k, v in topology.node_to_community.items()}
     repo_root = Path(repo_path) if repo_path else Path()
     members = _community_members(graph, topology)
+    changed_paths = {_norm_path(path) for path in changed_file_paths if path}
     review_overlay = build_review_overlay(
-        changed_file_paths=changed_file_paths,
+        changed_file_paths=changed_paths,
         base_ref=base_ref,
         head_ref=head_ref,
     )
@@ -669,17 +883,22 @@ def build_review_kb(
         facts=facts,
         symbol_record_by_node=symbol_record_by_node,
     )
+    summaries.extend(
+        build_boundary_summary_records(
+            repo=repo,
+            communities=communities,
+            files=files,
+            symbols=symbols,
+            facts=facts,
+            edges=edges,
+            changed_file_paths=changed_paths,
+        )
+    )
 
     all_records = [repo, *communities, *files, *symbols, *facts, *edges, *summaries]
     lexical: Dict[str, List[str]] = defaultdict(list)
     for record in all_records:
-        text_parts = [
-            record.id,
-            record.kind,
-            record.summary,
-            " ".join(record.tags),
-            json.dumps(record.metadata, sort_keys=True),
-        ]
+        text_parts = _lexical_text_parts(record)
         for term in _terms(*text_parts):
             if record.id not in lexical[term]:
                 lexical[term].append(record.id)
@@ -804,6 +1023,38 @@ def write_review_kb(root: Path, bundle: ReviewKBBundle) -> Path:
     return kb_dir
 
 
+def _lexical_text_parts(record: ReviewKBRecord) -> List[str]:
+    metadata_keys = (
+        "summary_scope",
+        "boundary_scope",
+        "file_path",
+        "symbol_name",
+        "qualified_name",
+        "symbol_type",
+        "community_id",
+        "edge_type",
+        "dependency_community_ids",
+        "changed_files",
+        "source_record_ids",
+    )
+    compact_meta: Dict[str, Any] = {}
+    for key in metadata_keys:
+        value = record.metadata.get(key)
+        if value is None:
+            continue
+        if isinstance(value, list):
+            compact_meta[key] = [str(item) for item in value[:12]]
+        else:
+            compact_meta[key] = value
+    return [
+        record.id,
+        record.kind,
+        record.summary,
+        " ".join(record.tags),
+        json.dumps(compact_meta, sort_keys=True),
+    ]
+
+
 def rebuild_review_kb_lexical_index(bundle: ReviewKBBundle) -> Dict[str, List[str]]:
     """Rebuild the compact lexical index after summary records are replaced."""
     lexical: Dict[str, List[str]] = defaultdict(list)
@@ -816,13 +1067,7 @@ def rebuild_review_kb_lexical_index(bundle: ReviewKBBundle) -> Dict[str, List[st
         *bundle.edges,
         *bundle.summaries,
     ]:
-        text_parts = [
-            record.id,
-            record.kind,
-            record.summary,
-            " ".join(record.tags),
-            json.dumps(record.metadata, sort_keys=True),
-        ]
+        text_parts = _lexical_text_parts(record)
         for term in _terms(*text_parts):
             if record.id not in lexical[term]:
                 lexical[term].append(record.id)
@@ -900,7 +1145,8 @@ def query_loaded_review_kb(
         summaries = [
             record
             for record in summaries
-            if str(record.metadata.get("distillation_scope") or "core_repository")
+            if record.metadata.get("summary_scope") == "boundary"
+            or str(record.metadata.get("distillation_scope") or "core_repository")
             not in {"review_neighborhood", "on_demand"}
         ]
     communities: List[ReviewKBRecord] = list(kb.get("communities") or [])
@@ -917,6 +1163,7 @@ def query_loaded_review_kb(
         if (
             record.kind == "summary"
             and not use_review_overlay
+            and record.metadata.get("summary_scope") != "boundary"
             and str(record.metadata.get("distillation_scope") or "core_repository") in {"review_neighborhood", "on_demand"}
         ):
             return
@@ -929,6 +1176,13 @@ def query_loaded_review_kb(
         for record in files:
             if record.metadata.get("file_path") == norm_path:
                 add(record)
+                for summary in summaries:
+                    if (
+                        summary.metadata.get("summary_scope") == "boundary"
+                        and summary.metadata.get("boundary_scope") == "file"
+                        and summary.metadata.get("file_path") == norm_path
+                    ):
+                        add(summary, primary=False)
                 for sid in record.metadata.get("symbols") or []:
                     add(by_id.get(str(sid)), primary=False)
                 for fid in record.metadata.get("facts") or []:
@@ -960,6 +1214,12 @@ def query_loaded_review_kb(
                 add(record)
 
     if community_id is not None:
+        for record in summaries:
+            if (
+                record.metadata.get("summary_scope") == "boundary"
+                and _metadata_int(record, "community_id") == int(community_id)
+            ):
+                add(record, primary=False)
         for record in communities:
             if _metadata_int(record, "community_id") == int(community_id):
                 add(record, primary=False)
@@ -1000,22 +1260,24 @@ def query_loaded_review_kb(
     query_terms = _terms(query)
     for record in facts:
         tags = {str(t).lower() for t in record.tags}
-        haystack = " ".join([record.summary, " ".join(record.tags), json.dumps(record.metadata)]).lower()
+        haystack = " ".join(_lexical_text_parts(record)).lower()
         if any(t in tags or t in haystack for t in topic_terms) or any(t in haystack for t in query_terms):
             add(record)
 
     def summary_rank(record: ReviewKBRecord) -> tuple[int, str]:
         scope = str(record.metadata.get("summary_scope") or "")
-        if scope == "community":
+        if scope == "boundary":
             return (0, record.id)
-        if scope == "community_shard":
+        if scope == "community":
             return (1, record.id)
-        if scope == "repo":
+        if scope == "community_shard":
             return (2, record.id)
-        return (3, record.id)
+        if scope == "repo":
+            return (3, record.id)
+        return (4, record.id)
 
     for record in sorted(summaries, key=summary_rank):
-        haystack = " ".join([record.summary, " ".join(record.tags), json.dumps(record.metadata)]).lower()
+        haystack = " ".join(_lexical_text_parts(record)).lower()
         if any(t in haystack for t in topic_terms) or any(t in haystack for t in query_terms):
             add(record, primary=False)
 

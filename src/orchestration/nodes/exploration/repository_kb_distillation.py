@@ -30,6 +30,8 @@ from src.infrastructure.review_kb import ReviewKBBundle, rebuild_review_kb_lexic
 from src.infrastructure.review_kb_distillation import (
     RepositoryKBDistillationPlan,
     RepositoryKBDistillationPlanner,
+    boundary_summary_record_from_distillation,
+    build_boundary_distillation_pack,
     community_merge_pack,
     build_repo_distillation_pack,
     community_summary_record_from_distillation,
@@ -198,6 +200,19 @@ def _mark_distillation_scope(record: ReviewKBRecord, mode: str) -> ReviewKBRecor
     return record.model_copy(update={"metadata": meta})
 
 
+def _persisted_telemetry(telemetry: Dict[str, Any]) -> Dict[str, Any]:
+    compact = dict(telemetry)
+    omitted_ids = compact.pop("omitted_record_ids", None)
+    if isinstance(omitted_ids, list):
+        compact["omitted_record_count"] = len(omitted_ids)
+        compact["omitted_record_ids_sample"] = [str(rid) for rid in omitted_ids[:12]]
+    omitted_shards = compact.pop("omitted_shard_summary_ids", None)
+    if isinstance(omitted_shards, list):
+        compact["omitted_shard_summary_count"] = len(omitted_shards)
+        compact["omitted_shard_summary_ids_sample"] = [str(rid) for rid in omitted_shards[:12]]
+    return compact
+
+
 def _community_ids(bundle: ReviewKBBundle) -> List[int]:
     return [_metadata_int(r, "community_id") for r in bundle.communities]
 
@@ -287,6 +302,132 @@ def _record_distillation_coverage(bundle: ReviewKBBundle) -> Dict[str, int]:
     return coverage
 
 
+def _selected_boundary_records(bundle: ReviewKBBundle, selected_communities: set[int]) -> List[ReviewKBRecord]:
+    boundaries = [
+        record
+        for record in bundle.summaries
+        if record.metadata.get("summary_scope") == "boundary"
+        and _metadata_int(record, "community_id") in selected_communities
+    ]
+    return sorted(
+        boundaries,
+        key=lambda r: (
+            0 if r.metadata.get("boundary_scope") == "file" else 1,
+            str(r.metadata.get("file_path") or r.id),
+        ),
+    )
+
+
+def _distill_review_boundary_records(
+    *,
+    bundle: ReviewKBBundle,
+    selected_communities: set[int],
+    settings: Settings,
+    model_key: str,
+    budget: _DistillationBudget,
+    cache_namespace: str,
+    state: GraphState | None = None,
+    llm_trace: List[Dict[str, Any]] | None = None,
+) -> tuple[List[ReviewKBRecord], int, List[str]]:
+    records: List[ReviewKBRecord] = []
+    warnings: List[str] = []
+    tokens = 0
+    max_records = max(1, int(settings.repository_kb_distillation_review_neighborhood_max_communities) * 3)
+    for fallback in _selected_boundary_records(bundle, selected_communities)[:max_records]:
+        pack = build_boundary_distillation_pack(bundle, fallback)
+        prompt_pack = {
+            "prompt_version": "repository_kb_boundary_distill_v1",
+            "communities": [pack],
+        }
+        prompt = render_repository_kb_community_distill_prompt(pack_json=pack_to_prompt_json(prompt_pack))
+        if len(prompt) > int(settings.repository_kb_distillation_max_prompt_chars):
+            too_large = _mark_summary_status(fallback, "boundary_pack_too_large", "prompt_budget")
+            too_large.metadata["distillation_telemetry"] = {
+                "mode": "boundary",
+                "prompt_chars": len(prompt),
+                "selected_records": len(pack.get("records") or []),
+                "omitted_source_records": (pack.get("omitted") or {}).get("source_records", 0),
+            }
+            records.append(too_large)
+            warnings.append(f"{fallback.id}:boundary_deferred:prompt_budget")
+            continue
+        cached = _load_cached_record(
+            settings=settings,
+            namespace=cache_namespace,
+            kind="boundary",
+            model_key=model_key,
+            pack=prompt_pack,
+        )
+        if cached is not None:
+            records.append(cached)
+            warnings.append(f"{fallback.id}:boundary_cache_hit")
+            continue
+        allowed, estimate = budget.can_call(prompt, settings.repository_kb_distillation_max_completion_tokens)
+        if not allowed:
+            deferred = _mark_summary_status(fallback, "budget_deferred", "token_budget")
+            records.append(deferred)
+            warnings.append(f"{fallback.id}:boundary_deferred:budget")
+            continue
+        try:
+            llm = Models.worker(
+                RepositoryKBCommunityDistillationOutput,
+                model_key=model_key,
+                max_completion_tokens=settings.repository_kb_distillation_max_completion_tokens,
+            )
+            traced = trace_llm_call(
+                llm,
+                prompt,
+                state=state,
+                node_name="repository_kb_distillation",
+                model_key=model_key,
+                schema_name="RepositoryKBCommunityDistillationOutput",
+                request_label=f"{fallback.id}:boundary",
+                input_summary={
+                    "boundary_id": fallback.id,
+                    "community_id": _metadata_int(fallback, "community_id"),
+                },
+            )
+            if llm_trace is not None:
+                llm_trace.extend(traced.trace_records)
+            parsed = parse_structured_output(traced.result, RepositoryKBCommunityDistillationOutput)
+            cid = _metadata_int(fallback, "community_id")
+            item = next((row for row in parsed.communities if int(row.community_id) == cid), None)
+            if item is None:
+                raise ValueError("boundary_distillation_missing_item")
+            budget.add(traced.tokens, estimate)
+            tokens += traced.tokens
+            record = boundary_summary_record_from_distillation(
+                fallback=fallback,
+                item=item,
+                allowed_record_ids=pack.get("allowed_record_ids") or [],
+                omitted=pack.get("omitted") or {},
+                token_usage=traced.tokens,
+            )
+            record.metadata["distillation_telemetry"] = {
+                "mode": "boundary",
+                "prompt_chars": len(prompt),
+                "selected_records": len(pack.get("records") or []),
+                "omitted_source_records": (pack.get("omitted") or {}).get("source_records", 0),
+            }
+            _save_cached_record(
+                record,
+                settings=settings,
+                namespace=cache_namespace,
+                kind="boundary",
+                model_key=model_key,
+                pack=prompt_pack,
+            )
+            records.append(record)
+            warnings.extend(parsed.warnings)
+        except Exception as exc:  # noqa: BLE001
+            if llm_trace is not None:
+                llm_trace.extend(trace_from_exception(exc))
+            failed = mark_distillation_failed([fallback], exc.__class__.__name__)[0]
+            records.append(failed)
+            warnings.append(f"{fallback.id}:boundary_failed:{exc.__class__.__name__}")
+    return records, tokens, warnings
+
+
 def _invoke_with_timeout_retry(
     llm: Any,
     prompt: str,
@@ -366,6 +507,36 @@ def distill_repository_kb(
         max_prompt_chars=int(resolved.repository_kb_distillation_max_prompt_chars),
         max_shards_per_community=int(resolved.repository_kb_distillation_max_shards_per_community),
     )
+
+    if resolved.repository_kb_distillation_mode == "review_neighborhood":
+        boundary_records, boundary_tokens, boundary_warnings = _distill_review_boundary_records(
+            bundle=bundle,
+            selected_communities=selected_communities,
+            settings=resolved,
+            model_key=selected,
+            budget=budget,
+            cache_namespace=cache_namespace,
+            state=state,
+            llm_trace=llm_trace,
+        )
+        if boundary_records:
+            bundle.summaries = replace_summary_records(
+                bundle.summaries,
+                [_mark_distillation_scope(r, resolved.repository_kb_distillation_mode) for r in boundary_records],
+            )
+            bundle.manifest.counts["summaries"] = len(bundle.summaries)
+        tokens += boundary_tokens
+        warnings.extend(boundary_warnings)
+        for cid, fallback in community_fallbacks.items():
+            if cid not in selected_communities:
+                replacements.append(_mark_summary_status(fallback, "not_scheduled", resolved.repository_kb_distillation_mode))
+        bundle.summaries = replace_summary_records(bundle.summaries, replacements)
+        rebuild_review_kb_lexical_index(bundle)
+        bundle.manifest.diagnostics["distillation_coverage"] = _record_distillation_coverage(bundle)
+        bundle.manifest.diagnostics["distillation_mode"] = resolved.repository_kb_distillation_mode
+        bundle.manifest.diagnostics["distillation_selected_communities"] = sorted(selected_communities)
+        bundle.manifest.diagnostics["distillation_budget_tokens_used"] = budget.used
+        return bundle, tokens, warnings
 
     for community in bundle.communities:
         cid = _metadata_int(community, "community_id")
@@ -551,7 +722,7 @@ def _distill_direct_community(
         pack=prompt_pack,
     )
     if cached is not None:
-        cached.metadata["distillation_telemetry"] = dict(telemetry)
+        cached.metadata["distillation_telemetry"] = _persisted_telemetry(telemetry)
         return cached, 0, [f"community_{_metadata_int(fallback, 'community_id')}:distillation_cache_hit"]
     prompt = render_repository_kb_community_distill_prompt(
         pack_json=pack_to_prompt_json(prompt_pack),
@@ -559,7 +730,7 @@ def _distill_direct_community(
     allowed, estimate = budget.can_call(prompt, settings.repository_kb_distillation_max_completion_tokens)
     if not allowed:
         deferred = _mark_summary_status(fallback, "budget_deferred", "token_budget")
-        deferred.metadata["distillation_telemetry"] = dict(telemetry)
+        deferred.metadata["distillation_telemetry"] = _persisted_telemetry(telemetry)
         return deferred, 0, [f"community_{_metadata_int(fallback, 'community_id')}:distillation_deferred:budget"]
     try:
         llm = Models.worker(
@@ -596,7 +767,7 @@ def _distill_direct_community(
             omitted=omitted,
             token_usage=call_tokens,
         )
-        record.metadata["distillation_telemetry"] = dict(telemetry)
+        record.metadata["distillation_telemetry"] = _persisted_telemetry(telemetry)
         _save_cached_record(
             record,
             settings=settings,
@@ -613,7 +784,7 @@ def _distill_direct_community(
         warnings.append(f"community_{_metadata_int(fallback, 'community_id')}:distillation_failed:{reason}")
         logger.warning("repository KB direct community distillation failed community=%s err=%s", fallback.id, exc)
         failed = mark_distillation_failed([fallback], reason)[0]
-        failed.metadata["distillation_telemetry"] = dict(telemetry)
+        failed.metadata["distillation_telemetry"] = _persisted_telemetry(telemetry)
         return failed, 0, warnings
 
 
@@ -637,7 +808,8 @@ def _distill_shards(
             {
                 "prompt_chars": shard.prompt_chars,
                 "estimated_prompt_tokens": shard.estimated_prompt_tokens,
-                "omitted_record_ids": list(shard.omitted_record_ids),
+                "omitted_record_count": len(shard.omitted_record_ids),
+                "omitted_record_ids_sample": list(shard.omitted_record_ids[:12]),
             }
         )
         prompt_pack = {
@@ -818,7 +990,7 @@ def _distill_community_from_shards(
         pack=pack,
     )
     if cached is not None:
-        cached.metadata["distillation_telemetry"] = dict(plan.telemetry)
+        cached.metadata["distillation_telemetry"] = _persisted_telemetry(plan.telemetry)
         return cached, 0, [f"community_{plan.community_id}:merge_cache_hit"]
     prompt = render_repository_kb_community_merge_prompt(
         pack_json=pack_to_prompt_json(pack),
@@ -826,7 +998,7 @@ def _distill_community_from_shards(
     allowed, estimate = budget.can_call(prompt, settings.repository_kb_distillation_max_completion_tokens)
     if not allowed:
         deferred = _mark_summary_status(fallback, "budget_deferred", "token_budget")
-        deferred.metadata["distillation_telemetry"] = dict(plan.telemetry)
+        deferred.metadata["distillation_telemetry"] = _persisted_telemetry(plan.telemetry)
         deferred.metadata["source_record_ids"] = [r.id for r in selected_shards] or fallback.metadata.get(
             "source_record_ids",
             [],
@@ -866,7 +1038,7 @@ def _distill_community_from_shards(
             omitted=omitted,
             token_usage=call_tokens,
         )
-        record.metadata["distillation_telemetry"] = dict(plan.telemetry)
+        record.metadata["distillation_telemetry"] = _persisted_telemetry(plan.telemetry)
         _save_cached_record(
             record,
             settings=settings,
@@ -883,7 +1055,7 @@ def _distill_community_from_shards(
         warnings.append(f"community_{plan.community_id}:merge_failed:{reason}")
         logger.warning("repository KB community shard merge failed community=%s err=%s", plan.community_id, exc)
         failed = mark_distillation_failed([fallback], reason)[0]
-        failed.metadata["distillation_telemetry"] = dict(plan.telemetry)
+        failed.metadata["distillation_telemetry"] = _persisted_telemetry(plan.telemetry)
         failed.metadata["source_record_ids"] = [r.id for r in selected_shards] or fallback.metadata.get(
             "source_record_ids",
             [],

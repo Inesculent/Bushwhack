@@ -206,6 +206,48 @@ def _prompt_chars_for_shard_pack(pack: Mapping[str, Any]) -> int:
     return len(pack_to_prompt_json({"prompt_version": SHARD_DISTILL_PROMPT_VERSION, "shards": [pack]}))
 
 
+def _all_bundle_records(bundle: ReviewKBBundle) -> Dict[str, ReviewKBRecord]:
+    return {
+        record.id: record
+        for record in [
+            bundle.repo,
+            *bundle.communities,
+            *bundle.files,
+            *bundle.symbols,
+            *bundle.facts,
+            *bundle.edges,
+            *bundle.summaries,
+        ]
+    }
+
+
+def build_boundary_distillation_pack(
+    bundle: ReviewKBBundle,
+    boundary: ReviewKBRecord,
+    *,
+    max_source_records: int = 24,
+) -> Dict[str, Any]:
+    """Build a small LLM pack around a deterministic boundary summary."""
+    by_id = _all_bundle_records(bundle)
+    source_ids = [str(rid) for rid in boundary.metadata.get("source_record_ids") or []]
+    sources = [by_id[rid] for rid in source_ids if rid in by_id and rid != boundary.id]
+    priority = {"fact": 0, "symbol": 1, "edge": 2, "file": 3, "community": 4, "summary": 5}
+    selected = sorted(sources, key=lambda r: (priority.get(r.kind, 9), r.id))[:max_source_records]
+    records = [boundary, *selected]
+    return {
+        "community_id": _metadata_int(boundary, "community_id", 0),
+        "boundary_id": boundary.id,
+        "boundary_scope": str(boundary.metadata.get("boundary_scope") or ""),
+        "prompt_version": COMMUNITY_DISTILL_PROMPT_VERSION,
+        "records": [_record_pack(r) for r in records],
+        "allowed_record_ids": [r.id for r in records],
+        "omitted": {
+            "source_records": max(0, len(sources) - len(selected)),
+            "mode": "boundary",
+        },
+    }
+
+
 def _community_lane_records(bundle: ReviewKBBundle, community_id: int) -> Dict[str, List[ReviewKBRecord]]:
     community = next(
         (r for r in bundle.communities if _metadata_int(r, "community_id") == community_id),
@@ -567,7 +609,9 @@ def community_summary_record_from_distillation(
     parts = [
         item.purpose.strip(),
         _bullets("Responsibilities", item.responsibilities),
-        _bullets("Public contracts", item.public_contracts),
+        _bullets("Contracts", item.contracts or item.public_contracts),
+        _bullets("Boundary points", item.boundary_points),
+        _bullets("Cascade paths", item.cascade_paths),
         _bullets("Bridge symbols", item.bridge_symbols),
         _bullets("Important facts", item.important_facts),
         _bullets("Data shapes and config", item.data_shape_notes),
@@ -610,6 +654,55 @@ def community_summary_record_from_distillation(
     )
 
 
+def boundary_summary_record_from_distillation(
+    *,
+    fallback: ReviewKBRecord,
+    item: RepositoryKBCommunityDistillationItem,
+    allowed_record_ids: Sequence[str],
+    omitted: Mapping[str, int],
+    token_usage: int = 0,
+) -> ReviewKBRecord:
+    allowed = set(allowed_record_ids)
+    cited = [rid for rid in item.source_record_ids if rid in allowed]
+    warnings = []
+    if not cited:
+        cited = [fallback.id]
+        warnings.append("distillation_uncited:fallback_to_boundary_record")
+    invalid = [rid for rid in item.source_record_ids if rid not in allowed]
+    if invalid:
+        warnings.append(f"distillation_invalid_citations:{len(invalid)}")
+    parts = [
+        item.purpose.strip(),
+        _bullets("Contracts", item.contracts or item.public_contracts),
+        _bullets("Boundary points", item.boundary_points or item.bridge_symbols),
+        _bullets("Cascade paths", item.cascade_paths or item.risk_surfaces),
+        _bullets("Uncertainties", item.uncertainties),
+        _bullets("Retrieval hints", item.retrieval_hints),
+    ]
+    summary = "\n".join(p for p in parts if p).strip() or fallback.summary
+    meta = dict(fallback.metadata)
+    meta.update(
+        {
+            "label": item.label or fallback.metadata.get("label", ""),
+            "source_record_ids": cited,
+            "prompt_version": COMMUNITY_DISTILL_PROMPT_VERSION,
+            "llm_distillation_status": "ok",
+            "llm_distillation_warnings": warnings,
+            "token_usage": token_usage,
+            "omitted_source_records": int(omitted.get("source_records") or 0),
+            "distillation_mode": "boundary",
+        }
+    )
+    return fallback.model_copy(
+        update={
+            "summary": summary,
+            "confidence": "llm_synthesized",
+            "tags": sorted(set([*fallback.tags, "boundary", "cascade", "contract", "risk-surface"])),
+            "metadata": meta,
+        }
+    )
+
+
 def shard_summary_record_from_distillation(
     *,
     item: RepositoryKBShardDistillationItem,
@@ -629,7 +722,9 @@ def shard_summary_record_from_distillation(
     parts = [
         item.summary.strip(),
         _bullets("Responsibilities", item.responsibilities),
-        _bullets("Public contracts", item.public_contracts),
+        _bullets("Contracts", item.contracts or item.public_contracts),
+        _bullets("Boundary points", item.boundary_points),
+        _bullets("Cascade paths", item.cascade_paths),
         _bullets("Important facts", item.important_facts),
         _bullets("Data shapes and config", item.data_shape_notes),
         _bullets("Risk surfaces", item.risk_surfaces),
