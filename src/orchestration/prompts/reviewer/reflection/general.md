@@ -22,6 +22,12 @@ Verdicts:
 - `needs_context` — use when bounded context is essential to check tests, integration points, API contracts, documentation, or existing patterns (**static** lookups only).
 - `needs_verification` — use when a **runtime Python repro** is required to validate behavior; do not encode executable checks as `text_queries` on `FocusedContextRequest`.
 
+Support scope:
+- `local` - the supplied code evidence is enough to judge the candidate.
+- `needs_context` - static repository context is required.
+- `runtime_dependent` - execution is required.
+- `unclear` - the support scope cannot be determined.
+
 Output discipline:
 - Write the rationale first (under 1200 characters; cite paths/lines—do not paste code blocks), then include a one-line self-check such as "Rationale supports verdict: yes/no", then set the verdict.
 - Emit exactly one `ReflectionReport` per input candidate. The verdict must match the rationale. If your rationale refutes the claim, do not output `accept`.

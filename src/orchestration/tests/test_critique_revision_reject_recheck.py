@@ -7,7 +7,7 @@ from src.domain.state import GraphState
 from src.orchestration.nodes.application.critique_revision import _needs_revision_candidates
 
 
-def test_needs_revision_includes_logic_reject_with_focus_and_tier1() -> None:
+def test_needs_revision_includes_source_local_logic_reject_with_focus() -> None:
     cid = "logic-4-2"
     state: GraphState = {
         "candidate_findings": [
@@ -21,6 +21,8 @@ def test_needs_revision_includes_logic_reject_with_focus_and_tier1() -> None:
                 claim_type="defect",
                 failure_mode="findall tuple indexing loses capturing groups",
                 evidence_summary="uses m[0]",
+                behavioral_symptom="data_loss",
+                root_operation="indexing",
                 recommendation="fix",
                 reflection_specialties=["logic"],
                 suspected_category="logic",
@@ -32,6 +34,7 @@ def test_needs_revision_includes_logic_reject_with_focus_and_tier1() -> None:
                 reflector_specialty="logic",
                 verdict="reject",
                 rationale="Incorrect stdlib claim.",
+                support_scope="local",
             )
         ],
         "focused_context_results": {

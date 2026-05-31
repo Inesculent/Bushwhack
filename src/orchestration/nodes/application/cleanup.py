@@ -38,7 +38,7 @@ from src.orchestration.routing.claim_tiering import (
     security_boundary_is_concrete,
 )
 from src.orchestration.routing.reflection_consolidation import (
-    TIER1_LOCALIZED_MARKERS,
+    candidate_has_local_defect_signature,
     consolidate_reflection_reports,
 )
 
@@ -708,7 +708,7 @@ def _high_risk_claim_needs_external_context(candidate: CandidateFinding) -> bool
     blob = _candidate_evidence_blob(candidate)
     if any(marker in blob for marker in _TIER2_EXTERNAL_CONTEXT_MARKERS):
         return True
-    if any(marker in blob for marker in TIER1_LOCALIZED_MARKERS):
+    if candidate_has_local_defect_signature(candidate):
         return False
     return True
 
@@ -723,14 +723,22 @@ def _candidate_requires_context(candidate: CandidateFinding) -> bool:
     return _high_risk_claim_needs_external_context(candidate)
 
 
-def _accepted_localized_defect(candidate: CandidateFinding, reports: Sequence[ReflectionReport]) -> bool:
-    """A relevant accept can settle localized defect candidates despite stale required_context text."""
-    if candidate.claim_type != "defect":
+def _accepted_local_source_supported_claim(
+    candidate: CandidateFinding,
+    reports: Sequence[ReflectionReport],
+) -> bool:
+    """A relevant accept can settle source-local claims despite stale required_context text."""
+    accepting_reports = [report for report in reports if report.verdict in {"accept", "reclassify"}]
+    if not accepting_reports:
         return False
-    if not any(report.verdict == "accept" for report in reports):
+    if any(report.support_scope == "local" for report in accepting_reports):
+        return True
+    if any(
+        report.support_scope in {"needs_context", "runtime_dependent", "unclear"}
+        for report in accepting_reports
+    ):
         return False
-    blob = _candidate_evidence_blob(candidate)
-    return any(marker in blob for marker in TIER1_LOCALIZED_MARKERS)
+    return candidate_has_local_defect_signature(candidate)
 
 
 def _revision_accepts(candidate_id: str, revisions: Mapping[str, Mapping[str, Any]]) -> bool:
@@ -808,8 +816,7 @@ def _required_context_satisfied_by_verifier(
         return False
     if candidate.claim_type != "defect":
         return False
-    blob = _candidate_evidence_blob(candidate)
-    return any(marker in blob for marker in TIER1_LOCALIZED_MARKERS)
+    return candidate_has_local_defect_signature(candidate)
 
 
 def _misroute_redirect_category(not_applicable_reports: Sequence[ReflectionReport]) -> ReviewCategory | None:
@@ -1257,7 +1264,7 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
             context_requirement_overridden = False
             if requires_context and not has_focused_context:
                 context_requirement_overridden = (
-                    _accepted_localized_defect(candidate, relevant_reports)
+                    _accepted_local_source_supported_claim(candidate, relevant_reports)
                     or revision_accepted
                     or verifier_satisfies_context
                 )

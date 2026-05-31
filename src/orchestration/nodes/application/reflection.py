@@ -44,6 +44,8 @@ _REFLECTION_OUTPUT_BUDGET = (
     "Keep each rationale under 1200 characters: cite repository paths and line numbers or symbols; "
     "do not paste code blocks (code is already in code_evidence). "
     "One short self-check line is allowed (e.g. Rationale supports verdict: yes/no). "
+    "Set support_scope to local, needs_context, runtime_dependent, or unclear based on the evidence needed "
+    "to judge this candidate. "
     "Use focused_request only when verdict is needs_context; keep reason under 300 characters. "
     "Keep warnings to a few short strings—do not put full rationales in warnings."
 )

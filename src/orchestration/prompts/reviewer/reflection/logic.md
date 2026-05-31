@@ -38,6 +38,12 @@ Verdicts:
 - `needs_context` — use when a bounded `FocusedContextRequest` would materially change the verdict through **static** repository evidence (callers, return-value expectations, cross-file guards, ripgrep `text_queries`, file slices). Do not use this verdict when the only missing proof is **runtime execution** of the changed code.
 - `needs_verification` — use when a **short runtime repro** in the verifier (mounted repo) is required to prove or disprove a concrete edge case (e.g., `None` path crash, missing return branch, structured API behavior). Leave `focused_request` null unless you also need parallel static lookup (then prefer splitting: `needs_verification` without `focused_request` for the runtime path).
 
+Support scope:
+- `local` - the supplied code evidence is enough to judge the candidate.
+- `needs_context` - static repository context is required.
+- `runtime_dependent` - execution is required.
+- `unclear` - the support scope cannot be determined.
+
 Output discipline:
 - Write the rationale first (under 1200 characters; cite paths/lines—do not paste code blocks), then include a one-line self-check such as "Rationale supports verdict: yes/no", then set the verdict.
 - Emit exactly one `ReflectionReport` per input candidate. The verdict must match the rationale. If your rationale refutes the claim, do not output `accept`.

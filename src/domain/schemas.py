@@ -186,6 +186,7 @@ ReflectionVerdict = Literal[
     "reclassify",
     "not_applicable",
 ]
+SupportScope = Literal["local", "needs_context", "runtime_dependent", "unclear"]
 ClaimType = Literal[
     "defect",
     "security_risk",
@@ -299,6 +300,13 @@ class ReflectionReport(BaseModel):
     )
     reclassified_category: Optional[ReviewCategory] = None
     focused_request: Optional[FocusedContextRequest] = None
+    support_scope: Optional[SupportScope] = Field(
+        default=None,
+        description=(
+            "Whether the supplied code evidence is enough to judge the claim locally, "
+            "or whether static context/runtime proof is needed."
+        ),
+    )
 
 
 class ReflectionBatchOutput(BaseModel):
@@ -331,6 +339,7 @@ class ReflectionOutput(BaseModel):
     rationale: str = ""
     reclassified_category: Optional[ReviewCategory] = None
     focused_request: Optional[FocusedContextRequest] = None
+    support_scope: Optional[SupportScope] = None
 
 
 class CritiqueRevisionItem(BaseModel):

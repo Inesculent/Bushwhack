@@ -24,6 +24,12 @@ Verdicts:
 - `needs_context` - use when a small, bounded `FocusedContextRequest` could prove/disprove the risk through **static** repo evidence (files, symbols, search).
 - `needs_verification` - use when only a **runtime script** can prove or disprove the claim. Leave `focused_request` null for verification-only requests.
 
+Support scope:
+- `local` - the supplied code evidence is enough to judge the candidate.
+- `needs_context` - static repository context is required.
+- `runtime_dependent` - execution is required.
+- `unclear` - the support scope cannot be determined.
+
 Output discipline:
 - Write the rationale first (under 1200 characters; cite paths/lines, do not paste code blocks), then include a one-line self-check such as "Rationale supports verdict: yes/no", then set the verdict.
 - Emit exactly one `ReflectionReport` per input candidate. The verdict must match the rationale. If your rationale refutes the claim, do not output `accept`.

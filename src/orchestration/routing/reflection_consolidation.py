@@ -1,10 +1,11 @@
-"""Consolidate duplicate reflection reports and shared Tier-1 defect markers."""
+"""Consolidate duplicate reflection reports."""
 
 from __future__ import annotations
 
 from typing import Any, Iterable, List, Sequence
 
-from src.domain.schemas import ReflectionReport
+from src.domain.schemas import CandidateFinding, ReflectionReport
+from src.orchestration.routing.finding_dedupe import candidate_with_behavioral_metadata
 
 REFLECTOR_SPECIALTIES = ("security", "logic", "performance", "general")
 
@@ -18,41 +19,26 @@ _VERDICT_PRECEDENCE: dict[str, int] = {
     "not_applicable": 4,
 }
 
-TIER1_LOCALIZED_MARKERS = (
-    "redos",
-    "backtrack",
-    "catastrophic backtracking",
-    "regex",
-    "re.search",
-    "re.match",
-    "re.sub",
-    "re.compile",
-    "re.fullmatch",
-    "re.findall",
-    "len(",
-    "nonetype",
-    "none",
-    "typeerror",
-    "attributeerror",
-    "indexerror",
-    "keyerror",
-    "zerodivision",
-    "off-by-one",
-    "group 0",
-    "capture group",
-    "division by zero",
-    "missing return",
-    "missing else",
-    "implicit none",
-    "wrong output",
-    "data loss",
-    "silent",
-    "n+1",
-    "nested loop",
-    "quadratic",
-    "o(n^2)",
-    "memory leak",
+_LOCAL_DEFECT_SIGNATURES = frozenset(
+    {
+        ("missing_return", "dispatch"),
+        ("data_loss", "indexing"),
+        ("wrong_output", "indexing"),
+        ("crash", "aggregation"),
+        ("uncaught_exception", "exception_scope"),
+        ("contract_mismatch", "contract"),
+        ("data_loss", "serialization"),
+        ("crash", "serialization"),
+    }
 )
+
+
+def candidate_has_local_defect_signature(candidate: CandidateFinding) -> bool:
+    """True when structured candidate metadata identifies a source-local defect."""
+    if candidate.claim_type != "defect":
+        return False
+    normalized = candidate_with_behavioral_metadata(candidate)
+    return (normalized.behavioral_symptom, normalized.root_operation) in _LOCAL_DEFECT_SIGNATURES
 
 
 def _coerce_report(item: Any) -> ReflectionReport | None:
@@ -110,11 +96,6 @@ def dedupe_batch_reports_per_candidate(
             order.append(cid)
         by_id[cid] = report
     return [by_id[cid] for cid in order], warnings
-
-
-def candidate_has_tier1_localized_markers(*text_blobs: str) -> bool:
-    blob = " ".join(t for t in text_blobs if t).lower()
-    return any(marker in blob for marker in TIER1_LOCALIZED_MARKERS)
 
 
 def coerce_reports_list(reports: Iterable[Any]) -> List[ReflectionReport]:

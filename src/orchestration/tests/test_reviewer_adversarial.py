@@ -589,8 +589,8 @@ def test_adversarial_cleanup_ignores_off_domain_reject() -> None:
     }
 
 
-def test_adversarial_cleanup_promotes_tier1_security_without_focused_context() -> None:
-    """Localized ReDoS-style claims must not be dropped solely for missing repo-wide context."""
+def test_adversarial_cleanup_promotes_source_local_security_without_focused_context() -> None:
+    """Source-local security claims are settled by reflector support scope."""
     node = make_adversarial_cleanup_node()
     cand = CandidateFinding(
         candidate_id="review-security-redos",
@@ -611,7 +611,8 @@ def test_adversarial_cleanup_promotes_tier1_security_without_focused_context() -
             candidate_id=cand.candidate_id,
             reflector_specialty="security",
             verdict="accept",
-            rationale="Tier 1 localized ReDoS risk.",
+            rationale="The changed code itself shows the resource-amplifying path.",
+            support_scope="local",
         )
     ]
     out = node(
@@ -639,6 +640,8 @@ def test_adversarial_cleanup_promotes_verified_with_required_context_localized_r
         claim_type="defect",
         failure_mode="RegexExtract 'All Groups' skips group_index=0 (full match) when match.groups() is empty.",
         evidence_summary="Checks match.groups() before group_index; group 0 never returned.",
+        behavioral_symptom="data_loss",
+        root_operation="indexing",
         required_context=[
             "Does group_index include group 0 for full match?",
             "Are there tests for group_index=0 in 'All Groups' mode?",
@@ -735,7 +738,7 @@ def test_adversarial_cleanup_promotes_needs_verification_with_runtime_verified()
 
 
 def test_adversarial_cleanup_drops_tier2_security_without_focused_hits() -> None:
-    """Architectural security claims still require gathered context when not Tier 1 localized."""
+    """Architectural security claims still require gathered context when not source-local."""
     node = make_adversarial_cleanup_node()
     cand = CandidateFinding(
         candidate_id="review-security-tier2",
@@ -788,6 +791,8 @@ def test_adversarial_cleanup_promotes_accepted_localized_defect_with_stale_conte
         claim_type="defect",
         failure_mode="None input raises TypeError when sliced.",
         evidence_summary="The changed line slices the input directly with no guard.",
+        behavioral_symptom="crash",
+        root_operation="indexing",
         required_context=["Check whether upstream framework guarantees non-None strings."],
         suspected_category="logic",
         reflection_specialties=["logic"],
@@ -797,7 +802,8 @@ def test_adversarial_cleanup_promotes_accepted_localized_defect_with_stale_conte
         candidate_id=cand.candidate_id,
         reflector_specialty="logic",
         verdict="accept",
-        rationale="This is a localized TypeError in the changed code path.",
+        rationale="The changed code path itself contains the failure.",
+        support_scope="local",
     )
 
     out = node(

@@ -30,7 +30,7 @@ from src.orchestration.context.context_packets import (
 )
 from src.orchestration.prompts.renderer import render_reviewer_prompt
 from src.orchestration.routing.reflection_consolidation import (
-    candidate_has_tier1_localized_markers,
+    candidate_has_local_defect_signature,
     consolidate_reflection_reports,
 )
 from src.orchestration.routing.claim_tiering import classify_claim_tier, review_kb_context_for_candidate
@@ -67,7 +67,7 @@ def _coerce_focused_result(raw: Any) -> FocusedContextResult | None:
 
 
 def _reject_recheck_revision_candidates(state: GraphState) -> Set[str]:
-    """Tier-1 localized claims rejected after focused context was gathered."""
+    """Source-local claims rejected after focused context was gathered."""
     out: Set[str] = set()
     reports = consolidate_reflection_reports(state.get("reflection_reports", []) or [])
     by_id = _all_candidates_by_id(state)
@@ -81,11 +81,8 @@ def _reject_recheck_revision_candidates(state: GraphState) -> Set[str]:
         cand = by_id.get(report.candidate_id)
         if cand is None:
             continue
-        if candidate_has_tier1_localized_markers(
-            cand.failure_mode,
-            cand.content,
-            cand.evidence_summary,
-            report.rationale,
+        if report.support_scope == "local" or (
+            report.support_scope is None and candidate_has_local_defect_signature(cand)
         ):
             out.add(report.candidate_id)
     return out
