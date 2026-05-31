@@ -783,14 +783,21 @@ class Settings(BaseSettings):
 			"review_neighborhood distills review boundary packs; full opts into whole-repo distillation."
 		),
 	)
+	repository_kb_intelligence_profile: Literal["lean", "standard", "deep", "offline"] = Field(
+		default="standard",
+		description=(
+			"Soft effort profile for adaptive Repository KB intelligence. Profiles guide evidence selection "
+			"and prompt expansion; hard ceilings remain safety controls."
+		),
+	)
 	repository_kb_distillation_budget_mode: Literal["adaptive", "unbounded"] = Field(
 		default="adaptive",
 		description="Budget strategy for Repository KB distillation. Adaptive may defer work instead of failing.",
 	)
 	repository_kb_distillation_hard_token_ceiling: Optional[int] = Field(
-		default=200_000,
+		default=None,
 		ge=1,
-		description="Optional hard token ceiling for adaptive Repository KB distillation.",
+		description="Optional safety ceiling for adaptive Repository KB distillation.",
 	)
 	repository_kb_distillation_review_neighborhood_max_communities: int = Field(
 		default=4,

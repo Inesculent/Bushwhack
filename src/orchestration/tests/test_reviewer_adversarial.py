@@ -6,7 +6,9 @@ import pytest
 
 from src.config import Settings, get_settings
 from src.domain.schemas import (
+    AuditCoverageRecord,
     CandidateFinding,
+    CritiquerOutput,
     CritiqueRevisionDigest,
     FocusedContextRequest,
     FocusedContextResult,
@@ -18,6 +20,7 @@ from src.domain.schemas import (
 )
 from src.domain.state import merge_graph_metadata
 from src.orchestration.nodes.application.cleanup import make_adversarial_cleanup_node
+from src.orchestration.nodes.application.critiquer import _needs_orthogonal_recall
 from src.orchestration.nodes.application.reflection import make_adversarial_reflection_node
 
 
@@ -27,6 +30,109 @@ def test_merge_graph_metadata_deep_merges_parallel_critiquer_shapes() -> None:
     merged = merge_graph_metadata(a, b)
     assert merged["general_critiquer"]["by_task"]["t1"]["summary"] == "s1"
     assert merged["general_critiquer"]["by_task"]["t2"]["summary"] == "s2"
+
+
+def _recall_task(
+    *,
+    title: str = "Diff-local correctness",
+    description: str = "Broad functional review across the changed handler.",
+    specialty: str = "logic",
+) -> ReviewTask:
+    return ReviewTask(
+        id="review-logic",
+        title=title,
+        description=description,
+        target_files=["src/app.py"],
+        specialty=specialty,  # type: ignore[arg-type]
+    )
+
+
+def _recall_candidate(
+    *,
+    claim_type: str = "defect",
+    content: str = "The handler lacks a terminal else for an unexpected mode.",
+    failure_mode: str = "Missing return for dispatch fall-through.",
+    evidence_summary: str = "The branch chain has no fallback.",
+    behavioral_symptom: str = "missing_return",
+    root_operation: str = "dispatch",
+) -> CandidateFinding:
+    return CandidateFinding(
+        candidate_id="review-logic:c1",
+        patch_task_id="review-logic",
+        file_path="src/app.py",
+        line_start=1,
+        line_end=4,
+        content=content,
+        claim_type=claim_type,  # type: ignore[arg-type]
+        failure_mode=failure_mode,
+        evidence_summary=evidence_summary,
+        recommendation="Check the changed contract and add the missing behavior if confirmed.",
+        suspected_category="logic",
+        reflection_specialties=["logic"],
+        behavioral_symptom=behavioral_symptom,  # type: ignore[arg-type]
+        root_operation=root_operation,  # type: ignore[arg-type]
+    )
+
+
+def test_broad_branch_only_critiquer_response_triggers_orthogonal_recall() -> None:
+    response = CritiquerOutput(candidates=[_recall_candidate()])
+
+    assert _needs_orthogonal_recall(_recall_task(), response) is True
+
+
+def test_narrow_branch_or_structured_task_does_not_trigger_orthogonal_recall() -> None:
+    branch_task = _recall_task(
+        title="Branch exhaustiveness",
+        description="Audit terminal else handling only.",
+    )
+    structured_task = _recall_task(
+        title="Structured extraction",
+        description="Type-tracing structured result slots only.",
+    )
+    response = CritiquerOutput(candidates=[_recall_candidate()])
+
+    assert _needs_orthogonal_recall(branch_task, response) is False
+    assert _needs_orthogonal_recall(structured_task, response) is False
+
+
+def test_broad_diverse_critiquer_response_does_not_trigger_orthogonal_recall() -> None:
+    response = CritiquerOutput(
+        candidates=[
+            _recall_candidate(
+                content="The changed signature no longer matches a call site.",
+                failure_mode="API signature mismatch at an existing caller.",
+                evidence_summary="The task evidence shows the signature and caller disagree.",
+                behavioral_symptom="contract_mismatch",
+                root_operation="contract",
+            )
+        ],
+    )
+
+    assert _needs_orthogonal_recall(_recall_task(), response) is False
+
+
+def test_sparse_response_with_weak_audit_triggers_orthogonal_recall() -> None:
+    weak = CritiquerOutput(
+        audit_coverage=[
+            AuditCoverageRecord(
+                surface="handle",
+                dimensions=["branch exhaustiveness"],
+                notes="Checked branch fall-through only.",
+            )
+        ]
+    )
+    diverse = CritiquerOutput(
+        audit_coverage=[
+            AuditCoverageRecord(
+                surface="handle",
+                dimensions=["api/signature compatibility"],
+                notes="Checked call-site contract.",
+            )
+        ]
+    )
+
+    assert _needs_orthogonal_recall(_recall_task(), weak) is True
+    assert _needs_orthogonal_recall(_recall_task(), diverse) is False
 
 
 def test_critique_subgraph_parent_updates_strips_last_value_channels() -> None:

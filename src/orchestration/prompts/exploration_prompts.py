@@ -127,9 +127,20 @@ def render_semantic_merge_from_kb_prompt(
     lines = []
     budget = max_chars or 120000
     for record in summaries:
-        source_ids = ", ".join(str(x) for x in record.metadata.get("source_record_ids") or [])
+        meta = record.metadata
+        details = [
+            f"scope={meta.get('summary_scope') or 'unknown'}",
+            f"confidence={record.confidence}",
+        ]
+        for key in ("boundary_scope", "community_id", "file_path", "fan_in", "fan_out"):
+            value = meta.get(key)
+            if value not in (None, "", []):
+                details.append(f"{key}={value}")
+        deps = meta.get("dependency_community_ids")
+        if isinstance(deps, list) and deps:
+            details.append("deps=" + ",".join(str(x) for x in deps[:8]))
         line = (
-            f"- {record.id} ({record.confidence}; sources: {source_ids or 'none'}): "
+            f"- {record.id} ({'; '.join(details)}): "
             f"{record.summary[:500]}"
         )
         if len("\n".join([*lines, line])) > budget:

@@ -23,10 +23,13 @@ Why this works: one downstream specialist evaluates each candidate; the graph do
 Rules:
 - **Behavioral mandate (if present):** Bullets under "Mental model excerpt" are investigation hypotheses and contract context only, not defects unless the diff or code evidence supports them.
 - Each candidate must cite evidence from the diff or the provided context; do not invent APIs, files, or behavior.
-- **Concrete changed-code regressions only:** Emit a candidate only when the PR newly causes or exposes a concrete failure path. Do not rely on downstream reflection or the verifier to clean up generic guard, validation, missing-test, or missing-else speculation.
+- **Concrete changed-code regressions and leads only:** Emit proven findings when the PR newly causes or exposes a concrete failure path. You may also emit bounded drill-down leads as `claim_type: uncertain` when the task and evidence show a plausible failure hypothesis but one focused static lookup is needed before promotion. Do not emit generic guard, validation, missing-test, or missing-else speculation.
 - When the assigned task names one or a few in-scope classes, finish reviewing **that** scope before closing the task.
 - If you emit a candidate for one failure mode in a handler, **continue** checking the same handler for **orthogonal** issues before you stop. Do not chase volume with duplicate hypotheses about the same root bug; do not abandon the handler after the first severe finding.
-- **High-signal review dimensions:** Follow the assigned task. Functional correctness comes first: changed branch order, return contracts, slot/index handling, null/panic paths, exact output/protocol fidelity, removed imports/includes still used, overwritten state/cache, concurrency/shared-state hazards, resource growth, security/input-boundary failures, and explicit API or repository-convention regressions.
+- **Lead generation pass:** Before writing candidates for a broad task, scan for diverse visible lead families: control-flow/return, data-shape/indexing, API/signature, dependency/import, state/cache/lifecycle, protocol/output, concurrency/resource, security/input boundary, user-facing/docs, and tests for changed behavior. Prefer a small diverse lead set over many variants of the same family.
+- **Proven findings vs drill-down leads:** Use `defect`, `security_risk`, `performance_regression`, or `missing_test` for locally supported issues. Use `uncertain` only for a concrete failure hypothesis with low-to-medium confidence, bounded `required_context`, and an `initial_focus_request` when static repository context can decide it.
+- **Diversity before depth on broad tasks:** Do not stop after a branch/return/structured-result candidate if other task-relevant families have visible evidence. Keep narrow branch-specific or structured-specific tasks narrow.
+- **High-signal review dimensions:** Follow the assigned task. Functional correctness includes changed branch order, return contracts, slot/index handling, null/panic paths, exact output/protocol fidelity, removed imports/includes still used, overwritten state/cache, concurrency/shared-state hazards, resource growth, security/input-boundary failures, and explicit API or repository-convention regressions.
 - **Evidence-gated scope:** Do not turn the broad dimension list into a generic audit. Cover dimensions that are both relevant to the task and visible in the diff, code evidence, Review KB, or focused context. If a task is narrow, stay narrow.
 - **Audit coverage:** Populate `audit_coverage` with non-promotable records for the surfaces you reviewed and the abstract dimensions considered. Use the task-relevant dimension names when possible (for example, `api/signature compatibility`, `dependency/import availability`, `nullability/panic safety`, `state/cache lifecycle`, `protocol/output fidelity`, `concurrency/shared-state safety`, `security/input boundary`, `repository convention contract`, `public/user contract`, or `maintainability contract`). Do not put defects in `audit_coverage`; use `candidates` for actionable findings.
 - **Declared inputs:** Follow the global **Declared input contracts** rule. Do **not** emit None/null/absent-input defects for parameters that are required and non-optional in the framework's declared input schema unless the diff shows optional/nullable typing or handling that implies such values can arrive. Do not use `required_context` solely to ask whether upstream "might pass None."
@@ -42,14 +45,14 @@ Rules:
   - `performance_regression`: changed behavior can become slower, more memory-intensive, or less scalable.
   - `missing_test`: important untested changed behavior with a specific failure mode caused or newly exposed by this PR.
   - `positive_observation`: use only when explicitly asked; these will not be promoted.
-  - `uncertain`: evidence is too weak; these will not be promoted unless focused context resolves them.
+  - `uncertain`: a concrete drill-down lead whose failure hypothesis is plausible but under-proven; include `required_context`, lower confidence, and a bounded `initial_focus_request` when static context can decide it.
 - Every promotable candidate must include `failure_mode`, `evidence_summary`, and `recommendation`.
 - Use `required_context` for facts that must be checked before promotion (callers, authorization checks, escaping, existing service contracts, tests, config limits, or exact source/AST evidence behind a KB hint).
 - Use `suspected_category` to hint security / logic / performance / general / other (aligned with your single `reflection_specialties` choice).
 - **Aggregation and structured returns:** When the diff builds lists then joins/serializes (`join`, `", ".join`, formatters), check for `None` elements, wrong index into tuples/records/rows, and mismatch with the entry point's return contract. When indexing into structured API results (rows, parsed nodes, result objects), state whether the bug is **wrong output/data loss** vs **crash** in `failure_mode`; do not over-claim exceptions the diff does not support.
-- For each **`elif` chain** on a discriminant (`mode`, `op`, `kind`, ...), run the **branch audit** below before any missing-return candidate.
+- For each **`elif` chain** on a discriminant (`mode`, `op`, `kind`, ...), use the branch audit below before any missing-return candidate. This is one correctness family, not the default focus for unrelated broad tasks.
 
-### Branch Audit
+### Branch Audit (When Branch-Specific)
 
 Before claiming a **named branch** lacks a `return`, read `code_evidence` and record one line in `evidence_summary` per branch you can see:
 

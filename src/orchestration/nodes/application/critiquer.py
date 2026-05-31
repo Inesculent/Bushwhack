@@ -139,10 +139,12 @@ _COMPACT_OUTPUT_APPENDIX = (
 )
 _ORTHOGONAL_RECALL_APPENDIX = (
     "\n\n## TARGETED RECALL PASS (bounded)\n"
-    "Return only missed concrete changed-code regressions. Do not add generic validation, "
-    "missing-test, missing-else, or guard suggestions unless the PR newly causes a specific "
-    "crash, wrong output, data loss, security boundary failure, or contract regression. "
-    "Return at most 2 additional candidates and include audit_coverage."
+    "The primary pass appears sparse or dominated by branch/return/structured-result leads. "
+    "Return at most 2 non-duplicate leads from other task-relevant families, such as API/signature, "
+    "dependency/import, state/cache, protocol/output, concurrency/resource, security/input boundary, "
+    "user-facing behavior, or tests for changed behavior. Use claim_type='uncertain' with bounded "
+    "required_context and initial_focus_requests when static context must decide the lead. "
+    "Do not add generic validation, missing-test, missing-else, or guard suggestions."
 )
 def _is_length_finish_error(exc: Exception) -> bool:
     if "LengthFinish" in exc.__class__.__name__:
@@ -191,8 +193,127 @@ def _invoke_critiquer_llm(
     return traced.result, traced.tokens, traced.trace_records
 
 
-def _needs_orthogonal_recall(response: CritiquerOutput) -> bool:
+_BRANCH_DOMINATED_DIMENSIONS = {
+    "branch exhaustiveness",
+    "contract completeness",
+    "boundary/index handling",
+    "structured data preservation",
+    "aggregation/serialization safety",
+}
+_BRANCH_DOMINATED_ROOTS = {"dispatch", "indexing", "aggregation"}
+_BRANCH_DOMINATED_SYMPTOMS = {"missing_return", "data_loss"}
+_NARROW_RECALL_TASK_MARKERS = (
+    "branch exhaustiveness",
+    "terminal else",
+    "structured extraction",
+    "structured result",
+    "type-tracing",
+)
+_BROAD_RECALL_TASK_MARKERS = (
+    "diff-local",
+    "general correctness",
+    "functional",
+    "integration",
+    "security",
+    "performance",
+    "general review",
+    "api",
+    "state",
+    "resource",
+    "boundary",
+    "contract",
+)
+_NON_BRANCH_LEAD_MARKERS = (
+    "api",
+    "signature",
+    "call site",
+    "call-site",
+    "type mismatch",
+    "import",
+    "include",
+    "dependency",
+    "undefined",
+    "not defined",
+    "cache",
+    "state",
+    "lifecycle",
+    "protocol",
+    "output",
+    "format",
+    "header",
+    "status",
+    "thread",
+    "lock",
+    "mutex",
+    "race",
+    "async",
+    "auth",
+    "permission",
+    "sanitize",
+    "escape",
+    "injection",
+    "user-facing",
+    "tooltip",
+    "docs",
+    "test",
+)
+
+
+def _task_text(task: ReviewTask) -> str:
+    return f"{task.id} {task.title} {task.description}".lower()
+
+
+def _is_intentionally_narrow_recall_task(task: ReviewTask) -> bool:
+    text = _task_text(task)
+    if "review-logic-structured-extraction" in text:
+        return True
+    if not any(marker in text for marker in _NARROW_RECALL_TASK_MARKERS):
+        return False
+    if any(marker in text for marker in _BROAD_RECALL_TASK_MARKERS):
+        return False
+    return True
+
+
+def _candidate_has_non_branch_lead(candidate: CandidateFinding) -> bool:
+    blob = " ".join(
+        [
+            candidate.content,
+            candidate.failure_mode,
+            candidate.evidence_summary,
+            candidate.recommendation or "",
+            " ".join(candidate.required_context),
+        ]
+    ).lower()
+    if candidate.claim_type in {"security_risk", "performance_regression", "missing_test"}:
+        return True
+    if any(marker in blob for marker in _NON_BRANCH_LEAD_MARKERS):
+        return True
+    symptom = (candidate.behavioral_symptom or "").strip().lower()
+    root = (candidate.root_operation or "").strip().lower()
+    if root or symptom:
+        return root not in _BRANCH_DOMINATED_ROOTS and symptom not in _BRANCH_DOMINATED_SYMPTOMS
     return False
+
+
+def _audit_has_non_branch_dimension(response: CritiquerOutput) -> bool:
+    for row in response.audit_coverage:
+        for raw in row.dimensions:
+            dim = str(raw).strip().lower()
+            if dim and dim not in _BRANCH_DOMINATED_DIMENSIONS:
+                return True
+    return False
+
+
+def _needs_orthogonal_recall(task: ReviewTask, response: CritiquerOutput) -> bool:
+    if _is_intentionally_narrow_recall_task(task):
+        return False
+    if not response.candidates:
+        return not _audit_has_non_branch_dimension(response)
+    if any(_candidate_has_non_branch_lead(candidate) for candidate in response.candidates):
+        return False
+    if _audit_has_non_branch_dimension(response):
+        return False
+    return len(response.candidates) <= 2
 
 
 def _merge_recall_response(
@@ -321,7 +442,7 @@ def make_general_critiquer_node(
                             raise parse_exc
                     else:
                         raise
-                if _needs_orthogonal_recall(response):
+                if _needs_orthogonal_recall(task, response):
                     try:
                         recall_result, recall_tokens, call_trace = _invoke_critiquer_llm(
                             state=state,

@@ -1,5 +1,6 @@
 import re
 from pathlib import Path
+from typing import List
 
 from src.config import Settings
 from src.domain.schemas import (
@@ -29,7 +30,7 @@ from src.infrastructure.review_kb import (
     query_loaded_review_kb,
 )
 from src.orchestration.nodes.exploration.repository_kb_distillation import distill_repository_kb
-from src.orchestration.nodes.exploration.semantic_merge import make_semantic_merge_node
+from src.orchestration.nodes.exploration.semantic_merge import _semantic_merge_packet, make_semantic_merge_node
 from src.infrastructure.snapshot_writer import SnapshotWriter
 from src.infrastructure.structural_graph import StructuralGraphBuilder
 from src.tools.review_kb_tools import query_repository_kb, query_review_kb
@@ -924,6 +925,179 @@ def test_semantic_merge_deterministic_summary_without_llm(tmp_path: Path) -> Non
     assert "Static Topology And Coverage" in out["global_summary"]
     assert "Semantic coverage" in out["global_summary"]
     assert "Global synthesis failed" not in out["global_summary"]
+
+
+def test_semantic_merge_default_uses_adaptive_kb_orientation(monkeypatch, tmp_path: Path) -> None:
+    payload, topo = _fixture_graph(tmp_path)
+    bundle = build_review_kb(
+        run_id="r1",
+        repo_path=str(tmp_path),
+        graph_payload=payload,
+        topology=topo,
+        changed_file_paths={"comfy_extras/nodes_train.py"},
+    )
+    calls: List[str] = []
+
+    class FakeLlm:
+        def invoke(self, prompt: str):
+            calls.append(prompt)
+            return GlobalSemanticSynthesisOutput(
+                global_summary="LoRA training orientation: contracts cross training nodes and adapter loading."
+            )
+
+    monkeypatch.setattr(
+        "src.orchestration.nodes.exploration.semantic_merge.Models.synthesizer",
+        lambda *_args, **_kwargs: FakeLlm(),
+    )
+    node = make_semantic_merge_node(settings=Settings(redis_enabled=False), use_llm=True)
+
+    out = node(
+        {
+            "run_id": "r1",
+            "repo_path": str(tmp_path),
+            "structural_graph_node_link": payload,
+            "structural_topology": topo,
+            "community_summaries": compatibility_summaries_from_kb(bundle),
+            "repository_kb_summary_records": [r.model_dump(mode="json") for r in bundle.summaries],
+        }
+    )
+
+    assert len(calls) == 1
+    assert "Boundary map" in calls[0]
+    assert "sources:" not in calls[0]
+    assert "LoRA training orientation" in out["global_summary"]
+    intelligence = out["metadata"]["semantic_phase2"]["global_summary_intelligence"]
+    assert intelligence["profile"] == "standard"
+    assert intelligence["selected_scope_counts"]["boundary"] >= 1
+    assert out["metadata"]["semantic_phase2"]["global_summary_llm_status"] == "ok"
+
+
+def test_semantic_merge_packet_prioritizes_boundaries_and_excludes_shards(tmp_path: Path) -> None:
+    payload, topo = _fixture_graph(tmp_path)
+    bundle = build_review_kb(
+        run_id="r1",
+        repo_path=str(tmp_path),
+        graph_payload=payload,
+        topology=topo,
+        changed_file_paths={"comfy_extras/nodes_train.py"},
+    )
+    community = [r for r in bundle.summaries if r.metadata.get("summary_scope") == "community"][0]
+    shard = community.model_copy(
+        update={
+            "id": "summary:community:0:shard:contracts_facts:0",
+            "summary": "Shard-level contract detail should stay out of default orientation.",
+            "metadata": {
+                **community.metadata,
+                "summary_scope": "community_shard",
+                "lane": "contracts_facts",
+            },
+        }
+    )
+
+    selected, diagnostics = _semantic_merge_packet(
+        records=[*bundle.summaries, shard],
+        settings=Settings(redis_enabled=False),
+    )
+
+    selected_ids = [record.id for record in selected]
+    boundary_index = next(i for i, record in enumerate(selected) if record.metadata.get("summary_scope") == "boundary")
+    community_index = next(i for i, record in enumerate(selected) if record.metadata.get("summary_scope") == "community")
+    assert boundary_index < community_index
+    assert shard.id not in selected_ids
+    assert diagnostics["include_shards"] is False
+    assert diagnostics["omitted_scope_counts"].get("community_shard", 0) >= 1
+
+
+def test_semantic_merge_full_mode_can_include_shard_orientation(tmp_path: Path) -> None:
+    payload, topo = _fixture_graph(tmp_path)
+    bundle = build_review_kb(
+        run_id="r1",
+        repo_path=str(tmp_path),
+        graph_payload=payload,
+        topology=topo,
+        changed_file_paths={"comfy_extras/nodes_train.py"},
+    )
+    community = [r for r in bundle.summaries if r.metadata.get("summary_scope") == "community"][0]
+    shard = community.model_copy(
+        update={
+            "id": "summary:community:0:shard:contracts_facts:0",
+            "summary": "Shard-level contract detail is allowed in full mode.",
+            "metadata": {
+                **community.metadata,
+                "summary_scope": "community_shard",
+                "lane": "contracts_facts",
+            },
+        }
+    )
+
+    selected, diagnostics = _semantic_merge_packet(
+        records=[*bundle.summaries, shard],
+        settings=Settings(redis_enabled=False, repository_kb_distillation_mode="full"),
+    )
+
+    assert shard.id in {record.id for record in selected}
+    assert diagnostics["include_shards"] is True
+
+
+def test_semantic_merge_deep_profile_expands_boundary_orientation(tmp_path: Path) -> None:
+    payload, topo = _massive_fixture_graph(tmp_path, file_count=18)
+    changed_paths = {f"pkg/mod_{idx}.py" for idx in range(18)}
+    bundle = build_review_kb(
+        run_id="r1",
+        repo_path=str(tmp_path),
+        graph_payload=payload,
+        topology=topo,
+        changed_file_paths=changed_paths,
+    )
+
+    _lean_selected, lean_diagnostics = _semantic_merge_packet(
+        records=bundle.summaries,
+        settings=Settings(redis_enabled=False, repository_kb_intelligence_profile="lean"),
+    )
+    _deep_selected, deep_diagnostics = _semantic_merge_packet(
+        records=bundle.summaries,
+        settings=Settings(redis_enabled=False, repository_kb_intelligence_profile="deep"),
+    )
+
+    assert deep_diagnostics["selected_scope_counts"]["boundary"] > lean_diagnostics["selected_scope_counts"]["boundary"]
+    assert deep_diagnostics["target_prompt_chars"] > lean_diagnostics["target_prompt_chars"]
+
+
+def test_semantic_merge_repository_kb_off_disables_llm(monkeypatch, tmp_path: Path) -> None:
+    payload, topo = _fixture_graph(tmp_path)
+    bundle = build_review_kb(
+        run_id="r1",
+        repo_path=str(tmp_path),
+        graph_payload=payload,
+        topology=topo,
+        changed_file_paths={"comfy_extras/nodes_train.py"},
+    )
+
+    def fail_synthesizer(*_args, **_kwargs):
+        raise AssertionError("repository_kb_distillation_mode=off should disable semantic merge LLM")
+
+    monkeypatch.setattr(
+        "src.orchestration.nodes.exploration.semantic_merge.Models.synthesizer",
+        fail_synthesizer,
+    )
+    node = make_semantic_merge_node(
+        settings=Settings(redis_enabled=False, repository_kb_distillation_mode="off"),
+        use_llm=True,
+    )
+
+    out = node(
+        {
+            "run_id": "r1",
+            "repo_path": str(tmp_path),
+            "structural_graph_node_link": payload,
+            "structural_topology": topo,
+            "community_summaries": compatibility_summaries_from_kb(bundle),
+            "repository_kb_summary_records": [r.model_dump(mode="json") for r in bundle.summaries],
+        }
+    )
+
+    assert "Repository Understanding" in out["global_summary"]
+    assert out["metadata"]["semantic_phase2"]["global_summary_llm_status"] == "disabled:repository_kb_off"
 
 
 def test_semantic_merge_reuses_existing_repo_understanding_without_llm(monkeypatch, tmp_path: Path) -> None:

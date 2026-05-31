@@ -20,15 +20,19 @@ Only treat missing null/optional handling as a finding when:
 
 Do not spend `required_context` or reflection budget hunting upstream "might pass None" unless the declared contract or diff evidence shows optional/nullable inputs.
 
-## In-function contracts (branch and return correctness)
+## Changed behavior contracts
 
-Declared schemas do **not** prove exhaustiveness inside the changed function. Missing **terminal `else`** (fall-through), implicit `None` when the entry point's return contract promises a concrete type, wrong slot from structured values (match tuples, DB rows, parsed JSON, API message fields), and `None` elements breaking aggregations (`join`, serializers) are valid defects when evidenced in the diff—even if an enum/COMBO lists allowed input values. Do not reject those solely because a framework UI restricts inputs; use `needs_verification` when exploitability depends on undocumented bypass paths only.
+Declared schemas and happy-path examples do **not** prove that changed behavior preserves every contract. Treat these contract families as peers, and follow the assigned task plus supplied evidence rather than defaulting to only branch/return checks:
 
-When auditing `if`/`elif` chains, distinguish **per-branch returns** (each branch must be checked in evidence) from **missing fall-through `else`**. Do not claim a branch lacks a `return` that is already shown in file evidence.
+- **Control-flow and return contracts:** missing terminal fall-through handling, implicit `None`/nil/null where a concrete result is promised, wrong branch ordering, or exception scope changes.
+- **Data-shape contracts:** wrong index/slot from structured values such as match tuples, DB rows, parsed JSON, API message fields, or aggregations that introduce invalid elements for `join`, serializers, or formatters.
+- **API and dependency contracts:** changed signatures, call-site type mismatches, removed imports/includes still used, missing symbols, changed public interfaces, or framework syntax/convention mismatches.
+- **State/resource contracts:** cache invalidation, lifecycle/cleanup, overwritten accumulators, concurrency/shared-state hazards, resource amplification, or repeated expensive work introduced by the change.
+- **Boundary and user-facing contracts:** authorization/escaping/validation boundaries, path/file/network/deserialization inputs, exact protocol output, status/header/message text, CLI/API responses, docs/tooltips that describe behavior, and meaningful tests for changed behavior.
 
-Examples of structured-result bugs (non-exhaustive): tuple/list indexing, row slots, JSON/node fields; apply the same branch/aggregation rules to any technology.
+Branch and return bugs remain valid when evidenced, but they are one correctness family among several. When auditing `if`/`elif` chains, distinguish **per-branch returns** (each branch must be checked in evidence) from **missing fall-through `else`**. Do not claim a branch lacks a `return` that is already shown in file evidence.
 
-**Important:** In-function contract rules do **not** permit findings that only add None/null guards on **required, non-optional** upstream parameters. The upstream declared-input rule still applies to parameter presence and type at the entry boundary.
+**Important:** Changed behavior contract rules do **not** permit findings that only add None/null guards on **required, non-optional** upstream parameters. The upstream declared-input rule still applies to parameter presence and type at the entry boundary.
 
 ## Output quality
 

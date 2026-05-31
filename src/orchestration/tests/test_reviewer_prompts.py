@@ -35,7 +35,11 @@ def test_global_prompt_declared_input_contracts() -> None:
     assert "Declared input contracts" in text
     assert "required and non-optional" in text
     assert "Optional" in text or "optional" in text
-    assert "In-function contracts" in text
+    assert "Changed behavior contracts" in text
+    assert "API and dependency contracts" in text
+    assert "State/resource contracts" in text
+    assert "Branch and return bugs remain valid" in text
+    assert "## In-function contracts" not in text
 
 
 def test_planner_prompt_requires_diff_local_correctness_baseline() -> None:
@@ -49,7 +53,7 @@ def test_critiquer_prompt_contains_routing_hardcap() -> None:
     assert "Single-Specialty Hardcap" in text
     assert "Hierarchy of Needs" in text
     assert "Aggregation and structured returns" in text
-    assert "in-function contracts" in text.lower()
+    assert "Changed behavior contracts" in load_reviewer_prompt("global.md")
     assert "Review KB context" in text
 
 
@@ -57,11 +61,23 @@ def test_critiquer_prompt_uses_evidence_gated_broad_dimensions() -> None:
     text = load_reviewer_prompt("critiquer.md")
     assert "Evidence-gated scope" in text
     assert "Do not turn the broad dimension list into a generic audit" in text
+    assert "Lead generation pass" in text
+    assert "claim_type: uncertain" in text
+    assert "Diversity before depth on broad tasks" in text
     assert "api/signature compatibility" in text
     assert "dependency/import availability" in text
     assert "state/cache lifecycle" in text
     assert "concurrency/shared-state safety" in text
     assert "security/input boundary" in text
+
+
+def test_logic_reflection_prompt_cuts_down_broad_uncertain_leads() -> None:
+    text = load_reviewer_prompt("reflection/logic.md")
+    assert "Changed behavior contracts" in text
+    assert "Branch/fall-through is one correctness family" in text
+    assert "Cut down lead noise" in text
+    assert "promising `uncertain` leads" in text
+    assert "reject` generic speculation" in text
 
 
 def test_active_reviewer_prompts_expose_repository_kb_authority() -> None:
