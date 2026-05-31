@@ -18,16 +18,12 @@ from src.domain.state import GraphState
 from src.orchestration.routing.misroute_recovery import parse_misroute_redirect_category
 from src.orchestration.nodes.verifier.failure_class import verifier_refutation_applies
 from src.orchestration.routing.finding_dedupe import (
-    candidate_finding_signature,
     candidate_with_behavioral_metadata,
     changed_files_from_diff,
     dedupe_candidates_by_signature,
     dedupe_review_findings_by_signature,
-    defect_family,
     ensure_unique_candidate_ids,
     ensure_unique_finding_ids,
-    infer_behavioral_symptom,
-    infer_root_operation,
     is_required_upstream_none_guard_claim,
     is_resolution_only_finding,
     recommendation_cites_foreign_class,
@@ -254,10 +250,7 @@ def _resource_oriented_candidate(candidate: CandidateFinding) -> bool:
 
 
 def _resource_oriented_finding(finding: ReviewFinding) -> bool:
-    if finding.root_operation == "resource_use" or finding.behavioral_symptom == "unbounded_work":
-        return True
-    blob = f"{finding.content or ''}\n{finding.recommendation or ''}"
-    return infer_root_operation(blob) == "resource_use" or infer_behavioral_symptom(blob) == "unbounded_work"
+    return finding.root_operation == "resource_use" or finding.behavioral_symptom == "unbounded_work"
 
 
 def _extraction_modes(text: str) -> set[str]:
@@ -278,34 +271,13 @@ def _reflection_family_or_surface_conflict(
     candidate_blob = " ".join(
         [candidate.content, candidate.failure_mode, candidate.evidence_summary]
     )
-    candidate_family = defect_family(candidate.failure_mode, candidate.evidence_summary, candidate.content)
     candidate_modes = _extraction_modes(candidate_blob)
     for report in accepts:
         rationale = report.rationale or ""
-        rationale_family = defect_family(rationale)
-        if (
-            candidate_family != "general"
-            and rationale_family != "general"
-            and rationale_family != candidate_family
-        ):
-            return True
         rationale_modes = _extraction_modes(rationale)
         if candidate_modes and rationale_modes and candidate_modes.isdisjoint(rationale_modes):
             return True
     return False
-
-
-def _family_matches_candidate(candidate: CandidateFinding, text: str) -> bool:
-    if not text.strip():
-        return True
-    candidate_family = defect_family(
-        candidate.failure_mode,
-        candidate.evidence_summary,
-        candidate.content,
-        candidate.recommendation or "",
-    )
-    text_family = defect_family(text)
-    return candidate_family == "general" or text_family == "general" or candidate_family == text_family
 
 
 _INCOMPLETE_EVIDENCE_MARKERS = (
@@ -682,17 +654,14 @@ def _language_defined_preference_without_contract(
     candidate: CandidateFinding,
     reports: Sequence[ReflectionReport],
 ) -> bool:
-    candidate_family = defect_family(
-        candidate.failure_mode,
-        candidate.evidence_summary,
-        candidate.content,
-        candidate.recommendation or "",
-    )
-    if candidate_family in {
-        "missing_branch_return",
-        "structured_slot_truncation",
-        "aggregation_none_type",
-        "regex_group_index",
+    normalized = candidate_with_behavioral_metadata(candidate)
+    if (
+        normalized.behavioral_symptom,
+        normalized.root_operation,
+    ) in {
+        ("missing_return", "dispatch"),
+        ("data_loss", "indexing"),
+        ("crash", "aggregation"),
     }:
         return False
     blob = _candidate_evidence_blob(candidate)
@@ -809,8 +778,6 @@ def _revision_evidence_extra(
         revision_summary=summary,
     ):
         return ""
-    if not _family_matches_candidate(candidate, summary):
-        return ""
     return f"\n\nPost-context evidence: {summary}"
 
 
@@ -888,13 +855,6 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
                 if isinstance(raw_path, str) and raw_path.strip():
                     changed_files.add(raw_path.strip().replace("\\", "/"))
         candidates, semantic_duplicates = dedupe_candidates_by_signature(candidates, git_diff=git_diff)
-        subject_sources = {
-            candidate.candidate_id: candidate_finding_signature(
-                candidate,
-                git_diff=git_diff,
-            ).subject_source
-            for candidate in candidates
-        }
         claim_tiering = classify_candidates(candidates, metadata=metadata)
         metadata["claim_tiering"] = {"by_candidate": claim_tiering}
 
@@ -1482,13 +1442,6 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
         }
         if semantic_duplicates:
             cleanup_meta["semantic_dedupe_duplicates"] = semantic_duplicates
-        if subject_sources:
-            cleanup_meta["semantic_dedupe_subject_sources"] = subject_sources
-            cleanup_meta["semantic_dedupe_prose_subject_candidate_ids"] = [
-                candidate_id
-                for candidate_id, source in subject_sources.items()
-                if source == "prose"
-            ]
         if finding_duplicates:
             cleanup_meta["semantic_dedupe_finding_duplicates"] = finding_duplicates
         metadata["adversarial_cleanup"] = cleanup_meta

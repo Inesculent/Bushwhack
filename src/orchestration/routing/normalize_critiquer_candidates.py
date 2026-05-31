@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from typing import List, Mapping
 
 from src.domain.schemas import CandidateFinding, ReviewTask
@@ -14,129 +13,12 @@ from src.orchestration.routing.candidate_reflection_specialty import (
 from src.orchestration.routing.finding_dedupe import (
     candidate_with_behavioral_metadata,
     dedupe_candidates_by_signature,
-    defect_family,
     ensure_unique_candidate_ids,
     extract_subject_class,
-    is_security_or_unbounded_pattern_claim,
 )
 
 _STRUCTURED_EXTRACTION_TASK_IDS = frozenset({"review-logic-structured-extraction"})
 _STRUCTURED_TASK_TITLE_MARKER = "structured extraction"
-
-_CLAIM_MISSING_RETURN_RE = re.compile(
-    r"missing\s+return|implicit\s+none|no\s+return",
-    re.IGNORECASE,
-)
-_ADD_RETURN_RE = re.compile(r"add\b.*\breturn\b", re.IGNORECASE)
-_EVIDENCE_RETURN_RE = re.compile(r"\breturn\b", re.IGNORECASE)
-_EVIDENCE_ELIF_RE = re.compile(r"\belif\b", re.IGNORECASE)
-_HEDGE_PHRASES = (
-    "appears correct",
-    "consider adding",
-    "document the expected",
-    "consider documenting",
-)
-_NEGATING_PHRASES = (
-    "appears correct",
-    "correct behavior",
-    "correct as-is",
-    "not possible",
-    "no action needed",
-    "no action required",
-    "no defect",
-)
-_STRUCTURED_TRUNCATION_MARKERS = (
-    "findall",
-    "finditer",
-    "all matches",
-    "matches[0]",
-    "match[0]",
-    "m[0]",
-    "row[0]",
-    "rows[0]",
-    "[0]",
-    "tuple",
-    "capture group",
-    "first element",
-    "first slot",
-    "only the first",
-)
-_COMPOUND_SPLIT_SPECS = (
-    (
-        "data_loss",
-        "indexing",
-        ("data loss", "drop", "discard", "only the first", "first slot", "first element", "[0]", "m[0]"),
-    ),
-    (
-        "wrong_output",
-        "indexing",
-        ("group_index", "group 0", "truthiness", "falsy", "empty group", "wrong output", "wrong value"),
-    ),
-    (
-        "crash",
-        "aggregation",
-        (
-            "join(",
-            "str.join",
-            "join_delimiter.join",
-            "none element",
-            "nonetype",
-            "none in aggregat",
-            "none before join",
-            "optional group",
-            "optional capture",
-            "absent element",
-            "absent value",
-            "absent capture",
-            "typeerror",
-        ),
-    ),
-    (
-        "missing_return",
-        "dispatch",
-        ("missing else", "missing return", "implicit none", "no final return", "unhandled mode"),
-    ),
-    (
-        "uncaught_exception",
-        "exception_scope",
-        ("uncaught", "not caught", "outside the try", "outside try", "exception handling"),
-    ),
-    (
-        "unbounded_work",
-        "resource_use",
-        ("unbounded work", "resource exhaust", "expensive", "without limit", "without bound"),
-    ),
-)
-_AGGREGATION_ACTION_MARKERS = ("join(", "str.join", "join_delimiter.join", "aggregat")
-_ABSENT_VALUE_MARKERS = (
-    "none element",
-    "none value",
-    "none before join",
-    "nonetype",
-    "optional group",
-    "optional capture",
-    "absent element",
-    "absent value",
-    "absent capture",
-    "missing group",
-    "missing capture",
-    "typeerror",
-)
-
-
-def _evidence_blob(file_contents: Mapping[str, str] | None) -> str:
-    if not file_contents:
-        return ""
-    return "\n".join(str(v) for v in file_contents.values() if v)
-
-
-def _handler_likely_has_per_branch_returns(evidence: str) -> bool:
-    """True when evidence shows at least one return per if/elif branch (generic heuristic)."""
-    returns = len(_EVIDENCE_RETURN_RE.findall(evidence))
-    branches = len(_EVIDENCE_ELIF_RE.findall(evidence)) + (
-        1 if re.search(r"\bif\b", evidence, re.IGNORECASE) else 0
-    )
-    return returns >= max(1, branches)
 
 
 def _ensure_subject_in_content(candidate: CandidateFinding) -> CandidateFinding:
@@ -155,241 +37,19 @@ def _ensure_subject_in_content(candidate: CandidateFinding) -> CandidateFinding:
     return candidate.model_copy(update={"content": f"class {subject}: {body}"[:600]})
 
 
-def _repair_branch_return_conflation(
-    candidate: CandidateFinding,
-    *,
-    file_contents: Mapping[str, str] | None,
-) -> CandidateFinding:
-    """Rewrite missing-return-on-branch slips into missing terminal else when returns exist."""
-    rec = candidate.recommendation or ""
-    fm = candidate.failure_mode or ""
-    blob = " ".join([fm, rec, candidate.evidence_summary, candidate.content])
-    if is_security_or_unbounded_pattern_claim(blob):
-        return candidate
-    if not _CLAIM_MISSING_RETURN_RE.search(fm) and not _CLAIM_MISSING_RETURN_RE.search(rec):
-        return candidate
-    if not _ADD_RETURN_RE.search(rec):
-        return candidate
-
-    evidence = _evidence_blob(file_contents)
-    if not evidence.strip() or not _handler_likely_has_per_branch_returns(evidence):
-        return candidate
-
-    summary = (
-        "[SAFE] visible if/elif branches return; [DEFECT] no terminal else for unexpected discriminant."
-    )
-    return candidate.model_copy(
-        update={
-            "failure_mode": (
-                "Missing terminal else: handler falls through with implicit None (or wrong type) "
-                "when the discriminant is not handled, violating the declared return contract."
-            )[:400],
-            "recommendation": (
-                "Add a terminal else (raise or return a contract-consistent default) after the "
-                "last elif; do not duplicate returns on branches that already return."
-            ),
-            "evidence_summary": summary[:400],
-            "content": (
-                (candidate.content.split(":")[0] if ":" in candidate.content else candidate.content)
-                + ": missing terminal else on discriminant dispatch"
-            )[:600],
-        }
-    )
-
-
-def _strengthen_hedged_structured_data_loss(candidate: CandidateFinding) -> CandidateFinding:
-    """Retag explicit first-slot truncation without inventing replacement claim text."""
-    rec = (candidate.recommendation or "").lower()
-    blob = " ".join(
-        [
-            candidate.content,
-            candidate.failure_mode,
-            candidate.evidence_summary,
-            candidate.recommendation or "",
-        ]
-    ).lower()
-    if is_security_or_unbounded_pattern_claim(blob):
-        return candidate
-    if not any(phrase in rec for phrase in _HEDGE_PHRASES):
-        return candidate
-    if any(phrase in blob for phrase in _NEGATING_PHRASES):
-        return candidate
-    if not any(marker in blob for marker in ("findall", "finditer", "all matches")):
-        return candidate
-    if not any(marker in blob for marker in _STRUCTURED_TRUNCATION_MARKERS):
-        return candidate
-    if "[0]" not in blob and "first" not in blob and "m[0]" not in blob and "matches[0]" not in blob:
-        return candidate
-
-    return candidate.model_copy(
-        update={
-            "claim_type": "defect",
-            "severity": "high",
-            "reflection_specialties": ["logic"],
-            "suspected_category": "logic",
-            "behavioral_symptom": "data_loss",
-            "root_operation": "indexing",
-        }
-    )
-
-
-def _maybe_retag_findall_first_group_loss(candidate: CandidateFinding) -> CandidateFinding:
-    """Structured row/tuple truncation tagged as perf-only → logic defect."""
-    blob = " ".join(
-        [
-            candidate.content,
-            candidate.failure_mode,
-            candidate.evidence_summary,
-        ]
-    ).lower()
-    if candidate.claim_type != "performance_regression":
-        return candidate
-    if not any(marker in blob for marker in ("findall", "finditer", "[0]", "m[0]", "matches[0]", "tuple")):
-        return candidate
-    return candidate.model_copy(
-        update={
-            "claim_type": "defect",
-            "reflection_specialties": ["logic"],
-            "suspected_category": "logic",
-        }
-    )
-
-
-def _split_compound_candidate(candidate: CandidateFinding) -> List[CandidateFinding]:
-    """Clone candidates that describe multiple independent behavioral symptoms."""
-    blob = " ".join(
-        [
-            candidate.content,
-            candidate.failure_mode,
-            candidate.evidence_summary,
-            candidate.recommendation or "",
-        ]
-    ).lower()
-    if is_security_or_unbounded_pattern_claim(blob):
-        return [candidate_with_behavioral_metadata(candidate)]
-    matches: List[tuple[str, str]] = []
-    for symptom, root, markers in _COMPOUND_SPLIT_SPECS:
-        if symptom == "crash" and root == "aggregation" and not (
-            any(marker in blob for marker in _AGGREGATION_ACTION_MARKERS)
-            and any(marker in blob for marker in _ABSENT_VALUE_MARKERS)
-        ):
-            continue
-        if any(marker in blob for marker in markers):
-            matches.append((symptom, root))
-    deduped: List[tuple[str, str]] = []
-    seen: set[tuple[str, str]] = set()
-    for item in matches:
-        if item in seen:
-            continue
-        seen.add(item)
-        deduped.append(item)
-    if not deduped:
-        return [candidate_with_behavioral_metadata(candidate)]
-    if len(deduped) == 1:
-        return [candidate_with_behavioral_metadata(candidate)]
-
-    out: List[CandidateFinding] = []
-    for index, (symptom, root) in enumerate(deduped, start=1):
-        suffix = f":orthogonal-{index}"
-        cid = candidate.candidate_id
-        out.append(
-            _with_split_specific_claim(
-                candidate,
-                candidate_id=cid if index == 1 else f"{cid}{suffix}",
-                behavioral_symptom=symptom,
-                root_operation=root,
-            )
-        )
-    return out
-
-
-def _with_split_specific_claim(
-    candidate: CandidateFinding,
-    *,
-    candidate_id: str,
-    behavioral_symptom: str,
-    root_operation: str,
-) -> CandidateFinding:
-    update: dict[str, str] = {
-        "candidate_id": candidate_id,
-        "behavioral_symptom": behavioral_symptom,
-        "root_operation": root_operation,
-    }
-    if behavioral_symptom == "data_loss" and root_operation == "indexing":
-        update.update(
-            {
-                "failure_mode": (
-                    "Data loss: structured match rows are reduced to one slot before output, "
-                    "discarding other captured data."
-                ),
-                "evidence_summary": (
-                    "The claim mentions tuple/row indexing such as m[0] or first-slot retention; "
-                    "review this independently from aggregation safety."
-                ),
-                "recommendation": (
-                    "Preserve the relevant captured values from each structured match row, or make "
-                    "the single-slot contract explicit in code."
-                ),
-            }
-        )
-    elif behavioral_symptom == "wrong_output" and root_operation == "indexing":
-        update.update(
-            {
-                "failure_mode": (
-                    "Wrong output: group index handling can select the wrong regex group or skip "
-                    "a valid full-match/group case."
-                ),
-                "evidence_summary": (
-                    "The claim mentions group_index, group 0, groups(), or related boundary semantics; "
-                    "review this independently from data-loss flattening."
-                ),
-                "recommendation": (
-                    "Define the accepted group-index semantics explicitly and validate/select groups "
-                    "against that contract."
-                ),
-            }
-        )
-    elif behavioral_symptom == "crash" and root_operation == "aggregation":
-        update.update(
-            {
-                "failure_mode": (
-                    "Aggregation safety: absent or optional capture values can enter the result list "
-                    "and make string joining unsafe."
-                ),
-                "evidence_summary": (
-                    "The claim mentions optional/absent/None-like values together with join or "
-                    "aggregation; review this independently from group-index semantics."
-                ),
-                "recommendation": (
-                    "Normalize or filter absent capture values before passing results into string aggregation."
-                ),
-            }
-        )
-    elif behavioral_symptom == "missing_return" and root_operation == "dispatch":
-        update.update(
-            {
-                "failure_mode": "Missing return: a dispatch branch or fallback path can fall through.",
-                "evidence_summary": "The claim mentions branch exhaustiveness or implicit None.",
-            }
-        )
-    return candidate.model_copy(update=update)
-
-
 def _is_structured_extraction_task(task: ReviewTask) -> bool:
     if task.id in _STRUCTURED_EXTRACTION_TASK_IDS:
         return True
     return _STRUCTURED_TASK_TITLE_MARKER in f"{task.title} {task.description}".lower()
 
 
-def _out_of_scope_for_structured_task(cand: CandidateFinding) -> bool:
+def _out_of_scope_for_structured_task(candidate: CandidateFinding) -> bool:
     """Branch-exhaustiveness claims belong on diff-local tasks, not structured-extraction."""
-    family = defect_family(
-        cand.content,
-        cand.failure_mode,
-        cand.evidence_summary,
-        cand.recommendation or "",
+    normalized = candidate_with_behavioral_metadata(candidate)
+    return (
+        normalized.behavioral_symptom == "missing_return"
+        and normalized.root_operation == "dispatch"
     )
-    return family == "missing_branch_return"
 
 
 def normalize_critiquer_candidates(
@@ -404,15 +64,16 @@ def normalize_critiquer_candidates(
     normalized: List[CandidateFinding] = []
     structured_task = _is_structured_extraction_task(task)
     for index, cand in enumerate(candidates, start=1):
-        if structured_task and _out_of_scope_for_structured_task(cand):
+        with_behavior = candidate_with_behavioral_metadata(cand)
+        if structured_task and _out_of_scope_for_structured_task(with_behavior):
             warnings.append(
-                f"{task.id}:c{index}:structured_task_scope_drop:missing_branch_return"
+                f"{task.id}:c{index}:structured_task_scope_drop:missing_return_dispatch"
             )
             continue
-        cid = cand.candidate_id.strip() or f"{task.id}:c{index}"
+        cid = with_behavior.candidate_id.strip() or f"{task.id}:c{index}"
         if not cid.startswith(task.id):
             cid = f"{task.id}:{cid}"
-        with_ids = cand.model_copy(
+        with_ids = with_behavior.model_copy(
             update={
                 "candidate_id": cid,
                 "patch_task_id": task.id,
@@ -420,12 +81,8 @@ def normalize_critiquer_candidates(
         )
         corrected, _ = correct_specialty_before_hardcap(with_ids)
         anchored_content = _ensure_subject_in_content(corrected)
-        retagged = _maybe_retag_findall_first_group_loss(anchored_content)
-        repaired = _repair_branch_return_conflation(retagged, file_contents=file_contents)
-        strengthened = _strengthen_hedged_structured_data_loss(repaired)
-        completed = candidate_with_behavioral_metadata(strengthened)
-        for split in _split_compound_candidate(completed):
-            normalized.append(with_single_reflection_specialty(split))
+        completed = candidate_with_behavioral_metadata(anchored_content)
+        normalized.append(with_single_reflection_specialty(completed))
 
     normalized = ensure_unique_candidate_ids(normalized)
 

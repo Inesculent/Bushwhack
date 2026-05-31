@@ -10,96 +10,7 @@ from src.domain.schemas import CandidateFinding, ReviewFinding
 
 _CLASS_RE = re.compile(r"\bclass\s+([A-Za-z_][A-Za-z0-9_]*)\b", re.IGNORECASE)
 _METHOD_CLASS_RE = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\.execute\b")
-_HANDLER_NODE_RE = re.compile(r"\b([A-Z][A-Za-z0-9_]{2,})\s+node\b", re.IGNORECASE)
-_EXECUTE_CLASS_RE = re.compile(
-    r"\bThe\s+`?([A-Z][A-Za-z0-9_]{2,})`?\.execute\b",
-    re.IGNORECASE,
-)
-_POSSESSIVE_CLASS_RE = re.compile(r"\b([A-Z][A-Za-z0-9_]{2,})'s\b")
 _DIFF_CLASS_RE = re.compile(r"^\+.*\bclass\s+([A-Za-z_][A-Za-z0-9_]*)\b")
-
-_MISSING_BRANCH_MARKERS = (
-    "missing else",
-    "missing return",
-    "no else",
-    "no final return",
-    "implicit none",
-    "implicitly return none",
-    "terminal else",
-    "add return",
-    "add return statement",
-    "branch exhaust",
-    "unhandled mode",
-    "without a fallback",
-)
-_SECURITY_CLAIM_MARKERS = (
-    "redos",
-    "backtrack",
-    "catastrophic",
-    "pattern length",
-    "user-controlled",
-    "denial of service",
-    "timeout mechanism",
-    "regex timeout",
-    "unvalidated pattern",
-    "complexity analyzer",
-)
-_RESOURCE_CLAIM_MARKERS = (
-    "resource use",
-    "resource exhaust",
-    "resource-amplification",
-    "unbounded work",
-    "unbounded input",
-    "memory exhaustion",
-    "excessive memory",
-    "timeout",
-    "cache",
-    "caching",
-    "compile cost",
-    "bounded execution",
-)
-_STRUCTURED_SLOT_MARKERS = (
-    "m[0]",
-    "matches[0]",
-    "match[0]",
-    "row[0]",
-    "rows[0]",
-    "first element",
-    "first slot",
-    "only the first",
-    "wrong slot",
-    "data loss",
-    "wrong index into",
-    "structured result",
-)
-# Kept for upstream-none guard and perf retag paths.
-_FINDALL_MARKERS = _STRUCTURED_SLOT_MARKERS + ("findall", "finditer", "tuple", "all matches")
-_GROUP_INDEX_MARKERS = (
-    "group_index",
-    "groups()",
-    "group 0",
-    "capture group",
-    "full match",
-    "full-match",
-    "empty group",
-    "falsy",
-    "truthiness",
-)
-_NONE_JOIN_MARKERS = (
-    "nonetype",
-    "optional group",
-    "optional capture",
-    "none before join",
-    "none element",
-    "none value",
-    "none in aggregat",
-    "absent element",
-    "absent value",
-    "absent capture",
-    "missing group",
-    "missing capture",
-)
-_AGGREGATION_ACTION_MARKERS = ("join(", "str.join", "join_delimiter.join", "join", "aggregat")
 
 _RESOLUTION_ONLY_MARKERS = (
     "no action needed",
@@ -154,17 +65,6 @@ _REQUIRED_PARAM_NONE_MARKERS = (
 )
 
 _SEVERITY_RANK = {"high": 0, "medium": 1, "low": 2}
-_FAMILY_BEHAVIOR: dict[str, tuple[str, str]] = {
-    "missing_branch_return": ("missing_return", "dispatch"),
-    "structured_slot_truncation": ("data_loss", "indexing"),
-    "aggregation_none_type": ("crash", "aggregation"),
-    "regex_group_index": ("wrong_output", "indexing"),
-    "index_bounds": ("crash", "indexing"),
-    "redos": ("unbounded_work", "resource_use"),
-    "resource_amplification": ("unbounded_work", "resource_use"),
-    "empty_find_replace": ("wrong_output", "contract"),
-    "duplicate_registration": ("contract_mismatch", "contract"),
-}
 
 
 @dataclass(frozen=True)
@@ -176,7 +76,6 @@ class FindingSignature:
     claim_kind: str
     behavioral_symptom: str
     root_operation: str
-    subject_source: str = "none"
 
     def key(self) -> tuple[str, str, str, str, str]:
         return (
@@ -206,21 +105,12 @@ def split_claim_and_post_context(text: str) -> tuple[str, str]:
 
 
 def extract_subject_class(*texts: str) -> Optional[str]:
-    """Best-effort primary class name cited in finding text."""
+    """Primary class name from explicit class or ``Class.execute`` references."""
     blob = " ".join(texts)
     for pattern in (_CLASS_RE, _METHOD_CLASS_RE):
         match = pattern.search(blob)
         if match:
             return match.group(1)
-    handler = _HANDLER_NODE_RE.search(blob)
-    if handler:
-        return handler.group(1)
-    execute = _EXECUTE_CLASS_RE.search(blob)
-    if execute:
-        return execute.group(1)
-    possessive = _POSSESSIVE_CLASS_RE.search(blob)
-    if possessive:
-        return possessive.group(1)
     return None
 
 
@@ -232,7 +122,7 @@ def normalized_subject_for_key(
     evidence_summary: str = "",
     recommendation: str = "",
 ) -> str:
-    """Stable handler class name for dedupe keys (never empty when prose cites a node)."""
+    """Stable explicit class name for dedupe keys."""
     claim_content, _ = split_claim_and_post_context(content)
     subject = extract_subject_class_from_claim(
         claim_content, failure_mode, evidence_summary
@@ -272,106 +162,8 @@ def revision_summary_conflicts_with_claim(
     return bool(mentioned)
 
 
-def is_security_or_unbounded_pattern_claim(*texts: str) -> bool:
-    blob = _blob_parts(*texts)
-    return any(m in blob for m in _SECURITY_CLAIM_MARKERS)
-
-
-def _has_absent_value_aggregation_claim(blob: str) -> bool:
-    return any(m in blob for m in _NONE_JOIN_MARKERS) and any(
-        m in blob for m in _AGGREGATION_ACTION_MARKERS
-    )
-
-
-def defect_family(*texts: str) -> str:
-    blob = _blob_parts(*texts)
-    if any(m in blob for m in _MISSING_BRANCH_MARKERS):
-        return "missing_branch_return"
-    if is_security_or_unbounded_pattern_claim(blob):
-        return "redos"
-    if any(m in blob for m in _RESOURCE_CLAIM_MARKERS):
-        return "resource_amplification"
-    if _has_absent_value_aggregation_claim(blob):
-        return "aggregation_none_type"
-    if any(m in blob for m in _STRUCTURED_SLOT_MARKERS) and (
-        "[0]" in blob
-        or "m[0]" in blob
-        or "matches[0]" in blob
-        or "first slot" in blob
-        or "first element" in blob
-        or "data loss" in blob
-        or "findall" in blob
-        or "all matches" in blob
-    ):
-        return "structured_slot_truncation"
-    if any(m in blob for m in _GROUP_INDEX_MARKERS):
-        return "regex_group_index"
-    if "indexerror" in blob or "off-by-one" in blob:
-        return "index_bounds"
-    if "duplicate" in blob and "import" in blob:
-        return "duplicate_registration"
-    if "empty" in blob and "replace" in blob:
-        return "empty_find_replace"
-    return "general"
-
-
-def infer_behavioral_symptom(*texts: str) -> str:
-    """Infer a generic behavioral symptom from candidate prose."""
-    blob = _blob_parts(*texts)
-    if any(m in blob for m in _MISSING_BRANCH_MARKERS):
-        return "missing_return"
-    if "uncaught" in blob or "not caught" in blob or "outside" in blob and "try" in blob:
-        return "uncaught_exception"
-    if any(m in blob for m in _SECURITY_CLAIM_MARKERS) or any(
-        m in blob for m in _RESOURCE_CLAIM_MARKERS
-    ):
-        return "unbounded_work"
-    if (
-        _has_absent_value_aggregation_claim(blob)
-        or ("typeerror" in blob and "join" in blob)
-        or "indexerror" in blob
-        or "crash" in blob
-    ):
-        return "crash"
-    if any(m in blob for m in _STRUCTURED_SLOT_MARKERS) and (
-        "data loss" in blob or "drop" in blob or "discard" in blob or "only the first" in blob
-    ):
-        return "data_loss"
-    if any(m in blob for m in _GROUP_INDEX_MARKERS) or "wrong output" in blob or "wrong value" in blob:
-        return "wrong_output"
-    if "contract" in blob or "return type" in blob or "return shape" in blob:
-        return "contract_mismatch"
-    family = defect_family(blob)
-    return _FAMILY_BEHAVIOR.get(family, ("other", "other"))[0]
-
-
-def infer_root_operation(*texts: str) -> str:
-    """Infer a generic root operation from candidate prose."""
-    blob = _blob_parts(*texts)
-    if "try" in blob or "except" in blob or "uncaught" in blob or "exception scope" in blob:
-        return "exception_scope"
-    if _has_absent_value_aggregation_claim(blob) or ("typeerror" in blob and "join" in blob):
-        return "aggregation"
-    if any(m in blob for m in _STRUCTURED_SLOT_MARKERS) or any(m in blob for m in _GROUP_INDEX_MARKERS):
-        return "indexing"
-    if any(m in blob for m in _MISSING_BRANCH_MARKERS) or "dispatch" in blob or "mode" in blob:
-        return "dispatch"
-    if any(m in blob for m in _SECURITY_CLAIM_MARKERS) or any(
-        m in blob for m in _RESOURCE_CLAIM_MARKERS
-    ):
-        return "resource_use"
-    if "join" in blob or "format" in blob:
-        return "aggregation"
-    if "serializ" in blob:
-        return "serialization"
-    if "contract" in blob or "return type" in blob or "return shape" in blob:
-        return "contract"
-    family = defect_family(blob)
-    return _FAMILY_BEHAVIOR.get(family, ("other", "other"))[1]
-
-
 def candidate_with_behavioral_metadata(candidate: CandidateFinding) -> CandidateFinding:
-    """Normalize structured behavior metadata without prose-based inference."""
+    """Normalize structured behavior metadata without text-based inference."""
     symptom = candidate.behavioral_symptom or "other"
     root = candidate.root_operation or "other"
     return candidate.model_copy(update={"behavioral_symptom": symptom, "root_operation": root})
@@ -435,32 +227,14 @@ def _normalized_path(path: str) -> str:
     return (path or "").strip().replace("\\", "/").lstrip("/").lower()
 
 
-def _subject_source(
-    subject: str,
-    *,
-    content: str = "",
-    failure_mode: str = "",
-    evidence_summary: str = "",
-    git_diff: str = "",
-    line_start: int | None = None,
-    line_end: int | None = None,
-) -> str:
-    if not subject:
-        return "none"
-    claim_text = "\n".join([content, failure_mode, evidence_summary])
-    if git_diff:
-        anchors = class_def_lines_from_diff(git_diff)
-        anchor = anchors.get(subject)
-        if anchor is not None:
-            start = int(line_start or 0)
-            end = int(line_end or start)
-            if start <= anchor <= end or abs(start - anchor) <= 120:
-                return "diff_anchor"
-    if re.search(rf"\bclass\s+{re.escape(subject)}\b", claim_text, re.IGNORECASE):
-        return "claim_class"
-    if re.search(rf"\b{re.escape(subject)}\.execute\b", claim_text, re.IGNORECASE):
-        return "claim_method"
-    return "prose"
+def _subject_or_line_scope(subject: str, line_start: int | None, line_end: int | None) -> str:
+    if subject:
+        return subject
+    if line_start and line_end:
+        return f"lines:{int(line_start)}-{int(line_end)}"
+    if line_start:
+        return f"line:{int(line_start)}"
+    return ""
 
 
 def semantic_finding_key(
@@ -488,12 +262,6 @@ def semantic_finding_key(
         claim_kind=(claim_kind or "other").strip().lower(),
         behavioral_symptom=behavioral_symptom or "other",
         root_operation=root_operation or "other",
-        subject_source=_subject_source(
-            subject,
-            content=claim_content,
-            failure_mode=failure_mode,
-            evidence_summary=evidence_summary,
-        ),
     )
     return signature.key()
 
@@ -515,19 +283,10 @@ def candidate_finding_signature(
     )
     return FindingSignature(
         file_path=_normalized_path(normalized.file_path),
-        subject=subject,
+        subject=_subject_or_line_scope(subject, normalized.line_start, normalized.line_end),
         claim_kind=(normalized.claim_type or "other").strip().lower(),
         behavioral_symptom=normalized.behavioral_symptom or "other",
         root_operation=normalized.root_operation or "other",
-        subject_source=_subject_source(
-            subject,
-            content=claim_content,
-            failure_mode=normalized.failure_mode,
-            evidence_summary=normalized.evidence_summary,
-            git_diff=git_diff,
-            line_start=normalized.line_start,
-            line_end=normalized.line_end,
-        ),
     )
 
 
@@ -584,11 +343,10 @@ def is_required_upstream_none_guard_claim(candidate: CandidateFinding) -> bool:
     blob = _candidate_blob(candidate)
     if not any(m in blob for m in _REQUIRED_PARAM_NONE_MARKERS):
         return False
-    if any(m in blob for m in _MISSING_BRANCH_MARKERS):
+    normalized = candidate_with_behavioral_metadata(candidate)
+    if normalized.behavioral_symptom not in {None, "other"}:
         return False
-    if any(m in blob for m in _FINDALL_MARKERS):
-        return False
-    if any(m in blob for m in _NONE_JOIN_MARKERS):
+    if normalized.root_operation not in {None, "other"}:
         return False
     if "typeerror" in blob and "join" in blob:
         return False
@@ -771,15 +529,10 @@ def review_finding_signature(finding: ReviewFinding) -> FindingSignature:
     )
     return FindingSignature(
         file_path=_normalized_path(finding.file_path),
-        subject=subject,
+        subject=_subject_or_line_scope(subject, finding.line_start, finding.line_end),
         claim_kind=(finding.feedback_type or "other").strip().lower(),
         behavioral_symptom=finding.behavioral_symptom or "other",
         root_operation=finding.root_operation or "other",
-        subject_source=_subject_source(
-            subject,
-            content=combined,
-            evidence_summary=claim_content,
-        ),
     )
 
 

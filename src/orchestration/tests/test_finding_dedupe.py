@@ -190,7 +190,7 @@ def test_candidate_dedupe_keeps_resource_claim_kinds_separate() -> None:
     assert not dups
 
 
-def test_normalize_splits_compound_orthogonal_candidate() -> None:
+def test_normalize_keeps_structured_metadata_without_text_splitting() -> None:
     from src.domain.schemas import ReviewTask
 
     task = ReviewTask(
@@ -211,14 +211,14 @@ def test_normalize_splits_compound_orthogonal_candidate() -> None:
         ),
         evidence_summary="One handler has two independent symptoms.",
         recommendation="Preserve fields and normalize elements before aggregation.",
+        behavioral_symptom="data_loss",
+        root_operation="indexing",
     )
     out, warnings, _ = normalize_critiquer_candidates(task, [raw])
     keys = {(c.behavioral_symptom, c.root_operation) for c in out}
     assert ("data_loss", "indexing") in keys
-    assert ("crash", "aggregation") in keys
+    assert ("crash", "aggregation") not in keys
     assert not any("line_anchor_dropped" in w for w in warnings)
-    crash = next(c for c in out if (c.behavioral_symptom, c.root_operation) == ("crash", "aggregation"))
-    assert "absent or optional capture" in crash.failure_mode.lower()
 
 
 def test_normalize_does_not_split_plain_join_as_aggregation_crash() -> None:
@@ -289,8 +289,8 @@ def test_redos_and_structured_slot_are_distinct_keys() -> None:
     assert redos_key != slot_key
 
 
-def test_handler_node_prose_yields_subject_class() -> None:
-    assert extract_subject_class("RegexExtract node accepts user-controlled patterns") == "RegexExtract"
+def test_explicit_execute_reference_yields_subject_class() -> None:
+    assert extract_subject_class("RegexExtract.execute accepts user-controlled patterns") == "RegexExtract"
 
 
 def test_duplicate_redos_findings_dedupe_by_handler() -> None:
@@ -311,7 +311,7 @@ def test_duplicate_redos_findings_dedupe_by_handler() -> None:
         file_path="comfy_extras/nodes_string.py",
         line_start=228,
         line_end=323,
-        content="RegexExtract node accepts user-controlled regex patterns without limits",
+        content="RegexExtract.execute accepts user-controlled regex patterns without limits",
         severity="high",
         feedback_type="defect_detection",
         recommendation="Add complexity heuristics or timeout",
@@ -323,7 +323,7 @@ def test_duplicate_redos_findings_dedupe_by_handler() -> None:
     assert len(dups) == 1
 
 
-def test_review_finding_key_uses_recommendation_for_stub_content() -> None:
+def test_review_finding_key_uses_explicit_content_subject() -> None:
     logic = ReviewFinding(
         id="logic-3-001",
         file_path="comfy_extras/nodes_string.py",
@@ -341,7 +341,7 @@ def test_review_finding_key_uses_recommendation_for_stub_content() -> None:
         file_path="comfy_extras/nodes_string.py",
         line_start=228,
         line_end=323,
-        content="RegexExtract's All Groups mode has inconsistent group_index validation",
+        content="RegexExtract.execute All Groups mode has inconsistent group_index validation",
         severity="medium",
         feedback_type="defect_detection",
         recommendation="Clarify group_index semantics across modes",
@@ -1463,7 +1463,7 @@ def test_cleanup_uses_rendered_units_when_file_contents_are_malformed() -> None:
     )
 
 
-def test_revision_evidence_from_different_family_is_not_appended() -> None:
+def test_revision_evidence_for_same_candidate_is_appended_without_text_classification() -> None:
     node = make_adversarial_cleanup_node()
     cand = _cand(
         candidate_id="agg",
@@ -1509,7 +1509,7 @@ def test_revision_evidence_from_different_family_is_not_appended() -> None:
         }
     )
     assert len(out["findings"]) == 1
-    assert "Post-context evidence" not in out["findings"][0].content
+    assert "Post-context evidence" in out["findings"][0].content
 
 
 def test_cleanup_drops_off_domain_redirect_without_independent_support() -> None:

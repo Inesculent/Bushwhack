@@ -37,7 +37,7 @@ def test_normalize_forces_security_risk_specialty() -> None:
     assert out[0].reflection_specialties == ["security"]
 
 
-def test_normalize_retags_findall_m0_as_logic_defect() -> None:
+def test_normalize_preserves_structured_fields_without_retagging_from_text() -> None:
     task = ReviewTask(id="t1", title="t", description="d", target_files=["src/x.py"])
     raw = CandidateFinding(
         candidate_id="c1",
@@ -52,10 +52,14 @@ def test_normalize_retags_findall_m0_as_logic_defect() -> None:
         recommendation="use finditer",
         reflection_specialties=["performance"],
         suspected_category="performance",
+        behavioral_symptom="data_loss",
+        root_operation="indexing",
     )
     out, _, _ = normalize_critiquer_candidates(task, [raw])
-    assert out[0].claim_type == "defect"
-    assert out[0].reflection_specialties == ["logic"]
+    assert out[0].claim_type == "performance_regression"
+    assert out[0].reflection_specialties == ["performance"]
+    assert out[0].behavioral_symptom == "data_loss"
+    assert out[0].root_operation == "indexing"
 
 
 _STRING_COMPARE_BODY = """
@@ -90,13 +94,15 @@ def test_normalize_drops_missing_else_on_structured_extraction_task() -> None:
         recommendation="add terminal else",
         reflection_specialties=["logic"],
         suspected_category="logic",
+        behavioral_symptom="missing_return",
+        root_operation="dispatch",
     )
     out, warnings, _ = normalize_critiquer_candidates(task, [raw])
     assert out == []
     assert any("structured_task_scope_drop" in w for w in warnings)
 
 
-def test_normalize_repairs_endswith_return_slip_to_missing_else() -> None:
+def test_normalize_does_not_rewrite_branch_return_claim_text() -> None:
     task = ReviewTask(
         id="general-diff-local-1-1",
         title="StringCompare",
@@ -122,8 +128,8 @@ def test_normalize_repairs_endswith_return_slip_to_missing_else() -> None:
         [raw],
         file_contents={"comfy_extras/nodes_string.py": _STRING_COMPARE_BODY},
     )
-    assert "terminal else" in out[0].failure_mode.lower()
-    assert "duplicate returns" in (out[0].recommendation or "").lower()
+    assert out[0].failure_mode == "Missing return statement in 'Ends With' branch"
+    assert out[0].recommendation == 'Add the missing return statement: `return a.endswith(b),` after the elif.'
 
 
 def test_normalize_does_not_strengthen_redos_with_hedge_wording() -> None:
@@ -148,7 +154,7 @@ def test_normalize_does_not_strengthen_redos_with_hedge_wording() -> None:
     assert "retain all required slots" not in (out[0].recommendation or "").lower()
 
 
-def test_normalize_strengthens_hedged_findall_tuple_candidate() -> None:
+def test_normalize_preserves_explicit_structured_tuple_metadata() -> None:
     task = ReviewTask(
         id="logic-structured-extraction-005",
         title="structured extraction",
@@ -172,9 +178,11 @@ def test_normalize_strengthens_hedged_findall_tuple_candidate() -> None:
         reflection_specialties=["logic"],
         suspected_category="logic",
         severity="medium",
+        behavioral_symptom="data_loss",
+        root_operation="indexing",
     )
     out, _, _ = normalize_critiquer_candidates(task, [raw])
-    assert out[0].severity == "high"
+    assert out[0].severity == "medium"
     assert out[0].behavioral_symptom == "data_loss"
     assert out[0].root_operation == "indexing"
     assert "retain all required slots" not in (out[0].recommendation or "").lower()
