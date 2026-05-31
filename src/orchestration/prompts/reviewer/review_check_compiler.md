@@ -14,11 +14,11 @@ A review check is a narrow, temporary contract that can be executed against repo
 
 The changed code anchor must be on a changed file and should name a changed function, class, line range, or behavior visible in the supplied diff/context.
 
-Use the mental model and Review KB only to understand repository-specific contracts. They are hypotheses and context, not defects.
+Use the mental model and Review KB to understand repository-specific contracts, expected behavior, relevant risks, suppressions, and uncertainties. They are hypotheses and context, not defects.
 
-Prefer a small set of high-signal checks over broad coverage, but "small" does not mean skipping changed entry points. For every changed surface or coverage obligation supplied, emit at least one anchored behavioral check unless the evidence explicitly justifies skipping it.
+Prefer a small set of high-signal checks over broad coverage, but "small" does not mean skipping changed entry points. Use the ranked obligations as relevance hints, not as proof or as a mandatory ordering. Choose checks based on the changed code plus mental-model/KB contracts.
 
-Prioritize coverage obligations in this order when you must choose: contract completeness, branch exhaustiveness, boundary/index handling, structured data preservation, exception/control-flow scope, then API/security/task-specialty obligations.
+When mental-model or KB material names a contract, convention, expected return shape, required/optional input rule, public behavior, or uncertainty, convert that material into required evidence, suppress criteria, or report criteria for the relevant check. Declared required inputs should suppress generic nullability checks unless the material says the input is optional/nullable or the changed code introduces absence handling.
 
 Reject generic checklist thinking: do not emit checks like "look for security bugs", "review edge cases", or "check error handling".
 

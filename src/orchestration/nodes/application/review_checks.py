@@ -115,14 +115,24 @@ _CODE_FILE_EXTENSIONS = {
 _GENERIC_QUERY_TOKENS = {"changed", "code", "behavior", "repository", "evidence", "context"}
 _MAX_CHECKS_PER_TASK = 10
 _EXECUTOR_BATCH_SIZE = 3
-_OBLIGATION_PRIORITY = {
-    "contract completeness": 0,
-    "branch exhaustiveness": 1,
-    "boundary/index handling": 2,
-    "structured data preservation": 3,
-    "exception/control-flow scope": 4,
-    "api/signature compatibility": 5,
-    "security/input boundary": 6,
+_DIMENSION_RELEVANCE_KEYWORDS = {
+    "contract completeness": ("contract", "return", "return_types", "declared", "schema", "required", "optional"),
+    "branch exhaustiveness": ("branch", "elif", "else", "case", "mode", "fallback", "exhaustive"),
+    "boundary/index handling": ("index", "bounds", "length", "empty", "slice", "range", "off-by-one"),
+    "structured data preservation": ("structured", "tuple", "row", "record", "json", "dict", "field", "payload"),
+    "aggregation/serialization safety": ("join", "aggregate", "serialize", "serialization", "format", "json"),
+    "exception/control-flow scope": ("exception", "error", "try", "except", "raise", "regex", "invalid pattern"),
+    "resource-amplification risk": ("resource", "performance", "unbounded", "loop", "regex", "expensive", "redundant"),
+    "api/signature compatibility": ("api", "signature", "caller", "interface", "type", "public", "framework"),
+    "dependency/import availability": ("import", "dependency", "module", "symbol", "undefined", "include"),
+    "nullability/panic safety": ("null", "none", "nil", "panic", "optional", "nullable", "guard"),
+    "state/cache lifecycle": ("state", "cache", "lifecycle", "invalidate", "reset", "cleanup"),
+    "protocol/output fidelity": ("protocol", "output", "format", "status", "header", "message", "response"),
+    "concurrency/shared-state safety": ("concurrency", "thread", "async", "await", "lock", "race", "shared"),
+    "security/input boundary": ("security", "auth", "permission", "sanitize", "escape", "input", "validation"),
+    "repository convention contract": ("convention", "framework", "input_types", "return_types", "repository"),
+    "public/user contract": ("public", "user-visible", "docs", "tooltip", "cli", "message"),
+    "maintainability contract": ("maintainability", "unused", "dead code", "duplicate", "deprecated"),
 }
 _EXTERNAL_EVIDENCE_MARKERS = (
     "caller",
@@ -243,13 +253,18 @@ def _dimension_to_lens(dimension: str) -> str:
 
 
 def _fallback_checks(task: ReviewTask, slot: Mapping[str, Any]) -> List[ReviewCheck]:
-    obligations = slot.get("coverage_obligations") if isinstance(slot.get("coverage_obligations"), list) else []
+    obligations = _rotate_tied_obligations(_ranked_coverage_obligations(task, slot))
     checks: List[ReviewCheck] = []
     for index, raw in enumerate(obligations[:6], start=1):
         row = raw if isinstance(raw, Mapping) else {}
         file_path = str(row.get("file_path") or (task.target_files[0] if task.target_files else ""))
         dimension = str(row.get("dimension") or "task contract")
         surface = str(row.get("surface") or file_path or "changed code")
+        contract_material = [
+            f"mental model/KB contract hypothesis to verify: {item}"
+            for item in row.get("mental_model_contract_material", [])
+            if str(item).strip()
+        ][:2]
         checks.append(
             ReviewCheck(
                 check_id=f"{task.id}:check:{index}",
@@ -263,6 +278,7 @@ def _fallback_checks(task: ReviewTask, slot: Mapping[str, Any]) -> List[ReviewCh
                 affected_invariant=dimension,
                 required_evidence=[
                     str(row.get("evidence") or f"code evidence for {dimension}"),
+                    *contract_material,
                     "changed-code behavior at the anchor",
                 ],
                 suppress_criteria=[f"Repository evidence shows {dimension} is preserved."],
@@ -351,14 +367,157 @@ def _coverage_obligations(slot: Mapping[str, Any]) -> List[Dict[str, Any]]:
         row["dimension"] = dimension
         row["surface"] = surface
         obligations.append(row)
+    return obligations
+
+
+def _contains_any_keyword(text: str, keywords: Iterable[str]) -> bool:
+    lowered = text.lower()
+    return any(keyword.lower() in lowered for keyword in keywords if keyword)
+
+
+def _mental_model_contract_lines(slot: Mapping[str, Any]) -> List[str]:
+    text = "\n".join(
+        str(slot.get(key) or "")
+        for key in ("mental_model_excerpt", "review_kb_excerpt")
+    )
+    lines: List[str] = []
+    markers = (
+        "contract",
+        "expect",
+        "risk",
+        "uncertain",
+        "return",
+        "input_types",
+        "return_types",
+        "required",
+        "optional",
+        "schema",
+        "framework",
+        "convention",
+        "regex",
+        "invalid",
+        "exception",
+        "output",
+    )
+    for raw in text.splitlines():
+        line = re.sub(r"^[-*#\s]+", "", raw).strip()
+        if not line:
+            continue
+        if line.lower() in {"intent", "behavior", "contracts", "risks", "guidance", "uncertainties"}:
+            continue
+        if _contains_any_keyword(line, markers):
+            lines.append(line[:300])
+        if len(lines) >= 8:
+            break
+    return lines
+
+
+def _relevance_context(task: ReviewTask, slot: Mapping[str, Any]) -> Dict[str, str]:
+    return {
+        "task": f"{task.title} {task.description} {task.specialty}",
+        "mental_model": str(slot.get("mental_model_excerpt") or ""),
+        "review_kb": str(slot.get("review_kb_excerpt") or ""),
+    }
+
+
+def _score_obligation_relevance(
+    task: ReviewTask,
+    slot: Mapping[str, Any],
+    obligation: Mapping[str, Any],
+) -> tuple[int, List[str], List[str]]:
+    surface = str(obligation.get("surface") or "")
+    dimension = str(obligation.get("dimension") or "").lower()
+    evidence = str(obligation.get("evidence") or "")
+    contexts = _relevance_context(task, slot)
+    keywords = _DIMENSION_RELEVANCE_KEYWORDS.get(dimension, ())
+    score = 1
+    reasons: List[str] = ["baseline_changed_surface"]
+
+    if _tokens_overlap(surface, contexts["task"]):
+        score += 3
+        reasons.append("surface_in_task")
+    if _tokens_overlap(surface, contexts["mental_model"]):
+        score += 4
+        reasons.append("surface_in_mental_model")
+    if _tokens_overlap(surface, contexts["review_kb"]):
+        score += 3
+        reasons.append("surface_in_review_kb")
+    if _contains_any_keyword(contexts["mental_model"], keywords):
+        score += 4
+        reasons.append("dimension_in_mental_model")
+    if _contains_any_keyword(contexts["review_kb"], keywords):
+        score += 3
+        reasons.append("dimension_in_review_kb")
+    if _contains_any_keyword(contexts["task"], keywords):
+        score += 2
+        reasons.append("dimension_in_task")
+    if _tokens_overlap(evidence, contexts["mental_model"]) or _tokens_overlap(evidence, contexts["review_kb"]):
+        score += 1
+        reasons.append("evidence_matches_context")
+
+    material: List[str] = []
+    for line in _mental_model_contract_lines(slot):
+        if (
+            _tokens_overlap(surface, line)
+            or _contains_any_keyword(line, keywords)
+            or _tokens_overlap(evidence, line)
+        ):
+            material.append(line)
+        if len(material) >= 2:
+            break
+    return score, reasons, material
+
+
+def _ranked_coverage_obligations(task: ReviewTask, slot: Mapping[str, Any]) -> List[Dict[str, Any]]:
+    ranked: List[Dict[str, Any]] = []
+    for index, obligation in enumerate(_coverage_obligations(slot)):
+        row = dict(obligation)
+        score, reasons, material = _score_obligation_relevance(task, slot, row)
+        row["source_index"] = index
+        row["relevance_score"] = score
+        row["relevance_reasons"] = reasons
+        row["mental_model_contract_material"] = material
+        ranked.append(row)
     return sorted(
-        obligations,
+        ranked,
         key=lambda row: (
-            _OBLIGATION_PRIORITY.get(str(row.get("dimension") or "").lower(), 50),
+            -int(row.get("relevance_score") or 0),
             str(row.get("file_path") or ""),
             str(row.get("surface") or ""),
+            int(row.get("source_index") or 0),
         ),
     )
+
+
+def _surface_key(obligation: Mapping[str, Any]) -> tuple[str, str]:
+    return (
+        str(obligation.get("file_path") or "").replace("\\", "/"),
+        str(obligation.get("surface") or ""),
+    )
+
+
+def _rotate_tied_obligations(obligations: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    ordered: List[Dict[str, Any]] = []
+    scores = sorted(
+        {int(row.get("relevance_score") or 0) for row in obligations},
+        reverse=True,
+    )
+    for score in scores:
+        bucket = [row for row in obligations if int(row.get("relevance_score") or 0) == score]
+        groups: Dict[tuple[str, str], List[Dict[str, Any]]] = {}
+        for row in bucket:
+            groups.setdefault(_surface_key(row), []).append(row)
+        keys = sorted(groups)
+        while keys:
+            next_keys: List[tuple[str, str]] = []
+            for key in keys:
+                group = groups[key]
+                if group:
+                    ordered.append(group.pop(0))
+                if group:
+                    next_keys.append(key)
+            keys = next_keys
+    return ordered
 
 
 def _tokens_overlap(left: str, right: str) -> bool:
@@ -398,6 +557,11 @@ def _coverage_check_for_obligation(
     surface = str(obligation.get("surface") or file_path or "changed code")
     dimension = str(obligation.get("dimension") or "task contract")
     evidence = str(obligation.get("evidence") or f"repository evidence for {dimension}")
+    contract_material = [
+        f"mental model/KB contract hypothesis to verify: {item}"
+        for item in obligation.get("mental_model_contract_material", [])
+        if str(item).strip()
+    ][:2]
     return ReviewCheck(
         check_id=f"{task.id}:coverage:{index}",
         patch_task_id=task.id,
@@ -410,6 +574,7 @@ def _coverage_check_for_obligation(
         affected_invariant=dimension,
         required_evidence=[
             evidence,
+            *contract_material,
             f"changed behavior of {surface} in {file_path}",
             "caller, contract, framework, or repository-convention evidence if the local code is not enough",
         ],
@@ -431,15 +596,16 @@ def _ensure_compiler_coverage_floor(
     checks: List[ReviewCheck],
 ) -> tuple[List[ReviewCheck], Dict[str, Any]]:
     slot = _pipeline_slot(state, task.id)
-    obligations = _coverage_obligations(slot)
+    obligations = _ranked_coverage_obligations(task, slot)
     uncovered_obligations = [
         obligation
         for obligation in obligations
         if not any(_check_covers_obligation(check, obligation) for check in checks)
     ]
+    uncovered_for_floor = _rotate_tied_obligations(uncovered_obligations)
     added: List[ReviewCheck] = []
     skipped_due_to_cap: List[Dict[str, Any]] = []
-    for obligation in uncovered_obligations:
+    for obligation in uncovered_for_floor:
         if len(checks) + len(added) >= _MAX_CHECKS_PER_TASK:
             skipped_due_to_cap.append(dict(obligation))
             continue
@@ -472,6 +638,7 @@ def _ensure_compiler_coverage_floor(
     return checks + added, {
         "coverage_files": coverage_files,
         "missed_files": missing_files,
+        "ranked_obligations": [dict(item) for item in obligations],
         "uncovered_obligations": [dict(item) for item in uncovered_obligations],
         "added_checks": [check.model_dump(mode="json") for check in added],
         "added_coverage_checks": [check.check_id for check in added],
@@ -511,6 +678,7 @@ def _normalize_compiled_checks(task: ReviewTask, checks: Iterable[ReviewCheck]) 
 
 
 def _render_compiler_prompt(state: GraphState, task: ReviewTask, slot: Mapping[str, Any]) -> str:
+    ranked_obligations = _ranked_coverage_obligations(task, slot)
     sections = {
         "Assigned Task": (
             f"Task ID: {task.id}\n"
@@ -522,7 +690,10 @@ def _render_compiler_prompt(state: GraphState, task: ReviewTask, slot: Mapping[s
         "Repository Code Evidence": str(slot.get("direct_context") or "")[:16000],
         "Mental Model Excerpt": str(slot.get("mental_model_excerpt") or ""),
         "Review KB Context": str(slot.get("review_kb_excerpt") or ""),
-        "Coverage Obligations": _json_for_prompt(slot.get("coverage_obligations") or [], max_chars=6000),
+        "Mental Model Contract Material": "\n".join(
+            f"- {line}" for line in _mental_model_contract_lines(slot)
+        ),
+        "Ranked Coverage Obligations": _json_for_prompt(ranked_obligations, max_chars=9000),
         "Available Lenses": ", ".join(REVIEW_CHECK_LENSES),
     }
     return render_reviewer_prompt("review_check_compiler.md", sections)

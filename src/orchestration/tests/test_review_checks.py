@@ -228,6 +228,213 @@ def test_review_check_compiler_adds_coverage_floor_for_uncovered_obligation(monk
     assert validate_review_check(ReviewCheck(**added[0])) == []
 
 
+def test_review_check_compiler_ranks_obligations_with_mental_model(monkeypatch) -> None:
+    output = ReviewCheckCompilerOutput(summary="compiled", checks=[])
+    monkeypatch.setattr(
+        "src.orchestration.nodes.application.review_checks.Models.worker",
+        lambda *_args, **_kwargs: _FakeLLM({"parsed": output, "raw": _Raw()}),
+    )
+    state = _state(
+        git_diff=(
+            "diff --git a/src/app.py b/src/app.py\n+++ b/src/app.py\n@@\n"
+            "+def RegexExtract(pattern):\n+    return []\n"
+            "+def StringSubstring(value, index):\n+    return value[index]\n"
+        ),
+        metadata={
+            **_state()["metadata"],
+            "critique_pipeline": {
+                "by_task": {
+                    "review-logic": {
+                        "direct_context": (
+                            "def RegexExtract(pattern):\n    return []\n"
+                            "def StringSubstring(value, index):\n    return value[index]\n"
+                        ),
+                        "mental_model_excerpt": (
+                            "- risks\n"
+                            "- RegexExtract must handle invalid regex patterns without uncaught exceptions.\n"
+                        ),
+                        "coverage_obligations": [
+                            {
+                                "file_path": "src/app.py",
+                                "surface": "StringSubstring",
+                                "dimension": "boundary/index handling",
+                                "evidence": "index parameter present",
+                            },
+                            {
+                                "file_path": "src/app.py",
+                                "surface": "RegexExtract",
+                                "dimension": "exception/control-flow scope",
+                                "evidence": "regex pattern can be invalid",
+                            },
+                        ],
+                    }
+                }
+            },
+        },
+    )
+
+    out = make_review_check_compiler_node()(state)  # type: ignore[arg-type]
+
+    floor = out["metadata"]["review_checks"]["by_task"]["review-logic"]["compiler_coverage_floor"]
+    compiled = out["metadata"]["review_checks"]["by_task"]["review-logic"]["compiled_checks"]
+    assert floor["ranked_obligations"][0]["surface"] == "RegexExtract"
+    assert "dimension_in_mental_model" in floor["ranked_obligations"][0]["relevance_reasons"]
+    assert compiled[0]["changed_code_anchor"] == "RegexExtract"
+    assert any(
+        "invalid regex patterns" in item
+        for item in compiled[0]["required_evidence"]
+    )
+
+
+def test_review_check_compiler_uses_source_order_without_relevance_signal(monkeypatch) -> None:
+    task = ReviewTask(
+        id="neutral-task",
+        title="Changed code audit",
+        description="Audit changed behavior.",
+        target_files=["src/app.py"],
+        specialty="logic",
+    )
+    output = ReviewCheckCompilerOutput(summary="compiled", checks=[])
+    monkeypatch.setattr(
+        "src.orchestration.nodes.application.review_checks.Models.worker",
+        lambda *_args, **_kwargs: _FakeLLM({"parsed": output, "raw": _Raw()}),
+    )
+    state = _state(
+        current_task_id=task.id,
+        task_registry={task.id: task},
+        git_diff=(
+            "diff --git a/src/app.py b/src/app.py\n+++ b/src/app.py\n@@\n"
+            "+def first_surface(value):\n+    return value[0]\n"
+            "+def second_surface():\n+    return None\n"
+        ),
+        metadata={
+            **_state()["metadata"],
+            "critique_pipeline": {
+                "by_task": {
+                    task.id: {
+                        "direct_context": (
+                            "def first_surface(value):\n    return value[0]\n"
+                            "def second_surface():\n    return None\n"
+                        ),
+                        "coverage_obligations": [
+                            {
+                                "file_path": "src/app.py",
+                                "surface": "first_surface",
+                                "dimension": "boundary/index handling",
+                                "evidence": "index parameter present",
+                            },
+                            {
+                                "file_path": "src/app.py",
+                                "surface": "second_surface",
+                                "dimension": "contract completeness",
+                                "evidence": "return contract present",
+                            },
+                        ],
+                    }
+                }
+            },
+        },
+    )
+
+    out = make_review_check_compiler_node()(state)  # type: ignore[arg-type]
+
+    floor = out["metadata"]["review_checks"]["by_task"][task.id]["compiler_coverage_floor"]
+    compiled = out["metadata"]["review_checks"]["by_task"][task.id]["compiled_checks"]
+    assert [row["surface"] for row in floor["ranked_obligations"]] == [
+        "first_surface",
+        "second_surface",
+    ]
+    assert compiled[0]["changed_code_anchor"] == "first_surface"
+
+
+def test_review_check_compiler_floor_adds_high_relevance_obligation_first(monkeypatch) -> None:
+    output = ReviewCheckCompilerOutput(summary="compiled", checks=[_check()])
+    monkeypatch.setattr(
+        "src.orchestration.nodes.application.review_checks.Models.worker",
+        lambda *_args, **_kwargs: _FakeLLM({"parsed": output, "raw": _Raw()}),
+    )
+    state = _state(
+        git_diff=(
+            "diff --git a/src/app.py b/src/app.py\n+++ b/src/app.py\n@@\n"
+            "+def RegexExtract(pattern):\n+    return []\n"
+            "+def StringSubstring(value, index):\n+    return value[index]\n"
+        ),
+        metadata={
+            **_state()["metadata"],
+            "critique_pipeline": {
+                "by_task": {
+                    "review-logic": {
+                        "direct_context": (
+                            "def RegexExtract(pattern):\n    return []\n"
+                            "def StringSubstring(value, index):\n    return value[index]\n"
+                        ),
+                        "mental_model_excerpt": (
+                            "- RegexExtract must handle invalid regex patterns without uncaught exceptions."
+                        ),
+                        "coverage_obligations": [
+                            {
+                                "file_path": "src/app.py",
+                                "surface": "StringSubstring",
+                                "dimension": "boundary/index handling",
+                                "evidence": "index parameter present",
+                            },
+                            {
+                                "file_path": "src/app.py",
+                                "surface": "RegexExtract",
+                                "dimension": "exception/control-flow scope",
+                                "evidence": "regex pattern can be invalid",
+                            },
+                        ],
+                    }
+                }
+            },
+        },
+    )
+
+    out = make_review_check_compiler_node()(state)  # type: ignore[arg-type]
+
+    added = out["metadata"]["review_checks"]["by_task"]["review-logic"]["compiler_coverage_floor"]["added_checks"]
+    assert added[0]["changed_code_anchor"] == "RegexExtract"
+
+
+def test_review_check_compiler_prompt_includes_ranked_obligation_reasons(monkeypatch) -> None:
+    output = ReviewCheckCompilerOutput(summary="compiled", checks=[])
+    fake = _FakeLLM({"parsed": output, "raw": _Raw()})
+    monkeypatch.setattr(
+        "src.orchestration.nodes.application.review_checks.Models.worker",
+        lambda *_args, **_kwargs: fake,
+    )
+    state = _state(
+        metadata={
+            **_state()["metadata"],
+            "critique_pipeline": {
+                "by_task": {
+                    "review-logic": {
+                        "direct_context": "def handle():\n    return None\n",
+                        "mental_model_excerpt": "- contracts\n- RETURN_TYPES requires a string result.",
+                        "coverage_obligations": [
+                            {
+                                "file_path": "src/app.py",
+                                "surface": "handle",
+                                "dimension": "contract completeness",
+                                "evidence": "entry point implies a return contract",
+                            }
+                        ],
+                    }
+                }
+            },
+        },
+    )
+
+    make_review_check_compiler_node()(state)  # type: ignore[arg-type]
+
+    prompt = fake.prompts[0]
+    assert "## Ranked Coverage Obligations" in prompt
+    assert "relevance_reasons" in prompt
+    assert "## Mental Model Contract Material" in prompt
+    assert "RETURN_TYPES requires a string result" in prompt
+
+
 def test_review_check_compiler_coverage_floor_respects_cap(monkeypatch) -> None:
     llm_checks = [
         _check(check_id=f"review-logic:check:{idx}", changed_code_anchor="handle")
