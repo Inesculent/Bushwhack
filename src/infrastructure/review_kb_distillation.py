@@ -386,8 +386,42 @@ def community_merge_pack(
         "prompt_version": COMMUNITY_MERGE_PROMPT_VERSION,
         "records": [_record_pack(r) for r in records],
         "allowed_record_ids": [r.id for r in records],
-        "telemetry": dict(telemetry),
+        "telemetry": _compact_merge_telemetry(telemetry),
     }
+
+
+def _compact_merge_telemetry(telemetry: Mapping[str, Any]) -> Dict[str, Any]:
+    compact: Dict[str, Any] = {}
+    for key in (
+        "mode",
+        "prompt_chars",
+        "estimated_prompt_tokens",
+        "total_records",
+        "selected_records",
+        "shard_count",
+    ):
+        if key in telemetry:
+            compact[key] = telemetry[key]
+
+    skipped_lanes = telemetry.get("skipped_lanes")
+    if isinstance(skipped_lanes, Sequence) and not isinstance(skipped_lanes, (str, bytes)):
+        compact["skipped_lanes"] = [str(lane) for lane in skipped_lanes[:8]]
+        if len(skipped_lanes) > 8:
+            compact["skipped_lane_count"] = len(skipped_lanes)
+
+    omitted_ids = telemetry.get("omitted_record_ids")
+    if isinstance(omitted_ids, Sequence) and not isinstance(omitted_ids, (str, bytes)):
+        compact["omitted_record_count"] = len(omitted_ids)
+        compact["omitted_record_ids_sample"] = [str(record_id) for record_id in omitted_ids[:12]]
+
+    omitted = telemetry.get("omitted")
+    if isinstance(omitted, Mapping):
+        compact["omitted"] = {
+            str(key): value
+            for key, value in omitted.items()
+            if isinstance(value, (str, int, float, bool)) or value is None
+        }
+    return compact
 
 
 def build_community_distillation_pack(
@@ -462,23 +496,49 @@ def build_repo_distillation_pack(
     bundle: ReviewKBBundle,
     *,
     max_community_summaries: int = 24,
+    max_shard_summaries: int = 16,
+    max_facts: int = 16,
+    docs_summary: str = "",
+    docs_sources: Sequence[str] = (),
 ) -> Dict[str, Any]:
-    summaries = [
+    community_summaries = [
         r
         for r in bundle.summaries
         if r.kind == "summary" and r.metadata.get("summary_scope") == "community"
     ][:max_community_summaries]
-    records = [bundle.repo, *summaries]
+    shard_summaries = [
+        r
+        for r in bundle.summaries
+        if r.kind == "summary"
+        and r.metadata.get("summary_scope") == "community_shard"
+        and {"contract", "risk-surface"} & set(r.tags)
+    ][:max_shard_summaries]
+    facts = sorted(
+        bundle.facts,
+        key=lambda r: (0 if {"contract", "tensor-shape", "signature", "config"} & set(r.tags) else 1, r.id),
+    )[:max_facts]
+    topology = next((r for r in bundle.summaries if r.id == "summary:repo:topology"), None)
+    records = [bundle.repo, *([topology] if topology is not None else []), *community_summaries, *shard_summaries, *facts]
     return {
         "prompt_version": REPO_DISTILL_PROMPT_VERSION,
         "records": [_record_pack(r) for r in records],
         "allowed_record_ids": [r.id for r in records],
+        "docs_context": {
+            "summary": str(docs_summary or "")[:4000],
+            "allowed_doc_source_ids": [str(s) for s in docs_sources if str(s).startswith("doc:")][:20],
+        },
         "omitted": {
             "community_summaries": max(
                 0,
                 len([r for r in bundle.summaries if r.metadata.get("summary_scope") == "community"])
-                - len(summaries),
-            )
+                - len(community_summaries),
+            ),
+            "shard_summaries": max(
+                0,
+                len([r for r in bundle.summaries if r.metadata.get("summary_scope") == "community_shard"])
+                - len(shard_summaries),
+            ),
+            "facts": max(0, len(bundle.facts) - len(facts)),
         },
     }
 
@@ -637,11 +697,14 @@ def repo_summary_record_from_distillation(
     fallback: ReviewKBRecord,
     output: RepositoryKBRepoDistillationOutput,
     allowed_record_ids: Sequence[str],
+    allowed_doc_source_ids: Sequence[str] = (),
     omitted: Mapping[str, int],
     token_usage: int = 0,
 ) -> ReviewKBRecord:
     allowed = set(allowed_record_ids)
     cited = [rid for rid in output.source_record_ids if rid in allowed]
+    allowed_docs = set(allowed_doc_source_ids)
+    cited_docs = [rid for rid in output.doc_source_ids if rid in allowed_docs]
     warnings = list(output.warnings)
     if not cited:
         cited = [fallback.id]
@@ -649,11 +712,19 @@ def repo_summary_record_from_distillation(
     invalid = [rid for rid in output.source_record_ids if rid not in allowed]
     if invalid:
         warnings.append(f"distillation_invalid_citations:{len(invalid)}")
+    invalid_docs = [rid for rid in output.doc_source_ids if rid not in allowed_docs]
+    if invalid_docs:
+        warnings.append(f"distillation_invalid_doc_citations:{len(invalid_docs)}")
     parts = [
-        output.summary.strip(),
-        _bullets("Top subsystems", output.top_subsystems),
-        _bullets("Public contracts", output.public_contracts),
-        _bullets("Dependency flow", output.dependency_flow),
+        _section("Repository Understanding", output.what_it_is or output.summary),
+        _bullets("Core workflows", output.core_workflows),
+        _bullets("Domain concepts", output.domain_concepts),
+        _bullets("Runtime model", output.runtime_model),
+        _bullets("Extension points", output.extension_points),
+        _bullets("Data model contracts", output.data_model_contracts or output.public_contracts),
+        _bullets("Review mental model", output.review_mental_model),
+        _bullets("Documentation alignment", output.docs_alignment),
+        _bullets("Topology notes", output.top_subsystems + output.dependency_flow),
         _bullets("Risk surfaces", output.risk_surfaces),
         _bullets("Uncertainties", output.uncertainties),
     ]
@@ -662,15 +733,18 @@ def repo_summary_record_from_distillation(
         update={
             "summary": summary,
             "confidence": "llm_synthesized",
-            "tags": sorted(set([*fallback.tags, "repo-summary", "contract", "risk-surface"])),
+            "tags": sorted(set([*fallback.tags, "repo-summary", "repo-understanding", "contract", "risk-surface"])),
             "metadata": {
                 **fallback.metadata,
                 "source_record_ids": cited,
+                "doc_source_ids": cited_docs,
                 "prompt_version": REPO_DISTILL_PROMPT_VERSION,
                 "llm_distillation_status": "ok",
                 "llm_distillation_warnings": warnings,
                 "token_usage": token_usage,
                 "omitted_community_summaries": int(omitted.get("community_summaries") or 0),
+                "omitted_shard_summaries": int(omitted.get("shard_summaries") or 0),
+                "omitted_facts": int(omitted.get("facts") or 0),
             },
         }
     )
@@ -704,3 +778,10 @@ def _bullets(label: str, values: Sequence[str]) -> str:
     if not cleaned:
         return ""
     return f"{label}: " + "; ".join(cleaned[:8])
+
+
+def _section(label: str, value: str) -> str:
+    cleaned = str(value or "").strip()
+    if not cleaned:
+        return ""
+    return f"{label}: {cleaned}"

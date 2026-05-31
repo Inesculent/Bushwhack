@@ -138,15 +138,12 @@ _COMPACT_OUTPUT_APPENDIX = (
     "Keep summary under 500 characters. No prose outside the schema fields."
 )
 _ORTHOGONAL_RECALL_APPENDIX = (
-    "\n\n## ORTHOGONAL RECALL PASS (bounded)\n"
-    "Return only missed issues from dimensions not already covered: contract completeness, "
-    "boundary/index handling, structured data preservation, aggregation/serialization safety, "
-    "exception/control-flow scope, and resource amplification. Do not repeat existing root failures. "
-    "Return at most 3 additional candidates and include audit_coverage."
+    "\n\n## TARGETED RECALL PASS (bounded)\n"
+    "Return only missed concrete changed-code regressions. Do not add generic validation, "
+    "missing-test, missing-else, or guard suggestions unless the PR newly causes a specific "
+    "crash, wrong output, data loss, security boundary failure, or contract regression. "
+    "Return at most 2 additional candidates and include audit_coverage."
 )
-_MIN_COVERAGE_DIMENSIONS = 3
-
-
 def _is_length_finish_error(exc: Exception) -> bool:
     if "LengthFinish" in exc.__class__.__name__:
         return True
@@ -195,12 +192,6 @@ def _invoke_critiquer_llm(
 
 
 def _needs_orthogonal_recall(response: CritiquerOutput) -> bool:
-    if not response.audit_coverage:
-        return bool(response.candidates)
-    for row in response.audit_coverage:
-        dims = {d.strip().lower() for d in row.dimensions if isinstance(d, str) and d.strip()}
-        if row.surface.strip() and len(dims) < _MIN_COVERAGE_DIMENSIONS:
-            return True
     return False
 
 

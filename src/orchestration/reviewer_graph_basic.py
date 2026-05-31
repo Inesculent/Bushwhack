@@ -1,4 +1,4 @@
-"""Parallel reviewer graph without adversarial critique/reflection nodes."""
+"""Harness-only legacy reviewer graph without adversarial critique/reflection nodes."""
 from __future__ import annotations
 
 import logging

@@ -74,6 +74,7 @@ from src.orchestration.nodes.exploration.semantic_dispatch import (
 from src.orchestration.nodes.exploration.semantic_merge import make_semantic_merge_node
 from src.orchestration.nodes.exploration.snapshot_pin import make_snapshot_pin_node
 from src.orchestration.nodes.mental_model import make_intent_extractor_node
+from src.orchestration.nodes.review_history_context import make_review_history_context_node
 from src.orchestration.nodes.mandate_explorer_node import (
     make_mandate_explorer_bootstrap_node,
     make_mandate_explorer_targeted_node,
@@ -536,13 +537,18 @@ def build_graph(
         ),
     )
     builder.add_node("semantic_dispatch", make_semantic_dispatch_node(settings))
-    builder.add_node("community_semantic_agent", make_community_semantic_agent_node(settings=settings))
+    if settings.semantic_legacy_community_agents_enabled:
+        builder.add_node("community_semantic_agent", make_community_semantic_agent_node(settings=settings))
     builder.add_node(
         "unverified_call_resolver",
         make_unverified_call_resolver_node(ast_parser=ast_parser, settings=settings),
     )
     builder.add_node("semantic_merge", make_semantic_merge_node(settings=settings))
     builder.add_node("intent_extractor", make_intent_extractor_node(settings=settings))
+    builder.add_node(
+        "review_history_context",
+        make_review_history_context_node(github_provider=github_provider, settings=settings),
+    )
     builder.add_node(
         "mandate_explorer",
         make_mandate_explorer_bootstrap_node(context_provider, settings=settings),
@@ -664,8 +670,11 @@ def build_graph(
             "review_planner": "review_planner",
         },
     )
-    builder.add_conditional_edges("semantic_dispatch", route_semantic_dispatch)
-    builder.add_edge("community_semantic_agent", "semantic_dispatch")
+    if settings.semantic_legacy_community_agents_enabled:
+        builder.add_conditional_edges("semantic_dispatch", route_semantic_dispatch)
+        builder.add_edge("community_semantic_agent", "semantic_dispatch")
+    else:
+        builder.add_edge("semantic_dispatch", "unverified_call_resolver")
     builder.add_conditional_edges(
         "unverified_call_resolver",
         route_after_unverified_call_resolver,
@@ -682,8 +691,9 @@ def build_graph(
             "intent_extractor": "intent_extractor",
         },
     )
+    builder.add_edge("intent_extractor", "review_history_context")
     builder.add_conditional_edges(
-        "intent_extractor",
+        "review_history_context",
         route_after_intent,
         {
             "mandate_explorer": "mandate_explorer",

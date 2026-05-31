@@ -4,6 +4,7 @@ from typing import List, Optional, Any, Dict, Sequence
 from .schemas import (
     CodeEntity,
     DiffManifest,
+    GitHubFileReviewHistory,
     GitHubIssueContext,
     GitHubIssueComment,
     GitHubPullRequestContext,
@@ -206,6 +207,25 @@ class IGitHubContextProvider(ABC):
     ) -> List[GitHubIssueComment]:
         """
         Fetch a bounded list of comments for a PR or issue.
+        """
+        pass
+
+    @abstractmethod
+    def get_file_review_history(
+        self,
+        owner: str,
+        repo: str,
+        ref: str,
+        paths: Sequence[str],
+        *,
+        current_pr_number: int | None = None,
+        commits_per_file: int = 12,
+        prs_per_file: int = 3,
+        comments_per_pr: int = 30,
+        max_total_chars: int = 8000,
+    ) -> List[GitHubFileReviewHistory]:
+        """
+        Fetch bounded prior PR review/comment context for repository-relative file paths.
         """
         pass
 

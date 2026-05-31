@@ -4,7 +4,7 @@
 #SBATCH --gres=gpu:2
 #SBATCH -C h100
 #SBATCH --nodes=1
-#SBATCH --time=12:00:00
+#SBATCH --time=18:00:00
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=128G
 #SBATCH --output=slurm_logs/bushwhack-custom-%j.out
@@ -120,12 +120,9 @@ echo "vLLM is ready!"
 
 # Define your target list of PR URLs here:
 PR_URLS=(
-    "https://github.com/comfyanonymous/ComfyUI/pull/7952"
     "https://github.com/comfyanonymous/ComfyUI/pull/8446"
     "https://github.com/browser-use/browser-use/pull/1482"
-    "https://github.com/browser-use/browser-use/pull/3172"
     "https://github.com/infiniflow/ragflow/pull/7151"
-    "https://github.com/infiniflow/ragflow/pull/6553"
     "https://github.com/vllm-project/vllm/pull/12608"
     "https://github.com/langflow-ai/langflow/pull/6044"
 )

@@ -127,6 +127,28 @@ class BehavioralSpec(BaseModel):
     uncertainties: str = Field(default="", description="Known gaps in understanding.")
 
 
+BehavioralSymptom = Literal[
+    "wrong_output",
+    "data_loss",
+    "crash",
+    "missing_return",
+    "uncaught_exception",
+    "unbounded_work",
+    "contract_mismatch",
+    "other",
+]
+RootOperation = Literal[
+    "dispatch",
+    "indexing",
+    "aggregation",
+    "exception_scope",
+    "resource_use",
+    "serialization",
+    "contract",
+    "other",
+]
+
+
 class ReviewFinding(BaseModel):
 
     # Basic finding information
@@ -143,6 +165,8 @@ class ReviewFinding(BaseModel):
     # The recommendation for fixing the issue, and any references to documentation or code examples
     recommendation: Optional[str] = None
     references: List[str] = Field(default_factory=list)
+    behavioral_symptom: Optional[BehavioralSymptom] = None
+    root_operation: Optional[RootOperation] = None
 
 
 class ReviewerWorkerReport(BaseModel):
@@ -170,28 +194,6 @@ ClaimType = Literal[
     "positive_observation",
     "uncertain",
 ]
-BehavioralSymptom = Literal[
-    "wrong_output",
-    "data_loss",
-    "crash",
-    "missing_return",
-    "uncaught_exception",
-    "unbounded_work",
-    "contract_mismatch",
-    "other",
-]
-RootOperation = Literal[
-    "dispatch",
-    "indexing",
-    "aggregation",
-    "exception_scope",
-    "resource_use",
-    "serialization",
-    "contract",
-    "other",
-]
-
-
 class AuditCoverageRecord(BaseModel):
     """Non-promotable coverage note from a critiquer pass."""
 
@@ -467,6 +469,30 @@ class GitHubIssueComment(BaseModel):
     body: str = ""
     html_url: Optional[str] = None
     created_at: Optional[str] = None
+
+
+class GitHubReviewHistoryComment(BaseModel):
+    """Prior PR/comment context for one repository file."""
+
+    file_path: str
+    pr_number: int
+    pr_title: str = ""
+    pr_html_url: Optional[str] = None
+    commit_sha: str = ""
+    author: Optional[str] = None
+    created_at: Optional[str] = None
+    body: str = ""
+    comment_path: str = ""
+    line: Optional[int] = None
+    source: Literal["review_comment", "issue_comment"] = "review_comment"
+
+
+class GitHubFileReviewHistory(BaseModel):
+    """Bounded historical review context for a changed file."""
+
+    file_path: str
+    comments: List[GitHubReviewHistoryComment] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
 
 
 DiffChangeType = Literal["A", "M", "D", "R"]
@@ -774,12 +800,21 @@ class RepositoryKBShardDistillationOutput(BaseModel):
 
 class RepositoryKBRepoDistillationOutput(BaseModel):
     summary: str = Field(default="", max_length=2400)
+    what_it_is: str = Field(default="", max_length=1600)
+    core_workflows: List[str] = Field(default_factory=list)
+    domain_concepts: List[str] = Field(default_factory=list)
+    runtime_model: List[str] = Field(default_factory=list)
+    extension_points: List[str] = Field(default_factory=list)
+    data_model_contracts: List[str] = Field(default_factory=list)
+    review_mental_model: List[str] = Field(default_factory=list)
+    docs_alignment: List[str] = Field(default_factory=list)
     top_subsystems: List[str] = Field(default_factory=list)
     public_contracts: List[str] = Field(default_factory=list)
     dependency_flow: List[str] = Field(default_factory=list)
     risk_surfaces: List[str] = Field(default_factory=list)
     uncertainties: List[str] = Field(default_factory=list)
     source_record_ids: List[str] = Field(default_factory=list)
+    doc_source_ids: List[str] = Field(default_factory=list)
     warnings: List[str] = Field(default_factory=list)
 
 

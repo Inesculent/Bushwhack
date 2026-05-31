@@ -245,8 +245,8 @@ def build_summary_records(
             id="summary:repo",
             kind="summary",
             summary=(
-                f"Repository KB covers {repo.summary} "
-                f"It is organized into {len(communities)} communities for reusable repository navigation."
+                "KB-backed repository understanding has not been synthesized yet. "
+                f"Use deterministic topology and {len(communities)} community summaries for navigation."
             ),
             evidence=repo.evidence,
             confidence="inferred",
@@ -255,6 +255,39 @@ def build_summary_records(
                 "summary_scope": "repo",
                 "source_record_ids": [repo.id, *[c.id for c in communities]],
                 "llm_distillation_status": "not_run",
+            },
+        )
+    )
+    bridge_counts = [
+        (int(c.metadata.get("community_id") or 0), len(c.metadata.get("bridge_symbols") or []))
+        for c in communities
+    ]
+    top_bridge_communities = [
+        f"community:{cid}:{count}"
+        for cid, count in sorted(bridge_counts, key=lambda row: (-row[1], row[0]))[:8]
+        if count
+    ]
+    summaries.append(
+        ReviewKBRecord(
+            id="summary:repo:topology",
+            kind="summary",
+            summary=(
+                f"Static topology: {len(files)} files, {len(symbols)} symbols, {len(communities)} communities, "
+                f"{sum(len(c.metadata.get('cross_community_dependencies') or []) for c in communities)} "
+                "cross-community dependency references."
+            ),
+            evidence=repo.evidence,
+            confidence="inferred",
+            tags=["summary", "repo", "topology"],
+            metadata={
+                "summary_scope": "repo_topology",
+                "source_record_ids": [repo.id, *[c.id for c in communities]],
+                "file_count": len(files),
+                "symbol_count": len(symbols),
+                "community_count": len(communities),
+                "fact_count": len(facts),
+                "top_bridge_communities": top_bridge_communities,
+                "llm_distillation_status": "not_applicable",
             },
         )
     )

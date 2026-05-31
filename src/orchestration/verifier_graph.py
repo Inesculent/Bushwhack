@@ -18,11 +18,14 @@ from src.domain.state import GraphState
 from src.domain.verifier_schemas import VerifierReport
 from src.orchestration.nodes.verifier.result_judge import (
     build_retry_feedback,
+    classify_attempt_failure,
     infer_verification_scope,
     judge_attempt,
+    missing_modules_from_attempts,
     verifier_hint_flags_for_attempts,
 )
 from src.orchestration.nodes.verifier.sandbox_executor import execute_test_script
+from src.orchestration.nodes.verifier.source_only import source_only_verify_candidate
 from src.orchestration.nodes.verifier.test_generator import generate_test_script
 from src.orchestration.nodes.verifier.verifier_runner import _infer_verifier_repo_root, _sandbox_ok
 
@@ -67,6 +70,24 @@ def verifier_preflight_node(state: GraphState) -> Dict[str, Any]:
             "verifier_focused_context_text": fc,
             "node_history": ["verifier_preflight"],
         }
+
+    if settings.verifier_source_only_static_enabled:
+        static_verdict, static_rationale, static_attempt = source_only_verify_candidate(
+            state,
+            cand_dict,
+        )
+        if static_verdict and static_attempt is not None:
+            return {
+                "verifier_attempt_idx": 0,
+                "verifier_retry_feedback": "",
+                "verifier_scope": "concrete_behavior",
+                "verifier_repo_root": repo_root,
+                "verifier_attempts": [static_attempt],
+                "verifier_verdict": static_verdict,
+                "verifier_last_rationale": static_rationale,
+                "verifier_focused_context_text": fc,
+                "node_history": ["verifier_preflight", "verifier_source_only_static"],
+            }
 
     return {
         "verifier_attempt_idx": 0,
@@ -134,6 +155,10 @@ def verifier_execute_node(state: GraphState) -> Dict[str, Any]:
         test_code=state.get("verifier_current_test_code", ""),
         settings=settings,
         graph_state=state,
+    )
+    record.failure_class = classify_attempt_failure(
+        record,
+        target_file_path=str(cand_dict.get("file_path") or ""),
     )
 
     return {
@@ -215,6 +240,12 @@ def verifier_finalize_node(state: GraphState) -> Dict[str, Any]:
     meta = dict(state.get("metadata") or {})
     hints = dict(meta.get("verifier_hints") or {})
     target_file_path = str(cand_dict.get("file_path") or "")
+    for attempt in report.attempts:
+        if not attempt.failure_class:
+            attempt.failure_class = classify_attempt_failure(
+                attempt,
+                target_file_path=target_file_path,
+            )
     hint_flags = verifier_hint_flags_for_attempts(
         verdict=report.verdict,
         attempts=report.attempts,
@@ -243,12 +274,24 @@ def verifier_finalize_node(state: GraphState) -> Dict[str, Any]:
         "harness_error": harness_error,
         "product_verified": product_verified,
         "confidence": confidence,
+        "failure_classes": [a.failure_class for a in report.attempts if a.failure_class],
+        "top_missing_modules": missing_modules_from_attempts(report.attempts)[:10],
     }
     meta["verifier_hints"] = hints
     vrun = dict(meta.get("verifier") or {})
     by_c = dict(vrun.get("by_candidate") or {})
     by_c[report.candidate_id] = report.model_dump(mode="json")
     vrun["by_candidate"] = by_c
+    failure_by_candidate = dict(vrun.get("failure_summary_by_candidate") or {})
+    failure_by_candidate[report.candidate_id] = {
+        "verdict": report.verdict,
+        "attempt_count": len(report.attempts),
+        "failure_classes": [a.failure_class or "unknown" for a in report.attempts],
+        "top_missing_modules": missing_modules_from_attempts(report.attempts)[:10],
+        "product_verified": product_verified,
+        "harness_error": harness_error,
+    }
+    vrun["failure_summary_by_candidate"] = failure_by_candidate
     meta["verifier"] = vrun
 
     return {

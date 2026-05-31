@@ -33,6 +33,7 @@ from src.orchestration.routing.reflection_consolidation import (
     candidate_has_tier1_localized_markers,
     consolidate_reflection_reports,
 )
+from src.orchestration.routing.claim_tiering import classify_claim_tier, review_kb_context_for_candidate
 
 logger = logging.getLogger(__name__)
 trace_logger = logging.getLogger("research_pipeline.reviewer_trace")
@@ -96,7 +97,28 @@ def _needs_revision_candidates(state: GraphState) -> List[str]:
         if report.verdict in ("needs_context", "needs_verification"):
             ids.add(report.candidate_id)
     ids.update(_reject_recheck_revision_candidates(state))
-    return sorted(ids)
+    by_id = _all_candidates_by_id(state)
+    metadata = state.get("metadata") or {}
+    filtered: set[str] = set()
+    for cid in ids:
+        cand = by_id.get(cid)
+        if cand is None:
+            filtered.add(cid)
+            continue
+        tier = classify_claim_tier(
+            cand,
+            review_kb_context=review_kb_context_for_candidate(metadata, cand),
+        )
+        if tier == "speculative_guard":
+            continue
+        if (
+            tier == "direct_regression"
+            and not _focused_results_for_candidate(state, cid)
+            and not _has_verifier_report_for_candidate(state, cid)
+        ):
+            continue
+        filtered.add(cid)
+    return sorted(filtered)
 
 
 def _candidate_ids_needs_verification(state: GraphState) -> Set[str]:
@@ -339,6 +361,7 @@ def _compact_verifier_report_json(report: VerifierReport) -> str:
                 "exit_code": att.get("exit_code"),
                 "timeout": att.get("timeout"),
                 "sandbox_mode": att.get("sandbox_mode"),
+                "failure_class": att.get("failure_class"),
                 "stdout": stdout,
                 "stderr": stderr,
             }

@@ -23,23 +23,23 @@ Why this works: one downstream specialist evaluates each candidate; the graph do
 Rules:
 - **Behavioral mandate (if present):** Bullets under "Mental model excerpt" are investigation hypotheses and contract context only, not defects unless the diff or code evidence supports them.
 - Each candidate must cite evidence from the diff or the provided context; do not invent APIs, files, or behavior.
-- **Shoot first on suspected defects:** Emit a candidate for every plausible high-impact edge case visible in the diff when you can state a concrete `failure_mode`. Downstream reflection and the optional runtime verifier may refute weak claims.
+- **Concrete changed-code regressions only:** Emit a candidate only when the PR newly causes or exposes a concrete failure path. Do not rely on downstream reflection or the verifier to clean up generic guard, validation, missing-test, or missing-else speculation.
 - When the assigned task names one or a few in-scope classes, finish reviewing **that** scope before closing the task.
 - If you emit a candidate for one failure mode in a handler, **continue** checking the same handler for **orthogonal** issues before you stop. Do not chase volume with duplicate hypotheses about the same root bug; do not abandon the handler after the first severe finding.
-- **Orthogonal review dimensions:** For every in-scope entry point, consider contract completeness, boundary/index handling, structured data preservation, aggregation/serialization safety, exception/control-flow scope, and resource-amplification risk.
+- **High-signal review dimensions:** For every in-scope entry point, prioritize changed branch order, default/value changes, removed imports still used, slot/index/escaping asymmetry, overwritten accumulators, aggregation bugs, and explicit contract regressions.
 - **Audit coverage:** Populate `audit_coverage` with non-promotable records for the surfaces you reviewed and the abstract dimensions considered. Do not put defects in `audit_coverage`; use `candidates` for actionable findings.
-- **Declared inputs:** Follow the global **Declared input contracts** rule. Do **not** emit None/null/absent-input defects for parameters that are required and non-optional in the framework's declared input schema unless the diff shows optional/nullable typing or handling that implies such values can arrive. Do not use `required_context` solely to ask whether upstream "might pass None." The **in-function contracts** rule does **not** override this: never justify required-parameter None-guard findings by claiming schemas do not guarantee runtime types.
+- **Declared inputs:** Follow the global **Declared input contracts** rule. Do **not** emit None/null/absent-input defects for parameters that are required and non-optional in the framework's declared input schema unless the diff shows optional/nullable typing or handling that implies such values can arrive. Do not use `required_context` solely to ask whether upstream "might pass None."
 - Prefer accuracy over volume: emit **at most one** candidate per distinct issue (same file + class/method + **same root failure**). Different failure modes in the same method (return contract vs indexing vs aggregation) are **not** duplicates. Do **not** re-emit the same missing-`else`/return hypothesis with different line ranges.
 - For each candidate, set `behavioral_symptom` and `root_operation` with generic labels. Use symptoms such as `wrong_output`, `data_loss`, `crash`, `missing_return`, `uncaught_exception`, `unbounded_work`, or `contract_mismatch`; use operations such as `dispatch`, `indexing`, `aggregation`, `exception_scope`, `resource_use`, `serialization`, or `contract`.
 - `line_start`/`line_end` must cover the cited class or method in the diff, not a nearby unrelated class. Downstream validation may repair or drop candidates whose lines do not bracket the cited symbol.
 - Prefer **symbol-local** evidence from `code_evidence` (whole class or method units) over inferring behavior from a truncated diff hunk alone.
 - Treat **Review KB context** as retrieved repository knowledge for cross-file contracts, signatures, expected shapes, entrypoints, and dependency hints. It can guide candidate framing, but exact code evidence/focused context is required when the finding hinges on behavior not shown in the prompt.
-- Produce candidates only for actionable negative claims: defects, security risks, performance regressions, or meaningful missing tests. Do not emit candidates for positive observations, resolutions, or "no action needed" conclusions, even when refuting an earlier hypothesis.
+- Produce candidates only for actionable negative claims: defects, security risks, performance regressions, or meaningful missing tests tied to a changed behavior. Do not emit candidates for positive observations, resolutions, generic hardening, or "no action needed" conclusions.
 - Set `claim_type` accurately:
   - `defect`: changed behavior can be wrong or crash.
   - `security_risk`: exploitable or authorization/security-sensitive risk.
   - `performance_regression`: changed behavior can become slower, more memory-intensive, or less scalable.
-  - `missing_test`: important untested changed behavior with a specific failure mode.
+  - `missing_test`: important untested changed behavior with a specific failure mode caused or newly exposed by this PR.
   - `positive_observation`: use only when explicitly asked; these will not be promoted.
   - `uncertain`: evidence is too weak; these will not be promoted unless focused context resolves them.
 - Every promotable candidate must include `failure_mode`, `evidence_summary`, and `recommendation`.

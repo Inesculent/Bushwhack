@@ -99,7 +99,8 @@ def format_exploration_ledger_for_prompt(
 
         if entry.get("kind") == "mandate_tool_observation":
             tool = entry.get("tool", "?")
-            aprev = str(entry.get("result_preview") or entry.get("answer_preview") or "")[:400]
+            preview_cap = 1200 if tool == "review_history_context" else 400
+            aprev = str(entry.get("result_preview") or entry.get("answer_preview") or "")[:preview_cap]
             line = f"- [mandate_tool:{tool}] {entry.get('args_preview', '')}\n  → {aprev}"
         else:
             qprev = str(entry.get("query_preview") or entry.get("query") or "")[:240]
@@ -122,7 +123,8 @@ def format_exploration_ledger_for_prompt(
             seen_keys.add(dk)
             if entry.get("kind") == "mandate_tool_observation":
                 tool = entry.get("tool", "?")
-                aprev = str(entry.get("result_preview") or entry.get("answer_preview") or "")[:400]
+                preview_cap = 1200 if tool == "review_history_context" else 400
+                aprev = str(entry.get("result_preview") or entry.get("answer_preview") or "")[:preview_cap]
                 line = f"- [mandate_tool:{tool}] {entry.get('args_preview', '')}\n  → {aprev}"
             else:
                 qprev = str(entry.get("query_preview") or "")[:240]

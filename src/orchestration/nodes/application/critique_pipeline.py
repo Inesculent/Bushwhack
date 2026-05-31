@@ -17,6 +17,7 @@ from src.orchestration.context.context_packets import (
 from src.orchestration.context.task_evidence import build_task_evidence
 from src.orchestration.context.review_context import LazyReviewContextProvider
 from src.orchestration.nodes.application.critiquer import make_general_critiquer_node
+from src.orchestration.review_principles import REVIEW_PRINCIPLES_VERSION
 from src.orchestration.routing.review_obligations import derive_review_obligations
 from src.tools.mental_model_tools import query_mental_model
 from src.tools.review_kb_tools import query_review_kb
@@ -102,6 +103,7 @@ def make_critique_context_probe_node(context_provider: LazyReviewContextProvider
         probe_task_warnings = list(context.warnings) + list(bundle.warnings) + probe_warnings
 
         meta = dict(state.get("metadata", {}) or {})
+        meta["review_principles_version"] = REVIEW_PRINCIPLES_VERSION
         pipe = dict(meta.get("critique_pipeline", {}) or {})
         by_task = dict(pipe.get("by_task", {}) or {})
         evidence_slot = bundle.to_storage_dict()

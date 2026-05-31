@@ -82,6 +82,8 @@ class GraphState(TypedDict, total=False):
     # Documentation pre-brief (optional, before semantic scan)
     docs_prebrief_summary: NotRequired[str]
     docs_prebrief_sources: NotRequired[List[str]]
+    repository_docs_summary: NotRequired[str]
+    repository_docs_sources: NotRequired[List[str]]
 
     # Optional references for externalized payloads (e.g., Redis-backed cache blobs)
     cache_refs: NotRequired[Dict[str, str]]

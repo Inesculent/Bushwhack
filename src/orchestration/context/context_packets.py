@@ -36,7 +36,7 @@ from src.orchestration.context.mandate_loop_context import (
 )
 from src.orchestration.context.review_context import structural_critiquer_context_excerpt
 from src.orchestration.nodes.application.worker import ReviewTaskContext
-from src.orchestration.review_principles import principles_for_specialty
+from src.orchestration.review_principles import REVIEW_PRINCIPLES_VERSION, principles_for_specialty
 
 PACKET_VERSION = "0"
 
@@ -826,6 +826,7 @@ def build_critique_packet(
     meta: Dict[str, Any] = {}
     if evidence_metadata:
         meta.update(dict(evidence_metadata))
+    meta["review_principles_version"] = REVIEW_PRINCIPLES_VERSION
     fc = meta.get("files_complete") if isinstance(meta.get("files_complete"), dict) else {}
     if diff_hunk_suppressed_for_task(task, fc):
         meta["diff_hunk_suppressed"] = True
@@ -943,29 +944,6 @@ def build_critiquer_packet(
         ),
         _section("code_evidence", 2, code_evidence, source="critique_probe"),
     ]
-    obligations = pipeline_slot.get("coverage_obligations")
-    if isinstance(obligations, list) and obligations:
-        lines = []
-        for raw in obligations[:20]:
-            if not isinstance(raw, dict):
-                continue
-            lines.append(
-                "- {surface} | {dimension} | file_complete={complete} | evidence={evidence}".format(
-                    surface=str(raw.get("surface") or ""),
-                    dimension=str(raw.get("dimension") or ""),
-                    complete=bool(raw.get("files_complete")),
-                    evidence=str(raw.get("evidence") or ""),
-                )
-            )
-        if lines:
-            sections.append(
-                _section(
-                    "coverage_obligations",
-                    3,
-                    "\n".join(lines),
-                    source="deterministic_code_shape",
-                )
-            )
     if struct_excerpt:
         sections.append(
             _section("structural_excerpt", 2, struct_excerpt, source="structural_graph")
@@ -1012,6 +990,7 @@ def build_critiquer_packet(
         stage="critiquer",
         char_budget=int(settings.reviewer_critique_packet_max_chars),
         sections=sections,
+        metadata={"review_principles_version": REVIEW_PRINCIPLES_VERSION},
     )
     enforced = enforce_packet_budget(packet)
     em = dict(enforced.metadata)

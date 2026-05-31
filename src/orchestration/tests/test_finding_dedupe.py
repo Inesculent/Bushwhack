@@ -65,14 +65,18 @@ def test_findall_and_group_index_are_distinct_semantic_keys() -> None:
         file_path="pkg/h.py",
         content="class Handler",
         failure_mode="findall returns tuples but loop keeps only m[0]",
+        behavioral_symptom="data_loss",
+        root_operation="indexing",
     )
     group_key = semantic_finding_key(
         file_path="pkg/h.py",
         content="class Handler",
         failure_mode="group_index=0 skipped when match.groups() is falsy",
+        behavioral_symptom="wrong_output",
+        root_operation="indexing",
     )
-    assert findall_key[2] == "structured_slot_truncation"
-    assert group_key[2] == "regex_group_index"
+    assert findall_key[3:] == ("data_loss", "indexing")
+    assert group_key[3:] == ("wrong_output", "indexing")
     assert findall_key != group_key
 
 
@@ -81,11 +85,15 @@ def test_dedupe_keeps_findall_and_group_index_candidates() -> None:
         candidate_id="t:findall",
         content="class Handler",
         failure_mode="All Matches uses findall; only m[0] kept — data loss",
+        behavioral_symptom="data_loss",
+        root_operation="indexing",
     )
     group_c = _cand(
         candidate_id="t:group",
         content="class Handler",
         failure_mode="group_index=0 blocked by truthiness on empty groups()",
+        behavioral_symptom="wrong_output",
+        root_operation="indexing",
     )
     out, dups = dedupe_candidates_by_signature([findall_c, group_c])
     assert len(out) == 2
@@ -122,6 +130,63 @@ def test_candidate_signature_uses_symptom_and_root_operation() -> None:
     assert candidate_signature_key(data_loss) != candidate_signature_key(crash)
     out, dups = dedupe_candidates_by_signature([data_loss, crash])
     assert len(out) == 2
+    assert not dups
+
+
+def test_candidate_dedupe_ignores_wording_when_structured_signature_matches() -> None:
+    first = _cand(
+        candidate_id="t:wording-a",
+        content="class Handler: keeps the first parsed row slot",
+        failure_mode="Only the first slot is retained from structured rows.",
+        evidence_summary="row[0] is used when normalizing records.",
+        recommendation="Preserve all relevant fields.",
+        behavioral_symptom="data_loss",
+        root_operation="indexing",
+    )
+    second = _cand(
+        candidate_id="t:wording-b",
+        content="class Handler: structured output loses fields",
+        failure_mode="Captured row data is silently discarded.",
+        evidence_summary="The same handler indexes the first element.",
+        recommendation="Keep the full structured value.",
+        behavioral_symptom="data_loss",
+        root_operation="indexing",
+    )
+
+    out, dups = dedupe_candidates_by_signature([first, second])
+
+    assert len(out) == 1
+    assert {out[0].candidate_id, next(iter(dups.values()))[0]} == {
+        "t:wording-a",
+        "t:wording-b",
+    }
+
+
+def test_candidate_dedupe_keeps_resource_claim_kinds_separate() -> None:
+    security = _cand(
+        candidate_id="t:security",
+        content="class Handler: user input can cause timeout",
+        claim_type="security_risk",
+        failure_mode="Attacker-controlled input can force unbounded work.",
+        evidence_summary="The request path applies no bound.",
+        recommendation="Bound the request path.",
+        behavioral_symptom="unbounded_work",
+        root_operation="resource_use",
+    )
+    performance = _cand(
+        candidate_id="t:perf",
+        content="class Handler: cache misses can cause timeout",
+        claim_type="performance_regression",
+        failure_mode="Repeated work can become expensive under load.",
+        evidence_summary="The same operation is recomputed.",
+        recommendation="Cache or bound the work.",
+        behavioral_symptom="unbounded_work",
+        root_operation="resource_use",
+    )
+
+    out, dups = dedupe_candidates_by_signature([security, performance])
+
+    assert {c.candidate_id for c in out} == {"t:security", "t:perf"}
     assert not dups
 
 
@@ -174,6 +239,8 @@ def test_normalize_does_not_split_plain_join_as_aggregation_crash() -> None:
         failure_mode="Data loss: only the first slot is retained before join() output.",
         evidence_summary="The code keeps m[0] from tuple rows.",
         recommendation="Preserve fields before joining results.",
+        behavioral_symptom="data_loss",
+        root_operation="indexing",
     )
     out, warnings, _ = normalize_critiquer_candidates(task, [raw])
 
@@ -204,15 +271,21 @@ def test_redos_and_structured_slot_are_distinct_keys() -> None:
         content="class Handler",
         failure_mode="ReDoS via user-controlled pattern without timeout",
         recommendation="Add pattern length limits",
+        claim_kind="security_risk",
+        behavioral_symptom="unbounded_work",
+        root_operation="resource_use",
     )
     slot_key = semantic_finding_key(
         file_path="pkg/h.py",
         content="class Handler",
         failure_mode="findall tuples but loop keeps only m[0]",
         recommendation="Retain all slots per row",
+        claim_kind="defect",
+        behavioral_symptom="data_loss",
+        root_operation="indexing",
     )
-    assert redos_key[2] == "redos"
-    assert slot_key[2] == "structured_slot_truncation"
+    assert redos_key[2:] == ("security_risk", "unbounded_work", "resource_use")
+    assert slot_key[2:] == ("defect", "data_loss", "indexing")
     assert redos_key != slot_key
 
 
@@ -230,6 +303,8 @@ def test_duplicate_redos_findings_dedupe_by_handler() -> None:
         severity="high",
         feedback_type="defect_detection",
         recommendation="Add pattern length validation",
+        behavioral_symptom="unbounded_work",
+        root_operation="resource_use",
     )
     b = ReviewFinding(
         id="security-1-001",
@@ -240,6 +315,8 @@ def test_duplicate_redos_findings_dedupe_by_handler() -> None:
         severity="high",
         feedback_type="defect_detection",
         recommendation="Add complexity heuristics or timeout",
+        behavioral_symptom="unbounded_work",
+        root_operation="resource_use",
     )
     out, dups = dedupe_review_findings_by_signature(ensure_unique_finding_ids([a, b]))
     assert len(out) == 1
@@ -256,6 +333,8 @@ def test_review_finding_key_uses_recommendation_for_stub_content() -> None:
         severity="medium",
         feedback_type="defect_detection",
         recommendation="Use len(match.groups()) >= group_index - 1 for group_index > 0",
+        behavioral_symptom="wrong_output",
+        root_operation="indexing",
     )
     security = ReviewFinding(
         id="security-1-002",
@@ -266,6 +345,8 @@ def test_review_finding_key_uses_recommendation_for_stub_content() -> None:
         severity="medium",
         feedback_type="defect_detection",
         recommendation="Clarify group_index semantics across modes",
+        behavioral_symptom="wrong_output",
+        root_operation="indexing",
     )
     assert review_finding_semantic_key(logic) == review_finding_semantic_key(security)
     out, _ = dedupe_review_findings_by_signature([logic, security])
@@ -343,6 +424,8 @@ def test_post_context_does_not_merge_distinct_logic_families_in_dedupe() -> None
         severity="high",
         feedback_type="defect_detection",
         recommendation="add terminal else",
+        behavioral_symptom="missing_return",
+        root_operation="dispatch",
     )
     none_finding = ReviewFinding(
         id="structured",
@@ -356,16 +439,18 @@ def test_post_context_does_not_merge_distinct_logic_families_in_dedupe() -> None
         severity="high",
         feedback_type="defect_detection",
         recommendation="use match.group(group_index) or ''",
+        behavioral_symptom="crash",
+        root_operation="aggregation",
     )
     out, dups = dedupe_review_findings_by_signature([else_finding, none_finding])
     assert len(out) == 2
     assert not dups
-    families = {review_finding_semantic_key(f)[2] for f in out}
-    assert "missing_branch_return" in families
-    assert "aggregation_none_type" in families
+    behaviors = {review_finding_semantic_key(f)[3:] for f in out}
+    assert ("missing_return", "dispatch") in behaviors
+    assert ("crash", "aggregation") in behaviors
 
 
-def test_dedupe_review_findings_merges_distinct_family_content() -> None:
+def test_dedupe_review_findings_preserves_distinct_behavior_metadata() -> None:
     f1 = ReviewFinding(
         id="a",
         file_path="pkg/h.py",
@@ -375,6 +460,8 @@ def test_dedupe_review_findings_merges_distinct_family_content() -> None:
         severity="medium",
         feedback_type="defect_detection",
         recommendation="fix findall indexing",
+        behavioral_symptom="data_loss",
+        root_operation="indexing",
     )
     f2 = ReviewFinding(
         id="b",
@@ -385,6 +472,8 @@ def test_dedupe_review_findings_merges_distinct_family_content() -> None:
         severity="medium",
         feedback_type="defect_detection",
         recommendation="fix groups()",
+        behavioral_symptom="wrong_output",
+        root_operation="indexing",
     )
     out, dups = dedupe_review_findings_by_signature([f1, f2])
     assert len(out) == 2
@@ -401,6 +490,8 @@ def test_final_dedupe_preserves_structured_data_and_aggregation_findings() -> No
         severity="high",
         feedback_type="defect_detection",
         recommendation="Preserve all captured slots from findall tuple results.",
+        behavioral_symptom="data_loss",
+        root_operation="indexing",
     )
     aggregation = ReviewFinding(
         id="agg",
@@ -411,6 +502,8 @@ def test_final_dedupe_preserves_structured_data_and_aggregation_findings() -> No
         severity="high",
         feedback_type="defect_detection",
         recommendation="Normalize absent elements before joining results.",
+        behavioral_symptom="crash",
+        root_operation="aggregation",
     )
 
     out, dups = dedupe_review_findings_by_signature([data_loss, aggregation])
@@ -429,6 +522,8 @@ def test_final_dedupe_preserves_structured_group_index_and_absent_aggregation() 
         severity="high",
         feedback_type="defect_detection",
         recommendation="Preserve all captured slots from findall tuple results.",
+        behavioral_symptom="data_loss",
+        root_operation="indexing",
     )
     group_index = ReviewFinding(
         id="group",
@@ -439,6 +534,8 @@ def test_final_dedupe_preserves_structured_group_index_and_absent_aggregation() 
         severity="high",
         feedback_type="defect_detection",
         recommendation="Handle group 0 explicitly.",
+        behavioral_symptom="wrong_output",
+        root_operation="indexing",
     )
     aggregation = ReviewFinding(
         id="agg",
@@ -449,6 +546,8 @@ def test_final_dedupe_preserves_structured_group_index_and_absent_aggregation() 
         severity="high",
         feedback_type="defect_detection",
         recommendation="Normalize absent capture values before joining results.",
+        behavioral_symptom="crash",
+        root_operation="aggregation",
     )
 
     out, dups = dedupe_review_findings_by_signature([data_loss, group_index, aggregation])
@@ -563,6 +662,43 @@ def test_cleanup_drops_resolution_and_none_guard() -> None:
         }
     )
     assert out["findings"] == []
+
+
+def test_cleanup_preserves_structured_behavior_metadata_on_promoted_finding() -> None:
+    node = make_adversarial_cleanup_node()
+    cand = _cand(
+        candidate_id="structured-promote",
+        file_path="src/x.py",
+        line_start=1,
+        line_end=20,
+        content="class Handler: structured row output drops fields",
+        failure_mode="Data loss from first-slot retention.",
+        evidence_summary="The handler keeps row[0].",
+        recommendation="Preserve all relevant row fields.",
+        behavioral_symptom="data_loss",
+        root_operation="indexing",
+    )
+
+    out = node(
+        {
+            "run_id": "t",
+            "candidate_findings": [cand],
+            "reflection_reports": [
+                ReflectionReport(
+                    candidate_id=cand.candidate_id,
+                    reflector_specialty="logic",
+                    verdict="accept",
+                    rationale="The data-loss claim is supported.",
+                )
+            ],
+            "metadata": {},
+        }
+    )
+
+    assert len(out["findings"]) == 1
+    finding = out["findings"][0]
+    assert finding.behavioral_symptom == "data_loss"
+    assert finding.root_operation == "indexing"
 
 
 def test_cleanup_drops_scope_claim_contradicted_by_code_evidence() -> None:
@@ -1463,6 +1599,8 @@ def test_final_dedupe_keeps_resource_and_incomplete_implementation_separate() ->
         severity="high",
         feedback_type="defect_detection",
         recommendation="Complete the missing handler return path.",
+        behavioral_symptom="missing_return",
+        root_operation="dispatch",
     )
     resource = ReviewFinding(
         id="resource-use",
@@ -1473,6 +1611,8 @@ def test_final_dedupe_keeps_resource_and_incomplete_implementation_separate() ->
         severity="medium",
         feedback_type="optimization",
         recommendation="Bound resource use on the request path.",
+        behavioral_symptom="unbounded_work",
+        root_operation="resource_use",
     )
 
     kept, duplicates = dedupe_review_findings_by_signature([incomplete, resource])
@@ -1490,6 +1630,8 @@ def test_final_dedupe_merges_missing_return_root_variants() -> None:
         severity="high",
         feedback_type="defect_detection",
         recommendation="Add return to handled branch.",
+        behavioral_symptom="missing_return",
+        root_operation="dispatch",
     )
     fallback = ReviewFinding(
         id="fallback",
@@ -1500,6 +1642,8 @@ def test_final_dedupe_merges_missing_return_root_variants() -> None:
         severity="medium",
         feedback_type="defect_detection",
         recommendation="Add a terminal else fallback for unhandled mode.",
+        behavioral_symptom="missing_return",
+        root_operation="dispatch",
     )
 
     kept, duplicates = dedupe_review_findings_by_signature([branch, fallback])

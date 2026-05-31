@@ -187,7 +187,10 @@ def test_review_context_degrades_when_sandbox_startup_fails(monkeypatch: pytest.
         def __init__(self) -> None:
             raise RuntimeError("channel 3: open failed: connect failed: Connection refused")
 
-    monkeypatch.setattr("src.orchestration.context.review_context.RepoSandbox", FailingSandbox)
+    monkeypatch.setattr(
+        "src.orchestration.context.review_context.build_repo_sandbox",
+        lambda _settings: FailingSandbox(),
+    )
 
     provider = LazyReviewContextProvider()
     context = provider.collect_for_task(

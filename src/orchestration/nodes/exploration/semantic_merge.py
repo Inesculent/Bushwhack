@@ -40,6 +40,47 @@ _SEMANTIC_MERGE_COMPACT_RETRY_APPENDIX = (
 )
 
 
+def _global_topology_appendix(
+    *,
+    kb_summary_records: List[ReviewKBRecord],
+    diagnostics: Any,
+    metadata: Dict[str, Any],
+) -> str:
+    sp2 = metadata.get("semantic_phase2", {}) if isinstance(metadata.get("semantic_phase2"), dict) else {}
+    review_kb = sp2.get("review_kb") if isinstance(sp2, dict) else {}
+    coverage = dict(review_kb.get("distillation_coverage") or {}) if isinstance(review_kb, dict) else {}
+    if not coverage:
+        coverage = {"summary_records": len(kb_summary_records)}
+    gap_count = len(getattr(diagnostics, "knowledge_gaps", []) or [])
+    topology_summary = next((r for r in kb_summary_records if r.id == "summary:repo:topology"), None)
+    if topology_summary is not None and topology_summary.summary:
+        topology = topology_summary.summary
+    else:
+        topology = "Static topology is available from graph diagnostics."
+    return f"{topology}\nSemantic coverage: {coverage}. Structural diagnostics report {gap_count} knowledge gaps."
+
+
+def _format_global_summary_sections(
+    *,
+    understanding: str,
+    topology_appendix: str,
+) -> str:
+    if "Repository Understanding" in understanding and "Static Topology And Coverage" in understanding:
+        return understanding
+    return "\n\n".join(
+        [
+            "Repository Understanding\n" + understanding.strip(),
+            "Operating Model / Core Workflows\n"
+            "Use the repository understanding and community summaries for high-level workflow context; "
+            "query exact KB facts, symbols, and source slices for implementation proof.",
+            "Review Mental Model\n"
+            "Treat Repository KB summaries as navigation and contract context. Exact source, AST slices, "
+            "focused context, and verifier output outrank summary prose.",
+            "Static Topology And Coverage\n" + topology_appendix,
+        ]
+    )
+
+
 def _deterministic_global_summary(
     *,
     repo_summary: ReviewKBRecord | None,
@@ -48,28 +89,27 @@ def _deterministic_global_summary(
     diagnostics: Any,
     metadata: Dict[str, Any],
 ) -> str:
-    if repo_summary is not None and repo_summary.summary:
-        base = repo_summary.summary
+    if repo_summary is not None and repo_summary.summary and repo_summary.confidence == "llm_synthesized":
+        understanding = repo_summary.summary
+    elif repo_summary is not None and repo_summary.summary:
+        understanding = (
+            "KB-backed repository understanding has not been synthesized yet. "
+            "Use the deterministic topology, community summaries, Repository KB queries, and source slices for navigation."
+        )
     elif summaries:
         top = sorted(summaries, key=lambda s: s.community_id)[:8]
         rendered = "; ".join(f"community {s.community_id}: {s.label or s.purpose[:80]}" for s in top)
-        base = f"Repository understanding is available from {len(summaries)} community summaries. {rendered}"
+        understanding = f"Repository understanding is available from {len(summaries)} community summaries. {rendered}"
     else:
-        base = "Repository understanding is available from deterministic structural graph and Repository KB records."
+        understanding = "Repository understanding is available from deterministic structural graph and Repository KB records."
 
-    sp2 = metadata.get("semantic_phase2", {}) if isinstance(metadata.get("semantic_phase2"), dict) else {}
-    review_kb = sp2.get("review_kb") if isinstance(sp2, dict) else {}
-    coverage = dict(review_kb.get("distillation_coverage") or {}) if isinstance(review_kb, dict) else {}
-    if not coverage:
-        coverage = {
-            "summary_records": len(kb_summary_records),
-            "community_summaries": len(summaries),
-        }
-    gap_count = len(getattr(diagnostics, "knowledge_gaps", []) or [])
-    return (
-        f"{base}\n\n"
-        f"Semantic coverage: {coverage}. Structural diagnostics report {gap_count} knowledge gaps. "
-        "Use Repository KB queries, AST/source slices, focused context, and verifier output for exact proof."
+    return _format_global_summary_sections(
+        understanding=understanding,
+        topology_appendix=_global_topology_appendix(
+            kb_summary_records=kb_summary_records,
+            diagnostics=diagnostics,
+            metadata=metadata,
+        ),
     )
 
 
@@ -220,7 +260,14 @@ def make_semantic_merge_node(
                 llm_trace.extend(call_trace)
                 parsed = parse_structured_output(invoke_result, GlobalSemanticSynthesisOutput)
                 if parsed.global_summary:
-                    global_summary = parsed.global_summary
+                    global_summary = _format_global_summary_sections(
+                        understanding=parsed.global_summary,
+                        topology_appendix=_global_topology_appendix(
+                            kb_summary_records=kb_summary_records,
+                            diagnostics=diagnostics,
+                            metadata=meta,
+                        ),
+                    )
                 llm_tokens += call_tokens
                 sp2 = dict(meta.get("semantic_phase2", {}))
                 sp2["global_summary_llm_status"] = "ok_retry" if retried else "ok"

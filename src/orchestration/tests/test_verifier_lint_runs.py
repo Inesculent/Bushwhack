@@ -57,6 +57,7 @@ def test_execute_test_script_attaches_ruff_lint_run(tmp_path) -> None:
 
 
 class MagicMockSettings:
+    sandbox_backend = "docker"
     verifier_image = "test-img"
     verifier_test_timeout_seconds = 60
     verifier_ruff_enabled = True

@@ -18,6 +18,7 @@ from src.domain.state import GraphState
 from src.orchestration.routing.misroute_recovery import parse_misroute_redirect_category
 from src.orchestration.nodes.verifier.failure_class import verifier_refutation_applies
 from src.orchestration.routing.finding_dedupe import (
+    candidate_finding_signature,
     candidate_with_behavioral_metadata,
     changed_files_from_diff,
     dedupe_candidates_by_signature,
@@ -33,6 +34,12 @@ from src.orchestration.routing.finding_dedupe import (
     resolve_repo_file_path,
     review_finding_semantic_key,
     revision_summary_conflicts_with_claim,
+)
+from src.orchestration.routing.claim_tiering import (
+    classify_candidates,
+    classify_claim_tier,
+    review_kb_context_for_candidate,
+    security_boundary_is_concrete,
 )
 from src.orchestration.routing.reflection_consolidation import (
     TIER1_LOCALIZED_MARKERS,
@@ -238,19 +245,7 @@ def _candidate_evidence_blob(candidate: CandidateFinding) -> str:
 
 def _resource_oriented_candidate(candidate: CandidateFinding) -> bool:
     normalized = candidate_with_behavioral_metadata(candidate)
-    root = normalized.root_operation or infer_root_operation(
-        candidate.content,
-        candidate.failure_mode,
-        candidate.evidence_summary,
-        candidate.recommendation or "",
-    )
-    symptom = normalized.behavioral_symptom or infer_behavioral_symptom(
-        candidate.content,
-        candidate.failure_mode,
-        candidate.evidence_summary,
-        candidate.recommendation or "",
-    )
-    if root == "resource_use" or symptom == "unbounded_work":
+    if normalized.root_operation == "resource_use" or normalized.behavioral_symptom == "unbounded_work":
         return True
     if candidate.claim_type in {"security_risk", "performance_regression"}:
         blob = _candidate_evidence_blob(candidate)
@@ -259,6 +254,8 @@ def _resource_oriented_candidate(candidate: CandidateFinding) -> bool:
 
 
 def _resource_oriented_finding(finding: ReviewFinding) -> bool:
+    if finding.root_operation == "resource_use" or finding.behavioral_symptom == "unbounded_work":
+        return True
     blob = f"{finding.content or ''}\n{finding.recommendation or ''}"
     return infer_root_operation(blob) == "resource_use" or infer_behavioral_symptom(blob) == "unbounded_work"
 
@@ -891,6 +888,15 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
                 if isinstance(raw_path, str) and raw_path.strip():
                     changed_files.add(raw_path.strip().replace("\\", "/"))
         candidates, semantic_duplicates = dedupe_candidates_by_signature(candidates, git_diff=git_diff)
+        subject_sources = {
+            candidate.candidate_id: candidate_finding_signature(
+                candidate,
+                git_diff=git_diff,
+            ).subject_source
+            for candidate in candidates
+        }
+        claim_tiering = classify_candidates(candidates, metadata=metadata)
+        metadata["claim_tiering"] = {"by_candidate": claim_tiering}
 
         by_cand = _reports_by_candidate(reports)
         cleanup_settings = settings or get_settings()
@@ -904,9 +910,11 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
 
         def drop(candidate: CandidateFinding, reason: str, details: Dict[str, Any] | None = None) -> None:
             dropped.append(candidate.candidate_id)
+            tier_meta = claim_tiering.get(candidate.candidate_id) or {}
             lifecycle[candidate.candidate_id] = {
                 "decision": "dropped",
                 "reason": reason,
+                "claim_tier": tier_meta.get("tier"),
                 "claim_type": candidate.claim_type,
                 "suspected_category": candidate.suspected_category,
                 **(details or {}),
@@ -914,6 +922,11 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
 
         for candidate in candidates:
             candidate = candidate_with_behavioral_metadata(candidate)
+            claim_tier = classify_claim_tier(
+                candidate,
+                review_kb_context=review_kb_context_for_candidate(metadata, candidate),
+            )
+            claim_tiering.setdefault(candidate.candidate_id, {})["tier"] = claim_tier
             rev_early = revisions.get(candidate.candidate_id) or {}
             rev_summary_early = str(rev_early.get("updated_evidence_summary") or "")
             if is_resolution_only_finding(
@@ -927,6 +940,11 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
             if is_required_upstream_none_guard_claim(candidate):
                 drop(candidate, "required_param_none_guard_out_of_scope")
                 continue
+            if claim_tier == "speculative_guard" and not (
+                candidate.claim_type == "security_risk" and security_boundary_is_concrete(candidate)
+            ):
+                drop(candidate, "speculative_guard_without_concrete_regression")
+                continue
             if _scope_claim_contradicted(state, candidate):
                 drop(candidate, "scope_claim_contradicted_by_code_evidence")
                 continue
@@ -938,6 +956,14 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
                 continue
             early_harness_error = _verifier_harness_error(candidate.candidate_id, verifier_hints)
             early_revision_accepted = _revision_accepts(candidate.candidate_id, revisions)
+            if (
+                claim_tier == "coverage_gap"
+                and candidate.severity != "high"
+                and not early_revision_accepted
+                and not _focused_hits_for_candidate(state, candidate.candidate_id)
+            ):
+                drop(candidate, "coverage_gap_without_high_impact_evidence")
+                continue
             if (
                 _candidate_depends_on_incomplete_evidence(candidate)
                 and not early_revision_accepted
@@ -1169,11 +1195,14 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
                             feedback_type=feedback_type,  # type: ignore[arg-type]
                             recommendation=candidate.recommendation,
                             references=[],
+                            behavioral_symptom=candidate.behavioral_symptom,
+                            root_operation=candidate.root_operation,
                         )
                     )
                     lifecycle[candidate.candidate_id] = {
                         "decision": "promoted",
                         "reason": "misroute_recovered_from_not_applicable",
+                        "claim_tier": claim_tier,
                         "claim_type": candidate.claim_type,
                         "final_category": category,
                         "relevant_reflectors": sorted(relevant_reflectors),
@@ -1358,6 +1387,8 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
                     feedback_type=feedback_type,  # type: ignore[arg-type]
                     recommendation=candidate.recommendation,
                     references=[],
+                    behavioral_symptom=candidate.behavioral_symptom,
+                    root_operation=candidate.root_operation,
                 )
             )
             promote_reason = (
@@ -1368,6 +1399,7 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
             lifecycle[candidate.candidate_id] = {
                 "decision": "promoted",
                 "reason": promote_reason,
+                "claim_tier": claim_tier,
                 "claim_type": candidate.claim_type,
                 "final_category": category,
                 "relevant_reflectors": sorted(relevant_reflectors),
@@ -1450,6 +1482,13 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
         }
         if semantic_duplicates:
             cleanup_meta["semantic_dedupe_duplicates"] = semantic_duplicates
+        if subject_sources:
+            cleanup_meta["semantic_dedupe_subject_sources"] = subject_sources
+            cleanup_meta["semantic_dedupe_prose_subject_candidate_ids"] = [
+                candidate_id
+                for candidate_id, source in subject_sources.items()
+                if source == "prose"
+            ]
         if finding_duplicates:
             cleanup_meta["semantic_dedupe_finding_duplicates"] = finding_duplicates
         metadata["adversarial_cleanup"] = cleanup_meta

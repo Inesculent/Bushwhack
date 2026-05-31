@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Iterable, List, Mapping, Optional, Sequence, Tuple
+from dataclasses import dataclass
+from typing import Any, Iterable, List, Mapping, Optional, Sequence
 
 from src.domain.schemas import CandidateFinding, ReviewFinding
 
@@ -153,15 +154,6 @@ _REQUIRED_PARAM_NONE_MARKERS = (
 )
 
 _SEVERITY_RANK = {"high": 0, "medium": 1, "low": 2}
-_LOGIC_DEFECT_FAMILIES = frozenset(
-    {
-        "missing_branch_return",
-        "structured_slot_truncation",
-        "aggregation_none_type",
-        "regex_group_index",
-        "index_bounds",
-    }
-)
 _FAMILY_BEHAVIOR: dict[str, tuple[str, str]] = {
     "missing_branch_return": ("missing_return", "dispatch"),
     "structured_slot_truncation": ("data_loss", "indexing"),
@@ -173,6 +165,27 @@ _FAMILY_BEHAVIOR: dict[str, tuple[str, str]] = {
     "empty_find_replace": ("wrong_output", "contract"),
     "duplicate_registration": ("contract_mismatch", "contract"),
 }
+
+
+@dataclass(frozen=True)
+class FindingSignature:
+    """Structured semantic identity for candidate/final finding dedupe."""
+
+    file_path: str
+    subject: str
+    claim_kind: str
+    behavioral_symptom: str
+    root_operation: str
+    subject_source: str = "none"
+
+    def key(self) -> tuple[str, str, str, str, str]:
+        return (
+            self.file_path,
+            self.subject,
+            self.claim_kind,
+            self.behavioral_symptom,
+            self.root_operation,
+        )
 
 
 def _blob_parts(*parts: str) -> str:
@@ -358,28 +371,9 @@ def infer_root_operation(*texts: str) -> str:
 
 
 def candidate_with_behavioral_metadata(candidate: CandidateFinding) -> CandidateFinding:
-    """Fill optional generic symptom/root-operation fields without overwriting LLM output."""
-    symptom = candidate.behavioral_symptom
-    if not symptom and candidate.failure_mode.strip():
-        symptom = infer_behavioral_symptom(candidate.failure_mode)
-    if not symptom or symptom == "other":
-        symptom = infer_behavioral_symptom(
-            candidate.content,
-            candidate.failure_mode,
-            candidate.evidence_summary,
-            candidate.recommendation or "",
-        )
-
-    root = candidate.root_operation
-    if not root and candidate.failure_mode.strip():
-        root = infer_root_operation(candidate.failure_mode)
-    if not root or root == "other":
-        root = infer_root_operation(
-            candidate.content,
-            candidate.failure_mode,
-            candidate.evidence_summary,
-            candidate.recommendation or "",
-        )
+    """Normalize structured behavior metadata without prose-based inference."""
+    symptom = candidate.behavioral_symptom or "other"
+    root = candidate.root_operation or "other"
     return candidate.model_copy(update={"behavioral_symptom": symptom, "root_operation": root})
 
 
@@ -398,12 +392,25 @@ def _patch_task_specialty(patch_task_id: str) -> str:
     return "unknown"
 
 
-def _specialty_rank_for_family(patch_task_id: str, family: str) -> int:
+def _specialty_rank_for_signature(patch_task_id: str, signature: FindingSignature) -> int:
     """Lower is better when picking among duplicate candidates."""
     specialty = _patch_task_specialty(patch_task_id)
-    if family in {"redos", "resource_amplification"}:
+    if signature.claim_kind == "security_risk":
         order = ("security", "logic", "performance", "general", "unknown")
-    elif family in _LOGIC_DEFECT_FAMILIES:
+    elif signature.claim_kind == "performance_regression":
+        order = ("performance", "logic", "security", "general", "unknown")
+    elif (
+        signature.root_operation == "resource_use"
+        or signature.behavioral_symptom == "unbounded_work"
+    ):
+        order = ("security", "logic", "performance", "general", "unknown")
+    elif signature.behavioral_symptom in {
+        "missing_return",
+        "data_loss",
+        "crash",
+        "wrong_output",
+        "contract_mismatch",
+    }:
         order = ("logic", "security", "performance", "general", "unknown")
     else:
         order = ("logic", "security", "general", "performance", "unknown")
@@ -424,19 +431,36 @@ def _content_cites_subject(candidate: CandidateFinding) -> bool:
     return bool(re.search(rf"\bclass\s+{re.escape(subject)}\b", candidate.content, re.IGNORECASE))
 
 
-def _defect_family_for_dedupe(
+def _normalized_path(path: str) -> str:
+    return (path or "").strip().replace("\\", "/").lstrip("/").lower()
+
+
+def _subject_source(
+    subject: str,
     *,
     content: str = "",
     failure_mode: str = "",
     evidence_summary: str = "",
-    recommendation: str = "",
+    git_diff: str = "",
+    line_start: int | None = None,
+    line_end: int | None = None,
 ) -> str:
-    """Prefer failure_mode for family so shared evidence_summary does not collapse distinct bugs."""
-    if failure_mode.strip():
-        family = defect_family(failure_mode)
-        if family != "general":
-            return family
-    return defect_family(content, failure_mode, evidence_summary, recommendation)
+    if not subject:
+        return "none"
+    claim_text = "\n".join([content, failure_mode, evidence_summary])
+    if git_diff:
+        anchors = class_def_lines_from_diff(git_diff)
+        anchor = anchors.get(subject)
+        if anchor is not None:
+            start = int(line_start or 0)
+            end = int(line_end or start)
+            if start <= anchor <= end or abs(start - anchor) <= 120:
+                return "diff_anchor"
+    if re.search(rf"\bclass\s+{re.escape(subject)}\b", claim_text, re.IGNORECASE):
+        return "claim_class"
+    if re.search(rf"\b{re.escape(subject)}\.execute\b", claim_text, re.IGNORECASE):
+        return "claim_method"
+    return "prose"
 
 
 def semantic_finding_key(
@@ -446,7 +470,10 @@ def semantic_finding_key(
     failure_mode: str = "",
     evidence_summary: str = "",
     recommendation: str = "",
-) -> Tuple[str, str, str]:
+    claim_kind: str = "defect",
+    behavioral_symptom: str = "other",
+    root_operation: str = "other",
+) -> tuple[str, str, str, str, str]:
     claim_content, _ = split_claim_and_post_context(content)
     subject = normalized_subject_for_key(
         file_path=file_path,
@@ -455,17 +482,28 @@ def semantic_finding_key(
         evidence_summary=evidence_summary,
         recommendation=recommendation,
     )
-    family = _defect_family_for_dedupe(
-        content=claim_content,
-        failure_mode=failure_mode,
-        evidence_summary=evidence_summary,
-        recommendation=recommendation,
+    signature = FindingSignature(
+        file_path=_normalized_path(file_path),
+        subject=subject,
+        claim_kind=(claim_kind or "other").strip().lower(),
+        behavioral_symptom=behavioral_symptom or "other",
+        root_operation=root_operation or "other",
+        subject_source=_subject_source(
+            subject,
+            content=claim_content,
+            failure_mode=failure_mode,
+            evidence_summary=evidence_summary,
+        ),
     )
-    return ((file_path or "").strip().lower(), subject, family)
+    return signature.key()
 
 
-def candidate_signature_key(candidate: CandidateFinding) -> tuple[str, str, str, str, str]:
-    """Candidate dedupe key: file + subject + family + behavioral symptom + root operation."""
+def candidate_finding_signature(
+    candidate: CandidateFinding,
+    *,
+    git_diff: str = "",
+) -> FindingSignature:
+    """Candidate dedupe identity from structured metadata plus anchored subject."""
     normalized = candidate_with_behavioral_metadata(candidate)
     claim_content, _ = split_claim_and_post_context(normalized.content)
     subject = normalized_subject_for_key(
@@ -475,24 +513,31 @@ def candidate_signature_key(candidate: CandidateFinding) -> tuple[str, str, str,
         evidence_summary=normalized.evidence_summary,
         recommendation=normalized.recommendation or "",
     )
-    symptom = normalized.behavioral_symptom or "other"
-    root = normalized.root_operation or "other"
-    if symptom == "other" and root == "other":
-        family = _defect_family_for_dedupe(
+    return FindingSignature(
+        file_path=_normalized_path(normalized.file_path),
+        subject=subject,
+        claim_kind=(normalized.claim_type or "other").strip().lower(),
+        behavioral_symptom=normalized.behavioral_symptom or "other",
+        root_operation=normalized.root_operation or "other",
+        subject_source=_subject_source(
+            subject,
             content=claim_content,
             failure_mode=normalized.failure_mode,
             evidence_summary=normalized.evidence_summary,
-            recommendation=normalized.recommendation or "",
-        )
-        symptom, root = _FAMILY_BEHAVIOR.get(family, ("other", "other"))
-    else:
-        family = _defect_family_for_dedupe(
-            content=claim_content,
-            failure_mode=normalized.failure_mode,
-            evidence_summary=normalized.evidence_summary,
-            recommendation=normalized.recommendation or "",
-        )
-    return ((normalized.file_path or "").strip().lower(), subject, family, symptom, root)
+            git_diff=git_diff,
+            line_start=normalized.line_start,
+            line_end=normalized.line_end,
+        ),
+    )
+
+
+def candidate_signature_key(
+    candidate: CandidateFinding,
+    *,
+    git_diff: str = "",
+) -> tuple[str, str, str, str, str]:
+    """Candidate dedupe key: file + subject + claim kind + symptom + root operation."""
+    return candidate_finding_signature(candidate, git_diff=git_diff).key()
 
 
 def ensure_unique_finding_ids(findings: Sequence[ReviewFinding]) -> List[ReviewFinding]:
@@ -667,24 +712,17 @@ def pick_preferred_candidate(
 ) -> CandidateFinding:
     existing = candidate_with_behavioral_metadata(existing)
     challenger = candidate_with_behavioral_metadata(challenger)
-    family = _defect_family_for_dedupe(
-        content=existing.content,
-        failure_mode=existing.failure_mode,
-        evidence_summary=existing.evidence_summary,
-        recommendation=existing.recommendation or "",
-    )
+    signature = candidate_finding_signature(existing, git_diff=git_diff)
 
     def _score(cand: CandidateFinding) -> tuple:
-        specialty_rank = _specialty_rank_for_family(cand.patch_task_id, family)
+        specialty_rank = _specialty_rank_for_signature(cand.patch_task_id, signature)
         anchor = (
             0 if _content_cites_subject(cand) else 1,
             -_anchor_distance(cand, git_diff=git_diff),
             line_anchor_score(cand, git_diff=git_diff),
             len(cand.evidence_summary or ""),
         )
-        if family in _LOGIC_DEFECT_FAMILIES or family in {"redos", "resource_amplification"}:
-            return (-specialty_rank, -_severity_rank(cand.severity), *anchor)
-        return (-_severity_rank(cand.severity), -specialty_rank, *anchor)
+        return (-specialty_rank, -_severity_rank(cand.severity), *anchor)
 
     return challenger if _score(challenger) > _score(existing) else existing
 
@@ -701,7 +739,7 @@ def dedupe_candidates_by_signature(
 
     for cand in candidates:
         cand = candidate_with_behavioral_metadata(cand)
-        key = candidate_signature_key(cand)
+        key = candidate_signature_key(cand, git_diff=git_diff)
         if key not in kept:
             order.append(key)
             kept[key] = cand
@@ -719,7 +757,7 @@ def dedupe_candidates_by_signature(
     return [kept[k] for k in order], duplicates
 
 
-def review_finding_semantic_key(finding: ReviewFinding) -> tuple[str, str, str, str, str]:
+def review_finding_signature(finding: ReviewFinding) -> FindingSignature:
     claim_content, _ = split_claim_and_post_context(finding.content or "")
     recommendation = finding.recommendation or ""
     # Promoted findings often use stub content ("class Foo():") with the real claim in recommendation.
@@ -731,30 +769,25 @@ def review_finding_semantic_key(finding: ReviewFinding) -> tuple[str, str, str, 
         evidence_summary=claim_content,
         recommendation=recommendation,
     )
-    family = _defect_family_for_dedupe(
-        content=claim_content,
-        failure_mode="",
-        evidence_summary=claim_content,
-        recommendation="",
-    )
-    if family == "general":
-        family = _defect_family_for_dedupe(
+    return FindingSignature(
+        file_path=_normalized_path(finding.file_path),
+        subject=subject,
+        claim_kind=(finding.feedback_type or "other").strip().lower(),
+        behavioral_symptom=finding.behavioral_symptom or "other",
+        root_operation=finding.root_operation or "other",
+        subject_source=_subject_source(
+            subject,
             content=combined,
-            failure_mode=recommendation,
             evidence_summary=claim_content,
-            recommendation=recommendation,
-        )
-    symptom = infer_behavioral_symptom(combined)
-    root = infer_root_operation(combined)
-    family_symptom, family_root = _FAMILY_BEHAVIOR.get(family, ("other", "other"))
-    if family in _FAMILY_BEHAVIOR:
-        symptom, root = family_symptom, family_root
-    elif symptom == "other" and root == "other":
-        symptom, root = family_symptom, family_root
-    return ((finding.file_path or "").strip().lower(), subject, family, symptom, root)
+        ),
+    )
 
 
-def _finding_preference_score(finding: ReviewFinding, *, family: str) -> tuple:
+def review_finding_semantic_key(finding: ReviewFinding) -> tuple[str, str, str, str, str]:
+    return review_finding_signature(finding).key()
+
+
+def _finding_preference_score(finding: ReviewFinding, *, signature: FindingSignature) -> tuple:
     blob = f"{finding.content or ''}\n{finding.recommendation or ''}".lower()
     concrete = 0 if re.match(r"^\s*class\s+\w+\(?\)?:?\s*$", finding.content or "") else 1
     terminal_dispatch = 1 if any(
@@ -763,7 +796,7 @@ def _finding_preference_score(finding: ReviewFinding, *, family: str) -> tuple:
     contradicted_shape = -1 if any(
         marker in blob for marker in ("incomplete in the diff", "diff is truncated", "code cuts off")
     ) else 0
-    if family == "missing_branch_return":
+    if signature.behavioral_symptom == "missing_return" and signature.root_operation == "dispatch":
         return (
             terminal_dispatch,
             -_severity_rank(finding.severity),
@@ -789,15 +822,15 @@ def dedupe_review_findings_by_signature(
     order: list[tuple[str, str, str, str, str]] = []
 
     for finding in findings:
-        key = review_finding_semantic_key(finding)
+        signature = review_finding_signature(finding)
+        key = signature.key()
         if key not in kept:
             order.append(key)
             kept[key] = finding
             continue
         primary = kept[key]
-        family = key[2]
-        if _finding_preference_score(finding, family=family) > _finding_preference_score(
-            primary, family=family
+        if _finding_preference_score(finding, signature=signature) > _finding_preference_score(
+            primary, signature=signature
         ):
             if finding.id != primary.id:
                 duplicates.setdefault(finding.id, []).append(primary.id)

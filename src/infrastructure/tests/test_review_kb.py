@@ -18,6 +18,7 @@ from src.infrastructure.review_kb_distillation import (
     RepositoryKBDistillationPlanner,
     build_community_distillation_pack,
     build_repo_distillation_pack,
+    community_merge_pack,
     community_summary_record_from_distillation,
     repo_summary_record_from_distillation,
 )
@@ -160,7 +161,7 @@ def test_review_kb_builds_profiles_and_dependency_query(tmp_path: Path) -> None:
 
     assert bundle.manifest.counts["files"] == 2
     assert bundle.manifest.counts["symbols"] == 2
-    assert bundle.manifest.counts["summaries"] == 3
+    assert bundle.manifest.counts["summaries"] == 4
     assert bundle.manifest.diagnostics["kb_scope"] == "repository"
     assert bundle.review_overlay["changed_files"] == ["comfy_extras/nodes_train.py"]
     assert any("tensor-shape" in fact.tags for fact in bundle.facts)
@@ -299,6 +300,30 @@ def test_repository_kb_planner_records_omitted_shards_when_capped(tmp_path: Path
     assert plan.telemetry["omitted_record_ids"]
 
 
+def test_repository_kb_community_merge_pack_compacts_telemetry(tmp_path: Path) -> None:
+    payload, topo = _massive_fixture_graph(tmp_path)
+    bundle = build_review_kb(
+        run_id="r1",
+        repo_path=str(tmp_path),
+        graph_payload=payload,
+        topology=topo,
+    )
+    planner = RepositoryKBDistillationPlanner(max_prompt_chars=1800, max_shards_per_community=1)
+    plan = planner.plan(bundle, 0)
+    community_record = next(r for r in bundle.communities if r.metadata.get("community_id") == 0)
+
+    pack = community_merge_pack(
+        community_id=0,
+        community_record=community_record,
+        shard_records=[],
+        telemetry=plan.telemetry,
+    )
+
+    assert "omitted_record_ids" not in pack["telemetry"]
+    assert pack["telemetry"]["omitted_record_count"] == len(plan.telemetry["omitted_record_ids"])
+    assert len(pack["telemetry"]["omitted_record_ids_sample"]) <= 12
+
+
 def test_repository_kb_distillation_validates_citations(tmp_path: Path) -> None:
     payload, topo = _fixture_graph(tmp_path)
     bundle = build_review_kb(
@@ -337,24 +362,57 @@ def test_repository_kb_repo_distillation_uses_summary_pack(tmp_path: Path) -> No
         graph_payload=payload,
         topology=topo,
     )
-    pack = build_repo_distillation_pack(bundle, max_community_summaries=1)
+    pack = build_repo_distillation_pack(
+        bundle,
+        max_community_summaries=1,
+        docs_summary="ComfyUI is a node based interface for diffusion workflows.",
+        docs_sources=["doc:README.md", "pr:7952"],
+    )
     fallback = [r for r in bundle.summaries if r.id == "summary:repo"][0]
 
-    assert all(r["kind"] in {"repo", "summary"} for r in pack["records"])
-    assert len([r for r in pack["records"] if r["kind"] == "summary"]) == 1
+    assert all(r["kind"] in {"repo", "summary", "fact"} for r in pack["records"])
+    assert any(r["id"] == "summary:repo:topology" for r in pack["records"])
+    assert len([r for r in pack["records"] if r["metadata"].get("summary_scope") == "community"]) == 1
+    assert pack["docs_context"]["summary"].startswith("ComfyUI")
+    assert pack["docs_context"]["allowed_doc_source_ids"] == ["doc:README.md"]
 
     record = repo_summary_record_from_distillation(
         fallback=fallback,
         output=RepositoryKBRepoDistillationOutput(
-            summary="Repository organizes training and LoRA adapter contracts.",
-            top_subsystems=["LoRA adapter"],
+            what_it_is="Repository organizes training and LoRA adapter contracts.",
+            core_workflows=["training nodes call LoRA adapters"],
+            domain_concepts=["LoRA rank and tensor shape contracts"],
+            review_mental_model=["follow node contracts to adapter signatures"],
+            docs_alignment=["README describes node-based workflows"],
             source_record_ids=pack["allowed_record_ids"],
+            doc_source_ids=["doc:README.md", "pr:7952", "doc:missing.md"],
         ),
         allowed_record_ids=pack["allowed_record_ids"],
+        allowed_doc_source_ids=["doc:README.md"],
         omitted=pack["omitted"],
     )
     assert record.confidence == "llm_synthesized"
-    assert "LoRA adapter" in record.summary
+    assert "Repository Understanding" in record.summary
+    assert "Core workflows" in record.summary
+    assert record.metadata["doc_source_ids"] == ["doc:README.md"]
+    assert "distillation_invalid_doc_citations:2" in record.metadata["llm_distillation_warnings"]
+
+
+def test_repository_kb_builds_deterministic_repo_topology_summary(tmp_path: Path) -> None:
+    payload, topo = _fixture_graph(tmp_path)
+    bundle = build_review_kb(
+        run_id="r1",
+        repo_path=str(tmp_path),
+        graph_payload=payload,
+        topology=topo,
+    )
+
+    topology_record = [r for r in bundle.summaries if r.id == "summary:repo:topology"][0]
+
+    assert topology_record.confidence == "inferred"
+    assert topology_record.metadata["summary_scope"] == "repo_topology"
+    assert "Static topology" in topology_record.summary
+    assert topology_record.metadata["file_count"] == len(bundle.files)
 
 
 def test_repository_kb_hierarchical_distillation_preserves_failed_shards(monkeypatch, tmp_path: Path) -> None:
@@ -480,7 +538,7 @@ def test_repository_kb_shard_length_failure_retries_compact(monkeypatch, tmp_pat
                 lane = re.search(r'"lane": "([^"]+)"', prompt).group(1)
                 if calls["shards"] == 1:
                     raise LengthFinishReasonError("length limit was reached")
-                assert "OUTPUT BUDGET" in prompt or calls["shards"] > 2
+                assert "summary <= 35 words" in prompt or calls["shards"] > 2
                 return RepositoryKBShardDistillationOutput(
                     shards=[
                         RepositoryKBShardDistillationItem(
@@ -595,11 +653,14 @@ def test_repository_kb_shard_compact_retry_cap_scales_with_prompt(monkeypatch, t
         ),
     )
 
+    assert caps[0] == 1536
     retry_cap = caps[1]
     first_prompt_tokens = max(1, int(len(prompts[0]) / 4))
     assert retry_cap is not None
-    assert retry_cap >= min(4096, max(1536, int(first_prompt_tokens * 0.5)))
-    assert retry_cap > 1024
+    assert retry_cap == min(4096, max(768, int(first_prompt_tokens * 0.25)))
+    assert retry_cap < 1536
+    assert "summary <= 35 words" in prompts[1]
+    assert "Preserve the lane focus" not in prompts[1]
 
 
 def test_repository_kb_budget_deferred_keeps_inferred_summaries(tmp_path: Path) -> None:
@@ -799,8 +860,53 @@ def test_semantic_merge_deterministic_summary_without_llm(tmp_path: Path) -> Non
         }
     )
 
+    assert "Repository Understanding" in out["global_summary"]
+    assert "Operating Model / Core Workflows" in out["global_summary"]
+    assert "Review Mental Model" in out["global_summary"]
+    assert "Static Topology And Coverage" in out["global_summary"]
     assert "Semantic coverage" in out["global_summary"]
     assert "Global synthesis failed" not in out["global_summary"]
+
+
+def test_semantic_merge_reuses_existing_repo_understanding_without_llm(monkeypatch, tmp_path: Path) -> None:
+    payload, topo = _fixture_graph(tmp_path)
+    bundle = build_review_kb(
+        run_id="r1",
+        repo_path=str(tmp_path),
+        graph_payload=payload,
+        topology=topo,
+    )
+    repo = [r for r in bundle.summaries if r.id == "summary:repo"][0]
+    rich_repo = repo.model_copy(
+        update={
+            "summary": "Repository Understanding: node based workflows connect runtime nodes to adapter contracts.",
+            "confidence": "llm_synthesized",
+        }
+    )
+    records = [rich_repo if r.id == "summary:repo" else r for r in bundle.summaries]
+
+    def fail_synthesizer(*_args, **_kwargs):
+        raise AssertionError("semantic_merge should reuse synthesized summary:repo")
+
+    monkeypatch.setattr(
+        "src.orchestration.nodes.exploration.semantic_merge.Models.synthesizer",
+        fail_synthesizer,
+    )
+    node = make_semantic_merge_node(settings=Settings(redis_enabled=False), use_llm=True)
+
+    out = node(
+        {
+            "run_id": "r1",
+            "repo_path": str(tmp_path),
+            "structural_graph_node_link": payload,
+            "structural_topology": topo,
+            "community_summaries": compatibility_summaries_from_kb(bundle),
+            "repository_kb_summary_records": [r.model_dump(mode="json") for r in records],
+        }
+    )
+
+    assert "node based workflows" in out["global_summary"]
+    assert "Static Topology And Coverage" in out["global_summary"]
 
 
 def test_semantic_merge_timeout_preserves_deterministic_summary(monkeypatch, tmp_path: Path) -> None:
@@ -847,6 +953,8 @@ def test_semantic_merge_timeout_preserves_deterministic_summary(monkeypatch, tmp
     )
 
     assert calls["count"] == 2
+    assert "Repository Understanding" in out["global_summary"]
+    assert "Static Topology And Coverage" in out["global_summary"]
     assert "Semantic coverage" in out["global_summary"]
     assert "Global synthesis failed" not in out["global_summary"]
     assert out["metadata"]["semantic_phase2"]["global_summary_llm_status"] == "timeout_failed"
@@ -892,7 +1000,7 @@ def test_snapshot_writer_persists_review_kb_and_tool_queries_it(tmp_path: Path) 
     assert Path(root, "review_kb", "summaries.jsonl").is_file()
     assert Path(root, "review_kb", "review_overlay.json").is_file()
     assert snap.metadata["review_kb"]["counts"]["symbols"] == 2
-    assert snap.metadata["repository_kb"]["counts"]["summaries"] == 3
+    assert snap.metadata["repository_kb"]["counts"]["summaries"] == 4
     core_file = [
         record
         for record in kb["files"]

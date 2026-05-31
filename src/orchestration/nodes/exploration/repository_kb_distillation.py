@@ -102,10 +102,32 @@ def _is_length_finish_error(exc: Exception) -> bool:
 
 
 def _compact_retry_completion_tokens(prompt: str, settings: Settings) -> int:
-    """Keep compact retries bounded without starving structured JSON output."""
+    """Keep compact retries bounded; the retry prompt asks for a tiny JSON object."""
     prompt_tokens = max(1, int(len(prompt) / 4))
-    target = max(1536, int(prompt_tokens * 0.5))
+    target = max(768, int(prompt_tokens * 0.25))
     return min(settings.repository_kb_distillation_max_completion_tokens, target)
+
+
+def _shard_completion_tokens(settings: Settings) -> int:
+    return min(settings.repository_kb_distillation_max_completion_tokens, 1536)
+
+
+def _render_shard_compact_retry_prompt(prompt_pack: Dict[str, Any]) -> str:
+    return (
+        "Retry Repository KB shard distillation. Output immediately; no analysis, markdown, or prose.\n"
+        "Return minified JSON matching RepositoryKBShardDistillationOutput.\n"
+        "Hard limits:\n"
+        "- exactly one shard object for the supplied shard\n"
+        "- summary <= 35 words\n"
+        "- include only community_id, shard_id, lane, summary, source_record_ids unless a warning is necessary\n"
+        "- source_record_ids <= 4 and must come from allowed_record_ids\n"
+        "- optional list fields may be omitted; if present, <= 1 item of <= 10 words\n"
+        "- warnings must be [] unless the evidence is unusable\n"
+        'Shape: {"shards":[{"community_id":0,"shard_id":"...","lane":"...",'
+        '"summary":"...","source_record_ids":["..."]}],"warnings":[]}\n\n'
+        "Repository KB shard pack:\n"
+        f"{pack_to_prompt_json(prompt_pack)}"
+    )
 
 
 def _cache_dir(settings: Settings) -> Path:
@@ -406,7 +428,16 @@ def distill_repository_kb(
 
     repo_fallback = next((r for r in bundle.summaries if r.id == "summary:repo"), None)
     if repo_fallback is not None and selected_communities:
-        pack = build_repo_distillation_pack(bundle)
+        state_docs_summary = ""
+        state_docs_sources: List[str] = []
+        if state is not None:
+            state_docs_summary = str(state.get("repository_docs_summary") or "")
+            state_docs_sources = [str(s) for s in (state.get("repository_docs_sources") or [])]
+        pack = build_repo_distillation_pack(
+            bundle,
+            docs_summary=state_docs_summary,
+            docs_sources=state_docs_sources,
+        )
         cached = _load_cached_record(
             settings=resolved,
             namespace=cache_namespace,
@@ -457,6 +488,7 @@ def distill_repository_kb(
                         fallback=repo_fallback,
                         output=parsed,
                         allowed_record_ids=pack.get("allowed_record_ids") or [],
+                        allowed_doc_source_ids=(pack.get("docs_context") or {}).get("allowed_doc_source_ids") or [],
                         omitted=pack.get("omitted") or {},
                         token_usage=call_tokens,
                     )
@@ -626,7 +658,7 @@ def _distill_shards(
         prompt = render_repository_kb_shard_distill_prompt(
             pack_json=pack_to_prompt_json(prompt_pack),
         )
-        allowed, estimate = budget.can_call(prompt, settings.repository_kb_distillation_max_completion_tokens)
+        allowed, estimate = budget.can_call(prompt, _shard_completion_tokens(settings))
         if not allowed:
             warnings.append(f"community_{plan.community_id}:shard_{shard.shard_id}:deferred:budget")
             records.append(
@@ -644,6 +676,7 @@ def _distill_shards(
         try:
             invoke_result, retried, call_tokens, call_trace = _invoke_shard_distillation(
                 prompt=prompt,
+                compact_prompt=_render_shard_compact_retry_prompt(prompt_pack),
                 settings=settings,
                 model_key=model_key,
                 budget=budget,
@@ -704,6 +737,7 @@ def _distill_shards(
 def _invoke_shard_distillation(
     *,
     prompt: str,
+    compact_prompt: str | None = None,
     settings: Settings,
     model_key: str,
     budget: _DistillationBudget,
@@ -714,7 +748,7 @@ def _invoke_shard_distillation(
     llm = Models.worker(
         RepositoryKBShardDistillationOutput,
         model_key=model_key,
-        max_completion_tokens=settings.repository_kb_distillation_max_completion_tokens,
+        max_completion_tokens=_shard_completion_tokens(settings),
     )
     try:
         traced = trace_llm_call(
@@ -739,7 +773,7 @@ def _invoke_shard_distillation(
         )
         traced = trace_llm_call(
             compact_llm,
-            prompt + _SHARD_COMPACT_RETRY_APPENDIX,
+            compact_prompt or prompt + _SHARD_COMPACT_RETRY_APPENDIX,
             state=state,
             node_name="repository_kb_distillation",
             model_key=model_key,

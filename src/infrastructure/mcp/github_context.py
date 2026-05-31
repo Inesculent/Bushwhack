@@ -6,9 +6,11 @@ from typing import Iterable, List, Sequence
 from src.config import Settings
 from src.domain.interfaces import ICacheService, IGitHubContextProvider
 from src.domain.schemas import (
+    GitHubFileReviewHistory,
     GitHubIssueComment,
     GitHubIssueContext,
     GitHubPullRequestContext,
+    GitHubReviewHistoryComment,
     RepoDocument,
     RepoDocsBundle,
     RepoMetadata,
@@ -217,6 +219,203 @@ class GitHubMCPContextProvider(IGitHubContextProvider):
         )
         return comments
 
+    def get_file_review_history(
+        self,
+        owner: str,
+        repo: str,
+        ref: str,
+        paths: Sequence[str],
+        *,
+        current_pr_number: int | None = None,
+        commits_per_file: int = 12,
+        prs_per_file: int = 3,
+        comments_per_pr: int = 30,
+        max_total_chars: int = 8000,
+    ) -> List[GitHubFileReviewHistory]:
+        cache_key = self._cache_key(
+            "file_review_history",
+            owner,
+            repo,
+            ref,
+            ",".join(_normalize_paths(paths)),
+            str(current_pr_number or ""),
+            str(commits_per_file),
+            str(prs_per_file),
+            str(comments_per_pr),
+            str(max_total_chars),
+        )
+        cached = self._cache.get(cache_key)
+        if cached is not None:
+            return [
+                GitHubFileReviewHistory.model_validate(item)
+                for item in cached.get("history", [])
+            ]
+
+        remaining_chars = max(0, int(max_total_chars))
+        histories: List[GitHubFileReviewHistory] = []
+        seen_pr_by_path: dict[str, set[int]] = {}
+
+        for path in _normalize_paths(paths):
+            warnings: List[str] = []
+            comments: List[GitHubReviewHistoryComment] = []
+            seen_pr_by_path[path] = set()
+            commits = self._client.call_tool(
+                "get_commits_for_path",
+                {
+                    "owner": owner,
+                    "repo": repo,
+                    "path": path,
+                    "ref": ref,
+                    "limit": max(1, int(commits_per_file)),
+                },
+            )
+            if commits.get("error"):
+                warnings.append(f"commits_fetch_failed:{commits.get('error')}")
+                histories.append(GitHubFileReviewHistory(file_path=path, warnings=warnings))
+                continue
+
+            for commit in list(commits.get("commits") or [])[: max(1, int(commits_per_file))]:
+                if remaining_chars <= 0:
+                    warnings.append("review_history_total_chars_limit_reached")
+                    break
+                if len(seen_pr_by_path[path]) >= max(1, int(prs_per_file)):
+                    break
+                sha = str(commit.get("sha") or "")
+                if not sha:
+                    continue
+                prs = self._client.call_tool(
+                    "get_pull_requests_for_commit",
+                    {"owner": owner, "repo": repo, "commit_sha": sha},
+                )
+                if prs.get("error"):
+                    warnings.append(f"commit_prs_fetch_failed:{sha}:{prs.get('error')}")
+                    continue
+                for pr in prs.get("pull_requests") or []:
+                    if remaining_chars <= 0:
+                        break
+                    number = _as_positive_int(pr.get("number"))
+                    if number is None:
+                        continue
+                    if current_pr_number is not None and number == current_pr_number:
+                        continue
+                    if number in seen_pr_by_path[path]:
+                        continue
+                    if str(pr.get("state") or "").lower() != "closed" or not pr.get("merged_at"):
+                        continue
+                    seen_pr_by_path[path].add(number)
+                    added, remaining_chars = self._history_comments_for_pr(
+                        owner=owner,
+                        repo=repo,
+                        path=path,
+                        pr=pr,
+                        commit_sha=sha,
+                        comments_per_pr=comments_per_pr,
+                        remaining_chars=remaining_chars,
+                    )
+                    comments.extend(added)
+                    if len(seen_pr_by_path[path]) >= max(1, int(prs_per_file)):
+                        break
+
+            histories.append(
+                GitHubFileReviewHistory(
+                    file_path=path,
+                    comments=comments,
+                    warnings=warnings,
+                )
+            )
+
+        self._cache.set(
+            cache_key,
+            {"history": [h.model_dump(mode="json") for h in histories]},
+            self._settings.github_mcp_cache_ttl_seconds,
+        )
+        return histories
+
+    def _history_comments_for_pr(
+        self,
+        *,
+        owner: str,
+        repo: str,
+        path: str,
+        pr: dict,
+        commit_sha: str,
+        comments_per_pr: int,
+        remaining_chars: int,
+    ) -> tuple[List[GitHubReviewHistoryComment], int]:
+        if comments_per_pr <= 0:
+            return [], remaining_chars
+        number = int(pr["number"])
+        review_payload = self._client.call_tool(
+            "get_pull_request_review_comments",
+            {
+                "owner": owner,
+                "repo": repo,
+                "pull_number": number,
+                "limit": max(0, int(comments_per_pr)),
+            },
+        )
+        review_comments = []
+        if not review_payload.get("error"):
+            review_comments = [
+                raw
+                for raw in review_payload.get("comments") or []
+                if _same_path(str(raw.get("path") or ""), path)
+            ]
+
+        out: List[GitHubReviewHistoryComment] = []
+        for raw in review_comments:
+            body = _truncate(str(raw.get("body") or ""), self._settings.github_mcp_pr_comment_max_chars)
+            if not body.strip():
+                continue
+            if remaining_chars <= 0:
+                break
+            clipped = body[:remaining_chars]
+            remaining_chars -= len(clipped)
+            out.append(
+                GitHubReviewHistoryComment(
+                    file_path=path,
+                    pr_number=number,
+                    pr_title=str(pr.get("title") or ""),
+                    pr_html_url=pr.get("html_url"),
+                    commit_sha=commit_sha,
+                    author=raw.get("author"),
+                    created_at=raw.get("created_at"),
+                    body=clipped,
+                    comment_path=str(raw.get("path") or ""),
+                    line=_as_positive_int(raw.get("line")),
+                    source="review_comment",
+                )
+            )
+
+        issue_budget = max(0, int(comments_per_pr) - len(review_comments))
+        if issue_budget <= 0 or remaining_chars <= 0:
+            return out, remaining_chars
+        issue_comments = self.get_issue_comments(owner, repo, number, issue_budget)
+        for comment in issue_comments[:issue_budget]:
+            body = _truncate(comment.body, self._settings.github_mcp_pr_comment_max_chars)
+            if not body.strip():
+                continue
+            if remaining_chars <= 0:
+                break
+            clipped = body[:remaining_chars]
+            remaining_chars -= len(clipped)
+            out.append(
+                GitHubReviewHistoryComment(
+                    file_path=path,
+                    pr_number=number,
+                    pr_title=str(pr.get("title") or ""),
+                    pr_html_url=pr.get("html_url"),
+                    commit_sha=commit_sha,
+                    author=comment.author,
+                    created_at=comment.created_at,
+                    body=clipped,
+                    comment_path="",
+                    line=None,
+                    source="issue_comment",
+                )
+            )
+        return out, remaining_chars
+
     def _get_repo_doc(
         self,
         owner: str,
@@ -263,6 +462,18 @@ def _normalize_paths(paths: Iterable[str]) -> List[str]:
         seen.add(normalized)
         out.append(normalized)
     return out
+
+
+def _same_path(left: str, right: str) -> bool:
+    return left.strip().replace("\\", "/").lstrip("/") == right.strip().replace("\\", "/").lstrip("/")
+
+
+def _as_positive_int(value: object) -> int | None:
+    try:
+        parsed = int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
 
 
 def _truncate(value: str, max_chars: int) -> str:

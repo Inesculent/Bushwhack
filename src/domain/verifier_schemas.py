@@ -48,6 +48,7 @@ class VerifierAttemptRecord(BaseModel):
     lint_runs: List[VerifierLintRun] = Field(default_factory=list)
     sandbox_mode: str = ""
     repo_root: str = ""
+    failure_class: str = ""
 
 
 class VerifierReport(BaseModel):

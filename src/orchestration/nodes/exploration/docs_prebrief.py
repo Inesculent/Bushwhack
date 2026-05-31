@@ -104,17 +104,22 @@ def make_docs_prebrief_node(
             sources.append(f"issue:{issue.number}")
         if comments:
             sources.append(f"pr_comments:{len(comments)}")
+        repository_docs_summary = _repository_docs_summary(docs)
+        repository_docs_sources = [f"doc:{doc.path}" for doc in docs]
 
         meta["docs_prebrief"] = {
             "status": "ok",
             "ref": ref,
             "sources": sources,
+            "repository_docs_sources": repository_docs_sources,
             "warnings": doc_warnings,
         }
 
         return {
             "docs_prebrief_summary": summary,
             "docs_prebrief_sources": sources,
+            "repository_docs_summary": repository_docs_summary,
+            "repository_docs_sources": repository_docs_sources,
             "global_insights": insights,
             "metadata": meta,
             "node_history": ["docs_prebrief"],
@@ -361,6 +366,24 @@ def _format_docs(docs: Iterable[RepoDocument]) -> str:
         header = f"# {doc.path}"
         blocks.append(f"{header}\n{doc.content}")
     return "\n\n".join(blocks) or "(none)"
+
+
+def _repository_docs_summary(docs: Sequence[RepoDocument]) -> str:
+    """Build a PR-agnostic docs brief for repository-level KB distillation."""
+    blocks: List[str] = []
+    for doc in docs[:5]:
+        lines = []
+        for raw in doc.content.splitlines():
+            line = raw.strip()
+            if not line:
+                continue
+            if line.startswith("#") or len(lines) < 6:
+                lines.append(line[:240])
+            if len(lines) >= 8:
+                break
+        if lines:
+            blocks.append(f"{doc.path}: " + " ".join(lines))
+    return "\n".join(blocks)[:4000]
 
 
 def _format_pr_context(pr_context: GitHubPullRequestContext | None) -> str:

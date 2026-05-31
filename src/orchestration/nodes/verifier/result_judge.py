@@ -19,6 +19,11 @@ _HARNESS_STDERR_MARKERS = (
     "no module named",
 )
 
+_MISSING_MODULE = re.compile(
+    r"(?:ModuleNotFoundError:\s*)?No module named ['\"]([^'\"]+)['\"]",
+    re.IGNORECASE,
+)
+
 _HARNESS_IMPORT_CRASH = re.compile(
     r"STATUS:\s*CRASHED\s*\|\s*ExceptionType:\s*(ImportError|ModuleNotFoundError)\b",
     re.IGNORECASE,
@@ -138,6 +143,8 @@ def classify_attempt_failure(
             "syntaxerror" in lower and "status: harness_error" in lower
         ):
             return "syntax_error"
+        if _MISSING_MODULE.search(combined):
+            return "module_not_found"
         if _SIGNATURE_MISMATCH.search(combined):
             return "signature_mismatch"
         if (
@@ -166,6 +173,19 @@ def classify_attempt_failure(
     if _wrong_status_protocol(record):
         return "wrong_status_protocol"
     return "unknown"
+
+
+def missing_modules_from_attempts(attempts: Sequence[VerifierAttemptRecord]) -> List[str]:
+    """Extract missing import names from verifier attempts for diagnostics."""
+    out: List[str] = []
+    seen: set[str] = set()
+    for record in attempts:
+        for match in _MISSING_MODULE.findall(_combined_output(record)):
+            name = match.strip()
+            if name and name not in seen:
+                seen.add(name)
+                out.append(name)
+    return out
 
 
 def crash_is_harness_not_product(

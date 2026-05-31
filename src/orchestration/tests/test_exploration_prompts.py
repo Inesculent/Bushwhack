@@ -55,6 +55,10 @@ def test_exploration_renderers_substitute_placeholders() -> None:
     assert "def f()" in resolver
     assert "dependency graph" in resolver
     assert "bounded Repository KB evidence" in community_distill
-    assert "repository-level map" in repo_distill
+    assert "repository-understanding brief" in repo_distill
+    assert "workflows" in repo_distill
+    assert "domain concepts" in repo_distill
+    assert "docs_context" in repo_distill
+    assert "exact behavior" in repo_distill
     assert "evidence shards" in shard_distill
     assert "shard summaries" in community_merge

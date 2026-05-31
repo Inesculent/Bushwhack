@@ -56,6 +56,7 @@ def test_execute_test_script_timeout_returns_without_waiting_on_worker(tmp_path)
 
 
 class _TimeoutSettings:
+    sandbox_backend = "docker"
     verifier_image = "test-img"
     verifier_test_timeout_seconds = 1
     verifier_ruff_enabled = False

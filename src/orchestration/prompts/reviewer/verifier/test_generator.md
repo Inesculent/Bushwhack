@@ -30,8 +30,10 @@ When mock_heavy_deps is **disabled**, do not mock torch/PIL unless an import act
 
 2. **Repo-agnostic imports (required)**
    - Use the repo root hint `{repo_root}` when adding to `sys.path`. Do **not** hardcode `/repo`.
+   - Prefer loading the cited target file by path with `importlib.util.spec_from_file_location` when the repro only needs one file or one class/function. Avoid importing package roots unless the target code cannot run by path.
    - Before calling target code: use `inspect.signature` and/or read `INPUT_TYPES` (or equivalent) from the **actual** module under test.
    - Import the **smallest** surface needed (one class or function), not whole package graphs when avoidable.
+   - If imports fail before product code is invoked, print `STATUS: HARNESS_ERROR` and exit 2; do not report these as product crashes.
    - On import failure: add **minimal** `sys.modules` stubs only for names appearing in the traceback (e.g. one missing attribute on a namespace — do not copy a fixed enum list for a specific framework).
 
 3. Import **only** what you need from the repo; avoid `pytest` / `unittest` test runners.

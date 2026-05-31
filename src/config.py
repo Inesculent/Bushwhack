@@ -190,6 +190,34 @@ class Settings(BaseSettings):
 		ge=200,
 		description="Max characters per PR/issue comment fetched via GitHub MCP.",
 	)
+	github_mcp_review_history_enabled: bool = Field(
+		default=True,
+		description="Fetch bounded prior PR review/comment history for changed files before mandate planning.",
+	)
+	github_mcp_review_history_commits_per_file: int = Field(
+		default=12,
+		ge=1,
+		le=100,
+		description="Max recent commits to inspect per changed file when building review history context.",
+	)
+	github_mcp_review_history_prs_per_file: int = Field(
+		default=3,
+		ge=1,
+		le=20,
+		description="Max prior PRs to inspect per changed file for historical review context.",
+	)
+	github_mcp_review_history_comments_per_pr: int = Field(
+		default=30,
+		ge=0,
+		le=100,
+		description="Max review/issue comments to fetch per prior PR for file review history.",
+	)
+	github_mcp_review_history_max_total_chars: int = Field(
+		default=8000,
+		ge=500,
+		le=64000,
+		description="Max rendered characters of prior review history added to the mental-model ledger.",
+	)
 	github_mcp_doc_paths: List[str] = Field(
 		default_factory=lambda: [
 			"README.md",
@@ -530,10 +558,6 @@ class Settings(BaseSettings):
 		le=32000,
 		description="ContextPacket char budget for verifier test_generator.",
 	)
-	reviewer_cleanup_redis_checkpoints: bool = Field(
-		default=True,
-		description="Delete per-PR Redis checkpoints after reviewer-agent experiments finish each graph run.",
-	)
 	reviewer_cleanup_require_full_reflection_quorum: bool = Field(
 		default=False,
 		description=(
@@ -707,6 +731,13 @@ class Settings(BaseSettings):
 		le=32_768,
 		description="Completion token cap for verifier test-script generation (separate from worker default).",
 	)
+	verifier_source_only_static_enabled: bool = Field(
+		default=True,
+		description=(
+			"Run cheap source-only verifier checks before sandbox execution for syntax/name/import "
+			"regressions that do not require importing repository packages."
+		),
+	)
 
 	# Phase 2 semantic enrichment + snapshot layout
 	snapshot_base_path: Path = Field(
@@ -720,6 +751,13 @@ class Settings(BaseSettings):
 	semantic_enrichment_enabled: bool = Field(
 		default=True,
 		description="Run Phase 2 semantic bubble-up after structural extraction when topology exists.",
+	)
+	semantic_legacy_community_agents_enabled: bool = Field(
+		default=False,
+		description=(
+			"Run legacy LLM community semantic agents after Review KB dispatch. Modern runs leave this "
+			"off and use deterministic Review KB records plus optional KB distillation."
+		),
 	)
 	semantic_max_tokens_per_community: int = Field(
 		default=8000,

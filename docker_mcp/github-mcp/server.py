@@ -141,6 +141,126 @@ def get_pull_request(owner: str, repo: str, pull_number: int) -> Dict[str, Any]:
 
 
 @mcp.tool()
+def get_commits_for_path(owner: str, repo: str, path: str, ref: str = "", limit: int = 12) -> Dict[str, Any]:
+    """Fetch recent commits touching a repository-relative path."""
+    logger.info("Fetching commits for %s/%s:%s ref=%s", owner, repo, path, ref)
+    url = f"https://api.github.com/repos/{owner}/{repo}/commits"
+    params = {
+        "path": path,
+        "per_page": max(1, min(limit, 100)),
+    }
+    if ref:
+        params["sha"] = ref
+
+    response = requests.get(url, headers=HEADERS, params=params)
+    if response.status_code != 200:
+        return {
+            "error": response.json().get("message", response.text),
+            "owner": owner,
+            "repo": repo,
+            "path": path,
+            "ref": ref,
+            "commits": [],
+        }
+
+    payload = response.json()
+    rows = payload if isinstance(payload, list) else []
+    commits = [
+        {
+            "sha": item.get("sha") or "",
+            "html_url": item.get("html_url"),
+            "message": (item.get("commit") or {}).get("message") or "",
+            "author": ((item.get("commit") or {}).get("author") or {}).get("name"),
+            "created_at": ((item.get("commit") or {}).get("author") or {}).get("date"),
+        }
+        for item in rows
+    ]
+    return {
+        "owner": owner,
+        "repo": repo,
+        "path": path,
+        "ref": ref,
+        "commits": commits,
+    }
+
+
+@mcp.tool()
+def get_pull_requests_for_commit(owner: str, repo: str, commit_sha: str) -> Dict[str, Any]:
+    """Fetch pull requests associated with a commit sha."""
+    logger.info("Fetching PRs for commit %s in %s/%s", commit_sha, owner, repo)
+    url = f"https://api.github.com/repos/{owner}/{repo}/commits/{commit_sha}/pulls"
+    headers = HEADERS.copy()
+    headers["Accept"] = "application/vnd.github+json"
+    response = requests.get(url, headers=headers)
+    if response.status_code != 200:
+        return {
+            "error": response.json().get("message", response.text),
+            "owner": owner,
+            "repo": repo,
+            "commit_sha": commit_sha,
+            "pull_requests": [],
+        }
+
+    payload = response.json()
+    rows = payload if isinstance(payload, list) else []
+    pull_requests = [
+        {
+            "number": item.get("number"),
+            "title": item.get("title") or "",
+            "html_url": item.get("html_url"),
+            "state": item.get("state"),
+            "merged_at": item.get("merged_at"),
+            "author": (item.get("user") or {}).get("login"),
+        }
+        for item in rows
+    ]
+    return {
+        "owner": owner,
+        "repo": repo,
+        "commit_sha": commit_sha,
+        "pull_requests": pull_requests,
+    }
+
+
+@mcp.tool()
+def get_pull_request_review_comments(owner: str, repo: str, pull_number: int, limit: int = 30) -> Dict[str, Any]:
+    """Fetch bounded review comments for a pull request."""
+    logger.info("Fetching review comments for PR #%s on %s/%s", pull_number, owner, repo)
+    url = f"https://api.github.com/repos/{owner}/{repo}/pulls/{pull_number}/comments"
+    params = {"per_page": max(1, min(limit, 100))}
+    response = requests.get(url, headers=HEADERS, params=params)
+    if response.status_code != 200:
+        return {
+            "error": response.json().get("message", response.text),
+            "owner": owner,
+            "repo": repo,
+            "number": pull_number,
+            "comments": [],
+        }
+
+    payload = response.json()
+    rows: List[Dict[str, Any]] = payload if isinstance(payload, list) else []
+    comments = [
+        {
+            "author": (item.get("user") or {}).get("login"),
+            "body": item.get("body") or "",
+            "html_url": item.get("html_url"),
+            "created_at": item.get("created_at"),
+            "path": item.get("path") or "",
+            "line": item.get("line") or item.get("original_line"),
+            "commit_id": item.get("commit_id") or "",
+        }
+        for item in rows
+    ]
+    return {
+        "owner": owner,
+        "repo": repo,
+        "number": pull_number,
+        "comments": comments,
+    }
+
+
+@mcp.tool()
 def get_repo_metadata(owner: str, repo: str) -> Dict[str, Any]:
     """Fetch lightweight repository metadata (default branch, etc.)."""
     logger.info("Fetching repo metadata for %s/%s", owner, repo)
