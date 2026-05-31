@@ -6,11 +6,14 @@ from .schemas import (
     CritiqueRevisionDigest,
     FocusedContextRequest,
     FocusedContextResult,
+    InvalidReviewCheck,
     KnowledgeGap,
     PreflightParseIssue,
     PreflightSummary,
     ReflectionReport,
     RepositoryMap,
+    ReviewCheck,
+    ReviewCheckResult,
     ReviewTask,
     ReviewFinding,
     ReviewerWorkerReport,
@@ -132,6 +135,9 @@ class GraphState(TypedDict, total=False):
     final_findings: NotRequired[List[ReviewFinding]]
 
     # Adversarial review loop (critiquer → reflection → focused context → cleanup)
+    review_checks: Annotated[List[ReviewCheck], operator.add]
+    invalid_review_checks: Annotated[List[InvalidReviewCheck], operator.add]
+    review_check_results: Annotated[List[ReviewCheckResult], operator.add]
     candidate_findings: Annotated[List[CandidateFinding], operator.add]
     reflection_reports: Annotated[List[ReflectionReport], operator.add]
     focused_context_requests: Annotated[List[FocusedContextRequest], operator.add]

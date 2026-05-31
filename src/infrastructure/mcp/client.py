@@ -53,6 +53,51 @@ class MCPClient:
         except Exception as exc:
             raise MCPClientError(f"MCP tool call failed for '{name}': {exc}") from exc
 
+    def list_tools(self) -> List[str]:
+        """Return tool names advertised by the MCP server."""
+        try:
+            asyncio.get_running_loop()
+            raise MCPClientError(
+                "MCPClient.list_tools() cannot run inside an active event loop. "
+                "Use list_tools_async() in async contexts."
+            )
+        except RuntimeError:
+            pass
+
+        try:
+            return asyncio.run(self.list_tools_async())
+        except TimeoutError as exc:
+            raise MCPClientError("MCP list_tools call timed out.") from exc
+        except MCPClientError:
+            raise
+        except Exception as exc:
+            raise MCPClientError(f"MCP list_tools call failed: {exc}") from exc
+
+    async def list_tools_async(self) -> List[str]:
+        params = StdioServerParameters(
+            command=self.command,
+            args=self.args,
+            env=self.env,
+            cwd=self.cwd,
+        )
+        timeout = timedelta(seconds=self.timeout_seconds)
+
+        async with stdio_client(params) as (read_stream, write_stream):
+            async with ClientSession(
+                read_stream,
+                write_stream,
+                read_timeout_seconds=timeout,
+            ) as session:
+                await session.initialize()
+                result = await session.list_tools(read_timeout_seconds=timeout)
+
+        tools = getattr(result, "tools", []) or []
+        return [
+            str(getattr(tool, "name", ""))
+            for tool in tools
+            if str(getattr(tool, "name", "")).strip()
+        ]
+
     async def call_tool_async(
         self,
         name: str,

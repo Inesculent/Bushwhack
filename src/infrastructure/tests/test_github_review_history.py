@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from src.config import Settings
 from src.infrastructure.cache.memory_cache import InMemoryCache
+from src.infrastructure.mcp.client import MCPToolError
 from src.infrastructure.mcp.github_context import GitHubMCPContextProvider
 
 
@@ -121,3 +122,61 @@ def test_file_review_history_dedupes_current_pr_and_filters_paths() -> None:
     ]
     assert [call[1]["commit_sha"] for call in pr_lookup_calls] == ["aaa111", "bbb222", "ccc333"]
 
+
+def test_file_review_history_fails_soft_when_commits_tool_missing() -> None:
+    class MissingCommitsClient:
+        def call_tool(self, name: str, args: dict) -> dict:
+            if name == "get_commits_for_path":
+                raise MCPToolError("MCP tool 'get_commits_for_path' returned an error: Unknown tool")
+            raise AssertionError(f"unexpected tool: {name}")
+
+    provider = GitHubMCPContextProvider(
+        mcp_client=MissingCommitsClient(),  # type: ignore[arg-type]
+        cache=InMemoryCache(),
+        settings=Settings(),
+    )
+
+    histories = provider.get_file_review_history(
+        "owner",
+        "repo",
+        "main",
+        ["src/widget.py"],
+        current_pr_number=7,
+    )
+
+    assert len(histories) == 1
+    assert histories[0].file_path == "src/widget.py"
+    assert histories[0].comments == []
+    assert histories[0].warnings
+    assert "commits_fetch_failed:MCPToolError" in histories[0].warnings[0]
+
+
+def test_file_review_history_skips_unknown_commits_tool_before_calling() -> None:
+    class MissingListedToolClient:
+        def __init__(self) -> None:
+            self.calls: list[str] = []
+
+        def list_tools(self) -> list[str]:
+            return ["get_pull_request", "get_issue_comments"]
+
+        def call_tool(self, name: str, args: dict) -> dict:
+            self.calls.append(name)
+            raise AssertionError(f"unexpected tool call: {name}")
+
+    client = MissingListedToolClient()
+    provider = GitHubMCPContextProvider(
+        mcp_client=client,  # type: ignore[arg-type]
+        cache=InMemoryCache(),
+        settings=Settings(),
+    )
+
+    histories = provider.get_file_review_history(
+        "owner",
+        "repo",
+        "main",
+        ["src/widget.py"],
+    )
+
+    assert histories[0].comments == []
+    assert histories[0].warnings == ["commits_fetch_failed:missing_mcp_tool:get_commits_for_path"]
+    assert client.calls == []

@@ -195,6 +195,108 @@ ClaimType = Literal[
     "positive_observation",
     "uncertain",
 ]
+ReviewLens = Literal[
+    "permission_boundary",
+    "api_compatibility",
+    "state_transition",
+    "input_validation",
+    "error_propagation",
+    "resource_lifecycle",
+    "data_shape_consistency",
+    "concurrency_ordering",
+    "test_oracle_strength",
+    "other",
+]
+
+
+class ReviewCheck(BaseModel):
+    """Runtime-compiled, evidence-first review contract for one task."""
+
+    check_id: str = Field(description="Stable id for this check within the graph run.")
+    patch_task_id: str = Field(description="Planner task id this check belongs to.")
+    lens: ReviewLens = "other"
+    file_path: str = Field(description="Repository-relative file path using '/' separators.")
+    line_start: int = Field(default=1, ge=1)
+    line_end: int = Field(default=1, ge=1)
+    changed_code_anchor: str = Field(
+        default="",
+        description="Changed function/class/line range the check is anchored to.",
+        max_length=240,
+    )
+    behavioral_question: str = Field(
+        default="",
+        description="Concrete yes/no review question this check must answer.",
+        max_length=400,
+    )
+    affected_invariant: str = Field(
+        default="",
+        description="Behavior, contract, or invariant that could be affected.",
+        max_length=400,
+    )
+    required_evidence: List[str] = Field(default_factory=list)
+    suppress_criteria: List[str] = Field(default_factory=list)
+    report_criteria: List[str] = Field(default_factory=list)
+    allowed_retrieval: List[str] = Field(default_factory=list)
+    budget: int = Field(default=2, ge=1, le=10)
+
+    @model_validator(mode="after")
+    def validate_line_range(self) -> Self:
+        if self.line_end < self.line_start:
+            raise ValueError("line_end must be >= line_start")
+        return self
+
+
+class InvalidReviewCheck(BaseModel):
+    """Compiled check rejected before execution."""
+
+    check: ReviewCheck
+    reasons: List[str] = Field(default_factory=list)
+
+
+ReviewCheckDecision = Literal[
+    "no_finding",
+    "candidate",
+    "unsupported",
+    "suppressed",
+    "budget_exhausted",
+]
+ReviewCheckGateDecision = Literal["pending", "passed", "dropped"]
+
+
+class ReviewCheckResult(BaseModel):
+    """Outcome from executing one validated review check."""
+
+    check_id: str
+    patch_task_id: str
+    decision: ReviewCheckDecision = "no_finding"
+    evidence_refs: List[str] = Field(default_factory=list)
+    suppressing_evidence: List[str] = Field(default_factory=list)
+    missing_evidence: List[str] = Field(
+        default_factory=list,
+        description="Concrete required evidence still needed before this check can be decided.",
+    )
+    reportable_reason: str = Field(default="", max_length=500)
+    candidate: Optional["CandidateFinding"] = None
+    gate_decision: ReviewCheckGateDecision = "pending"
+    gate_reason: str = ""
+    warnings: List[str] = Field(default_factory=list)
+
+
+class ReviewCheckCompilerOutput(BaseModel):
+    """Structured compiler output: checks only, no findings."""
+
+    summary: str = Field(default="", max_length=1200)
+    checks: List[ReviewCheck] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
+
+
+class ReviewCheckExecutorOutput(BaseModel):
+    """Structured executor output for validated checks."""
+
+    results: List[ReviewCheckResult] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
+
+
 class AuditCoverageRecord(BaseModel):
     """Non-promotable coverage note from a critiquer pass."""
 

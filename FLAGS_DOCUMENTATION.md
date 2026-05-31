@@ -72,6 +72,7 @@ The primary research command with comprehensive options for dataset-driven analy
 |------|------|---------|-------------|
 | `--trace` | boolean | `False` | Emit reviewer graph tracing logs, including bounded LLM request/response summaries and per-call token usage. Verbose output for debugging agent behavior. |
 | `--basic-graph` | boolean | `False` | Use the basic reviewer graph without adversarial critique/reflection nodes. |
+| `--review-check-mode` | choice | settings default | Check-first reviewer ablation mode: `off`, `log_only`, or `enforced`. |
 
 #### LLM Configuration Overrides
 
@@ -318,6 +319,13 @@ python -m src.reviewer_agent.main --remote ...
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
 | `REVIEW_REVIEWER_USE_LEGACY_SPECIALIST_WORKERS` | boolean | `false` | Route review_planner tasks to legacy specialist workers instead of adversarial critiquer loop. |
+| `REVIEW_REVIEWER_CHECK_MODE` | choice | `off` | Check-first reviewer ablation mode: `off` preserves candidate-first review, `log_only` compiles and validates checks before the current critiquer, and `enforced` uses evidence-backed checks instead of direct candidate generation. |
+
+Check-first AACR runs also write health artifacts:
+
+- `coverage_audit.json` joins `documentation/dataset/positive_samples.json` to raw artifacts and reports compiled, valid, focused-context, executor, candidate, and final coverage by positive path.
+- `manifest.csv` includes invalid reason JSON and review-check health warnings.
+- `run_meta.json` includes GitHub MCP preflight status. If MCP tools change, deploy `docker_mcp/github-mcp/server.py` with `src`; replacing only `src` can leave stale cluster MCP tools.
 
 ---
 
@@ -536,6 +544,8 @@ export REVIEW_AST_FALLBACK_TO_SEARCH=true
 # Disable optional GitHub context enrichment while preserving local review
 export REVIEW_GITHUB_MCP_ENABLED=false
 ```
+
+For check-first cluster runs, inspect `run_meta.json -> mcp_preflight`. A degraded preflight with `missing_required_tools: ["get_commits_for_path"]` usually means `docker_mcp/github-mcp/server.py` was not uploaded with the current code.
 
 #### 4. Out of Memory During AST Parsing
 

@@ -35,6 +35,16 @@ class _Provider:
         ]
 
 
+class _MissingHistoryToolProvider(_Provider):
+    def get_file_review_history(self, owner: str, repo: str, ref: str, paths, **kwargs):
+        return [
+            GitHubFileReviewHistory(
+                file_path="src/widget.py",
+                warnings=["commits_fetch_failed:missing_mcp_tool:get_commits_for_path"],
+            )
+        ]
+
+
 def _state() -> GraphState:
     return {  # type: ignore[assignment]
         "run_id": "r1",
@@ -85,6 +95,20 @@ def test_review_history_context_records_skip_reason_without_provider() -> None:
     assert out["metadata"]["review_history_context"]["skip_reason"] == "no_github_provider"
 
 
+def test_review_history_context_marks_missing_mcp_tool_degraded() -> None:
+    node = make_review_history_context_node(
+        github_provider=_MissingHistoryToolProvider(),  # type: ignore[arg-type]
+        settings=Settings(github_mcp_review_history_max_total_chars=1000),
+    )
+
+    out = node(_state())
+
+    slot = out["metadata"]["review_history_context"]
+    assert slot["status"] == "degraded"
+    assert slot["mcp_degraded"] is True
+    assert out["node_history"] == ["review_history_context"]
+
+
 def test_review_history_context_reaches_mandate_patch_delta_prompt() -> None:
     node = make_review_history_context_node(
         github_provider=_Provider(),  # type: ignore[arg-type]
@@ -103,4 +127,3 @@ def test_review_history_context_reaches_mandate_patch_delta_prompt() -> None:
     assert "review_history_context" in delta
     assert "institutional memory" in delta
     assert "non-fatal" in delta
-

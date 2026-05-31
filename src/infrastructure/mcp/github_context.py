@@ -29,6 +29,7 @@ class GitHubMCPContextProvider(IGitHubContextProvider):
         self._client = mcp_client
         self._cache = cache
         self._settings = settings
+        self._available_tools: set[str] | None = None
 
     def get_repo_docs(
         self,
@@ -191,10 +192,21 @@ class GitHubMCPContextProvider(IGitHubContextProvider):
         if cached is not None:
             return [GitHubIssueComment.model_validate(item) for item in cached.get("comments", [])]
 
-        payload = self._client.call_tool(
-            "get_issue_comments",
-            {"owner": owner, "repo": repo, "issue_number": issue_number, "limit": capped},
-        )
+        try:
+            payload = self._client.call_tool(
+                "get_issue_comments",
+                {"owner": owner, "repo": repo, "issue_number": issue_number, "limit": capped},
+            )
+        except Exception as exc:  # noqa: BLE001 - optional GitHub context
+            logger.warning(
+                "GitHub MCP issue comments fetch failed %s/%s#%s: %s: %s",
+                owner,
+                repo,
+                issue_number,
+                exc.__class__.__name__,
+                exc,
+            )
+            return []
         if payload.get("error"):
             logger.warning(
                 "GitHub MCP issue comments fetch failed %s/%s#%s: %s",
@@ -259,16 +271,25 @@ class GitHubMCPContextProvider(IGitHubContextProvider):
             warnings: List[str] = []
             comments: List[GitHubReviewHistoryComment] = []
             seen_pr_by_path[path] = set()
-            commits = self._client.call_tool(
-                "get_commits_for_path",
-                {
-                    "owner": owner,
-                    "repo": repo,
-                    "path": path,
-                    "ref": ref,
-                    "limit": max(1, int(commits_per_file)),
-                },
-            )
+            if not self._has_tool("get_commits_for_path"):
+                warnings.append("commits_fetch_failed:missing_mcp_tool:get_commits_for_path")
+                histories.append(GitHubFileReviewHistory(file_path=path, warnings=warnings))
+                continue
+            try:
+                commits = self._client.call_tool(
+                    "get_commits_for_path",
+                    {
+                        "owner": owner,
+                        "repo": repo,
+                        "path": path,
+                        "ref": ref,
+                        "limit": max(1, int(commits_per_file)),
+                    },
+                )
+            except Exception as exc:  # noqa: BLE001 - optional history enrichment
+                warnings.append(f"commits_fetch_failed:{exc.__class__.__name__}: {exc}")
+                histories.append(GitHubFileReviewHistory(file_path=path, warnings=warnings))
+                continue
             if commits.get("error"):
                 warnings.append(f"commits_fetch_failed:{commits.get('error')}")
                 histories.append(GitHubFileReviewHistory(file_path=path, warnings=warnings))
@@ -283,10 +304,14 @@ class GitHubMCPContextProvider(IGitHubContextProvider):
                 sha = str(commit.get("sha") or "")
                 if not sha:
                     continue
-                prs = self._client.call_tool(
-                    "get_pull_requests_for_commit",
-                    {"owner": owner, "repo": repo, "commit_sha": sha},
-                )
+                try:
+                    prs = self._client.call_tool(
+                        "get_pull_requests_for_commit",
+                        {"owner": owner, "repo": repo, "commit_sha": sha},
+                    )
+                except Exception as exc:  # noqa: BLE001 - optional history enrichment
+                    warnings.append(f"commit_prs_fetch_failed:{sha}:{exc.__class__.__name__}: {exc}")
+                    continue
                 if prs.get("error"):
                     warnings.append(f"commit_prs_fetch_failed:{sha}:{prs.get('error')}")
                     continue
@@ -345,15 +370,18 @@ class GitHubMCPContextProvider(IGitHubContextProvider):
         if comments_per_pr <= 0:
             return [], remaining_chars
         number = int(pr["number"])
-        review_payload = self._client.call_tool(
-            "get_pull_request_review_comments",
-            {
-                "owner": owner,
-                "repo": repo,
-                "pull_number": number,
-                "limit": max(0, int(comments_per_pr)),
-            },
-        )
+        try:
+            review_payload = self._client.call_tool(
+                "get_pull_request_review_comments",
+                {
+                    "owner": owner,
+                    "repo": repo,
+                    "pull_number": number,
+                    "limit": max(0, int(comments_per_pr)),
+                },
+            )
+        except Exception:
+            review_payload = {"comments": []}
         review_comments = []
         if not review_payload.get("error"):
             review_comments = [
@@ -450,6 +478,19 @@ class GitHubMCPContextProvider(IGitHubContextProvider):
     def _cache_key(*parts: str) -> str:
         sanitized = [p.strip().replace(" ", "-") for p in parts if p]
         return "github_mcp:" + ":".join(sanitized)
+
+    def _has_tool(self, name: str) -> bool:
+        list_tools = getattr(self._client, "list_tools", None)
+        if not callable(list_tools):
+            return True
+        if self._available_tools is None:
+            try:
+                self._available_tools = set(list_tools())
+            except Exception as exc:  # noqa: BLE001 - provider should fail open
+                logger.warning("GitHub MCP list_tools failed: %s: %s", exc.__class__.__name__, exc)
+                self._available_tools = set()
+                return True
+        return name in self._available_tools
 
 
 def _normalize_paths(paths: Iterable[str]) -> List[str]:

@@ -437,6 +437,14 @@ class Settings(BaseSettings):
 			"Orthogonal to reviewer_use_legacy_specialist_workers."
 		),
 	)
+	reviewer_check_mode: Literal["off", "log_only", "enforced"] = Field(
+		default="off",
+		description=(
+			"Check-first reviewer ablation mode for the non-legacy adversarial critique path. "
+			"off preserves candidate-first review, log_only compiles/validates checks before running the "
+			"current critiquer, and enforced skips direct candidate generation in favor of evidence-backed checks."
+		),
+	)
 	reviewer_actor_critic_max_plan_revisions: int = Field(
 		default=4,
 		ge=0,

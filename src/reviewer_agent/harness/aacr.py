@@ -3,11 +3,13 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import shutil
 import subprocess
 import sys
 import time
 import uuid
+from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -22,6 +24,7 @@ from src.data.research_pipeline.logging_utils import configure_logger
 from src.data.research_pipeline.utils import ensure_directories, parse_pr_number, parse_repo_from_pr_url
 from src.domain.schemas import PreflightSummary
 from src.domain.state import GraphState
+from src.infrastructure.mcp.client import MCPClient
 from src.infrastructure.redis_checkpoint import delete_checkpoint_thread
 from src.infrastructure.snapshot_loader import SnapshotLoader
 from src.orchestration.reviewer_graph import run_reviewer
@@ -30,6 +33,7 @@ from src.orchestration.reviewer_graph_basic import run_reviewer_basic
 DEFAULT_AACR_PROCESSED_PATH: Path = PROCESSED_DIR / "aacr_bench_graph_ready.csv"
 EXPERIMENT_TAG = "reviewer_graph_parallel"
 BASIC_EXPERIMENT_TAG = "reviewer_graph_basic"
+DEFAULT_POSITIVE_SAMPLES_PATH = Path(__file__).resolve().parents[3] / "documentation" / "dataset" / "positive_samples.json"
 
 
 def _utc_now_iso() -> str:
@@ -112,6 +116,18 @@ def _write_raw(raw_dir: Path, slug: str, result: dict[str, Any]) -> Path:
             key: (val.model_dump() if hasattr(val, "model_dump") else val)
             for key, val in (result.get("focused_context_results", {}) or {}).items()
         },
+        "review_checks": [
+            item.model_dump() if hasattr(item, "model_dump") else item
+            for item in result.get("review_checks", []) or []
+        ],
+        "invalid_review_checks": [
+            item.model_dump() if hasattr(item, "model_dump") else item
+            for item in result.get("invalid_review_checks", []) or []
+        ],
+        "review_check_results": [
+            item.model_dump() if hasattr(item, "model_dump") else item
+            for item in result.get("review_check_results", []) or []
+        ],
         "critique_revision_digests": {
             key: (val.model_dump() if hasattr(val, "model_dump") else val)
             for key, val in (result.get("critique_revision_digests", {}) or {}).items()
@@ -143,6 +159,328 @@ def _write_manifest(manifest_path: Path, rows: List[dict[str, Any]]) -> pd.DataF
         merged_df = new_df
     merged_df.to_csv(manifest_path, index=False)
     return merged_df
+
+
+def _github_mcp_preflight(settings: Any) -> dict[str, Any]:
+    if not getattr(settings, "github_mcp_enabled", False):
+        return {"status": "disabled", "required_tools": ["get_commits_for_path"]}
+
+    env = None
+    if getattr(settings, "github_personal_access_token", ""):
+        env = dict(os.environ)
+        env["GITHUB_PERSONAL_ACCESS_TOKEN"] = settings.github_personal_access_token
+
+    client = MCPClient(
+        command=settings.github_mcp_command,
+        args=settings.github_mcp_args,
+        cwd=settings.github_mcp_cwd,
+        env=env,
+        timeout_seconds=settings.github_mcp_timeout_seconds,
+    )
+    try:
+        tools = sorted(client.list_tools())
+    except Exception as exc:  # noqa: BLE001 - benchmark runs should record MCP degradation, not fail
+        return {
+            "status": "error",
+            "required_tools": ["get_commits_for_path"],
+            "available_tools": [],
+            "missing_required_tools": ["get_commits_for_path"],
+            "error": f"{exc.__class__.__name__}: {exc}",
+        }
+
+    missing = [name for name in ("get_commits_for_path",) if name not in tools]
+    return {
+        "status": "ok" if not missing else "degraded",
+        "required_tools": ["get_commits_for_path"],
+        "available_tools": tools,
+        "missing_required_tools": missing,
+    }
+
+
+def _normalize_repo_path(path: str) -> str:
+    return path.strip().replace("\\", "/").lstrip("/")
+
+
+def _path_from_mapping_or_model(item: Any) -> str:
+    if item is None:
+        return ""
+    if isinstance(item, dict):
+        return _normalize_repo_path(str(item.get("file_path") or item.get("path") or ""))
+    return _normalize_repo_path(str(getattr(item, "file_path", "") or getattr(item, "path", "") or ""))
+
+
+def _candidate_from_result(item: Any) -> Any:
+    if isinstance(item, dict):
+        return item.get("candidate")
+    return getattr(item, "candidate", None)
+
+
+def _check_id_from_result(item: Any) -> str:
+    if isinstance(item, dict):
+        return str(item.get("check_id") or "")
+    return str(getattr(item, "check_id", "") or "")
+
+
+def _load_positive_samples_by_pr(path: Path) -> dict[str, list[dict[str, Any]]]:
+    if not path.exists():
+        return {}
+    try:
+        rows = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    out: dict[str, list[dict[str, Any]]] = {}
+    if not isinstance(rows, list):
+        return out
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        pr_url = str(row.get("githubPrUrl") or row.get("pr_url") or "").strip()
+        if not pr_url:
+            continue
+        comments = row.get("comments") if isinstance(row.get("comments"), list) else []
+        labels = []
+        for comment in comments:
+            if not isinstance(comment, dict):
+                continue
+            label_path = _normalize_repo_path(str(comment.get("path") or ""))
+            if not label_path:
+                continue
+            labels.append(
+                {
+                    "path": label_path,
+                    "from_line": comment.get("from_line"),
+                    "to_line": comment.get("to_line"),
+                    "category": comment.get("category"),
+                    "is_ai_comment": comment.get("is_ai_comment"),
+                }
+            )
+        if labels:
+            out[pr_url] = labels
+    return out
+
+
+def _paths_from_raw_stage(raw: dict[str, Any], final_findings: Iterable[Any]) -> dict[str, set[str]]:
+    metadata = raw.get("metadata", {}) if isinstance(raw.get("metadata"), dict) else {}
+    review_meta = metadata.get("review_checks", {}) if isinstance(metadata.get("review_checks"), dict) else {}
+    by_task = review_meta.get("by_task", {}) if isinstance(review_meta.get("by_task"), dict) else {}
+
+    compiled_paths: set[str] = set()
+    for task_meta in by_task.values():
+        if not isinstance(task_meta, dict):
+            continue
+        for check in task_meta.get("compiled_checks") or []:
+            path = _path_from_mapping_or_model(check)
+            if path:
+                compiled_paths.add(path)
+    for check in raw.get("review_checks", []) or []:
+        path = _path_from_mapping_or_model(check)
+        if path:
+            compiled_paths.add(path)
+    for invalid in raw.get("invalid_review_checks", []) or []:
+        check = invalid.get("check") if isinstance(invalid, dict) else getattr(invalid, "check", None)
+        path = _path_from_mapping_or_model(check)
+        if path:
+            compiled_paths.add(path)
+
+    valid_paths = {_path_from_mapping_or_model(check) for check in raw.get("review_checks", []) or []}
+    valid_paths.discard("")
+    checks_by_id: dict[str, str] = {}
+    for check in raw.get("review_checks", []) or []:
+        check_id = str(check.get("check_id") if isinstance(check, dict) else getattr(check, "check_id", "") or "")
+        path = _path_from_mapping_or_model(check)
+        if check_id and path:
+            checks_by_id[check_id] = path
+
+    request_paths: set[str] = set()
+    for req in raw.get("focused_context_requests", []) or []:
+        paths = req.get("file_paths", []) if isinstance(req, dict) else getattr(req, "file_paths", [])
+        if isinstance(paths, list):
+            request_paths.update(_normalize_repo_path(str(path)) for path in paths if str(path).strip())
+
+    result_paths: set[str] = set()
+    focused_results = raw.get("focused_context_results", {}) or {}
+    if isinstance(focused_results, dict):
+        for result in focused_results.values():
+            if not isinstance(result, dict):
+                continue
+            for key in ("file_snippets", "file_contents_full"):
+                values = result.get(key, {})
+                if isinstance(values, dict):
+                    result_paths.update(_normalize_repo_path(str(path)) for path in values.keys())
+            hits = result.get("search_hits", {})
+            if isinstance(hits, dict):
+                for hit_list in hits.values():
+                    if not isinstance(hit_list, list):
+                        continue
+                    for hit in hit_list:
+                        path = _path_from_mapping_or_model(hit)
+                        if path:
+                            result_paths.add(path)
+
+    executor_paths: set[str] = set()
+    candidate_paths: set[str] = set()
+    for result in raw.get("review_check_results", []) or []:
+        check_path = checks_by_id.get(_check_id_from_result(result), "")
+        if check_path:
+            executor_paths.add(check_path)
+        candidate = _candidate_from_result(result)
+        path = _path_from_mapping_or_model(candidate)
+        if path:
+            candidate_paths.add(path)
+    for candidate in raw.get("candidate_findings", []) or []:
+        path = _path_from_mapping_or_model(candidate)
+        if path:
+            candidate_paths.add(path)
+
+    final_paths = {_path_from_mapping_or_model(finding) for finding in final_findings}
+    final_paths.discard("")
+    return {
+        "compiled": compiled_paths,
+        "valid": valid_paths,
+        "focused_requested": request_paths,
+        "focused_result": result_paths,
+        "executed": executor_paths,
+        "candidate": candidate_paths,
+        "final": final_paths,
+    }
+
+
+def _coverage_audit_for_pr(
+    *,
+    pr_url: str,
+    slug: str,
+    raw: dict[str, Any],
+    final_findings: Iterable[Any],
+    labels: list[dict[str, Any]],
+) -> dict[str, Any]:
+    stage_paths = _paths_from_raw_stage(raw, final_findings)
+    path_counts = Counter(label["path"] for label in labels)
+    records = []
+    for path, count in sorted(path_counts.items()):
+        records.append(
+            {
+                "path": path,
+                "positive_label_count": count,
+                "compiled": path in stage_paths["compiled"],
+                "valid": path in stage_paths["valid"],
+                "focused_requested": path in stage_paths["focused_requested"],
+                "focused_result": path in stage_paths["focused_result"],
+                "executed": path in stage_paths["executed"],
+                "candidate": path in stage_paths["candidate"],
+                "final": path in stage_paths["final"],
+            }
+        )
+    summary = {
+        "positive_label_count": len(labels),
+        "positive_path_count": len(path_counts),
+        "compiled_path_count": sum(1 for item in records if item["compiled"]),
+        "valid_path_count": sum(1 for item in records if item["valid"]),
+        "focused_requested_path_count": sum(1 for item in records if item["focused_requested"]),
+        "focused_result_path_count": sum(1 for item in records if item["focused_result"]),
+        "executed_path_count": sum(1 for item in records if item["executed"]),
+        "candidate_path_count": sum(1 for item in records if item["candidate"]),
+        "final_path_count": sum(1 for item in records if item["final"]),
+    }
+    return {"pr_url": pr_url, "slug": slug, "summary": summary, "paths": records}
+
+
+def _write_coverage_audit(path: Path, records: List[dict[str, Any]]) -> dict[str, Any]:
+    totals = {
+        "prs_with_positive_labels": sum(1 for item in records if item["summary"]["positive_label_count"] > 0),
+        "positive_label_count": sum(item["summary"]["positive_label_count"] for item in records),
+        "positive_path_count": sum(item["summary"]["positive_path_count"] for item in records),
+        "compiled_path_count": sum(item["summary"]["compiled_path_count"] for item in records),
+        "valid_path_count": sum(item["summary"]["valid_path_count"] for item in records),
+        "candidate_path_count": sum(item["summary"]["candidate_path_count"] for item in records),
+        "final_path_count": sum(item["summary"]["final_path_count"] for item in records),
+    }
+    payload = {"schema_version": "1", "summary": totals, "prs": records}
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    return payload
+
+
+def _review_check_metrics(result: dict[str, Any]) -> dict[str, Any]:
+    def _decision(item: Any) -> str:
+        return str(getattr(item, "decision", None) or (item.get("decision") if isinstance(item, dict) else ""))
+
+    checks = result.get("review_checks", []) or []
+    invalid = result.get("invalid_review_checks", []) or []
+    check_results = result.get("review_check_results", []) or []
+    candidates = result.get("candidate_findings", []) or []
+    latest_by_check: dict[str, Any] = {}
+    latest_by_candidate: dict[str, Any] = {}
+    for item in check_results:
+        check_id = getattr(item, "check_id", None) or (item.get("check_id") if isinstance(item, dict) else "")
+        if check_id:
+            latest_by_check[str(check_id)] = item
+        candidate = getattr(item, "candidate", None) or (item.get("candidate") if isinstance(item, dict) else None)
+        if candidate is None:
+            continue
+        candidate_id = (
+            getattr(candidate, "candidate_id", None)
+            or (candidate.get("candidate_id") if isinstance(candidate, dict) else "")
+        )
+        if candidate_id:
+            latest_by_candidate[str(candidate_id)] = item
+    gate_drop_count = 0
+    gate_pass_count = 0
+    invalid_reason_counts: Counter[str] = Counter()
+    health_warnings: List[str] = []
+    metadata = result.get("metadata", {}) or {}
+    block = metadata.get("review_checks", {}) if isinstance(metadata, dict) else {}
+    by_task = block.get("by_task", {}) if isinstance(block, dict) else {}
+    if isinstance(by_task, dict):
+        for task_meta in by_task.values():
+            if not isinstance(task_meta, dict):
+                continue
+            gate = task_meta.get("gate", {})
+            if isinstance(gate, dict):
+                gate_drop_count += int(gate.get("dropped_count") or 0)
+                gate_pass_count += int(gate.get("promoted_count") or 0)
+                health_warnings.extend(str(item) for item in gate.get("health_warnings", []) or [])
+            validation = task_meta.get("validation", {})
+            if isinstance(validation, dict):
+                invalid_reason_counts.update(
+                    {
+                        str(reason): int(count)
+                        for reason, count in (validation.get("reason_counts", {}) or {}).items()
+                    }
+                )
+            health_warnings.extend(str(item) for item in task_meta.get("health_warnings", []) or [])
+    latest_results = list(latest_by_check.values())
+    invalid_reason_total = sum(invalid_reason_counts.values())
+    dominant_invalid_reason = ""
+    if invalid_reason_counts:
+        reason, count = invalid_reason_counts.most_common(1)[0]
+        dominant_invalid_reason = reason
+        if invalid_reason_total and count / invalid_reason_total >= 0.5:
+            health_warnings.append(f"dominant_invalid_reason:{reason}")
+    if checks and latest_results and not latest_by_candidate:
+        health_warnings.append("no_executor_candidates_for_valid_checks")
+    return {
+        "compiled_check_count": len(checks) + len(invalid),
+        "valid_check_count": len(checks),
+        "invalid_check_count": len(invalid),
+        "check_candidate_count": len(latest_by_candidate),
+        "no_finding_check_count": sum(
+            1 for item in latest_results if _decision(item) == "no_finding"
+        ),
+        "unsupported_check_count": sum(
+            1 for item in latest_results if _decision(item) == "unsupported"
+        ),
+        "suppressed_check_count": sum(
+            1 for item in latest_results if _decision(item) == "suppressed"
+        ),
+        "budget_exhausted_check_count": sum(
+            1 for item in latest_results if _decision(item) == "budget_exhausted"
+        ),
+        "evidence_gate_pass_count": gate_pass_count,
+        "evidence_gate_drop_count": gate_drop_count,
+        "candidate_count": len(candidates),
+        "invalid_reason_counts": json.dumps(dict(sorted(invalid_reason_counts.items())), sort_keys=True),
+        "dominant_invalid_reason": dominant_invalid_reason,
+        "review_check_health_warnings": json.dumps(sorted(set(health_warnings))),
+    }
 
 
 def _load_snapshot_for_resume(snapshot_id: str, logger: logging.Logger) -> Dict[str, Any]:
@@ -360,6 +698,7 @@ def _invoke_for_pr(
     experiment_tag: str,
     logger: logging.Logger,
     snapshot_data: Optional[Dict[str, Any]] = None,
+    mcp_preflight: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     # Determine repo_path and graph_run_id
     graph_run_id = _graph_thread_id(run_id, pr_url, snapshot_data)
@@ -452,6 +791,7 @@ def _invoke_for_pr(
             "review_repo_url": repo_url,
             "review_pr_number": context.number,
             "review_trace_enabled": trace,
+            "mcp_preflight": dict(mcp_preflight or {}),
         },
     }
     
@@ -554,6 +894,8 @@ def run_aacr_reviewer(
 
     experiment_tag = BASIC_EXPERIMENT_TAG if use_basic_graph else EXPERIMENT_TAG
     run_reviewer_fn = run_reviewer_basic if use_basic_graph else run_reviewer
+    mcp_preflight = _github_mcp_preflight(settings)
+    logger.info("GitHub MCP preflight status=%s", mcp_preflight.get("status"))
 
     # Load snapshot if provided (once before the loop)
     snapshot_data = None
@@ -581,6 +923,7 @@ def run_aacr_reviewer(
     # Preserve CLI filter before the loop shadows `pr_url` with each row's URL.
     pr_url_filter_for_meta = pr_url.strip() if pr_url else ""
     logger.info("Reviewer-graph AACR run will process %s unique PR URLs", len(selected_pr_urls))
+    positive_samples_by_pr = _load_positive_samples_by_pr(DEFAULT_POSITIVE_SAMPLES_PATH)
 
     enricher = GitHubPullRequestEnricher(
         logger=logger,
@@ -592,8 +935,10 @@ def run_aacr_reviewer(
     failed = 0
     run_started = time.perf_counter()
     total_llm_tokens = 0
+    coverage_records: List[dict[str, Any]] = []
 
     for idx, pr_url in enumerate(selected_pr_urls, start=1):
+        positive_labels = positive_samples_by_pr.get(pr_url, [])
         slug = _slug_for_pr_url(pr_url)
         pr_started_at = _utc_now_iso()
         row: dict[str, Any] = {
@@ -609,6 +954,27 @@ def run_aacr_reviewer(
             "error": "",
             "redis_checkpoints_cleaned": False,
             "token_usage": 0,
+            "compiled_check_count": 0,
+            "valid_check_count": 0,
+            "invalid_check_count": 0,
+            "check_candidate_count": 0,
+            "no_finding_check_count": 0,
+            "unsupported_check_count": 0,
+            "suppressed_check_count": 0,
+            "budget_exhausted_check_count": 0,
+            "evidence_gate_pass_count": 0,
+            "evidence_gate_drop_count": 0,
+            "candidate_count": 0,
+            "final_finding_count": 0,
+            "invalid_reason_counts": "{}",
+            "dominant_invalid_reason": "",
+            "review_check_health_warnings": "[]",
+            "positive_label_count": len(positive_labels),
+            "positive_path_count": len({label["path"] for label in positive_labels}),
+            "positive_compiled_path_count": 0,
+            "positive_valid_path_count": 0,
+            "positive_candidate_path_count": 0,
+            "positive_final_path_count": 0,
         }
 
         context = enricher.fetch_pr_context(pr_url)
@@ -616,6 +982,15 @@ def run_aacr_reviewer(
             row["status"] = "skipped_enrichment_failed"
             row["finished_at"] = _utc_now_iso()
             row["error"] = "github_pr_context_unavailable"
+            coverage_records.append(
+                _coverage_audit_for_pr(
+                    pr_url=pr_url,
+                    slug=slug,
+                    raw={},
+                    final_findings=[],
+                    labels=positive_labels,
+                )
+            )
             manifest_rows.append(row)
             failed += 1
             logger.warning("[%s/%s] Skipping %s: enrichment failed", idx, len(selected_pr_urls), pr_url)
@@ -628,6 +1003,15 @@ def run_aacr_reviewer(
                 row["status"] = "error"
                 row["finished_at"] = _utc_now_iso()
                 row["error"] = f"snapshot_repo_mismatch: expected {expected_repo_url}, got {snapshot_data['repo_path']}"
+                coverage_records.append(
+                    _coverage_audit_for_pr(
+                        pr_url=pr_url,
+                        slug=slug,
+                        raw={},
+                        final_findings=[],
+                        labels=positive_labels,
+                    )
+                )
                 manifest_rows.append(row)
                 failed += 1
                 logger.error(
@@ -650,6 +1034,7 @@ def run_aacr_reviewer(
                 experiment_tag=experiment_tag,
                 logger=logger,
                 snapshot_data=snapshot_data,
+                mcp_preflight=mcp_preflight,
             )
         except Exception as exc:  # noqa: BLE001 - per-PR isolation; harness continues
             elapsed_ms = int((time.perf_counter() - started) * 1000)
@@ -661,6 +1046,15 @@ def run_aacr_reviewer(
                 settings,
                 graph_run_id,
                 logger,
+            )
+            coverage_records.append(
+                _coverage_audit_for_pr(
+                    pr_url=pr_url,
+                    slug=slug,
+                    raw={},
+                    final_findings=[],
+                    labels=positive_labels,
+                )
             )
             manifest_rows.append(row)
             failed += 1
@@ -678,12 +1072,39 @@ def run_aacr_reviewer(
         findings = result.get("final_findings") or result.get("findings", []) or []
         raw_path = _write_raw(raw_dir, slug, result)
         findings_path = _write_findings(findings_dir, slug, findings)
+        coverage_record = _coverage_audit_for_pr(
+            pr_url=pr_url,
+            slug=slug,
+            raw={
+                "metadata": result.get("metadata", {}) or {},
+                "review_checks": result.get("review_checks", []) or [],
+                "invalid_review_checks": result.get("invalid_review_checks", []) or [],
+                "review_check_results": result.get("review_check_results", []) or [],
+                "focused_context_requests": result.get("focused_context_requests", []) or [],
+                "focused_context_results": result.get("focused_context_results", {}) or {},
+                "candidate_findings": result.get("candidate_findings", []) or [],
+            },
+            final_findings=findings,
+            labels=positive_labels,
+        )
+        coverage_records.append(coverage_record)
 
         row["status"] = "ok"
         row["finished_at"] = pr_finished_at
         row["raw_path"] = str(raw_path.relative_to(run_dir))
         row["findings_path"] = str(findings_path.relative_to(run_dir))
         row["finding_count"] = len(findings)
+        check_metrics = _review_check_metrics(result)
+        row.update(check_metrics)
+        row["positive_compiled_path_count"] = coverage_record["summary"]["compiled_path_count"]
+        row["positive_valid_path_count"] = coverage_record["summary"]["valid_path_count"]
+        row["positive_candidate_path_count"] = coverage_record["summary"]["candidate_path_count"]
+        row["positive_final_path_count"] = coverage_record["summary"]["final_path_count"]
+        if positive_labels and int(row.get("check_candidate_count") or 0) == 0:
+            warnings = set(json.loads(str(row.get("review_check_health_warnings") or "[]")))
+            warnings.add("known_positive_no_draft_candidate")
+            row["review_check_health_warnings"] = json.dumps(sorted(warnings))
+        row["final_finding_count"] = len(findings)
         row["elapsed_ms"] = elapsed_ms
         row["token_usage"] = pr_tokens
         row["redis_checkpoints_cleaned"] = _cleanup_pr_checkpoints(
@@ -706,6 +1127,8 @@ def run_aacr_reviewer(
 
     manifest_path = run_dir / "manifest.csv"
     manifest_df = _write_manifest(manifest_path, manifest_rows)
+    coverage_audit_path = run_dir / "coverage_audit.json"
+    coverage_audit = _write_coverage_audit(coverage_audit_path, coverage_records)
 
     run_meta_path = run_dir / "run_meta.json"
     run_finished_at = _utc_now_iso()
@@ -719,6 +1142,7 @@ def run_aacr_reviewer(
         "planner_model_key": settings.reviewer_planner_model_key,
         "worker_model_key": settings.reviewer_worker_model_key,
         "reviewer_use_legacy_specialist_workers": settings.reviewer_use_legacy_specialist_workers,
+        "reviewer_check_mode": settings.reviewer_check_mode,
         "pr_url_filter": pr_url_filter_for_meta,
         "dataset_range": (
             {"start": dataset_range.start, "end": dataset_range.end}
@@ -729,6 +1153,9 @@ def run_aacr_reviewer(
         "trace": trace,
         "basic_graph": use_basic_graph,
         "cli_flags": dict(cli_flags) if cli_flags else {},
+        "mcp_preflight": mcp_preflight,
+        "coverage_audit_path": str(coverage_audit_path.relative_to(run_dir)),
+        "coverage_audit_summary": coverage_audit["summary"],
         "redis_checkpoint_cleanup_enabled": (
             settings.redis_enabled and settings.reviewer_cleanup_redis_checkpoints
         ),

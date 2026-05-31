@@ -17,6 +17,15 @@ from src.orchestration.context.context_packets import (
 from src.orchestration.context.task_evidence import build_task_evidence
 from src.orchestration.context.review_context import LazyReviewContextProvider
 from src.orchestration.nodes.application.critiquer import make_general_critiquer_node
+from src.orchestration.nodes.application.focused_context import make_focused_context_node
+from src.orchestration.nodes.application.review_checks import (
+    make_review_check_compiler_node,
+    make_review_check_context_planner_node,
+    make_review_check_evidence_gate_node,
+    make_review_check_executor_node,
+    make_review_check_validator_node,
+    should_continue_review_check_loop,
+)
 from src.orchestration.review_principles import REVIEW_PRINCIPLES_VERSION
 from src.orchestration.routing.review_obligations import derive_review_obligations
 from src.tools.mental_model_tools import query_mental_model
@@ -234,7 +243,11 @@ _CRITIQUE_PARENT_UPDATE_KEYS = frozenset(
         "token_usage",
         "exploration_ledger",
         "candidate_findings",
+        "review_checks",
+        "invalid_review_checks",
+        "review_check_results",
         "focused_context_requests",
+        "focused_context_results",
         "task_status_by_id",
     }
 )
@@ -244,7 +257,30 @@ def _critique_subgraph_parent_updates(full: Dict[str, Any]) -> Dict[str, Any]:
     return {k: full[k] for k in _CRITIQUE_PARENT_UPDATE_KEYS if k in full}
 
 
-def build_critique_review_subgraph(context_provider: LazyReviewContextProvider):
+def _route_after_mental_model_enricher(state: GraphState) -> str:
+    mode = get_settings().reviewer_check_mode
+    if mode in {"log_only", "enforced"}:
+        return "review_check_compiler"
+    return "general_critiquer"
+
+
+def _route_after_review_check_validator(state: GraphState) -> str:
+    mode = get_settings().reviewer_check_mode
+    if mode == "enforced":
+        return "review_check_context_planner"
+    return "general_critiquer"
+
+
+def _route_after_review_check_executor(state: GraphState) -> str:
+    if should_continue_review_check_loop(state):
+        return "review_check_context_planner"
+    return "review_check_evidence_gate"
+
+
+def build_critique_review_subgraph(
+    context_provider: LazyReviewContextProvider,
+    github_provider: Any | None = None,
+):
     """Compile probe → enricher → critiquer for parallel Send branches."""
     from langgraph.graph import END, START, StateGraph
 
@@ -253,10 +289,46 @@ def build_critique_review_subgraph(context_provider: LazyReviewContextProvider):
     g = StateGraph(GraphState)
     g.add_node("critique_context_probe", make_critique_context_probe_node(context_provider))
     g.add_node("mental_model_context_enricher", make_mental_model_context_enricher_node())
+    g.add_node("review_check_compiler", make_review_check_compiler_node())
+    g.add_node("review_check_validator", make_review_check_validator_node())
+    g.add_node("review_check_context_planner", make_review_check_context_planner_node())
+    g.add_node(
+        "review_check_focused_context",
+        make_focused_context_node(context_provider, github_provider=github_provider),
+    )
+    g.add_node("review_check_executor", make_review_check_executor_node())
+    g.add_node("review_check_evidence_gate", make_review_check_evidence_gate_node())
     g.add_node("general_critiquer", make_general_critiquer_node(context_provider, use_pipeline_cache=True))
     g.add_edge(START, "critique_context_probe")
     g.add_edge("critique_context_probe", "mental_model_context_enricher")
-    g.add_edge("mental_model_context_enricher", "general_critiquer")
+    g.add_conditional_edges(
+        "mental_model_context_enricher",
+        _route_after_mental_model_enricher,
+        {
+            "review_check_compiler": "review_check_compiler",
+            "general_critiquer": "general_critiquer",
+        },
+    )
+    g.add_edge("review_check_compiler", "review_check_validator")
+    g.add_conditional_edges(
+        "review_check_validator",
+        _route_after_review_check_validator,
+        {
+            "review_check_context_planner": "review_check_context_planner",
+            "general_critiquer": "general_critiquer",
+        },
+    )
+    g.add_edge("review_check_context_planner", "review_check_focused_context")
+    g.add_edge("review_check_focused_context", "review_check_executor")
+    g.add_conditional_edges(
+        "review_check_executor",
+        _route_after_review_check_executor,
+        {
+            "review_check_context_planner": "review_check_context_planner",
+            "review_check_evidence_gate": "review_check_evidence_gate",
+        },
+    )
+    g.add_edge("review_check_evidence_gate", END)
     g.add_edge("general_critiquer", END)
     inner = g.compile()
 

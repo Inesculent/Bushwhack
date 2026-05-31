@@ -191,14 +191,16 @@ def make_review_history_context_node(
 
         comment_count = sum(len(h.comments) for h in histories)
         warnings = [w for h in histories for w in h.warnings]
+        degraded = any("missing_mcp_tool" in warning for warning in warnings)
         slot.update(
             {
-                "status": "ok" if comment_count else "no_matches",
+                "status": "degraded" if degraded else "ok" if comment_count else "no_matches",
                 "repo": f"{owner}/{repo}",
                 "ref": ref,
                 "changed_files": changed_files,
                 "comment_count": comment_count,
                 "warnings": warnings[:20],
+                "mcp_degraded": degraded,
             }
         )
         metadata[node_name] = slot
@@ -227,4 +229,3 @@ def make_review_history_context_node(
         }
 
     return review_history_context_node
-

@@ -591,7 +591,10 @@ def build_graph(
         for worker_node in WORKER_NODE_BY_SPECIALTY.values():
             builder.add_edge(worker_node, "review_synthesizer")
     else:
-        critique_review_subgraph = build_critique_review_subgraph(context_provider)
+        critique_review_subgraph = build_critique_review_subgraph(
+            context_provider,
+            github_provider=github_provider,
+        )
         builder.add_node("critique_review_subgraph", critique_review_subgraph)
         builder.add_node("adversarial_reflection", make_adversarial_reflection_node())
         builder.add_node(
