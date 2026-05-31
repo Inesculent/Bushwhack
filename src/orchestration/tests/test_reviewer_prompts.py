@@ -53,6 +53,17 @@ def test_critiquer_prompt_contains_routing_hardcap() -> None:
     assert "Review KB context" in text
 
 
+def test_critiquer_prompt_uses_evidence_gated_broad_dimensions() -> None:
+    text = load_reviewer_prompt("critiquer.md")
+    assert "Evidence-gated scope" in text
+    assert "Do not turn the broad dimension list into a generic audit" in text
+    assert "api/signature compatibility" in text
+    assert "dependency/import availability" in text
+    assert "state/cache lifecycle" in text
+    assert "concurrency/shared-state safety" in text
+    assert "security/input boundary" in text
+
+
 def test_active_reviewer_prompts_expose_repository_kb_authority() -> None:
     assert "Repository KB Authority" in load_reviewer_prompt("global.md")
     assert "Repository KB summaries" in load_reviewer_prompt("planner.md")

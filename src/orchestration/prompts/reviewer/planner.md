@@ -19,6 +19,14 @@ Use Repository KB summaries, when present, to identify directly related subsyste
 
 Balance the plan across **security, correctness (logic), performance, and general** (APIs, tests, integration). Do **not** let every task read as “security and defensive programming only”; surface non-security defects (wrong outputs, missing branches, type/None handling, API mismatches) and maintainability issues with equal weight when the diff supports them.
 
+Use these **review topics as planning lenses**, not as a checklist that must produce one task per topic:
+- **Functional correctness:** branches, return contracts, indexing, null/panic paths, and exact output behavior.
+- **API/integration contracts:** signatures, call sites, imports/includes, framework syntax, repository conventions, and typed/public interfaces.
+- **State/resource behavior:** cache invalidation, lifecycle, cleanup, concurrency/shared state, repeated expensive work, and resource growth.
+- **User/security boundaries:** authorization, escaping, validation, path/file/network/deserialization risks, and user-visible protocol or message behavior.
+
+Create a topic-specific task only when the diff, Repository KB, structural hints, or surface inventory points to a meaningful PR-local risk. Do not add broad topic-audit tasks just to mention every lens; task count caps and mutual-exclusion rules still win.
+
 ### Required baseline: diff-local general correctness
 
 Include **at least one** `logic` task that audits **diff-local general correctness**—control flow, return paths, off-by-one bounds, and type/API consistency visible in the changed hunks. Do **not** frame that task as auditing missing None/null guards for required, non-optional declared inputs (see global **Declared input contracts**). This task must **not** be framed as hunting off-diff callers, middleware, authorization chains, or repo-wide configuration; those belong in separate context-dependent tasks.

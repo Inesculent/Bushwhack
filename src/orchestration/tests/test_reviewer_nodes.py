@@ -407,6 +407,9 @@ def test_review_planner_prompt_uses_structural_routing_hints():
     assert "changed" in prompt
     assert "node_to_community" not in prompt
     assert "node-999" not in prompt
+    assert "review topics as planning lenses" in prompt
+    assert "not as a checklist that must produce one task per topic" in prompt
+    assert "Create a topic-specific task only when" in prompt
 
 
 def test_review_planner_flattens_nested_llm_task_output():

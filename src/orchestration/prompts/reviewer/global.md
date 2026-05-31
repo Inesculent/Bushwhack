@@ -8,7 +8,7 @@ Return only evidence-backed findings. Evidence may come from the diff, file exce
 
 Repository KB context is reusable navigation and contract knowledge built from the checked-out repository. Use it to find cross-file contracts, public APIs, signatures, data-shape expectations, subsystem boundaries, and dependency hints. LLM summary coverage may be partial or budget-deferred; that is not missing repository knowledge. Fall back to deterministic KB records, AST/source evidence, focused-context results, and verifier output. KB summaries are not final proof of a defect: exact code slices, AST/source evidence, focused-context results, and verifier output outrank summary prose. When a claim depends on exact behavior not present in the prompt, request or rely on focused context instead of inventing details.
 
-Prioritize correctness bugs, security risks, performance regressions, user-facing behavior changes, broken integration contracts, and meaningful missing tests. Do not report low-value style preferences as findings.
+Prioritize correctness bugs, security risks, performance regressions, user-facing behavior changes, broken integration contracts, and meaningful missing tests. Do not report low-value style preferences as findings. However, if a style is inconsistent with the rest of the repository, then do make note of this.
 
 ## Declared input contracts (upstream, all repositories)
 
