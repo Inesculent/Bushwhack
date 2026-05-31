@@ -178,6 +178,96 @@ def test_review_check_compiler_adds_coverage_floor_for_unchecked_changed_file(mo
     assert task_meta["compiler_coverage_floor"]["missed_files"] == ["src/other.py"]
 
 
+def test_review_check_compiler_adds_coverage_floor_for_uncovered_obligation(monkeypatch) -> None:
+    output = ReviewCheckCompilerOutput(summary="compiled", checks=[_check()])
+    monkeypatch.setattr(
+        "src.orchestration.nodes.application.review_checks.Models.worker",
+        lambda *_args, **_kwargs: _FakeLLM({"parsed": output, "raw": _Raw()}),
+    )
+    state = _state(
+        git_diff=(
+            "diff --git a/src/app.py b/src/app.py\n+++ b/src/app.py\n@@\n"
+            "+def handle():\n+    return None\n"
+            "+def parse_index(value):\n+    return value[0]\n"
+        ),
+        metadata={
+            **_state()["metadata"],
+            "critique_pipeline": {
+                "by_task": {
+                    "review-logic": {
+                        "direct_context": (
+                            "def handle():\n    return None\n"
+                            "def parse_index(value):\n    return value[0]\n"
+                        ),
+                        "coverage_obligations": [
+                            {
+                                "file_path": "src/app.py",
+                                "surface": "handle",
+                                "dimension": "contract completeness",
+                                "evidence": "entry point implies a return contract",
+                            },
+                            {
+                                "file_path": "src/app.py",
+                                "surface": "parse_index",
+                                "dimension": "boundary/index handling",
+                                "evidence": "new index access needs bounds behavior",
+                            },
+                        ],
+                    }
+                }
+            },
+        },
+    )
+
+    out = make_review_check_compiler_node()(state)  # type: ignore[arg-type]
+
+    task_meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
+    added = task_meta["compiler_coverage_floor"]["added_checks"]
+    assert len(added) == 1
+    assert added[0]["changed_code_anchor"] == "parse_index"
+    assert validate_review_check(ReviewCheck(**added[0])) == []
+
+
+def test_review_check_compiler_coverage_floor_respects_cap(monkeypatch) -> None:
+    llm_checks = [
+        _check(check_id=f"review-logic:check:{idx}", changed_code_anchor="handle")
+        for idx in range(1, 10)
+    ]
+    output = ReviewCheckCompilerOutput(summary="compiled", checks=llm_checks)
+    monkeypatch.setattr(
+        "src.orchestration.nodes.application.review_checks.Models.worker",
+        lambda *_args, **_kwargs: _FakeLLM({"parsed": output, "raw": _Raw()}),
+    )
+    state = _state(
+        metadata={
+            **_state()["metadata"],
+            "critique_pipeline": {
+                "by_task": {
+                    "review-logic": {
+                        "direct_context": "def handle():\n    return None\n",
+                        "coverage_obligations": [
+                            {
+                                "file_path": "src/app.py",
+                                "surface": f"surface_{idx}",
+                                "dimension": "boundary/index handling",
+                                "evidence": "needs bounds behavior",
+                            }
+                            for idx in range(3)
+                        ],
+                    }
+                }
+            },
+        },
+    )
+
+    out = make_review_check_compiler_node()(state)  # type: ignore[arg-type]
+
+    floor = out["metadata"]["review_checks"]["by_task"]["review-logic"]["compiler_coverage_floor"]
+    assert out["metadata"]["review_checks"]["by_task"]["review-logic"]["compiled_count"] == 10
+    assert len(floor["added_checks"]) == 1
+    assert len(floor["skipped_due_to_cap"]) == 2
+
+
 def test_review_check_validator_moves_only_valid_checks_to_state() -> None:
     valid = _check()
     invalid = _check(check_id="review-logic:check:bad", behavioral_question="Find bugs")
@@ -306,7 +396,7 @@ def test_review_check_context_planner_loops_on_missing_evidence_with_budget() ->
 
     req = out["focused_context_requests"][0]
     assert req.request_id == "check:review-logic:check:1:2"
-    assert req.text_queries == ["other guard still enforces the rule"]
+    assert req.text_queries == ["src/app.py handle other guard still enforces the rule"]
     assert "anchor=handle" in req.reason
 
 
@@ -321,6 +411,24 @@ def test_review_check_context_planner_replaces_generic_queries_with_anchored_que
     assert "handle" in req.text_queries[0]
 
 
+def test_review_check_context_planner_requests_external_contract_evidence() -> None:
+    state = _state(
+        review_checks=[
+            _check(
+                required_evidence=["changed handle implementation"],
+                report_criteria=["The public API caller contract requires a string result."],
+            )
+        ]
+    )
+
+    out = make_review_check_context_planner_node()(state)  # type: ignore[arg-type]
+
+    req = out["focused_context_requests"][0]
+    assert all("src/app.py" in query for query in req.text_queries)
+    assert all("handle" in query for query in req.text_queries)
+    assert any("public API caller contract" in query for query in req.text_queries)
+
+
 def test_review_check_context_planner_dedupes_repeated_requests() -> None:
     existing = FocusedContextRequest(
         request_id="check:review-logic:check:1:1",
@@ -328,7 +436,7 @@ def test_review_check_context_planner_dedupes_repeated_requests() -> None:
         requested_by_specialty="logic",
         file_paths=["src/app.py"],
         symbol_queries=["handle"],
-        text_queries=["other guard still enforces the rule"],
+        text_queries=["src/app.py handle other guard still enforces the rule"],
         reason="already asked",
     )
     state = _state(
@@ -347,6 +455,35 @@ def test_review_check_context_planner_dedupes_repeated_requests() -> None:
     out = make_review_check_context_planner_node()(state)  # type: ignore[arg-type]
 
     assert out["focused_context_requests"] == []
+
+
+def test_review_check_context_planner_allows_new_missing_evidence_after_dedupe() -> None:
+    existing = FocusedContextRequest(
+        request_id="check:review-logic:check:1:1",
+        candidate_id="review-logic:check:1",
+        requested_by_specialty="logic",
+        file_paths=["src/app.py"],
+        symbol_queries=["handle"],
+        text_queries=["src/app.py handle other guard still enforces the rule"],
+        reason="already asked",
+    )
+    state = _state(
+        review_checks=[_check(required_evidence=["caller authorization guard"], budget=2)],
+        focused_context_requests=[existing],
+        review_check_results=[
+            ReviewCheckResult(
+                check_id="review-logic:check:1",
+                patch_task_id="review-logic",
+                decision="unsupported",
+                missing_evidence=["repository convention for handle fallback"],
+            )
+        ],
+    )
+
+    out = make_review_check_context_planner_node()(state)  # type: ignore[arg-type]
+
+    assert len(out["focused_context_requests"]) == 1
+    assert "repository convention" in out["focused_context_requests"][0].text_queries[0]
 
 
 def test_review_check_loop_stops_when_budget_exhausted() -> None:
@@ -411,6 +548,74 @@ def test_review_check_executor_marks_budget_exhausted(monkeypatch) -> None:
     assert "review_check_budget_exhausted" in result.warnings
 
 
+def test_review_check_executor_downgrades_weak_no_finding(monkeypatch) -> None:
+    output = ReviewCheckExecutorOutput(
+        results=[
+            ReviewCheckResult(
+                check_id="review-logic:check:1",
+                patch_task_id="review-logic",
+                decision="no_finding",
+            )
+        ]
+    )
+    monkeypatch.setattr(
+        "src.orchestration.nodes.application.review_checks.Models.worker",
+        lambda *_args, **_kwargs: _FakeLLM({"parsed": output, "raw": _Raw()}),
+    )
+
+    out = make_review_check_executor_node()(_state(review_checks=[_check()]))  # type: ignore[arg-type]
+
+    result = out["review_check_results"][0]
+    assert result.decision == "unsupported"
+    assert result.missing_evidence
+    assert "weak_no_finding_requires_more_evidence" in result.warnings
+    meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
+    assert "executor_weak_no_finding_downgraded:review-logic:check:1" in meta["executor_warnings"]
+
+
+def test_review_check_executor_batches_checks_and_preserves_results(monkeypatch) -> None:
+    checks = [_check(check_id=f"review-logic:check:{idx}") for idx in range(1, 5)]
+    outputs = [
+        ReviewCheckExecutorOutput(
+            results=[
+                ReviewCheckResult(
+                    check_id=check.check_id,
+                    patch_task_id="review-logic",
+                    decision="no_finding",
+                    evidence_refs=["src/app.py:1"],
+                    suppressing_evidence=["changed path keeps the contract"],
+                )
+                for check in checks[:3]
+            ]
+        ),
+        ReviewCheckExecutorOutput(
+            results=[
+                ReviewCheckResult(
+                    check_id=checks[3].check_id,
+                    patch_task_id="review-logic",
+                    decision="unsupported",
+                    missing_evidence=["caller contract"],
+                )
+            ]
+        ),
+    ]
+
+    def fake_worker(*_args: object, **_kwargs: object) -> _FakeLLM:
+        return _FakeLLM({"parsed": outputs.pop(0), "raw": _Raw()})
+
+    monkeypatch.setattr("src.orchestration.nodes.application.review_checks.Models.worker", fake_worker)
+
+    out = make_review_check_executor_node()(_state(review_checks=checks))  # type: ignore[arg-type]
+
+    assert [result.check_id for result in out["review_check_results"]] == [
+        check.check_id for check in checks
+    ]
+    assert out["token_usage"] == 14
+    meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
+    assert meta["executor_batch_size"] == 3
+    assert meta["executor_batch_count"] == 2
+
+
 def test_review_check_executor_stages_candidate_in_result(monkeypatch) -> None:
     candidate = CandidateFinding(
         candidate_id="review-logic:check:1:candidate",
@@ -461,7 +666,7 @@ def test_review_check_evidence_gate_promotes_only_supported_candidates_and_recor
         line_end=2,
         content="The changed handler now returns None.",
         claim_type="defect",
-        failure_mode="Caller receives None instead of the declared result.",
+        failure_mode="handle returns None instead of the declared result.",
         evidence_summary="Task evidence shows handle returns None.",
         recommendation="Return the declared result on this path.",
         suspected_category="logic",
@@ -505,6 +710,10 @@ def test_review_check_evidence_gate_promotes_only_supported_candidates_and_recor
     gate = out["metadata"]["review_checks"]["by_task"]["review-logic"]["gate"]
     assert gate["promoted_count"] == 1
     assert gate["dropped_count"] == 1
+    assert gate["reason_counts"] == {
+        "evidence_gate_passed": 1,
+        "speculative_or_uncertain_claim": 1,
+    }
     assert out["task_status_by_id"] == {"review-logic": "completed"}
 
 

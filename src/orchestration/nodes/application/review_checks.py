@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import re
-from typing import Any, Dict, Iterable, List, Mapping
+from typing import Any, Dict, Iterable, List, Mapping, Sequence
 
 from src.config import Settings, get_settings
 from src.domain.schemas import (
@@ -113,6 +113,41 @@ _CODE_FILE_EXTENSIONS = {
     ".scala",
 }
 _GENERIC_QUERY_TOKENS = {"changed", "code", "behavior", "repository", "evidence", "context"}
+_MAX_CHECKS_PER_TASK = 10
+_EXECUTOR_BATCH_SIZE = 3
+_OBLIGATION_PRIORITY = {
+    "contract completeness": 0,
+    "branch exhaustiveness": 1,
+    "boundary/index handling": 2,
+    "structured data preservation": 3,
+    "exception/control-flow scope": 4,
+    "api/signature compatibility": 5,
+    "security/input boundary": 6,
+}
+_EXTERNAL_EVIDENCE_MARKERS = (
+    "caller",
+    "call site",
+    "entrypoint",
+    "entry point",
+    "upstream",
+    "downstream",
+    "contract",
+    "framework",
+    "repository convention",
+    "repo convention",
+    "project convention",
+    "public api",
+    "integration",
+    "permission",
+    "authorization",
+)
+_GENERIC_QUERY_PHRASES = (
+    "changed code behavior",
+    "full file content",
+    "confirm returns",
+    "confirm explicit bounds",
+    "confirm unexpected behavior",
+)
 
 
 def _trace_enabled(state: GraphState) -> bool:
@@ -298,33 +333,151 @@ def _coverage_check_for_file(task: ReviewTask, file_path: str, index: int) -> Re
     )
 
 
+def _coverage_obligations(slot: Mapping[str, Any]) -> List[Dict[str, Any]]:
+    raw_obligations = slot.get("coverage_obligations")
+    if not isinstance(raw_obligations, list):
+        return []
+    obligations: List[Dict[str, Any]] = []
+    for raw in raw_obligations:
+        if not isinstance(raw, Mapping):
+            continue
+        file_path = str(raw.get("file_path") or "").strip().replace("\\", "/")
+        dimension = str(raw.get("dimension") or "").strip()
+        surface = str(raw.get("surface") or file_path or "changed code").strip()
+        if not file_path or not dimension:
+            continue
+        row = dict(raw)
+        row["file_path"] = file_path
+        row["dimension"] = dimension
+        row["surface"] = surface
+        obligations.append(row)
+    return sorted(
+        obligations,
+        key=lambda row: (
+            _OBLIGATION_PRIORITY.get(str(row.get("dimension") or "").lower(), 50),
+            str(row.get("file_path") or ""),
+            str(row.get("surface") or ""),
+        ),
+    )
+
+
+def _tokens_overlap(left: str, right: str) -> bool:
+    left_tokens = _meaningful_tokens(left)
+    right_tokens = _meaningful_tokens(right)
+    if not left_tokens or not right_tokens:
+        return False
+    return bool(left_tokens & right_tokens)
+
+
+def _check_covers_obligation(check: ReviewCheck, obligation: Mapping[str, Any]) -> bool:
+    file_path = str(obligation.get("file_path") or "").strip().replace("\\", "/")
+    if check.file_path.strip().replace("\\", "/") != file_path:
+        return False
+    surface = str(obligation.get("surface") or "")
+    dimension = str(obligation.get("dimension") or "")
+    blob = " ".join(
+        [
+            check.changed_code_anchor,
+            check.behavioral_question,
+            check.affected_invariant,
+            " ".join(check.required_evidence),
+            " ".join(check.report_criteria),
+        ]
+    )
+    surface_ok = not surface.strip() or _tokens_overlap(surface, blob) or surface.lower() in blob.lower()
+    dimension_ok = _tokens_overlap(dimension, blob) or dimension.lower() in blob.lower()
+    return surface_ok and dimension_ok
+
+
+def _coverage_check_for_obligation(
+    task: ReviewTask,
+    obligation: Mapping[str, Any],
+    index: int,
+) -> ReviewCheck:
+    file_path = str(obligation.get("file_path") or (task.target_files[0] if task.target_files else ""))
+    surface = str(obligation.get("surface") or file_path or "changed code")
+    dimension = str(obligation.get("dimension") or "task contract")
+    evidence = str(obligation.get("evidence") or f"repository evidence for {dimension}")
+    return ReviewCheck(
+        check_id=f"{task.id}:coverage:{index}",
+        patch_task_id=task.id,
+        lens=_dimension_to_lens(dimension),  # type: ignore[arg-type]
+        file_path=file_path,
+        line_start=1,
+        line_end=1,
+        changed_code_anchor=surface,
+        behavioral_question=f"Does the changed {surface} preserve {dimension}?",
+        affected_invariant=dimension,
+        required_evidence=[
+            evidence,
+            f"changed behavior of {surface} in {file_path}",
+            "caller, contract, framework, or repository-convention evidence if the local code is not enough",
+        ],
+        suppress_criteria=[
+            f"Concrete repository evidence shows {surface} preserves {dimension}.",
+        ],
+        report_criteria=[
+            f"The changed {surface} violates {dimension} on a concrete reachable path.",
+        ],
+        allowed_retrieval=["task_evidence", "focused_context"],
+        budget=2,
+    )
+
+
 def _ensure_compiler_coverage_floor(
     *,
     state: GraphState,
     task: ReviewTask,
     checks: List[ReviewCheck],
 ) -> tuple[List[ReviewCheck], Dict[str, Any]]:
-    coverage_files = _changed_task_files(state, task)
-    checked_files = {check.file_path.strip().replace("\\", "/") for check in checks if check.file_path.strip()}
-    missing_files = [path for path in coverage_files if path not in checked_files]
-    if not missing_files:
-        return checks, {
-            "coverage_files": coverage_files,
-            "missed_files": [],
-            "added_coverage_checks": [],
-            "warnings": [],
-        }
-
-    next_index = len(checks) + 1
-    added = [
-        _coverage_check_for_file(task, file_path, next_index + offset)
-        for offset, file_path in enumerate(missing_files)
+    slot = _pipeline_slot(state, task.id)
+    obligations = _coverage_obligations(slot)
+    uncovered_obligations = [
+        obligation
+        for obligation in obligations
+        if not any(_check_covers_obligation(check, obligation) for check in checks)
     ]
-    warnings = [f"compiler_coverage_floor_added:{path}" for path in missing_files]
+    added: List[ReviewCheck] = []
+    skipped_due_to_cap: List[Dict[str, Any]] = []
+    for obligation in uncovered_obligations:
+        if len(checks) + len(added) >= _MAX_CHECKS_PER_TASK:
+            skipped_due_to_cap.append(dict(obligation))
+            continue
+        added.append(_coverage_check_for_obligation(task, obligation, len(checks) + len(added) + 1))
+
+    coverage_files = _changed_task_files(state, task)
+    checked_files = {
+        check.file_path.strip().replace("\\", "/")
+        for check in checks + added
+        if check.file_path.strip()
+    }
+    missing_files = [path for path in coverage_files if path not in checked_files]
+    for file_path in missing_files:
+        if len(checks) + len(added) >= _MAX_CHECKS_PER_TASK:
+            skipped_due_to_cap.append(
+                {"file_path": file_path, "surface": file_path, "dimension": "file coverage"}
+            )
+            continue
+        added.append(_coverage_check_for_file(task, file_path, len(checks) + len(added) + 1))
+
+    trimmed_existing: List[str] = []
+    if len(checks) > _MAX_CHECKS_PER_TASK:
+        trimmed_existing = [check.check_id for check in checks[_MAX_CHECKS_PER_TASK:]]
+        checks = checks[:_MAX_CHECKS_PER_TASK]
+        added = []
+
+    warnings = [f"compiler_coverage_floor_added:{check.check_id}" for check in added]
+    if skipped_due_to_cap:
+        warnings.append(f"compiler_coverage_floor_cap_reached:{len(skipped_due_to_cap)}")
     return checks + added, {
         "coverage_files": coverage_files,
         "missed_files": missing_files,
+        "uncovered_obligations": [dict(item) for item in uncovered_obligations],
+        "added_checks": [check.model_dump(mode="json") for check in added],
         "added_coverage_checks": [check.check_id for check in added],
+        "skipped_due_to_cap": skipped_due_to_cap,
+        "trimmed_existing_check_ids": trimmed_existing,
+        "max_checks": _MAX_CHECKS_PER_TASK,
         "warnings": warnings,
     }
 
@@ -700,14 +853,19 @@ def _missing_evidence_for_check(
     if not _check_needs_focused_context(check, slot):
         return []
     evidence_blob = _task_evidence_text(slot)
+    requirements = _evidence_requirements_for_check(check)
     missing = [
         requirement
-        for requirement in check.required_evidence
-        if str(requirement).strip() and not _evidence_covers_requirement(requirement, evidence_blob)
+        for requirement in requirements
+        if str(requirement).strip()
+        and (
+            _requires_external_evidence(requirement)
+            or not _evidence_covers_requirement(requirement, evidence_blob)
+        )
     ]
     if missing:
         return missing
-    return list(check.required_evidence[:3])
+    return list(requirements[:3])
 
 
 def _executable_checks_for_task(state: GraphState, task_id: str) -> List[ReviewCheck]:
@@ -772,25 +930,51 @@ def _evidence_covers_requirement(requirement: str, evidence_blob: str) -> bool:
     return hits >= max(1, min(2, len(tokens)))
 
 
+def _requires_external_evidence(text: str) -> bool:
+    lowered = text.lower()
+    return any(marker in lowered for marker in _EXTERNAL_EVIDENCE_MARKERS)
+
+
+def _evidence_requirements_for_check(check: ReviewCheck) -> List[str]:
+    items: List[str] = []
+    items.extend(str(item).strip() for item in check.required_evidence if str(item).strip())
+    for item in list(check.suppress_criteria) + list(check.report_criteria):
+        text = str(item).strip()
+        if text and _requires_external_evidence(text):
+            items.append(text)
+    if _requires_external_evidence(check.affected_invariant):
+        items.append(check.affected_invariant)
+    return list(dict.fromkeys(items))
+
+
 def _check_needs_focused_context(check: ReviewCheck, slot: Mapping[str, Any]) -> bool:
     if not _allows_focused_retrieval(check):
         return False
     evidence_blob = _task_evidence_text(slot)
-    if any(marker in " ".join(check.required_evidence).lower() for marker in _FOCUS_MARKERS):
+    requirements = _evidence_requirements_for_check(check)
+    requirement_blob = " ".join(requirements).lower()
+    if any(marker in requirement_blob for marker in _FOCUS_MARKERS):
+        return True
+    if any(_requires_external_evidence(requirement) for requirement in requirements):
         return True
     return any(
         not _evidence_covers_requirement(requirement, evidence_blob)
-        for requirement in check.required_evidence
+        for requirement in requirements
     )
 
 
 def _is_generic_query(text: str) -> bool:
     tokens = set(re.findall(r"[a-zA-Z_][a-zA-Z0-9_]{2,}", text.lower()))
-    return bool(tokens) and tokens.issubset(_GENERIC_QUERY_TOKENS)
+    lowered = text.lower().replace("|", " ")
+    return (
+        (bool(tokens) and tokens.issubset(_GENERIC_QUERY_TOKENS))
+        or any(phrase in lowered for phrase in _GENERIC_QUERY_PHRASES)
+    )
 
 
 def _query_for_requirement(requirement: str, check: ReviewCheck) -> str:
-    text = re.sub(r"\s+", " ", requirement).strip()
+    text = re.sub(r"[|]+", " ", requirement)
+    text = re.sub(r"\s+", " ", text).strip()
     if _is_generic_query(text):
         text = " ".join(
             part
@@ -802,6 +986,10 @@ def _query_for_requirement(requirement: str, check: ReviewCheck) -> str:
             )
             if str(part).strip()
         )
+    elif check.changed_code_anchor and check.changed_code_anchor.lower() not in text.lower():
+        text = f"{check.changed_code_anchor} {text}"
+    if check.file_path and check.file_path.lower() not in text.lower():
+        text = f"{check.file_path} {text}"
     if len(text) > 160:
         text = text[:157] + "..."
     return text
@@ -971,6 +1159,13 @@ def _file_contents_from_slot(slot: Mapping[str, Any]) -> Mapping[str, str] | Non
     return None
 
 
+def _missing_evidence_for_weak_no_finding(check: ReviewCheck) -> List[str]:
+    requirements = _evidence_requirements_for_check(check)
+    if requirements:
+        return requirements[:3]
+    return list(check.required_evidence[:3])
+
+
 def _normalize_executor_results(
     *,
     state: GraphState,
@@ -1011,6 +1206,19 @@ def _normalize_executor_results(
             else:
                 warnings.append(f"executor_candidate_dropped_by_normalizer:{cid}")
                 result = result.model_copy(update={"candidate": None, "decision": "unsupported"})
+        if (
+            result.decision == "no_finding"
+            and _check_budget_remaining(state, check)
+            and (not result.evidence_refs or not result.suppressing_evidence)
+        ):
+            warnings.append(f"executor_weak_no_finding_downgraded:{check.check_id}")
+            result = result.model_copy(
+                update={
+                    "decision": "unsupported",
+                    "missing_evidence": _missing_evidence_for_weak_no_finding(check),
+                    "warnings": list(result.warnings) + ["weak_no_finding_requires_more_evidence"],
+                }
+            )
         normalized.append(result)
         if (
             result.decision == "unsupported"
@@ -1036,6 +1244,10 @@ def _normalize_executor_results(
                 )
             )
     return normalized, warnings
+
+
+def _check_batches(checks: Sequence[ReviewCheck]) -> List[List[ReviewCheck]]:
+    return [list(checks[index : index + _EXECUTOR_BATCH_SIZE]) for index in range(0, len(checks), _EXECUTOR_BATCH_SIZE)]
 
 
 def make_review_check_executor_node(
@@ -1067,38 +1279,54 @@ def make_review_check_executor_node(
 
         if use_llm:
             selected_model = model_key or resolved.reviewer_worker_model_key
-            try:
-                llm = Models.worker(
-                    ReviewCheckExecutorOutput,
-                    model_key=selected_model,
-                    max_completion_tokens=resolved.reviewer_critiquer_max_completion_tokens,
-                )
-                prompt = _render_executor_prompt(state, task, checks, slot)
-                traced = trace_llm_call(
-                    llm,
-                    prompt,
-                    state=state,
-                    node_name=node_name,
-                    model_key=selected_model,
-                    schema_name="ReviewCheckExecutorOutput",
-                    input_summary={"task_id": task.id, "check_ids": [c.check_id for c in checks]},
-                )
-                response = parse_structured_output(traced.result, ReviewCheckExecutorOutput)
-                llm_tokens = traced.tokens
-                llm_trace = traced.trace_records
-                results, norm_warnings = _normalize_executor_results(
-                    state=state,
-                    task=task,
-                    slot=slot,
-                    checks=checks,
-                    results=response.results,
-                )
-                warnings.extend(response.warnings)
-                warnings.extend(norm_warnings)
-            except Exception as exc:  # noqa: BLE001
-                llm_trace.extend(trace_from_exception(exc))
-                warnings.append(f"{node_name}_llm_failed:{exc.__class__.__name__}: {exc}")
-                logger.warning("%s failed for task_id=%s: %s", node_name, task.id, exc)
+            for batch_index, batch in enumerate(_check_batches(checks), start=1):
+                try:
+                    llm = Models.worker(
+                        ReviewCheckExecutorOutput,
+                        model_key=selected_model,
+                        max_completion_tokens=resolved.reviewer_critiquer_max_completion_tokens,
+                    )
+                    prompt = _render_executor_prompt(state, task, batch, slot)
+                    traced = trace_llm_call(
+                        llm,
+                        prompt,
+                        state=state,
+                        node_name=node_name,
+                        model_key=selected_model,
+                        schema_name="ReviewCheckExecutorOutput",
+                        input_summary={
+                            "task_id": task.id,
+                            "batch": batch_index,
+                            "check_ids": [c.check_id for c in batch],
+                        },
+                    )
+                    response = parse_structured_output(traced.result, ReviewCheckExecutorOutput)
+                    llm_tokens += traced.tokens
+                    llm_trace.extend(traced.trace_records)
+                    batch_results, norm_warnings = _normalize_executor_results(
+                        state=state,
+                        task=task,
+                        slot=slot,
+                        checks=batch,
+                        results=response.results,
+                    )
+                    results.extend(batch_results)
+                    warnings.extend(response.warnings)
+                    warnings.extend(norm_warnings)
+                except Exception as exc:  # noqa: BLE001
+                    llm_trace.extend(trace_from_exception(exc))
+                    warnings.append(f"{node_name}_batch_failed:{batch_index}:{exc.__class__.__name__}: {exc}")
+                    logger.warning("%s failed for task_id=%s batch=%s: %s", node_name, task.id, batch_index, exc)
+                    results.extend(
+                        ReviewCheckResult(
+                            check_id=check.check_id,
+                            patch_task_id=task.id,
+                            decision="unsupported",
+                            missing_evidence=_missing_evidence_for_weak_no_finding(check),
+                            warnings=[f"review_check_executor_batch_failed:{batch_index}"],
+                        )
+                        for check in batch
+                    )
 
         if not results:
             results = [
@@ -1126,6 +1354,8 @@ def make_review_check_executor_node(
                     if result.candidate is not None
                 ],
                 "executor_warnings": warnings,
+                "executor_batch_size": _EXECUTOR_BATCH_SIZE,
+                "executor_batch_count": len(_check_batches(checks)),
             },
         )
         if _trace_enabled(state):
@@ -1162,7 +1392,11 @@ def _candidate_speculative(candidate: CandidateFinding, result: ReviewCheckResul
     return any(marker in blob for marker in _SPECULATIVE_MARKERS)
 
 
-def _candidate_names_affected_path(candidate: CandidateFinding, result: ReviewCheckResult) -> bool:
+def _candidate_names_affected_path(
+    candidate: CandidateFinding,
+    result: ReviewCheckResult,
+    check: ReviewCheck,
+) -> bool:
     blob = " ".join(
         [
             candidate.content,
@@ -1171,7 +1405,16 @@ def _candidate_names_affected_path(candidate: CandidateFinding, result: ReviewCh
             result.reportable_reason,
         ]
     ).lower()
-    return any(marker in blob for marker in _AFFECTED_PATH_MARKERS)
+    if any(marker in blob for marker in _AFFECTED_PATH_MARKERS):
+        return True
+    if _tokens_overlap(check.changed_code_anchor, blob):
+        return True
+    if _tokens_overlap(check.affected_invariant, blob):
+        return True
+    check_path = check.file_path.replace("\\", "/")
+    if any(check_path in ref.replace("\\", "/") for ref in result.evidence_refs):
+        return True
+    return candidate.file_path.replace("\\", "/") == check_path and candidate.line_start >= 1
 
 
 def _result_has_repo_evidence(result: ReviewCheckResult, check: ReviewCheck) -> bool:
@@ -1195,7 +1438,7 @@ def _candidate_passes_gate(
         return False, "missing_check_invariant"
     if not candidate.failure_mode.strip():
         return False, "missing_failure_mode"
-    if not _candidate_names_affected_path(candidate, result):
+    if not _candidate_names_affected_path(candidate, result, check):
         return False, "missing_affected_path"
     if not candidate.evidence_summary.strip():
         return False, "missing_supporting_evidence"
@@ -1223,6 +1466,7 @@ def make_review_check_evidence_gate_node():
         promoted: List[CandidateFinding] = []
         lifecycle: Dict[str, Any] = {}
         gated_results: List[ReviewCheckResult] = []
+        gate_reason_counts: Dict[str, int] = {}
         dropped = 0
         for result in _results_for_task(state, task.id):
             check = checks.get(result.check_id)
@@ -1250,6 +1494,7 @@ def make_review_check_evidence_gate_node():
                     "check_id": result.check_id,
                     "reason": reason,
                 }
+            gate_reason_counts[reason] = gate_reason_counts.get(reason, 0) + 1
 
         latest_results = list(_latest_result_by_check(state, task.id).values())
         health_warnings: List[str] = []
@@ -1268,6 +1513,7 @@ def make_review_check_evidence_gate_node():
                     "promoted_count": len(promoted),
                     "dropped_count": dropped,
                     "evaluated_count": len(gated_results),
+                    "reason_counts": gate_reason_counts,
                     "candidate_lifecycle": lifecycle,
                     "health_warnings": health_warnings,
                 },
