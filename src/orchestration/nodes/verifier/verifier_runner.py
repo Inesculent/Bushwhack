@@ -34,11 +34,23 @@ def _coerce_candidate_dict(candidate: Dict[str, Any] | CandidateFinding) -> Dict
     return dict(candidate)
 
 
+def _execution_workspace_root(settings: Settings, workspace_name: str = "verify_exec") -> str:
+    if getattr(settings, "sandbox_backend", "") == "apptainer":
+        return f"/tmp/{workspace_name}"
+    return f"/{workspace_name}"
+
+
 def _infer_verifier_repo_root(repo_path: str, settings: Settings) -> str:
     raw = (repo_path or "").strip()
     if raw and Path(raw).is_dir():
+        if settings.verifier_use_execution_workspace:
+            return _execution_workspace_root(settings)
         return "/repo"
-    if settings.verifier_clone_remote_in_container or settings.verifier_require_repo_in_container:
+    if settings.verifier_clone_remote_in_container:
+        if settings.verifier_use_execution_workspace:
+            return _execution_workspace_root(settings)
+        return "/repo"
+    if settings.verifier_require_repo_in_container:
         return "/repo"
     return "/workspace"
 

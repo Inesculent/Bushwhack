@@ -99,6 +99,117 @@ def test_collect_verifier_send_payloads_eligible() -> None:
     assert sends[0].arg["token_usage"] == 0
 
 
+def test_collect_verifier_send_payloads_routes_concrete_missing_test_without_focused_context() -> None:
+    cid = "cand-missing-test"
+    cand = CandidateFinding(
+        candidate_id=cid,
+        patch_task_id="t1",
+        file_path="pkg/extract.py",
+        line_start=1,
+        line_end=4,
+        content="extract loses tuple fields",
+        claim_type="missing_test",
+        failure_mode="Data loss: tuple regex matches keep only the first field.",
+        evidence_summary="The source joins m[0] for each match.",
+        behavioral_symptom="data_loss",
+        root_operation="aggregation",
+        reflection_specialties=["logic"],
+        suspected_category="logic",
+    )
+    rep = ReflectionReport(
+        candidate_id=cid,
+        reflector_specialty="logic",
+        verdict="accept",
+        rationale="source-local data loss",
+    )
+    state = _minimal_state(
+        candidate_findings=[cand],
+        reflection_reports=[rep],
+        metadata={
+            "critique_pipeline": {
+                "by_task": {
+                    "t1": {
+                        "task_evidence": {
+                            "file_contents": {
+                                "pkg/extract.py": "def f(matches):\n    return ','.join([m[0] for m in matches])\n"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+    )
+    with patch("src.orchestration.routing.verifier_fanout.get_settings") as gs:
+        m = MagicMock()
+        m.verifier_enabled = True
+        m.verifier_skip_if_no_sandbox = True
+        m.verifier_run_on_defect = True
+        m.verifier_run_on_security = False
+        m.verifier_run_on_performance = False
+        m.verifier_total_budget_per_pr = 10
+        m.verifier_require_focused_evidence = True
+        gs.return_value = m
+        with patch("src.orchestration.routing.verifier_fanout.sandbox_runtime_available", return_value=True):
+            sends = collect_verifier_send_payloads(state)
+
+    assert len(sends) == 1
+    assert sends[0].arg["verifier_candidate"]["candidate_id"] == cid
+
+
+def test_collect_verifier_send_payloads_keeps_generic_missing_test_out() -> None:
+    cid = "cand-generic-missing-test"
+    cand = CandidateFinding(
+        candidate_id=cid,
+        patch_task_id="t1",
+        file_path="pkg/extract.py",
+        line_start=1,
+        line_end=4,
+        content="add test coverage",
+        claim_type="missing_test",
+        failure_mode="Changed behavior lacks a regression test.",
+        evidence_summary="No concrete source-proven failure.",
+        behavioral_symptom="other",
+        root_operation="other",
+        reflection_specialties=["logic"],
+        suspected_category="logic",
+    )
+    rep = ReflectionReport(
+        candidate_id=cid,
+        reflector_specialty="logic",
+        verdict="accept",
+        rationale="coverage should be added",
+    )
+    state = _minimal_state(
+        candidate_findings=[cand],
+        reflection_reports=[rep],
+        metadata={
+            "critique_pipeline": {
+                "by_task": {
+                    "t1": {
+                        "task_evidence": {
+                            "file_contents": {"pkg/extract.py": "def f():\n    return 1\n"}
+                        }
+                    }
+                }
+            }
+        },
+    )
+    with patch("src.orchestration.routing.verifier_fanout.get_settings") as gs:
+        m = MagicMock()
+        m.verifier_enabled = True
+        m.verifier_skip_if_no_sandbox = True
+        m.verifier_run_on_defect = True
+        m.verifier_run_on_security = False
+        m.verifier_run_on_performance = False
+        m.verifier_total_budget_per_pr = 10
+        m.verifier_require_focused_evidence = True
+        gs.return_value = m
+        with patch("src.orchestration.routing.verifier_fanout.sandbox_runtime_available", return_value=True):
+            sends = collect_verifier_send_payloads(state)
+
+    assert sends == []
+
+
 def test_has_focused_evidence_accepts_full_file_payload() -> None:
     from src.orchestration.nodes.application.critique_revision import _has_focused_evidence
 
@@ -707,19 +818,53 @@ def test_verifier_preflight_uses_execution_workspace_prompt_root() -> None:
     from src.config import Settings
     from src.orchestration import verifier_graph
 
-    settings = Settings(verifier_enabled=False, verifier_use_execution_workspace=True)
+    settings = Settings(
+        sandbox_backend="docker",
+        verifier_enabled=False,
+        verifier_use_execution_workspace=True,
+    )
     state = _minimal_state(
+        repo_path="C:/repo",
         verifier_candidate={
             "candidate_id": "c1",
             "file_path": "pkg/x.py",
             "failure_mode": "wrong output from concrete call",
-        }
+        },
     )
 
-    with patch("src.orchestration.verifier_graph.get_settings", return_value=settings):
+    with patch("src.orchestration.nodes.verifier.verifier_runner.Path.is_dir", return_value=True), patch(
+        "src.orchestration.verifier_graph.get_settings", return_value=settings
+    ):
         out = verifier_graph.verifier_preflight_node(state)
 
     assert out["verifier_repo_root"] == "/verify_exec"
+
+
+def test_verifier_preflight_uses_apptainer_execution_workspace_prompt_root() -> None:
+    from src.config import Settings
+    from src.orchestration import verifier_graph
+
+    settings = Settings(
+        sandbox_backend="apptainer",
+        apptainer_image="dummy.sif",
+        verifier_enabled=False,
+        verifier_use_execution_workspace=True,
+    )
+    state = _minimal_state(
+        repo_path="C:/repo",
+        verifier_candidate={
+            "candidate_id": "c1",
+            "file_path": "pkg/x.py",
+            "failure_mode": "wrong output from concrete call",
+        },
+    )
+
+    with patch("src.orchestration.nodes.verifier.verifier_runner.Path.is_dir", return_value=True), patch(
+        "src.orchestration.verifier_graph.get_settings", return_value=settings
+    ):
+        out = verifier_graph.verifier_preflight_node(state)
+
+    assert out["verifier_repo_root"] == "/tmp/verify_exec"
 
 
 def test_heavy_dep_prelude_supports_package_style_imports() -> None:

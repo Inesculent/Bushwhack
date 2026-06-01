@@ -1060,7 +1060,7 @@ def test_cleanup_caps_resource_findings_per_symbol_operation() -> None:
     assert "logic-1" in ids
 
 
-def test_cleanup_drops_branch_specific_return_claim_contradicted_by_evidence() -> None:
+def test_cleanup_keeps_source_local_fallthrough_when_ast_does_not_prove_all_paths_exit() -> None:
     node = make_adversarial_cleanup_node()
     cand = _cand(
         candidate_id="branch-false",
@@ -1111,11 +1111,7 @@ def test_cleanup_drops_branch_specific_return_claim_contradicted_by_evidence() -
             },
         }
     )
-    assert out["findings"] == []
-    assert (
-        out["metadata"]["adversarial_cleanup"]["candidate_lifecycle"][cand.candidate_id]["reason"]
-        == "branch_return_claim_contradicted_by_code_evidence"
-    )
+    assert [finding.id for finding in out["findings"]] == [cand.candidate_id]
 
 
 def test_cleanup_drops_mode_return_claim_variants_contradicted_by_evidence() -> None:
@@ -1177,6 +1173,8 @@ def test_cleanup_drops_mode_return_claim_variants_contradicted_by_evidence() -> 
                                                 "        return True",
                                                 "    elif mode == 'Ends With':",
                                                 "        return False",
+                                                "    else:",
+                                                "        return False",
                                             ]
                                         )
                                     }
@@ -1192,6 +1190,58 @@ def test_cleanup_drops_mode_return_claim_variants_contradicted_by_evidence() -> 
             out["metadata"]["adversarial_cleanup"]["candidate_lifecycle"][cand.candidate_id]["reason"]
             == "branch_return_claim_contradicted_by_code_evidence"
         )
+
+
+def test_cleanup_preserves_concrete_behavioral_missing_test_with_source_evidence() -> None:
+    node = make_adversarial_cleanup_node()
+    cand = _cand(
+        candidate_id="missing-test-data-loss",
+        patch_task_id="logic-task",
+        file_path="src/extract.py",
+        line_start=1,
+        line_end=5,
+        content="extract_values loses non-first tuple fields.",
+        claim_type="missing_test",
+        failure_mode="Data loss: tuple results keep only the first field.",
+        evidence_summary="The changed function joins m[0] for every tuple match.",
+        recommendation="Preserve all tuple fields or narrow the extraction contract.",
+        behavioral_symptom="data_loss",
+        root_operation="aggregation",
+        severity="medium",
+    )
+
+    out = node(
+        {
+            "run_id": "t",
+            "candidate_findings": [cand],
+            "reflection_reports": [
+                ReflectionReport(
+                    candidate_id=cand.candidate_id,
+                    reflector_specialty="logic",
+                    verdict="accept",
+                    rationale="The source-local behavior drops tuple fields.",
+                )
+            ],
+            "metadata": {
+                "critique_pipeline": {
+                    "by_task": {
+                        "logic-task": {
+                            "task_evidence": {
+                                "file_contents": {
+                                    "src/extract.py": (
+                                        "def extract_values(matches):\n"
+                                        "    return ','.join([m[0] for m in matches])\n"
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+        }
+    )
+
+    assert [finding.id for finding in out["findings"]] == [cand.candidate_id]
 
 
 def test_cleanup_raw_reject_with_visible_contradiction_beats_consolidated_accept() -> None:
@@ -1243,6 +1293,8 @@ def test_cleanup_raw_reject_with_visible_contradiction_beats_consolidated_accept
                                             "    if mode == 'Equal':",
                                             "        return True",
                                             "    elif mode == 'Ends With':",
+                                            "        return False",
+                                            "    else:",
                                             "        return False",
                                         ]
                                     )

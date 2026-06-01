@@ -44,8 +44,6 @@ def verifier_preflight_node(state: GraphState) -> Dict[str, Any]:
     scope = infer_verification_scope(cand_dict)
     repo_path = str(state.get("repo_path", ""))
     repo_root = _infer_verifier_repo_root(repo_path, settings)
-    if getattr(settings, "verifier_use_execution_workspace", False) is True:
-        repo_root = "/verify_exec"
 
     from src.orchestration.routing.verifier_fanout import focused_context_text_for_candidate
 

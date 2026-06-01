@@ -213,11 +213,34 @@ def _source_only_structured_extraction(
         text = _source_segment(source, func).lower()
         all_matches_claim = "all matches" in blob or "findall" in blob or "finditer" in blob
         all_groups_claim = "all groups" in blob or "group tuple" in blob or "groups" in blob
+        tuple_first_slot_claim = any(
+            marker in blob
+            for marker in ("m[0]", "first element", "first group", "only the first")
+        )
+        group_index_claim = "group_index" in blob or "group index" in blob
         if all_matches_claim and "re.search" in text and "re.findall" not in text and "re.finditer" not in text:
             reason = f"{func.name} uses re.search for an all-matches regex extraction claim"
             return reason, _attempt(reason)
+        if (
+            all_matches_claim
+            and "re.findall" in text
+            and "[m[0] for m in matches]" in text
+            and (tuple_first_slot_claim or group_index_claim)
+        ):
+            reason = f"{func.name} keeps only tuple element 0 for an all-matches regex extraction claim"
+            return reason, _attempt(reason)
         if all_groups_claim and ".group(1)" in text and ".groups(" not in text:
             reason = f"{func.name} extracts only group(1) for an all-groups regex extraction claim"
+            return reason, _attempt(reason)
+        if (
+            all_groups_claim
+            and ".group(" in text
+            and ".append(" in text
+            and ".join(" in text
+            and "is not none" not in text
+            and " or \"\"" not in text
+        ):
+            reason = f"{func.name} joins regex group results without filtering possible None values"
             return reason, _attempt(reason)
     return "", None
 

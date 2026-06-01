@@ -127,3 +127,81 @@ def test_source_only_detects_regex_all_matches_data_loss() -> None:
     assert verdict == "verified"
     assert "re.search" in rationale
     assert attempt is not None
+
+
+def test_source_only_detects_regex_findall_tuple_field_data_loss() -> None:
+    state = {
+        "git_diff": "",
+        "metadata": {
+            "critique_pipeline": {
+                "by_task": {
+                    "t1": {
+                        "task_evidence": {
+                            "file_contents": {
+                                "pkg/mod.py": (
+                                    "import re\n"
+                                    "def execute(pattern, text):\n"
+                                    "    matches = re.findall(pattern, text)\n"
+                                    "    return ','.join([m[0] for m in matches])\n"
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+    }
+    candidate = {
+        "candidate_id": "c1",
+        "patch_task_id": "t1",
+        "file_path": "pkg/mod.py",
+        "line_start": 2,
+        "failure_mode": "Regex all matches data loss: tuple results keep only the first group.",
+        "evidence_summary": "The all matches branch ignores later tuple fields.",
+    }
+
+    verdict, rationale, attempt = source_only_verify_candidate(state, candidate)
+
+    assert verdict == "verified"
+    assert "tuple element 0" in rationale
+    assert attempt is not None
+
+
+def test_source_only_detects_regex_all_groups_join_none_risk() -> None:
+    state = {
+        "git_diff": "",
+        "metadata": {
+            "critique_pipeline": {
+                "by_task": {
+                    "t1": {
+                        "task_evidence": {
+                            "file_contents": {
+                                "pkg/mod.py": (
+                                    "import re\n"
+                                    "def execute(pattern, text, group_index, join_delimiter):\n"
+                                    "    results = []\n"
+                                    "    for match in re.finditer(pattern, text):\n"
+                                    "        results.append(match.group(group_index))\n"
+                                    "    return join_delimiter.join(results)\n"
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+    }
+    candidate = {
+        "candidate_id": "c1",
+        "patch_task_id": "t1",
+        "file_path": "pkg/mod.py",
+        "line_start": 2,
+        "failure_mode": "Regex all groups can crash or lose output when optional groups produce None.",
+        "evidence_summary": "All groups are appended and joined without filtering None.",
+    }
+
+    verdict, rationale, attempt = source_only_verify_candidate(state, candidate)
+
+    assert verdict == "verified"
+    assert "without filtering possible None" in rationale
+    assert attempt is not None

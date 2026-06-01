@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import logging
 import re
 from typing import Any, Dict, List, Mapping, Sequence
@@ -49,6 +50,16 @@ EXPECTED_REFLECTORS = {"security", "logic", "performance", "general"}
 DOMAIN_REFLECTORS = {"security", "logic", "performance", "general"}
 PROMOTABLE_CLAIM_TYPES = {"defect", "security_risk", "performance_regression", "missing_test"}
 CONTEXT_REQUIRED_CLAIM_TYPES = frozenset({"security_risk", "performance_regression"})
+_CONCRETE_LOCAL_SYMPTOMS = frozenset(
+    {
+        "wrong_output",
+        "data_loss",
+        "crash",
+        "missing_return",
+        "uncaught_exception",
+        "contract_mismatch",
+    }
+)
 
 # Tier 2: claims that typically need cross-file / framework evidence before promotion.
 _TIER2_EXTERNAL_CONTEXT_MARKERS = (
@@ -103,18 +114,6 @@ _SCOPE_INSIDE_MARKERS = (
     "enclosed by try",
     "caught by",
 )
-_BRANCH_NO_RETURN_RE = re.compile(
-    r"(?:"
-    r"['\"]([^'\"]{2,80})['\"]\s+(?:branch|mode).{0,100}?"
-    r"(?:lacks|missing|no|without|does\s+not|doesn't)\s+(?:a\s+)?return"
-    r"|mode\s*==\s*['\"]([^'\"]{2,80})['\"].{0,100}?"
-    r"(?:lacks|missing|no|without|does\s+not|doesn't)\s+(?:a\s+)?return"
-    r"|['\"]([^'\"]{2,80})['\"]\s*:\s*"
-    r"(?:lacks|missing|no|without|does\s+not|doesn't)\s+(?:a\s+)?return"
-    r")",
-    re.IGNORECASE | re.DOTALL,
-)
-_MODE_COMPARISON_RE = re.compile(r"\bmode\s*==\s*['\"]([^'\"]{2,80})['\"]", re.IGNORECASE)
 _NO_RETURN_MARKERS = (
     "lacks return",
     "lacks a return",
@@ -253,6 +252,57 @@ def _resource_oriented_finding(finding: ReviewFinding) -> bool:
     return finding.root_operation == "resource_use" or finding.behavioral_symptom == "unbounded_work"
 
 
+def _candidate_has_concrete_behavior(candidate: CandidateFinding) -> bool:
+    normalized = candidate_with_behavioral_metadata(candidate)
+    if normalized.behavioral_symptom in _CONCRETE_LOCAL_SYMPTOMS:
+        return True
+    blob = _candidate_evidence_blob(normalized)
+    return any(
+        marker in blob
+        for marker in (
+            "wrong output",
+            "data loss",
+            "drops ",
+            "loses ",
+            "crash",
+            "raises ",
+            "implicit none",
+            "missing return",
+            "contract mismatch",
+        )
+    )
+
+
+def _candidate_has_source_local_evidence(
+    state: GraphState,
+    candidate: CandidateFinding,
+    changed_files: set[str],
+) -> bool:
+    if changed_files and resolve_repo_file_path(candidate.file_path, changed_files) is None:
+        return False
+    return bool(_candidate_code_evidence_text(state, candidate).strip())
+
+
+def _supported_by_relevant_reflection(relevant_reports: Sequence[ReflectionReport]) -> bool:
+    return any(
+        report.verdict in {"accept", "reclassify", "needs_context", "needs_verification"}
+        for report in relevant_reports
+    )
+
+
+def _concrete_local_candidate_supported(
+    state: GraphState,
+    candidate: CandidateFinding,
+    relevant_reports: Sequence[ReflectionReport],
+    changed_files: set[str],
+) -> bool:
+    return (
+        _candidate_has_concrete_behavior(candidate)
+        and _candidate_has_source_local_evidence(state, candidate, changed_files)
+        and _supported_by_relevant_reflection(relevant_reports)
+    )
+
+
 def _extraction_modes(text: str) -> set[str]:
     blob = (text or "").lower()
     return {marker for marker in _EXTRACTION_MODE_MARKERS if marker in blob}
@@ -336,44 +386,64 @@ def _candidate_claims_boundary_missing_body(candidate: CandidateFinding) -> bool
     )
 
 
-def _branch_block_has_return(text: str, branch_name: str) -> bool:
-    if not text.strip() or not branch_name.strip():
-        return False
-    branch = re.escape(branch_name.strip())
-    header_re = re.compile(
-        rf"^\s*(?:if|elif)\s+.*['\"]{branch}['\"].*:\s*$",
-        re.IGNORECASE,
-    )
-    lines = text.splitlines()
-    for idx, raw in enumerate(lines):
-        if not header_re.match(raw):
+def _node_span(node: ast.AST) -> tuple[int, int]:
+    start = int(getattr(node, "lineno", 1) or 1)
+    end = int(getattr(node, "end_lineno", start) or start)
+    return start, end
+
+
+def _target_functions_from_code(
+    tree: ast.AST,
+    candidate: CandidateFinding,
+) -> list[ast.FunctionDef | ast.AsyncFunctionDef]:
+    line_start = int(candidate.line_start or 0)
+    blob = _candidate_evidence_blob(candidate)
+    funcs: list[ast.FunctionDef | ast.AsyncFunctionDef] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
-        indent = len(raw) - len(raw.lstrip(" "))
-        for body_line in lines[idx + 1 :]:
-            stripped = body_line.strip()
-            if not stripped:
-                continue
-            body_indent = len(body_line) - len(body_line.lstrip(" "))
-            if body_indent <= indent and re.match(r"(elif|else|except|finally|def|class)\b", stripped):
-                break
-            if re.search(r"\breturn\b", stripped):
-                return True
-        continue
+        start, end = _node_span(node)
+        if line_start and start <= line_start <= end:
+            funcs.append(node)
+            continue
+        if re.search(rf"(?<![A-Za-z0-9_]){re.escape(node.name.lower())}(?![A-Za-z0-9_])", blob):
+            funcs.append(node)
+    return funcs
+
+
+def _stmt_guarantees_exit(stmt: ast.stmt) -> bool:
+    if isinstance(stmt, (ast.Return, ast.Raise)):
+        return True
+    if isinstance(stmt, ast.If):
+        return (
+            bool(stmt.body and stmt.orelse)
+            and _block_guarantees_exit(stmt.body)
+            and _block_guarantees_exit(stmt.orelse)
+        )
+    if isinstance(stmt, ast.Try):
+        return bool(stmt.body) and _block_guarantees_exit(stmt.body) and all(
+            _block_guarantees_exit(handler.body) for handler in stmt.handlers
+        )
     return False
 
 
-def _branch_return_claim_terms(text: str) -> list[str]:
-    blob = (text or "").lower()
-    if not any(marker in blob for marker in _NO_RETURN_MARKERS):
-        return []
-    terms: list[str] = []
-    for match in _BRANCH_NO_RETURN_RE.findall(blob):
-        for group in match:
-            if group and group.strip():
-                terms.append(group.strip())
-    if any(marker in blob for marker in ("branch", "mode", "implicit none", "falls through", "fall through")):
-        terms.extend(m.strip() for m in _MODE_COMPARISON_RE.findall(blob))
-    return list(dict.fromkeys(term for term in terms if term))
+def _block_guarantees_exit(stmts: Sequence[ast.stmt]) -> bool:
+    for stmt in stmts:
+        if _stmt_guarantees_exit(stmt):
+            return True
+    return False
+
+
+def _source_proves_all_target_paths_exit(state: GraphState, candidate: CandidateFinding) -> bool:
+    text = _candidate_code_evidence_text(state, candidate)
+    if not text.strip():
+        return False
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return False
+    funcs = _target_functions_from_code(tree, candidate)
+    return bool(funcs) and all(_block_guarantees_exit(func.body) for func in funcs)
 
 
 def _branch_return_claim_contradicted_by_text(
@@ -381,13 +451,10 @@ def _branch_return_claim_contradicted_by_text(
     candidate: CandidateFinding,
     text_blob: str,
 ) -> bool:
-    if "terminal else" in text_blob or "unexpected mode" in text_blob or "unhandled mode" in text_blob:
+    blob = (text_blob or "").lower()
+    if not any(marker in blob for marker in _NO_RETURN_MARKERS):
         return False
-    matches = _branch_return_claim_terms(text_blob)
-    if not matches:
-        return False
-    text = _candidate_code_evidence_text(state, candidate)
-    return any(_branch_block_has_return(text, match) for match in matches)
+    return _source_proves_all_target_paths_exit(state, candidate)
 
 
 def _branch_return_claim_contradicted(state: GraphState, candidate: CandidateFinding) -> bool:
@@ -900,6 +967,19 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
             claim_tiering.setdefault(candidate.candidate_id, {})["tier"] = claim_tier
             rev_early = revisions.get(candidate.candidate_id) or {}
             rev_summary_early = str(rev_early.get("updated_evidence_summary") or "")
+            cand_reports_early = by_cand.get(candidate.candidate_id, [])
+            category_early = _final_category(candidate, cand_reports_early)
+            relevant_reports_early = [
+                report
+                for report in cand_reports_early
+                if report.reflector_specialty in _relevant_reflectors(candidate, category_early)
+            ]
+            concrete_local_supported = _concrete_local_candidate_supported(
+                state,
+                candidate,
+                relevant_reports_early,
+                changed_files,
+            )
             if is_resolution_only_finding(
                 candidate.content,
                 candidate.recommendation or "",
@@ -913,7 +993,7 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
                 continue
             if claim_tier == "speculative_guard" and not (
                 candidate.claim_type == "security_risk" and security_boundary_is_concrete(candidate)
-            ):
+            ) and not concrete_local_supported:
                 drop(candidate, "speculative_guard_without_concrete_regression")
                 continue
             if _scope_claim_contradicted(state, candidate):
@@ -932,6 +1012,7 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
                 and candidate.severity != "high"
                 and not early_revision_accepted
                 and not _focused_hits_for_candidate(state, candidate.candidate_id)
+                and not concrete_local_supported
             ):
                 drop(candidate, "coverage_gap_without_high_impact_evidence")
                 continue

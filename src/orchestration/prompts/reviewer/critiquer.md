@@ -40,10 +40,10 @@ Rules:
 - Treat **Review KB context** as retrieved repository knowledge for cross-file contracts, signatures, expected shapes, entrypoints, and dependency hints. It can guide candidate framing, but exact code evidence/focused context is required when the finding hinges on behavior not shown in the prompt.
 - Produce candidates only for actionable negative claims: defects, security risks, performance regressions, or meaningful missing tests tied to a changed behavior. Do not emit candidates for positive observations, resolutions, generic hardening, or "no action needed" conclusions.
 - Set `claim_type` accurately:
-  - `defect`: changed behavior can be wrong or crash.
+  - `defect`: changed behavior can be wrong, lose data, miss returns, violate a contract, or crash. Use this for concrete wrong-output/data-loss behavior shown by source evidence, even when the missing regression test is part of the story.
   - `security_risk`: exploitable or authorization/security-sensitive risk.
   - `performance_regression`: changed behavior can become slower, more memory-intensive, or less scalable.
-  - `missing_test`: important untested changed behavior with a specific failure mode caused or newly exposed by this PR.
+  - `missing_test`: important untested changed behavior where the code may be correct or the failure is not source-proven, but coverage is missing.
   - `positive_observation`: use only when explicitly asked; these will not be promoted.
   - `uncertain`: a concrete drill-down lead whose failure hypothesis is plausible but under-proven; include `required_context`, lower confidence, and a bounded `initial_focus_request` when static context can decide it.
 - Every promotable candidate must include `failure_mode`, `evidence_summary`, and `recommendation`.

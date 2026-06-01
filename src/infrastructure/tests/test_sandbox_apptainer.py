@@ -58,3 +58,26 @@ def test_apptainer_execute_uses_instance_uri(
     assert result.exit_code == 0
     assert "ok" in result.stdout
     sandbox.stop()
+
+
+def test_apptainer_create_execution_workspace_uses_tmp_path(
+    monkeypatch: pytest.MonkeyPatch, sif_path: Path, tmp_path: Path
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+        return MagicMock(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr("src.infrastructure.sandbox_apptainer.subprocess.run", fake_run)
+
+    sandbox = ApptainerRepoSandbox(sif_path=str(sif_path))
+    sandbox.start(str(repo))
+    workspace = sandbox.create_execution_workspace("verify_exec")
+
+    assert workspace == "/tmp/verify_exec"
+    assert sandbox.execution_workdir == "/tmp/verify_exec"
+    assert any("/tmp/verify_exec" in " ".join(cmd) for cmd in calls)
+    sandbox.stop()
