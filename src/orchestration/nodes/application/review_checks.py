@@ -126,45 +126,6 @@ _CODE_FILE_EXTENSIONS = {
 _GENERIC_QUERY_TOKENS = {"changed", "code", "behavior", "repository", "evidence", "context"}
 _MAX_CHECKS_PER_TASK = 12
 _EXECUTOR_BATCH_SIZE = 3
-_DIMENSION_RELEVANCE_KEYWORDS = {
-    "contract completeness": ("contract", "return", "return_types", "declared", "schema", "required", "optional"),
-    "branch exhaustiveness": ("branch", "elif", "else", "case", "mode", "fallback", "exhaustive"),
-    "boundary/index handling": ("index", "bounds", "length", "empty", "slice", "range", "off-by-one"),
-    "structured data preservation": ("structured", "tuple", "row", "record", "json", "dict", "field", "payload"),
-    "aggregation/serialization safety": ("join", "aggregate", "serialize", "serialization", "format", "json"),
-    "exception/control-flow scope": ("exception", "error", "try", "except", "raise", "regex", "invalid pattern"),
-    "resource-amplification risk": ("resource", "performance", "unbounded", "loop", "regex", "expensive", "redundant"),
-    "migration caller-reliance contract": (
-        "migration",
-        "migrate",
-        "replace",
-        "removed",
-        "caller",
-        "call site",
-        "precondition",
-        "reliance",
-    ),
-    "state/cache lifecycle migration contract": (
-        "state",
-        "cache",
-        "lifecycle",
-        "block",
-        "slot",
-        "queue",
-        "reuse",
-        "invalidate",
-    ),
-    "api/signature compatibility": ("api", "signature", "caller", "interface", "type", "public", "framework"),
-    "dependency/import availability": ("import", "dependency", "module", "symbol", "undefined", "include"),
-    "nullability/panic safety": ("null", "none", "nil", "panic", "optional", "nullable", "guard"),
-    "state/cache lifecycle": ("state", "cache", "lifecycle", "invalidate", "reset", "cleanup"),
-    "protocol/output fidelity": ("protocol", "output", "format", "status", "header", "message", "response"),
-    "concurrency/shared-state safety": ("concurrency", "thread", "async", "await", "lock", "race", "shared"),
-    "security/input boundary": ("security", "auth", "permission", "sanitize", "escape", "input", "validation"),
-    "repository convention contract": ("convention", "framework", "input_types", "return_types", "repository"),
-    "public/user contract": ("public", "user-visible", "docs", "tooltip", "cli", "message"),
-    "maintainability contract": ("maintainability", "unused", "dead code", "duplicate", "deprecated"),
-}
 _EXTERNAL_EVIDENCE_MARKERS = (
     "caller",
     "call site",
@@ -513,50 +474,19 @@ def _coverage_obligations(slot: Mapping[str, Any]) -> List[Dict[str, Any]]:
     return obligations
 
 
-def _contains_any_keyword(text: str, keywords: Iterable[str]) -> bool:
-    lowered = text.lower()
-    return any(keyword.lower() in lowered for keyword in keywords if keyword)
-
-
 def _mental_model_contract_lines(slot: Mapping[str, Any]) -> List[str]:
     text = "\n".join(
         str(slot.get(key) or "")
         for key in ("mental_model_excerpt", "review_kb_excerpt")
     )
     lines: List[str] = []
-    markers = (
-        "contract",
-        "expect",
-        "risk",
-        "uncertain",
-        "return",
-        "input_types",
-        "return_types",
-        "required",
-        "optional",
-        "schema",
-        "framework",
-        "convention",
-        "regex",
-        "invalid",
-        "exception",
-        "output",
-        "migration",
-        "migrate",
-        "caller",
-        "call site",
-        "precondition",
-        "reliance",
-        "lifecycle",
-    )
     for raw in text.splitlines():
         line = re.sub(r"^[-*#\s]+", "", raw).strip()
         if not line:
             continue
         if line.lower() in {"intent", "behavior", "contracts", "risks", "guidance", "uncertainties"}:
             continue
-        if _contains_any_keyword(line, markers):
-            lines.append(line[:300])
+        lines.append(line[:300])
         if len(lines) >= 8:
             break
     return lines
@@ -576,10 +506,9 @@ def _score_obligation_relevance(
     obligation: Mapping[str, Any],
 ) -> tuple[int, List[str], List[str]]:
     surface = str(obligation.get("surface") or "")
-    dimension = str(obligation.get("dimension") or "").lower()
+    dimension = str(obligation.get("dimension") or "")
     evidence = str(obligation.get("evidence") or "")
     contexts = _relevance_context(task, slot)
-    keywords = _DIMENSION_RELEVANCE_KEYWORDS.get(dimension, ())
     score = 1
     reasons: List[str] = ["baseline_changed_surface"]
 
@@ -592,15 +521,18 @@ def _score_obligation_relevance(
     if _tokens_overlap(surface, contexts["review_kb"]):
         score += 3
         reasons.append("surface_in_review_kb")
-    if _contains_any_keyword(contexts["mental_model"], keywords):
+    if _tokens_overlap(dimension, contexts["mental_model"]):
         score += 4
-        reasons.append("dimension_in_mental_model")
-    if _contains_any_keyword(contexts["review_kb"], keywords):
+        reasons.append("dimension_text_in_mental_model")
+    if _tokens_overlap(dimension, contexts["review_kb"]):
         score += 3
-        reasons.append("dimension_in_review_kb")
-    if _contains_any_keyword(contexts["task"], keywords):
+        reasons.append("dimension_text_in_review_kb")
+    if _tokens_overlap(dimension, contexts["task"]):
         score += 2
-        reasons.append("dimension_in_task")
+        reasons.append("dimension_text_in_task")
+    if _tokens_overlap(evidence, contexts["task"]):
+        score += 1
+        reasons.append("evidence_matches_task")
     if _tokens_overlap(evidence, contexts["mental_model"]) or _tokens_overlap(evidence, contexts["review_kb"]):
         score += 1
         reasons.append("evidence_matches_context")
@@ -609,7 +541,7 @@ def _score_obligation_relevance(
     for line in _mental_model_contract_lines(slot):
         if (
             _tokens_overlap(surface, line)
-            or _contains_any_keyword(line, keywords)
+            or _tokens_overlap(dimension, line)
             or _tokens_overlap(evidence, line)
         ):
             material.append(line)
@@ -947,27 +879,49 @@ def _ensure_compiler_coverage_floor(
         if not any(_check_covers_obligation(check, obligation) for check in checks)
     ]
     uncovered_for_floor = _rotate_tied_obligations(uncovered_obligations)
-    added: List[ReviewCheck] = []
-    skipped_due_to_cap: List[Dict[str, Any]] = []
+    added_candidates: List[tuple[ReviewCheck, Dict[str, Any], str]] = []
     for obligation in uncovered_for_floor:
-        if len(checks) + len(added) >= _MAX_CHECKS_PER_TASK:
-            skipped_due_to_cap.append(dict(obligation))
-            continue
-        added.append(_coverage_check_for_obligation(state, task, obligation, len(checks) + len(added) + 1))
+        check = _coverage_check_for_obligation(
+            state,
+            task,
+            obligation,
+            len(checks) + len(added_candidates) + 1,
+        )
+        added_candidates.append((check, dict(obligation), "coverage_obligation"))
 
     deterministic_floor = [
-        *_migration_floor_checks(state, task, slot, [*checks, *added], len(checks) + len(added) + 1),
-        *_maintainability_floor_checks(state, task, slot, [*checks, *added], len(checks) + len(added) + 1),
+        *_migration_floor_checks(
+            state,
+            task,
+            slot,
+            [*checks, *(check for check, _meta, _kind in added_candidates)],
+            len(checks) + len(added_candidates) + 1,
+        ),
+        *_maintainability_floor_checks(
+            state,
+            task,
+            slot,
+            [*checks, *(check for check, _meta, _kind in added_candidates)],
+            len(checks) + len(added_candidates) + 1,
+        ),
     ]
     for check in deterministic_floor:
-        if len(checks) + len(added) >= _MAX_CHECKS_PER_TASK:
-            skipped_due_to_cap.append(
-                {"file_path": check.file_path, "surface": check.changed_code_anchor, "dimension": check.affected_invariant}
+        if any(
+            existing.check_id == check.check_id
+            for existing in [*checks, *(candidate for candidate, _meta, _kind in added_candidates)]
+        ):
+            check = check.model_copy(update={"check_id": f"{check.check_id}:{len(added_candidates) + 1}"})
+        added_candidates.append(
+            (
+                check,
+                {
+                    "file_path": check.file_path,
+                    "surface": check.changed_code_anchor,
+                    "dimension": check.affected_invariant,
+                },
+                "deterministic_floor",
             )
-            continue
-        if any(existing.check_id == check.check_id for existing in checks + added):
-            check = check.model_copy(update={"check_id": f"{check.check_id}:{len(added) + 1}"})
-        added.append(check)
+        )
 
     ledger = surface_ledger_from_state(state)
     by_id = surface_by_id(ledger)
@@ -977,45 +931,68 @@ def _ensure_compiler_coverage_floor(
     ]
     covered_surface_ids = {
         sid
-        for check in checks + added
+        for check in [*checks, *(candidate for candidate, _meta, _kind in added_candidates)]
         for sid in check.surface_ids
         if sid in by_id
     }
     missing_surface_ids = [sid for sid in task_surface_ids if sid not in covered_surface_ids]
     for sid in missing_surface_ids:
         surface = by_id[sid]
-        if len(checks) + len(added) >= _MAX_CHECKS_PER_TASK:
-            skipped_due_to_cap.append(
-                {"file_path": surface.file_path, "surface": surface.name, "dimension": "surface coverage"}
+        check = _surface_coverage_check(state, task, surface, len(checks) + len(added_candidates) + 1)
+        added_candidates.append(
+            (
+                check,
+                {"file_path": surface.file_path, "surface": surface.name, "dimension": "surface coverage"},
+                "surface_coverage",
             )
-            continue
-        added.append(_surface_coverage_check(state, task, surface, len(checks) + len(added) + 1))
+        )
 
     coverage_files = _changed_task_files(state, task)
     checked_files = {
         check.file_path.strip().replace("\\", "/")
-        for check in checks + added
+        for check in [*checks, *(candidate for candidate, _meta, _kind in added_candidates)]
         if check.file_path.strip()
     }
     missing_files = [path for path in coverage_files if path not in checked_files]
     for file_path in missing_files:
-        if len(checks) + len(added) >= _MAX_CHECKS_PER_TASK:
-            skipped_due_to_cap.append(
-                {"file_path": file_path, "surface": file_path, "dimension": "file coverage"}
+        check = _coverage_check_for_file(state, task, file_path, len(checks) + len(added_candidates) + 1)
+        added_candidates.append(
+            (
+                check,
+                {"file_path": file_path, "surface": file_path, "dimension": "file coverage"},
+                "file_coverage",
             )
-            continue
-        added.append(_coverage_check_for_file(state, task, file_path, len(checks) + len(added) + 1))
+        )
 
-    trimmed_existing: List[str] = []
-    if len(checks) > _MAX_CHECKS_PER_TASK:
-        trimmed_existing = [check.check_id for check in checks[_MAX_CHECKS_PER_TASK:]]
-        checks = checks[:_MAX_CHECKS_PER_TASK]
-        added = []
+    original_ids = {check.check_id for check in checks}
+    added_by_id = {check.check_id: meta for check, meta, _kind in added_candidates}
+    ranking_meta_by_id = {
+        check.check_id: {**meta, "_floor_kind": kind}
+        for check, meta, kind in added_candidates
+    }
+    ranked = _prioritize_compiled_checks(
+        _dedupe_checks([*checks, *(check for check, _meta, _kind in added_candidates)]),
+        task=task,
+        slot=slot,
+        coverage_meta_by_id=ranking_meta_by_id,
+        task_files=coverage_files,
+    )
+    final_checks = ranked[:_MAX_CHECKS_PER_TASK]
+    final_ids = {check.check_id for check in final_checks}
+    added = [check for check in final_checks if check.check_id not in original_ids]
+    trimmed_existing: List[str] = [
+        check.check_id for check in checks if check.check_id not in final_ids
+    ]
+    skipped_due_to_cap: List[Dict[str, Any]] = [
+        dict(meta)
+        for check_id, meta in added_by_id.items()
+        if check_id not in final_ids
+    ]
 
     warnings = [f"compiler_coverage_floor_added:{check.check_id}" for check in added]
     if skipped_due_to_cap:
         warnings.append(f"compiler_coverage_floor_cap_reached:{len(skipped_due_to_cap)}")
-    return checks + added, {
+    return final_checks, {
         "coverage_files": coverage_files,
         "missed_files": missing_files,
         "ranked_obligations": [dict(item) for item in obligations],
@@ -1104,16 +1081,36 @@ def _dedupe_checks(checks: Iterable[ReviewCheck]) -> List[ReviewCheck]:
     return out
 
 
-def _prioritize_compiled_checks(checks: Iterable[ReviewCheck]) -> List[ReviewCheck]:
-    """Keep focused model/task checks ahead of broad deterministic coverage checks."""
+def _prioritize_compiled_checks(
+    checks: Iterable[ReviewCheck],
+    *,
+    task: ReviewTask | None = None,
+    slot: Mapping[str, Any] | None = None,
+    coverage_meta_by_id: Mapping[str, Mapping[str, Any]] | None = None,
+    task_files: Iterable[str] = (),
+) -> List[ReviewCheck]:
+    """Keep focused/task-local checks ahead of broad deterministic coverage checks."""
 
-    def rank(check: ReviewCheck) -> tuple[int, int]:
+    meta_by_id = coverage_meta_by_id or {}
+    local_task_files = {path.strip().replace("\\", "/") for path in task_files if path and path.strip()}
+    if task is not None:
+        local_task_files.update(
+            path.strip().replace("\\", "/") for path in task.target_files if path and path.strip()
+        )
+
+    def rank(check: ReviewCheck) -> tuple[int, int, int, int]:
         cid = check.check_id
-        if ":coverage:" in cid or ":surface-coverage:" in cid:
-            return (2, 0)
+        meta = meta_by_id.get(cid)
+        added = meta is not None
+        source_local = _compiled_check_is_source_local(check, meta, slot, local_task_files)
+        relevance = _coverage_meta_relevance(meta)
+        if added and source_local:
+            return (1, -relevance, 0 if check.surface_ids else 1, 0)
         if ":surface:" in cid:
-            return (1, 0)
-        return (0, 0 if check.surface_ids else 1)
+            return (2 if source_local else 4, -relevance, 0 if check.surface_ids else 1, 1)
+        if added:
+            return (3 if source_local else 5, -relevance, 0 if check.surface_ids else 1, 1)
+        return (0, -relevance, 0 if check.surface_ids else 1, 0)
 
     return [check for _, check in sorted(enumerate(checks), key=lambda item: (*rank(item[1]), item[0]))]
 
@@ -1243,7 +1240,11 @@ def make_review_check_compiler_node(
                 llm_tokens = traced.tokens
                 llm_trace = traced.trace_records
                 llm_checks = _normalize_compiled_checks(state, task, response.checks)
-                checks = _prioritize_compiled_checks(_dedupe_checks([*llm_checks, *checks]))
+                checks = _prioritize_compiled_checks(
+                    _dedupe_checks([*llm_checks, *checks]),
+                    task=task,
+                    slot=slot,
+                )
                 summary = response.summary
                 warnings.extend(response.warnings)
             except Exception as exc:  # noqa: BLE001
@@ -1660,6 +1661,49 @@ def _check_needs_focused_context(check: ReviewCheck, slot: Mapping[str, Any]) ->
         return True
     return any(
         not _evidence_covers_requirement(requirement, evidence_blob)
+        for requirement in requirements
+    )
+
+
+def _coverage_meta_relevance(meta: Mapping[str, Any] | None) -> int:
+    if not meta:
+        return 0
+    try:
+        return int(meta.get("relevance_score") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _compiled_check_is_source_local(
+    check: ReviewCheck,
+    meta: Mapping[str, Any] | None,
+    slot: Mapping[str, Any] | None,
+    task_files: set[str],
+) -> bool:
+    path = check.file_path.strip().replace("\\", "/")
+    if meta:
+        kind = str(meta.get("_floor_kind") or "")
+        meta_path = str(meta.get("file_path") or path).strip().replace("\\", "/")
+        meta_blob = " ".join(
+            str(meta.get(key) or "")
+            for key in ("surface", "dimension", "evidence")
+        )
+        if kind == "coverage_obligation":
+            if bool(meta.get("files_complete")):
+                return True
+            if meta_path in task_files and not _requires_external_evidence(meta_blob):
+                return True
+
+    requirements = _evidence_requirements_for_check(check)
+    if any(_requires_external_evidence(requirement) for requirement in requirements):
+        return False
+    if path in task_files:
+        return True
+    if not slot:
+        return bool(check.surface_ids)
+    evidence_blob = _task_evidence_text(slot)
+    return bool(requirements) and all(
+        _evidence_covers_requirement(requirement, evidence_blob)
         for requirement in requirements
     )
 

@@ -685,7 +685,8 @@ def test_review_check_compiler_ranks_obligations_with_mental_model(monkeypatch) 
     floor = out["metadata"]["review_checks"]["by_task"]["review-logic"]["compiler_coverage_floor"]
     compiled = out["metadata"]["review_checks"]["by_task"]["review-logic"]["compiled_checks"]
     assert floor["ranked_obligations"][0]["surface"] == "RegexExtract"
-    assert "dimension_in_mental_model" in floor["ranked_obligations"][0]["relevance_reasons"]
+    assert "surface_in_mental_model" in floor["ranked_obligations"][0]["relevance_reasons"]
+    assert "evidence_matches_context" in floor["ranked_obligations"][0]["relevance_reasons"]
     assert compiled[0]["changed_code_anchor"] == "RegexExtract"
     assert any(
         "invalid regex patterns" in item
@@ -880,6 +881,71 @@ def test_review_check_compiler_coverage_floor_respects_cap(monkeypatch) -> None:
     assert out["metadata"]["review_checks"]["by_task"]["review-logic"]["compiled_count"] == 12
     assert len(floor["added_checks"]) == 3
     assert len(floor["skipped_due_to_cap"]) == 0
+
+
+def test_review_check_compiler_prioritizes_local_behavior_floor_over_broad_surface_cap(monkeypatch) -> None:
+    llm_checks = [
+        _check(
+            check_id=f"review-logic:surface:{idx}",
+            changed_code_anchor=f"Surface{idx}",
+            affected_invariant="api/signature compatibility",
+            required_evidence=[
+                f"changed implementation for Surface{idx}",
+                "repository contract or local caller evidence when the local code is insufficient",
+            ],
+            report_criteria=[f"The changed Surface{idx} violates api contract on a reachable path."],
+        )
+        for idx in range(1, 13)
+    ]
+    output = ReviewCheckCompilerOutput(summary="compiled", checks=llm_checks)
+    monkeypatch.setattr(
+        "src.orchestration.nodes.application.review_checks.Models.worker",
+        lambda *_args, **_kwargs: _FakeLLM({"parsed": output, "raw": _Raw()}),
+    )
+    state = _state(
+        metadata={
+            **_state()["metadata"],
+            "critique_pipeline": {
+                "by_task": {
+                    "review-logic": {
+                        "direct_context": (
+                            "def fold_widgets(tokens):\n"
+                            "    return '-'.join(tokens)\n"
+                            "def emit_checksum(parts):\n"
+                            "    return ''.join(parts)\n"
+                        ),
+                        "coverage_obligations": [
+                            {
+                                "file_path": "src/app.py",
+                                "surface": "fold_widgets",
+                                "dimension": "widget token folding",
+                                "evidence": "local widget token fold table present",
+                                "files_complete": True,
+                            },
+                            {
+                                "file_path": "src/app.py",
+                                "surface": "emit_checksum",
+                                "dimension": "adapter checksum emission",
+                                "evidence": "local checksum join path present",
+                                "files_complete": True,
+                            },
+                        ],
+                    }
+                }
+            },
+        },
+    )
+
+    out = make_review_check_compiler_node()(state)  # type: ignore[arg-type]
+
+    task_meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
+    compiled_ids = [check["check_id"] for check in task_meta["compiled_checks"]]
+    floor = task_meta["compiler_coverage_floor"]
+    assert task_meta["compiled_count"] == 12
+    assert "review-logic:coverage:13" in compiled_ids
+    assert "review-logic:coverage:14" in compiled_ids
+    assert "review-logic:surface:11" in floor["trimmed_existing_check_ids"]
+    assert "review-logic:surface:12" in floor["trimmed_existing_check_ids"]
 
 
 def test_review_check_validator_moves_only_valid_checks_to_state() -> None:
