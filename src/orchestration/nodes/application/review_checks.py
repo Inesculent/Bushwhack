@@ -39,6 +39,7 @@ from src.orchestration.context.surface_ledger import (
     surface_ledger_from_state,
 )
 from src.orchestration.nodes.application.critiquer import _normalize_candidates
+from src.orchestration.nodes.verifier.source_only import source_only_verify_candidate
 from src.orchestration.prompts.renderer import render_reviewer_prompt
 
 logger = logging.getLogger(__name__)
@@ -1924,6 +1925,24 @@ _INSUFFICIENT_EVIDENCE_MARKERS = (
     "evidence is insufficient",
 )
 
+_SOURCE_ONLY_BACKSTOP_MARKERS = (
+    "syntax",
+    "parse",
+    "import",
+    "missing return",
+    "return",
+    "fallthrough",
+    "fall through",
+    "branch",
+    "structured",
+    "extraction",
+    "regex",
+    "findall",
+    "tuple",
+    "join",
+    "data loss",
+)
+
 
 def _no_finding_has_strong_suppression(result: ReviewCheckResult, check: ReviewCheck) -> bool:
     if not result.evidence_refs or not result.suppressing_evidence:
@@ -1934,6 +1953,84 @@ def _no_finding_has_strong_suppression(result: ReviewCheckResult, check: ReviewC
     check_path = check.file_path.strip().replace("\\", "/")
     refs = [ref.strip().replace("\\", "/") for ref in result.evidence_refs if str(ref).strip()]
     return any(check_path in ref or ref.startswith("focused_context:") for ref in refs)
+
+
+def _source_only_backstop_candidate(
+    *,
+    state: GraphState,
+    task: ReviewTask,
+    slot: Mapping[str, Any],
+    check: ReviewCheck,
+) -> tuple[CandidateFinding | None, str]:
+    if not _compiled_check_is_source_local(check, None, slot, set(_changed_task_files(state, task))):
+        return None, ""
+    check_blob = " ".join(
+        [
+            check.changed_code_anchor,
+            check.behavioral_question,
+            check.affected_invariant,
+            " ".join(check.required_evidence),
+            " ".join(check.report_criteria),
+        ]
+    )
+    if not any(marker in check_blob.lower() for marker in _SOURCE_ONLY_BACKSTOP_MARKERS):
+        return None, ""
+    family_hint = ""
+    if "return" in check_blob.lower() or "branch" in check_blob.lower():
+        family_hint = " missing return fall through"
+    candidate = {
+        "candidate_id": f"{check.check_id}:source-only",
+        "patch_task_id": task.id,
+        "file_path": check.file_path,
+        "line_start": check.line_start,
+        "line_end": check.line_end,
+        "content": check.behavioral_question or check.affected_invariant,
+        "failure_mode": f"{check.affected_invariant} {family_hint}".strip(),
+        "evidence_summary": check_blob,
+        "recommendation": "Fix the source-local behavior proven by static source evidence.",
+    }
+    verdict, rationale, attempt = source_only_verify_candidate(state, candidate)
+    if verdict != "verified" or attempt is None:
+        return None, ""
+    failure_class = str(attempt.failure_class or "")
+    if failure_class == "missing_return":
+        symptom = "missing_return"
+        operation = "dispatch"
+    elif failure_class == "syntax_error":
+        symptom = "crash"
+        operation = "contract"
+    elif "join" in rationale.lower():
+        symptom = "crash"
+        operation = "aggregation"
+    elif "tuple element 0" in rationale.lower() or "re.search" in rationale.lower():
+        symptom = "data_loss"
+        operation = "indexing"
+    else:
+        symptom = "contract_mismatch"
+        operation = "contract"
+    category = task.specialty if task.specialty in {"security", "logic", "performance", "general"} else "logic"
+    specialty = category if category in {"security", "logic", "performance", "general"} else "logic"
+    finding = CandidateFinding(
+        candidate_id=str(candidate["candidate_id"]),
+        patch_task_id=task.id,
+        file_path=check.file_path,
+        line_start=check.line_start,
+        line_end=check.line_end,
+        content=(check.behavioral_question or check.affected_invariant or rationale)[:600],
+        claim_type="defect",
+        failure_mode=rationale[:400],
+        evidence_summary=f"Source-only verifier proved: {rationale}"[:400],
+        required_context=[],
+        confidence=0.9,
+        suspected_category=category,  # type: ignore[arg-type]
+        reflection_specialties=[specialty],  # type: ignore[list-item]
+        feedback_type="defect_detection",
+        severity="medium",
+        recommendation="Fix the source-local behavior proven by static source evidence.",
+        behavioral_symptom=symptom,  # type: ignore[arg-type]
+        root_operation=operation,  # type: ignore[arg-type]
+    )
+    return finding, rationale
 
 
 def _normalize_executor_results(
@@ -1976,6 +2073,24 @@ def _normalize_executor_results(
             else:
                 warnings.append(f"executor_candidate_dropped_by_normalizer:{cid}")
                 result = result.model_copy(update={"candidate": None, "decision": "unsupported"})
+        if result.decision == "no_finding":
+            source_candidate, source_rationale = _source_only_backstop_candidate(
+                state=state,
+                task=task,
+                slot=slot,
+                check=check,
+            )
+            if source_candidate is not None:
+                warnings.append(f"executor_source_only_no_finding_overridden:{check.check_id}")
+                result = result.model_copy(
+                    update={
+                        "decision": "candidate",
+                        "candidate": source_candidate,
+                        "reportable_reason": source_rationale[:500],
+                        "suppressing_evidence": [],
+                        "warnings": list(result.warnings) + ["source_only_no_finding_overridden"],
+                    }
+                )
         if result.decision == "no_finding" and not _no_finding_has_strong_suppression(result, check):
             warnings.append(f"executor_weak_no_finding_downgraded:{check.check_id}")
             next_decision = "unsupported" if _check_budget_remaining(state, check) else "budget_exhausted"

@@ -696,6 +696,22 @@ def _optimization_without_impact(candidate: CandidateFinding) -> bool:
     )
 
 
+def _resource_claim_has_promotion_support(
+    candidate: CandidateFinding,
+    relevant_reports: Sequence[ReflectionReport],
+    *,
+    has_focused_context: bool,
+    revision_accepted: bool,
+    verifier_concrete: bool,
+    concrete_local_supported: bool,
+) -> bool:
+    if not _resource_oriented_candidate(candidate):
+        return True
+    if verifier_concrete or revision_accepted or has_focused_context or concrete_local_supported:
+        return True
+    return _accepted_local_source_supported_claim(candidate, relevant_reports)
+
+
 def _redirect_has_independent_support(
     candidate: CandidateFinding,
     raw_reports: Sequence[ReflectionReport],
@@ -873,6 +889,22 @@ def _verifier_concrete_behavior_verified(candidate_id: str, verifier_hints: Mapp
     return "mismatch" in final_rationale or "target file" in final_rationale
 
 
+def _verifier_evidence_extra(
+    candidate_id: str,
+    verifier_hints: Mapping[str, Any],
+    existing: str = "",
+) -> str:
+    if not _verifier_concrete_behavior_verified(candidate_id, verifier_hints):
+        return ""
+    hint = verifier_hints.get(candidate_id)
+    if not isinstance(hint, dict):
+        return ""
+    summary = str(hint.get("updated_evidence_summary") or hint.get("final_rationale") or "").strip()
+    if not summary or summary in existing:
+        return ""
+    return f"\n\nRuntime verifier evidence: {summary}"
+
+
 def _required_context_satisfied_by_verifier(
     candidate: CandidateFinding,
     candidate_id: str,
@@ -960,6 +992,7 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
 
         for candidate in candidates:
             candidate = candidate_with_behavioral_metadata(candidate)
+            verifier_verified_early = _verifier_concrete_behavior_verified(candidate.candidate_id, verifier_hints)
             claim_tier = classify_claim_tier(
                 candidate,
                 review_kb_context=review_kb_context_for_candidate(metadata, candidate),
@@ -996,13 +1029,13 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
             ) and not concrete_local_supported:
                 drop(candidate, "speculative_guard_without_concrete_regression")
                 continue
-            if _scope_claim_contradicted(state, candidate):
+            if not verifier_verified_early and _scope_claim_contradicted(state, candidate):
                 drop(candidate, "scope_claim_contradicted_by_code_evidence")
                 continue
-            if _branch_return_claim_contradicted(state, candidate):
+            if not verifier_verified_early and _branch_return_claim_contradicted(state, candidate):
                 drop(candidate, "branch_return_claim_contradicted_by_code_evidence")
                 continue
-            if _incomplete_claim_contradicted_by_code_evidence(state, candidate):
+            if not verifier_verified_early and _incomplete_claim_contradicted_by_code_evidence(state, candidate):
                 drop(candidate, "incomplete_claim_contradicted_by_code_evidence")
                 continue
             early_harness_error = _verifier_harness_error(candidate.candidate_id, verifier_hints)
@@ -1020,7 +1053,7 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
                 _candidate_depends_on_incomplete_evidence(candidate)
                 and not early_revision_accepted
                 and not _focused_hits_for_candidate(state, candidate.candidate_id)
-                and not _verifier_concrete_behavior_verified(candidate.candidate_id, verifier_hints)
+                and not verifier_verified_early
             ):
                 drop(candidate, "incomplete_evidence_without_followup")
                 continue
@@ -1232,6 +1265,11 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
                     feedback_type = _category_to_feedback(category)  # type: ignore[arg-type]
                     rev = revisions.get(candidate.candidate_id) or {}
                     evidence_extra = _revision_evidence_extra(candidate, rev)
+                    evidence_extra += _verifier_evidence_extra(
+                        candidate.candidate_id,
+                        verifier_hints,
+                        existing=evidence_extra,
+                    )
                     runtime_note = ""
                     if _verifier_harness_error(candidate.candidate_id, verifier_hints):
                         runtime_note = "\n\n(runtime unverified: verifier harness error)"
@@ -1332,6 +1370,18 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
             ):
                 drop(candidate, "optimization_without_concrete_impact")
                 continue
+            if not (
+                candidate.claim_type == "security_risk" and harness_error
+            ) and not _resource_claim_has_promotion_support(
+                candidate,
+                relevant_reports,
+                has_focused_context=has_focused_context,
+                revision_accepted=revision_accepted,
+                verifier_concrete=_verifier_concrete_behavior_verified(candidate.candidate_id, verifier_hints),
+                concrete_local_supported=concrete_local_supported,
+            ):
+                drop(candidate, "resource_risk_without_concrete_support")
+                continue
             if (
                 candidate.claim_type == "security_risk"
                 and harness_error
@@ -1424,6 +1474,11 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
             feedback_type = _category_to_feedback(category)  # type: ignore[arg-type]
             rev = revisions.get(candidate.candidate_id) or {}
             evidence_extra = _revision_evidence_extra(candidate, rev)
+            evidence_extra += _verifier_evidence_extra(
+                candidate.candidate_id,
+                verifier_hints,
+                existing=evidence_extra,
+            )
             if harness_error and revision_accepted and "runtime unverified" not in evidence_extra.lower():
                 evidence_extra += "\n\n(runtime unverified: verifier harness error)"
 

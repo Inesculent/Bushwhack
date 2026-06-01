@@ -77,6 +77,46 @@ def test_apply_verifier_policy_refuted_forces_reject() -> None:
     assert any("critique_revision_verifier_refuted" in w for w in warnings)
 
 
+def test_apply_verifier_policy_verified_forces_accept() -> None:
+    state: GraphState = {
+        "candidate_findings": [
+            CandidateFinding(
+                candidate_id="c1",
+                patch_task_id="1",
+                file_path="m.py",
+                line_start=1,
+                line_end=2,
+                content="branch is incomplete",
+                claim_type="defect",
+                failure_mode="SyntaxError in changed source",
+                evidence_summary="source-only proof",
+                recommendation="complete the branch",
+                reflection_specialties=["logic"],
+                suspected_category="logic",
+            )
+        ],
+        "metadata": {
+            "verifier_hints": {
+                "c1": {
+                    "verdict": "verified",
+                    "verification_scope": "concrete_behavior",
+                    "harness_error": False,
+                    "product_verified": True,
+                    "confidence": "clean_product_signal",
+                    "updated_evidence_summary": "Runtime verifier: verified syntax error",
+                }
+            }
+        },
+    }
+    rows, warnings = _apply_verifier_policy_to_revisions(
+        [{"candidate_id": "c1", "verdict": "reject", "updated_evidence_summary": "needs code"}],
+        state,
+    )
+    assert rows[0]["verdict"] == "accept"
+    assert "verified syntax error" in rows[0]["updated_evidence_summary"]
+    assert any("critique_revision_verifier_verified:c1" in w for w in warnings)
+
+
 def test_apply_verifier_policy_harness_is_ignored() -> None:
     state: GraphState = {
         "metadata": {

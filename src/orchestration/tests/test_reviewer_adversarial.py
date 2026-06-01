@@ -882,6 +882,175 @@ def test_adversarial_cleanup_promotes_needs_verification_with_runtime_verified()
     assert "verifier_advisory" in life
 
 
+def test_adversarial_cleanup_product_verified_skips_incomplete_contradiction() -> None:
+    node = make_adversarial_cleanup_node()
+    cand = CandidateFinding(
+        candidate_id="t1:verified-incomplete",
+        patch_task_id="t1",
+        file_path="src/handler.py",
+        line_start=1,
+        line_end=5,
+        content="The 'Mode B' branch appears truncated in the provided evidence.",
+        claim_type="defect",
+        failure_mode="Incomplete branch implementation causes a syntax error.",
+        evidence_summary="The branch lacks implementation and needs verification.",
+        suspected_category="logic",
+        reflection_specialties=["logic"],
+        recommendation="Complete the branch body.",
+        behavioral_symptom="crash",
+        root_operation="contract",
+    )
+    reports = [
+        ReflectionReport(
+            candidate_id=cand.candidate_id,
+            reflector_specialty="logic",
+            verdict="accept",
+            rationale="The source-local claim is concrete.",
+        )
+    ]
+    state = {
+        "run_id": "t",
+        "candidate_findings": [cand],
+        "reflection_reports": reports,
+        "metadata": {
+            "critique_pipeline": {
+                "by_task": {
+                    "t1": {
+                        "task_evidence": {
+                            "file_contents": {
+                                "src/handler.py": (
+                                    "def execute(mode):\n"
+                                    "    if mode == 'Mode B':\n"
+                                    "        return 'ok'\n"
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            "verifier_hints": {
+                cand.candidate_id: {
+                    "verdict": "verified",
+                    "verification_scope": "concrete_behavior",
+                    "harness_error": False,
+                    "product_verified": True,
+                    "updated_evidence_summary": "Runtime verifier: verified syntax error.",
+                }
+            },
+        },
+    }
+
+    out = node(state)  # type: ignore[arg-type]
+
+    assert len(out["findings"]) == 1
+    assert "Runtime verifier evidence" in out["findings"][0].content
+    life = out["metadata"]["adversarial_cleanup"]["candidate_lifecycle"][cand.candidate_id]
+    assert life["decision"] == "promoted"
+
+
+def test_adversarial_cleanup_harness_error_does_not_skip_incomplete_contradiction() -> None:
+    node = make_adversarial_cleanup_node()
+    cand = CandidateFinding(
+        candidate_id="t1:harness-incomplete",
+        patch_task_id="t1",
+        file_path="src/handler.py",
+        line_start=1,
+        line_end=5,
+        content="The 'Mode B' branch appears truncated in the provided evidence.",
+        claim_type="defect",
+        failure_mode="Incomplete branch implementation causes a syntax error.",
+        evidence_summary="The branch lacks implementation and needs verification.",
+        suspected_category="logic",
+        reflection_specialties=["logic"],
+        recommendation="Complete the branch body.",
+        behavioral_symptom="crash",
+        root_operation="contract",
+    )
+    reports = [
+        ReflectionReport(
+            candidate_id=cand.candidate_id,
+            reflector_specialty="logic",
+            verdict="accept",
+            rationale="The source-local claim is concrete.",
+        )
+    ]
+
+    out = node(
+        {
+            "run_id": "t",
+            "candidate_findings": [cand],
+            "reflection_reports": reports,
+            "metadata": {
+                "critique_pipeline": {
+                    "by_task": {
+                        "t1": {
+                            "task_evidence": {
+                                "file_contents": {
+                                    "src/handler.py": (
+                                        "def execute(mode):\n"
+                                        "    if mode == 'Mode B':\n"
+                                        "        return 'ok'\n"
+                                    )
+                                }
+                            }
+                        }
+                    }
+                },
+                "verifier_hints": {
+                    cand.candidate_id: {
+                        "verdict": "verified",
+                        "verification_scope": "concrete_behavior",
+                        "harness_error": True,
+                        "product_verified": False,
+                    }
+                },
+            },
+        }
+    )
+
+    assert out["findings"] == []
+    life = out["metadata"]["adversarial_cleanup"]["candidate_lifecycle"][cand.candidate_id]
+    assert life["reason"] in {
+        "incomplete_claim_contradicted_by_code_evidence",
+        "incomplete_evidence_without_followup",
+    }
+
+
+def test_adversarial_cleanup_drops_resource_risk_without_concrete_support() -> None:
+    node = make_adversarial_cleanup_node()
+    cand = CandidateFinding(
+        candidate_id="t1:resource-risk",
+        patch_task_id="t1",
+        file_path="src/handler.py",
+        line_start=1,
+        line_end=5,
+        content="The changed handler may do unbounded work.",
+        claim_type="defect",
+        failure_mode="Resource use may grow without a bound.",
+        evidence_summary="The operation is potentially expensive but no concrete failure path is shown.",
+        required_context=["Confirm a concrete impact path."],
+        suspected_category="logic",
+        reflection_specialties=["logic"],
+        recommendation="Consider bounding the work.",
+        behavioral_symptom="unbounded_work",
+        root_operation="resource_use",
+    )
+    reports = [
+        ReflectionReport(
+            candidate_id=cand.candidate_id,
+            reflector_specialty="logic",
+            verdict="accept",
+            rationale="The operation could be expensive.",
+        )
+    ]
+
+    out = node({"run_id": "t", "candidate_findings": [cand], "reflection_reports": reports})
+
+    assert out["findings"] == []
+    life = out["metadata"]["adversarial_cleanup"]["candidate_lifecycle"][cand.candidate_id]
+    assert life["reason"] == "resource_risk_without_concrete_support"
+
+
 def test_adversarial_cleanup_drops_tier2_security_without_focused_hits() -> None:
     """Architectural security claims still require gathered context when not source-local."""
     node = make_adversarial_cleanup_node()

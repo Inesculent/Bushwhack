@@ -534,6 +534,19 @@ def _apply_verifier_policy_to_revisions(
         if harness:
             warnings.append(f"critique_revision_verifier_ignored:{cid}:harness")
         elif (
+            v_verdict == "verified"
+            and scope == "concrete_behavior"
+            and confidence == "clean_product_signal"
+            and bool(hint.get("product_verified"))
+            and verdict != "accept"
+        ):
+            note = str(hint.get("updated_evidence_summary") or hint.get("final_rationale") or "")
+            row["verdict"] = "accept"
+            row["updated_evidence_summary"] = (
+                f"{summary} {note or 'Runtime verifier verified concrete_behavior claim.'}".strip()
+            )
+            warnings.append(f"critique_revision_verifier_verified:{cid}")
+        elif (
             v_verdict == "refuted"
             and scope == "concrete_behavior"
             and confidence == "clean_product_signal"

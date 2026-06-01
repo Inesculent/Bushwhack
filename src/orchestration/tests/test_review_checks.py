@@ -1289,6 +1289,149 @@ def test_review_check_executor_downgrades_weak_no_finding_to_budget_exhausted(mo
     assert "review_check_budget_exhausted" in result.warnings
 
 
+def test_review_check_executor_source_only_overrides_missing_return_no_finding(monkeypatch) -> None:
+    check = _check(
+        behavioral_question="Does execute have a missing return fallthrough?",
+        affected_invariant="missing return fallthrough",
+        required_evidence=["changed execute implementation"],
+        report_criteria=["A changed path falls through without returning."],
+    )
+    output = ReviewCheckExecutorOutput(
+        results=[
+            ReviewCheckResult(
+                check_id=check.check_id,
+                patch_task_id="review-logic",
+                decision="no_finding",
+                evidence_refs=["src/app.py:1"],
+                suppressing_evidence=["All branches return and an else fallback exists."],
+            )
+        ]
+    )
+    monkeypatch.setattr(
+        "src.orchestration.nodes.application.review_checks.Models.worker",
+        lambda *_args, **_kwargs: _FakeLLM({"parsed": output, "raw": _Raw()}),
+    )
+    state = _state(
+        review_checks=[check],
+        metadata={
+            **_state()["metadata"],
+            "critique_pipeline": {
+                "by_task": {
+                    "review-logic": {
+                        "task_evidence": {
+                            "file_contents": {
+                                "src/app.py": "def execute(mode):\n    if mode == 'A':\n        return (True,)\n"
+                            }
+                        }
+                    }
+                }
+            },
+        },
+    )
+
+    out = make_review_check_executor_node()(state)  # type: ignore[arg-type]
+
+    result = out["review_check_results"][0]
+    assert result.decision == "candidate"
+    assert result.candidate is not None
+    assert result.candidate.behavioral_symptom == "missing_return"
+    assert "source_only_no_finding_overridden" in result.warnings
+
+
+def test_review_check_executor_source_only_overrides_syntax_no_finding(monkeypatch) -> None:
+    check = _check(
+        behavioral_question="Does the changed file avoid syntax parse errors?",
+        affected_invariant="syntax parse validity",
+        required_evidence=["changed source parses"],
+        report_criteria=["The changed source does not parse."],
+    )
+    output = ReviewCheckExecutorOutput(
+        results=[
+            ReviewCheckResult(
+                check_id=check.check_id,
+                patch_task_id="review-logic",
+                decision="no_finding",
+                evidence_refs=["src/app.py:1"],
+                suppressing_evidence=["The changed file parses successfully."],
+            )
+        ]
+    )
+    monkeypatch.setattr(
+        "src.orchestration.nodes.application.review_checks.Models.worker",
+        lambda *_args, **_kwargs: _FakeLLM({"parsed": output, "raw": _Raw()}),
+    )
+    state = _state(
+        review_checks=[check],
+        metadata={
+            **_state()["metadata"],
+            "critique_pipeline": {
+                "by_task": {
+                    "review-logic": {
+                        "task_evidence": {
+                            "file_contents": {"src/app.py": "def execute():\n    if True:\n"}
+                        }
+                    }
+                }
+            },
+        },
+    )
+
+    out = make_review_check_executor_node()(state)  # type: ignore[arg-type]
+
+    result = out["review_check_results"][0]
+    assert result.decision == "candidate"
+    assert result.candidate is not None
+    assert result.candidate.behavioral_symptom == "crash"
+    assert "SyntaxError" in result.reportable_reason
+
+
+def test_review_check_executor_source_only_overrides_removed_import_no_finding(monkeypatch) -> None:
+    check = _check(
+        behavioral_question="Does the changed import removal leave all names defined?",
+        affected_invariant="removed import is not still used",
+        required_evidence=["removed imports are not referenced"],
+        report_criteria=["A removed import name is still used."],
+    )
+    output = ReviewCheckExecutorOutput(
+        results=[
+            ReviewCheckResult(
+                check_id=check.check_id,
+                patch_task_id="review-logic",
+                decision="no_finding",
+                evidence_refs=["src/app.py:1"],
+                suppressing_evidence=["No removed import names are still referenced."],
+            )
+        ]
+    )
+    monkeypatch.setattr(
+        "src.orchestration.nodes.application.review_checks.Models.worker",
+        lambda *_args, **_kwargs: _FakeLLM({"parsed": output, "raw": _Raw()}),
+    )
+    state = _state(
+        review_checks=[check],
+        git_diff="diff --git a/src/app.py b/src/app.py\n+++ b/src/app.py\n@@\n-import time\n",
+        metadata={
+            **_state()["metadata"],
+            "critique_pipeline": {
+                "by_task": {
+                    "review-logic": {
+                        "task_evidence": {
+                            "file_contents": {"src/app.py": "def execute():\n    return time.sleep(1)\n"}
+                        }
+                    }
+                }
+            },
+        },
+    )
+
+    out = make_review_check_executor_node()(state)  # type: ignore[arg-type]
+
+    result = out["review_check_results"][0]
+    assert result.decision == "candidate"
+    assert result.candidate is not None
+    assert "time" in result.reportable_reason
+
+
 def test_review_check_executor_batches_checks_and_preserves_results(monkeypatch) -> None:
     checks = [_check(check_id=f"review-logic:check:{idx}") for idx in range(1, 5)]
     outputs = [
