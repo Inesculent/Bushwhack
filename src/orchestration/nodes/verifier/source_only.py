@@ -109,6 +109,119 @@ def _attempt(reason: str, *, failure_class: str = "wrong_output") -> VerifierAtt
     )
 
 
+_MISSING_RETURN_MARKERS = (
+    "missing return",
+    "missing a return",
+    "no return",
+    "does not return",
+    "doesn't return",
+    "implicit none",
+    "falls through",
+    "fall through",
+)
+
+_STRUCTURED_EXTRACTION_MARKERS = (
+    "regex",
+    "extract",
+    "all matches",
+    "all groups",
+    "first match",
+    "first group",
+    "data loss",
+    "structured",
+)
+
+
+def _candidate_blob(candidate: Dict[str, Any]) -> str:
+    return " ".join(
+        str(candidate.get(key) or "")
+        for key in ("content", "failure_mode", "evidence_summary", "recommendation")
+    ).lower()
+
+
+def _node_span(node: ast.AST) -> tuple[int, int]:
+    start = int(getattr(node, "lineno", 1) or 1)
+    end = int(getattr(node, "end_lineno", start) or start)
+    return start, end
+
+
+def _target_functions(tree: ast.AST, candidate: Dict[str, Any]) -> list[ast.FunctionDef | ast.AsyncFunctionDef]:
+    line_start = int(candidate.get("line_start") or 0)
+    blob = _candidate_blob(candidate)
+    funcs: list[ast.FunctionDef | ast.AsyncFunctionDef] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        start, end = _node_span(node)
+        if line_start and start <= line_start <= end:
+            funcs.append(node)
+            continue
+        if re.search(rf"(?<![A-Za-z0-9_]){re.escape(node.name.lower())}(?![A-Za-z0-9_])", blob):
+            funcs.append(node)
+    return funcs
+
+
+def _stmt_guarantees_exit(stmt: ast.stmt) -> bool:
+    if isinstance(stmt, (ast.Return, ast.Raise)):
+        return True
+    if isinstance(stmt, ast.If):
+        return bool(stmt.body and stmt.orelse) and _block_guarantees_exit(stmt.body) and _block_guarantees_exit(stmt.orelse)
+    if isinstance(stmt, ast.Try):
+        return bool(stmt.body) and _block_guarantees_exit(stmt.body) and all(
+            _block_guarantees_exit(handler.body) for handler in stmt.handlers
+        )
+    return False
+
+
+def _block_guarantees_exit(stmts: Iterable[ast.stmt]) -> bool:
+    for stmt in stmts:
+        if _stmt_guarantees_exit(stmt):
+            return True
+    return False
+
+
+def _source_segment(source: str, node: ast.AST) -> str:
+    lines = source.splitlines()
+    start, end = _node_span(node)
+    return "\n".join(lines[start - 1 : end])
+
+
+def _source_only_missing_return(
+    source: str,
+    tree: ast.AST,
+    candidate: Dict[str, Any],
+) -> tuple[str, VerifierAttemptRecord | None]:
+    blob = _candidate_blob(candidate)
+    if not any(marker in blob for marker in _MISSING_RETURN_MARKERS):
+        return "", None
+    for func in _target_functions(tree, candidate):
+        if not _block_guarantees_exit(func.body):
+            reason = f"{func.name} has a reachable path that can fall through without an explicit return"
+            return reason, _attempt(reason, failure_class="missing_return")
+    return "", None
+
+
+def _source_only_structured_extraction(
+    source: str,
+    tree: ast.AST,
+    candidate: Dict[str, Any],
+) -> tuple[str, VerifierAttemptRecord | None]:
+    blob = _candidate_blob(candidate)
+    if not ("regex" in blob and any(marker in blob for marker in _STRUCTURED_EXTRACTION_MARKERS)):
+        return "", None
+    for func in _target_functions(tree, candidate):
+        text = _source_segment(source, func).lower()
+        all_matches_claim = "all matches" in blob or "findall" in blob or "finditer" in blob
+        all_groups_claim = "all groups" in blob or "group tuple" in blob or "groups" in blob
+        if all_matches_claim and "re.search" in text and "re.findall" not in text and "re.finditer" not in text:
+            reason = f"{func.name} uses re.search for an all-matches regex extraction claim"
+            return reason, _attempt(reason)
+        if all_groups_claim and ".group(1)" in text and ".groups(" not in text:
+            reason = f"{func.name} extracts only group(1) for an all-groups regex extraction claim"
+            return reason, _attempt(reason)
+    return "", None
+
+
 def source_only_verify_candidate(
     state: Dict[str, Any],
     candidate: Dict[str, Any],
@@ -133,5 +246,13 @@ def source_only_verify_candidate(
                 f"{fp} removed import(s) still used by name: {', '.join(still_used[:8])}"
             )
             return "verified", reason, _attempt(reason)
+
+    reason, attempt = _source_only_missing_return(source, tree, candidate)
+    if attempt is not None:
+        return "verified", reason, attempt
+
+    reason, attempt = _source_only_structured_extraction(source, tree, candidate)
+    if attempt is not None:
+        return "verified", reason, attempt
 
     return "", "", None

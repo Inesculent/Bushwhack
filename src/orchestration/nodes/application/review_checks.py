@@ -124,7 +124,7 @@ _CODE_FILE_EXTENSIONS = {
     ".scala",
 }
 _GENERIC_QUERY_TOKENS = {"changed", "code", "behavior", "repository", "evidence", "context"}
-_MAX_CHECKS_PER_TASK = 10
+_MAX_CHECKS_PER_TASK = 12
 _EXECUTOR_BATCH_SIZE = 3
 _DIMENSION_RELEVANCE_KEYWORDS = {
     "contract completeness": ("contract", "return", "return_types", "declared", "schema", "required", "optional"),
@@ -1104,6 +1104,20 @@ def _dedupe_checks(checks: Iterable[ReviewCheck]) -> List[ReviewCheck]:
     return out
 
 
+def _prioritize_compiled_checks(checks: Iterable[ReviewCheck]) -> List[ReviewCheck]:
+    """Keep focused model/task checks ahead of broad deterministic coverage checks."""
+
+    def rank(check: ReviewCheck) -> tuple[int, int]:
+        cid = check.check_id
+        if ":coverage:" in cid or ":surface-coverage:" in cid:
+            return (2, 0)
+        if ":surface:" in cid:
+            return (1, 0)
+        return (0, 0 if check.surface_ids else 1)
+
+    return [check for _, check in sorted(enumerate(checks), key=lambda item: (*rank(item[1]), item[0]))]
+
+
 def _normalize_compiled_checks(
     state: GraphState,
     task: ReviewTask,
@@ -1229,7 +1243,7 @@ def make_review_check_compiler_node(
                 llm_tokens = traced.tokens
                 llm_trace = traced.trace_records
                 llm_checks = _normalize_compiled_checks(state, task, response.checks)
-                checks = _dedupe_checks([*checks, *llm_checks])
+                checks = _prioritize_compiled_checks(_dedupe_checks([*llm_checks, *checks]))
                 summary = response.summary
                 warnings.extend(response.warnings)
             except Exception as exc:  # noqa: BLE001

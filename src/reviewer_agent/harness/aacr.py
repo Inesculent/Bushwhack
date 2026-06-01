@@ -74,6 +74,14 @@ def _slug_for_pr_url(pr_url: str) -> str:
     return f"{owner or 'unknown'}__{name or 'unknown'}__pr{number}"
 
 
+def _canonical_pr_key(pr_url: str) -> str:
+    repo = (parse_repo_from_pr_url(pr_url) or "").strip().lower()
+    number = parse_pr_number(pr_url)
+    if not repo or number is None:
+        return pr_url.strip().rstrip("/").lower()
+    return f"{repo}#{number}"
+
+
 def _graph_thread_id(run_id: str, pr_url: str, snapshot_data: Optional[Dict[str, Any]]) -> str:
     """LangGraph / Redis thread id for this PR (matches checkpoint cleanup keys)."""
     slug = _slug_for_pr_url(pr_url)
@@ -256,7 +264,15 @@ def _load_positive_samples_by_pr(path: Path) -> dict[str, list[dict[str, Any]]]:
             )
         if labels:
             out[pr_url] = labels
+            out.setdefault(_canonical_pr_key(pr_url), labels)
     return out
+
+
+def _positive_labels_for_pr(
+    positive_samples_by_pr: dict[str, list[dict[str, Any]]],
+    pr_url: str,
+) -> list[dict[str, Any]]:
+    return positive_samples_by_pr.get(pr_url, positive_samples_by_pr.get(_canonical_pr_key(pr_url), []))
 
 
 def _paths_from_raw_stage(raw: dict[str, Any], final_findings: Iterable[Any]) -> dict[str, set[str]]:
@@ -938,7 +954,7 @@ def run_aacr_reviewer(
     coverage_records: List[dict[str, Any]] = []
 
     for idx, pr_url in enumerate(selected_pr_urls, start=1):
-        positive_labels = positive_samples_by_pr.get(pr_url, [])
+        positive_labels = _positive_labels_for_pr(positive_samples_by_pr, pr_url)
         slug = _slug_for_pr_url(pr_url)
         pr_started_at = _utc_now_iso()
         row: dict[str, Any] = {

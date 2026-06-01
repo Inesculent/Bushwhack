@@ -27,11 +27,13 @@ from src.orchestration.nodes.application.review_checks import (
     make_review_check_validator_node,
     validate_review_check,
 )
-from src.orchestration.context.surface_ledger import build_migration_invariants_from_diff
+from src.orchestration.context.surface_ledger import build_migration_invariants_from_diff, surface_ids_for_task
 from src.reviewer_agent.harness import aacr
 from src.reviewer_agent.harness.aacr import (
     _coverage_audit_for_pr,
     _github_mcp_preflight,
+    _load_positive_samples_by_pr,
+    _positive_labels_for_pr,
     _review_check_metrics,
     _write_coverage_audit,
     _write_raw,
@@ -348,6 +350,141 @@ def test_surface_invariant_checks_are_compiled_before_fallback(tmp_path) -> None
     assert compiled[0]["check_id"] == "review-logic:surface:1"
     assert compiled[0]["surface_ids"] == ["surface:handle"]
     assert compiled[0]["line_start"] == 7
+
+
+def test_surface_ids_for_task_matches_spaced_camel_case_structured_extraction() -> None:
+    regex = ReviewSurface(
+        surface_id="surface:regex",
+        name="RegexExtract",
+        kind="class",
+        file_path="comfy_extras/nodes_string.py",
+        line_start=252,
+        line_end=330,
+        confidence=0.95,
+    )
+    concat = ReviewSurface(
+        surface_id="surface:concat",
+        name="StringConcatenate",
+        kind="class",
+        file_path="comfy_extras/nodes_string.py",
+        line_start=20,
+        line_end=40,
+        confidence=0.95,
+    )
+    compare = ReviewSurface(
+        surface_id="surface:compare",
+        name="StringCompare",
+        kind="class",
+        file_path="comfy_extras/nodes_string.py",
+        line_start=210,
+        line_end=250,
+        confidence=0.95,
+    )
+    task = ReviewTask(
+        id="review-logic",
+        title="Regex Extract structured extraction",
+        description="Check all matches and group extraction behavior.",
+        target_files=["comfy_extras/nodes_string.py"],
+        specialty="logic",
+    )
+
+    assert surface_ids_for_task(task, [concat, compare, regex]) == ["surface:regex"]
+
+    compare_task = task.model_copy(
+        update={
+            "title": "String Compare return contract",
+            "description": "Check missing return behavior for unexpected mode values.",
+        }
+    )
+    assert surface_ids_for_task(compare_task, [concat, compare, regex]) == ["surface:compare"]
+
+
+def test_review_check_compiler_keeps_focused_llm_check_ahead_of_surface_cap(monkeypatch, tmp_path) -> None:
+    settings = Settings(snapshot_base_path=str(tmp_path))
+    surfaces = [
+        ReviewSurface(
+            surface_id=f"surface:s{i}",
+            name=f"Surface{i}",
+            kind="class",
+            file_path="comfy_extras/nodes_string.py",
+                line_start=(i + 1) * 10,
+                line_end=(i + 1) * 10 + 3,
+            confidence=0.95,
+        )
+        for i in range(15)
+    ]
+    regex = ReviewSurface(
+        surface_id="surface:regex",
+        name="RegexExtract",
+        kind="class",
+        file_path="comfy_extras/nodes_string.py",
+        line_start=252,
+        line_end=330,
+        confidence=0.95,
+    )
+    spec = BehavioralSpec(
+        intent_summary="many surfaces",
+        surfaces=[regex, *surfaces],
+        surface_invariants=[
+            SurfaceInvariant(
+                surface_id=surface.surface_id,
+                dimension="changed-surface behavior",
+                expected_behavior=f"{surface.name} preserves behavior.",
+                required_evidence=[f"changed {surface.name} implementation"],
+            )
+            for surface in [regex, *surfaces]
+        ],
+    )
+    ref, _ = BehavioralSpecStore(settings).write("r1", spec)
+    focused = _check(
+        check_id="review-logic:regexextract-tuple-indexing",
+        file_path="comfy_extras/nodes_string.py",
+        line_start=252,
+        line_end=330,
+        changed_code_anchor="RegexExtract",
+        surface_ids=[regex.surface_id],
+        affected_invariant="RegexExtract preserves group tuple extraction.",
+    )
+    output = ReviewCheckCompilerOutput(summary="compiled", checks=[focused])
+    monkeypatch.setattr(
+        "src.orchestration.nodes.application.review_checks.Models.worker",
+        lambda *_args, **_kwargs: _FakeLLM({"parsed": output, "raw": _Raw()}),
+    )
+    task = ReviewTask(
+        id="review-logic",
+        title="Regex Extract structured extraction",
+        description="Check RegexExtract all matches and group extraction.",
+        target_files=["comfy_extras/nodes_string.py"],
+        specialty="logic",
+        surface_ids=[surface.surface_id for surface in [regex, *surfaces]],
+    )
+    state = _state(
+        behavioral_spec_ref=ref,
+        task_registry={task.id: task},
+        git_diff="diff --git a/comfy_extras/nodes_string.py b/comfy_extras/nodes_string.py\n+++ b/comfy_extras/nodes_string.py\n@@\n+class RegexExtract:\n+    pass\n",
+        metadata={
+            **_state()["metadata"],
+            "mental_model": {
+                "surface_ledger": [surface.model_dump(mode="json") for surface in [regex, *surfaces]],
+            },
+            "critique_pipeline": {
+                "by_task": {
+                    "review-logic": {
+                        "direct_context": "class RegexExtract:\n    pass\n",
+                        "coverage_obligations": [],
+                    }
+                }
+            },
+        },
+    )
+
+    out = make_review_check_compiler_node(settings=settings)(state)  # type: ignore[arg-type]
+
+    task_meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
+    compiled_ids = [check["check_id"] for check in task_meta["compiled_checks"]]
+    assert len(compiled_ids) == 12
+    assert compiled_ids[0] == "review-logic:regexextract-tuple-indexing"
+    assert task_meta["compiler_coverage_floor"]["trimmed_existing_check_ids"]
 
 
 def test_migration_invariants_capture_vllm_style_caller_reliance() -> None:
@@ -740,9 +877,9 @@ def test_review_check_compiler_coverage_floor_respects_cap(monkeypatch) -> None:
     out = make_review_check_compiler_node()(state)  # type: ignore[arg-type]
 
     floor = out["metadata"]["review_checks"]["by_task"]["review-logic"]["compiler_coverage_floor"]
-    assert out["metadata"]["review_checks"]["by_task"]["review-logic"]["compiled_count"] == 10
-    assert len(floor["added_checks"]) == 1
-    assert len(floor["skipped_due_to_cap"]) == 2
+    assert out["metadata"]["review_checks"]["by_task"]["review-logic"]["compiled_count"] == 12
+    assert len(floor["added_checks"]) == 3
+    assert len(floor["skipped_due_to_cap"]) == 0
 
 
 def test_review_check_validator_moves_only_valid_checks_to_state() -> None:
@@ -1442,3 +1579,32 @@ def test_coverage_audit_reports_stage_coverage_and_writes_json(tmp_path) -> None
     assert record["summary"]["compiled_path_count"] == 1
     assert record["summary"]["candidate_path_count"] == 1
     assert payload["summary"]["positive_path_count"] == 2
+
+
+def test_positive_sample_lookup_uses_canonical_pr_url(tmp_path) -> None:
+    path = tmp_path / "positive_samples.json"
+    path.write_text(
+        json.dumps(
+            [
+                {
+                    "githubPrUrl": "https://github.com/comfyanonymous/ComfyUI/pull/7952",
+                    "comments": [
+                        {
+                            "path": "comfy_extras/nodes_string.py",
+                            "from_line": 252,
+                            "to_line": 330,
+                        }
+                    ],
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    labels_by_pr = _load_positive_samples_by_pr(path)
+
+    labels = _positive_labels_for_pr(
+        labels_by_pr,
+        "https://github.com/ComfyAnonymous/ComfyUI/pull/7952/",
+    )
+
+    assert labels[0]["path"] == "comfy_extras/nodes_string.py"

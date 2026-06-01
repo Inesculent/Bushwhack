@@ -1,6 +1,6 @@
 # Test generator (self-healing verifier)
 
-Generate a **standalone** Python script that tries to reproduce or refute the candidate finding using the repository at `/repo` on `sys.path`.
+Generate a **standalone** Python script that tries to reproduce or refute the candidate finding using the repository at `{repo_root}` on `sys.path`.
 
 ## Candidate (JSON)
 
@@ -29,7 +29,7 @@ __HEAVY_DEP_PRELUDE__
 When mock_heavy_deps is **disabled**, do not mock torch/PIL unless an import actually fails.
 
 2. **Repo-agnostic imports (required)**
-   - Use the repo root hint `{repo_root}` when adding to `sys.path`. Do **not** hardcode `/repo`.
+   - Use the repo root hint `{repo_root}` when adding to `sys.path`. Do **not** hardcode any other repository root.
    - Prefer loading the cited target file by path with `importlib.util.spec_from_file_location` when the repro only needs one file or one class/function. Avoid importing package roots unless the target code cannot run by path.
    - Before calling target code: use `inspect.signature` and/or read `INPUT_TYPES` (or equivalent) from the **actual** module under test.
    - Import the **smallest** surface needed (one class or function), not whole package graphs when avoidable.
@@ -49,7 +49,7 @@ When mock_heavy_deps is **disabled**, do not mock torch/PIL unless an import act
 
    For wrong-result / data-loss claims, prefer small inline repros with **assertions** on outputs (e.g. `re.findall`, calling the changed function), not only try/except for crashes.
 
-6. Add `{repo_root}` (or `/exec_*` workspace path when provided) to `sys.path` before importing target modules. Do not rely on symlinking empty `/workspace` to `/repo`.
+6. Add `{repo_root}` to `sys.path` before importing target modules. Do not rely on symlinking an empty workspace to another repository path.
 
 7. No network, no writes outside the repo workspace and temp stdout/stderr. Complete within `{timeout_seconds}` seconds.
 

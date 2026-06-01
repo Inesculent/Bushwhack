@@ -686,6 +686,55 @@ def test_build_test_generator_prompt_escapes_python_braces() -> None:
     assert "inspect.signature" in text
 
 
+def test_build_test_generator_prompt_uses_execution_workspace_root() -> None:
+    from src.orchestration.nodes.verifier.test_generator import build_test_generator_prompt
+
+    text = build_test_generator_prompt(
+        candidate={"file_path": "pkg/x.py", "line_start": 1, "line_end": 3, "failure_mode": "x"},
+        focused_context_snippets="ctx",
+        git_diff_excerpt="diff",
+        retry_feedback="",
+        mock_heavy_deps=False,
+        timeout_seconds=60,
+        repo_root="/verify_exec",
+    )
+
+    assert "repository at `/verify_exec`" in text
+    assert "hardcode `/repo`" not in text
+
+
+def test_verifier_preflight_uses_execution_workspace_prompt_root() -> None:
+    from src.config import Settings
+    from src.orchestration import verifier_graph
+
+    settings = Settings(verifier_enabled=False, verifier_use_execution_workspace=True)
+    state = _minimal_state(
+        verifier_candidate={
+            "candidate_id": "c1",
+            "file_path": "pkg/x.py",
+            "failure_mode": "wrong output from concrete call",
+        }
+    )
+
+    with patch("src.orchestration.verifier_graph.get_settings", return_value=settings):
+        out = verifier_graph.verifier_preflight_node(state)
+
+    assert out["verifier_repo_root"] == "/verify_exec"
+
+
+def test_heavy_dep_prelude_supports_package_style_imports() -> None:
+    from src.orchestration.nodes.verifier.harness_stubs import HEAVY_DEP_STUB_PRELUDE
+
+    namespace: dict[str, object] = {}
+    exec(
+        HEAVY_DEP_STUB_PRELUDE
+        + "\nimport torch.utils\nfrom PIL.PngImagePlugin import PngInfo\ncreated = PngInfo()\n",
+        namespace,
+    )
+
+    assert namespace["created"] is not None
+
+
 def test_build_retry_feedback_includes_error_class_and_prior_summary() -> None:
     prior = VerifierAttemptRecord(
         attempt_number=1,

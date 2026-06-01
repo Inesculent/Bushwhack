@@ -496,14 +496,26 @@ def surface_by_id(ledger: Iterable[ReviewSurface]) -> dict[str, ReviewSurface]:
 
 def surface_ids_for_text(text: str, ledger: Sequence[ReviewSurface]) -> List[str]:
     found: List[str] = []
+    normalized_text = _normalized_surface_mention(text)
     for surface in ledger:
         if surface.surface_id in text:
             found.append(surface.surface_id)
             continue
         pattern = rf"(?<![A-Za-z0-9_]){re.escape(surface.name)}(?![A-Za-z0-9_])"
-        if any(not _surface_mention_is_negated(text, match.start()) for match in re.finditer(pattern, text)):
+        matches = list(re.finditer(pattern, text))
+        if matches:
+            if any(not _surface_mention_is_negated(text, match.start()) for match in matches):
+                found.append(surface.surface_id)
+            continue
+        normalized_name = _normalized_surface_mention(surface.name)
+        if normalized_name and normalized_name in normalized_text:
             found.append(surface.surface_id)
     return _dedupe(found)
+
+
+def _normalized_surface_mention(text: str) -> str:
+    spaced = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", text or "")
+    return " ".join(re.sub(r"[^A-Za-z0-9]+", " ", spaced).lower().split())
 
 
 def _surface_mention_is_negated(text: str, start_index: int) -> bool:

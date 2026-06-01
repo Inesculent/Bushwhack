@@ -493,6 +493,45 @@ def test_adversarial_cleanup_promotes_on_unanimous_accept() -> None:
     assert isinstance(out["findings"][0], ReviewFinding)
 
 
+def test_adversarial_cleanup_does_not_drop_qualified_module_recommendation() -> None:
+    node = make_adversarial_cleanup_node()
+    cand = CandidateFinding(
+        candidate_id="t1:c1",
+        patch_task_id="t1",
+        file_path="src/x.py",
+        line_start=1,
+        line_end=2,
+        content="class PathNode returns the wrong normalized path",
+        claim_type="defect",
+        failure_mode="The changed branch returns a relative path where callers expect a normalized absolute path.",
+        evidence_summary="The diff returns the joined path string without normalizing it first.",
+        suspected_category="logic",
+        recommendation="Resolve with os.path.realpath and compare against folder_paths.get_input_directory().",
+    )
+    reports = [
+        ReflectionReport(
+            candidate_id=cand.candidate_id,
+            reflector_specialty=spec,
+            verdict="accept",
+            rationale="concrete defect",
+        )
+        for spec in ("security", "logic", "performance", "general")
+    ]
+
+    out = node(
+        {
+            "run_id": "t",
+            "candidate_findings": [cand],
+            "reflection_reports": reports,
+            "metadata": {},
+        }
+    )
+
+    assert len(out["findings"]) == 1
+    cleanup = out["metadata"]["adversarial_cleanup"]
+    assert cleanup["recommendation_reference_advisories"] == [cand.candidate_id]
+
+
 def test_adversarial_cleanup_drops_on_reject() -> None:
     node = make_adversarial_cleanup_node()
     cand = CandidateFinding(

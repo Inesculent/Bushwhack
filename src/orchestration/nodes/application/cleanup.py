@@ -876,6 +876,7 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
         ignored_context_requests: Dict[str, List[str]] = {}
         missing_required_reflections: Dict[str, List[str]] = {}
         misrouted_candidates: Dict[str, List[Dict[str, str]]] = {}
+        recommendation_reference_advisories: List[str] = []
         lifecycle: Dict[str, Dict[str, Any]] = {}
 
         def drop(candidate: CandidateFinding, reason: str, details: Dict[str, Any] | None = None) -> None:
@@ -969,8 +970,7 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
                 evidence_summary=candidate.evidence_summary,
                 recommendation=candidate.recommendation or "",
             ):
-                drop(candidate, "recommendation_cites_foreign_class")
-                continue
+                recommendation_reference_advisories.append(candidate.candidate_id)
 
             cand_reports = by_cand.get(candidate.candidate_id, [])
             specialties = {r.reflector_specialty for r in cand_reports}
@@ -1447,6 +1447,7 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
             "ignored_off_domain_context_requests": ignored_context_requests,
             "missing_required_reflections": missing_required_reflections,
             "misrouted_candidate_ids": misrouted_candidates,
+            "recommendation_reference_advisories": recommendation_reference_advisories,
             "candidate_lifecycle": lifecycle,
             "dropped_semantic_duplicate_finding_ids": dropped_semantic_finding_ids,
         }
