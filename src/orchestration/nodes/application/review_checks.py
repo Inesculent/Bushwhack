@@ -30,6 +30,7 @@ from src.orchestration.context.focus_request_scope import (
     clamp_focused_context_request,
 )
 from src.orchestration.context.context_packets import focused_snippets_for_candidate
+from src.orchestration.context.task_evidence import changed_lines_for_file
 from src.orchestration.context.surface_ledger import (
     changed_file_sources_from_state,
     compact_surface_ledger_json,
@@ -866,6 +867,261 @@ def _maintainability_floor_checks(
     ]
 
 
+_BROAD_SURFACE_INVARIANTS = (
+    "preserves its existing observable contract",
+    "preserve changed-surface behavior",
+    "preserve api contract",
+    "preserves caller-visible inputs, outputs, and exception behavior",
+    "assigned surface behavior",
+)
+
+
+def _check_is_concrete_source_local_behavior(
+    check: ReviewCheck,
+    *,
+    slot: Mapping[str, Any],
+    task_files: set[str],
+) -> bool:
+    if not _compiled_check_is_source_local(check, None, slot, task_files):
+        return False
+    return _check_has_concrete_behavior_terms(check)
+
+
+def _check_has_concrete_behavior_terms(check: ReviewCheck) -> bool:
+    cid = check.check_id.lower()
+    if ":surface:" in cid or ":surface-coverage:" in cid:
+        return False
+    blob = " ".join(
+        [
+            check.behavioral_question,
+            check.affected_invariant,
+            " ".join(check.required_evidence),
+            " ".join(check.report_criteria),
+        ]
+    ).lower()
+    if any(marker in blob for marker in _BROAD_SURFACE_INVARIANTS):
+        return False
+    return any(
+        marker in blob
+        for marker in (
+            "declared",
+            "option",
+            "branch",
+            "return",
+            "shape",
+            "type",
+            "data",
+            "side effect",
+            "state",
+            "input",
+            "output",
+            "exception",
+            "wrong",
+            "crash",
+        )
+    )
+
+
+def _uncovered_surface_behavior_checks(
+    state: GraphState,
+    task: ReviewTask,
+    slot: Mapping[str, Any],
+    checks: Sequence[ReviewCheck],
+    start_index: int,
+    task_surface_ids: Sequence[str],
+    by_id: Mapping[str, ReviewSurface],
+) -> List[ReviewCheck]:
+    task_files = {path.replace("\\", "/") for path in _changed_task_files(state, task)}
+    concrete_surface_ids: set[str] = set()
+    for check in checks:
+        source_local = _check_is_concrete_source_local_behavior(check, slot=slot, task_files=task_files)
+        if not source_local and not _check_has_concrete_behavior_terms(check):
+            continue
+        if source_local:
+            concrete_surface_ids.update(sid for sid in check.surface_ids if sid in by_id)
+        check_file = check.file_path.strip().replace("\\", "/")
+        check_anchor = check.changed_code_anchor.lower()
+        for sid, surface in by_id.items():
+            if surface.file_path.strip().replace("\\", "/") != check_file:
+                continue
+            surface_name = surface.name.lower()
+            line_start = surface.line_start or 1
+            line_end = surface.line_end or line_start
+            lines_overlap = check.line_start <= line_end and check.line_end >= line_start
+            names_overlap = bool(surface_name) and (
+                surface_name in check_anchor or check_anchor in surface_name
+            )
+            if lines_overlap or names_overlap:
+                concrete_surface_ids.add(sid)
+    added: List[ReviewCheck] = []
+    for sid in task_surface_ids:
+        if sid in concrete_surface_ids:
+            continue
+        surface = by_id.get(sid)
+        if surface is None:
+            continue
+        line_start = surface.line_start or 1
+        line_end = surface.line_end or line_start
+        added.append(
+            ReviewCheck(
+                check_id=f"{task.id}:uncovered-behavior:{start_index + len(added)}",
+                patch_task_id=task.id,
+                surface_ids=[surface.surface_id],
+                lens="data_shape_consistency",
+                file_path=surface.file_path,
+                line_start=line_start,
+                line_end=line_end,
+                changed_code_anchor=surface.name,
+                behavioral_question=(
+                    f"Does the changed {surface.name} have any reachable mismatch between declared "
+                    "inputs/options and branch behavior, return shape, data shape, or local side effects?"
+                ),
+                affected_invariant="source-local changed behavior consistency",
+                required_evidence=[
+                    f"changed implementation for {surface.name}",
+                    "declared inputs/options, branch bodies, return shape, data shape, and local side effects",
+                ],
+                suppress_criteria=[
+                    "Concrete source evidence shows declared inputs/options and reachable behavior are consistent."
+                ],
+                report_criteria=[
+                    "Concrete source evidence shows a reachable wrong output, crash, data loss, or contract mismatch."
+                ],
+                allowed_retrieval=["task_evidence", "focused_context"],
+                budget=2,
+            )
+        )
+        if len(added) >= 2:
+            break
+    return added
+
+
+def _omitted_prompt_files(slot: Mapping[str, Any], coverage_files: Sequence[str]) -> List[str]:
+    te = slot.get("task_evidence") if isinstance(slot.get("task_evidence"), dict) else {}
+    raw = te.get("omitted_prompt_files") if isinstance(te.get("omitted_prompt_files"), list) else []
+    coverage = {path.replace("\\", "/") for path in coverage_files}
+    out: List[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        path = str(item or "").strip().replace("\\", "/")
+        if not path or path in seen:
+            continue
+        if coverage and path not in coverage:
+            continue
+        seen.add(path)
+        out.append(path)
+    return out
+
+
+def _surface_intersects_changed_lines(surface: ReviewSurface, changed_lines: set[int]) -> bool:
+    if not changed_lines:
+        return False
+    line_start = surface.line_start or 0
+    line_end = surface.line_end or line_start
+    if line_start < 1:
+        return False
+    return any(line_start <= line <= line_end for line in changed_lines)
+
+
+def _omitted_file_surface_check(
+    task: ReviewTask,
+    surface: ReviewSurface,
+    index: int,
+) -> ReviewCheck:
+    line_start = surface.line_start or 1
+    line_end = surface.line_end or line_start
+    return ReviewCheck(
+        check_id=f"{task.id}:omitted-surface:{index}",
+        patch_task_id=task.id,
+        surface_ids=[surface.surface_id],
+        lens="data_shape_consistency",
+        file_path=surface.file_path,
+        line_start=line_start,
+        line_end=line_end,
+        changed_code_anchor=surface.name,
+        behavioral_question=(
+            f"Does the changed {surface.name} in omitted prompt file {surface.file_path} "
+            "have any reachable mismatch in inputs, branch behavior, return shape, data shape, or local side effects?"
+        ),
+        affected_invariant="source-local changed behavior consistency for omitted prompt file",
+        required_evidence=[
+            f"focused changed implementation for {surface.name}",
+            "declared inputs/options, branch bodies, return shape, data shape, and local side effects",
+        ],
+        suppress_criteria=[
+            "Focused source evidence shows the omitted prompt surface preserves reachable local behavior."
+        ],
+        report_criteria=[
+            "Focused source evidence shows a reachable wrong output, crash, data loss, or contract mismatch."
+        ],
+        allowed_retrieval=["focused_context", "task_evidence"],
+        budget=2,
+    )
+
+
+def _omitted_file_behavior_check(
+    state: GraphState,
+    task: ReviewTask,
+    file_path: str,
+    index: int,
+) -> ReviewCheck:
+    check = _coverage_check_for_file(state, task, file_path, index)
+    return check.model_copy(
+        update={
+            "check_id": f"{task.id}:omitted-file:{index}",
+            "lens": "data_shape_consistency",
+            "changed_code_anchor": file_path,
+            "behavioral_question": (
+                f"Does the changed code in omitted prompt file {file_path} have any reachable mismatch "
+                "in inputs, branch behavior, return shape, data shape, or local side effects?"
+            ),
+            "affected_invariant": "source-local changed behavior consistency for omitted prompt file",
+            "required_evidence": [
+                f"focused changed implementation in {file_path}",
+                "declared inputs/options, branch bodies, return shape, data shape, and local side effects",
+            ],
+            "suppress_criteria": [
+                f"Focused source evidence shows changed code in {file_path} preserves reachable local behavior."
+            ],
+            "report_criteria": [
+                f"Focused source evidence shows changed code in {file_path} creates a reachable regression."
+            ],
+            "allowed_retrieval": ["focused_context", "task_evidence"],
+            "budget": 2,
+        }
+    )
+
+
+def _mandatory_omitted_file_checks(
+    state: GraphState,
+    task: ReviewTask,
+    slot: Mapping[str, Any],
+    coverage_files: Sequence[str],
+    by_id: Mapping[str, ReviewSurface],
+    start_index: int,
+) -> List[ReviewCheck]:
+    omitted_files = _omitted_prompt_files(slot, coverage_files)
+    if not omitted_files:
+        return []
+    git_diff = str(state.get("git_diff") or "")
+    added: List[ReviewCheck] = []
+    for file_path in omitted_files:
+        changed_lines = changed_lines_for_file(git_diff, file_path)
+        surfaces = [
+            surface for surface in by_id.values()
+            if surface.file_path.replace("\\", "/") == file_path
+            and surface.confidence >= 0.75
+            and surface.kind != "file"
+            and _surface_intersects_changed_lines(surface, changed_lines)
+        ]
+        if surfaces:
+            for surface in sorted(surfaces, key=lambda item: (item.line_start or 10**9, item.name)):
+                added.append(_omitted_file_surface_check(task, surface, start_index + len(added)))
+            continue
+        added.append(_omitted_file_behavior_check(state, task, file_path, start_index + len(added)))
+    return added
+
+
 def _ensure_compiler_coverage_floor(
     *,
     state: GraphState,
@@ -924,12 +1180,46 @@ def _ensure_compiler_coverage_floor(
             )
         )
 
+    coverage_files = _changed_task_files(state, task)
     ledger = surface_ledger_from_state(state)
     by_id = surface_by_id(ledger)
     task_surface_ids = [
         sid for sid in surface_ids_for_task(task, ledger)
         if sid in by_id and by_id[sid].confidence >= 0.75 and by_id[sid].kind != "file"
     ]
+    mandatory_omitted = _mandatory_omitted_file_checks(
+        state,
+        task,
+        slot,
+        coverage_files,
+        by_id,
+        len(checks) + len(added_candidates) + 1,
+    )
+    for check in mandatory_omitted:
+        added_candidates.append(
+            (
+                check,
+                {"file_path": check.file_path, "surface": check.changed_code_anchor, "dimension": "omitted prompt file"},
+                "mandatory_omitted_file",
+            )
+        )
+    behavior_floor = _uncovered_surface_behavior_checks(
+        state,
+        task,
+        slot,
+        [*checks, *(candidate for candidate, _meta, _kind in added_candidates)],
+        len(checks) + len(added_candidates) + 1,
+        task_surface_ids,
+        by_id,
+    )
+    for check in behavior_floor:
+        added_candidates.append(
+            (
+                check,
+                {"file_path": check.file_path, "surface": check.changed_code_anchor, "dimension": "uncovered behavior"},
+                "uncovered_surface_behavior",
+            )
+        )
     covered_surface_ids = {
         sid
         for check in [*checks, *(candidate for candidate, _meta, _kind in added_candidates)]
@@ -948,7 +1238,6 @@ def _ensure_compiler_coverage_floor(
             )
         )
 
-    coverage_files = _changed_task_files(state, task)
     checked_files = {
         check.file_path.strip().replace("\\", "/")
         for check in [*checks, *(candidate for candidate, _meta, _kind in added_candidates)]
@@ -978,7 +1267,15 @@ def _ensure_compiler_coverage_floor(
         coverage_meta_by_id=ranking_meta_by_id,
         task_files=coverage_files,
     )
-    final_checks = ranked[:_MAX_CHECKS_PER_TASK]
+    mandatory_ids = {
+        check.check_id
+        for check, _meta, kind in added_candidates
+        if kind == "mandatory_omitted_file"
+    }
+    mandatory_ranked = [check for check in ranked if check.check_id in mandatory_ids]
+    capped = ranked[:_MAX_CHECKS_PER_TASK]
+    capped_ids = {check.check_id for check in capped}
+    final_checks = [*capped, *(check for check in mandatory_ranked if check.check_id not in capped_ids)]
     final_ids = {check.check_id for check in final_checks}
     added = [check for check in final_checks if check.check_id not in original_ids]
     trimmed_existing: List[str] = [
@@ -1171,6 +1468,9 @@ def _render_compiler_prompt(state: GraphState, task: ReviewTask, slot: Mapping[s
     ranked_obligations = _ranked_coverage_obligations(task, slot)
     ledger = surface_ledger_from_state(state)
     task_surface_ids = surface_ids_for_task(task, ledger) if ledger else task.surface_ids
+    te = slot.get("task_evidence") if isinstance(slot.get("task_evidence"), dict) else {}
+    omitted_prompt_files = te.get("omitted_prompt_files") if isinstance(te.get("omitted_prompt_files"), list) else []
+    primary_files = te.get("primary_files") if isinstance(te.get("primary_files"), list) else []
     sections = {
         "Assigned Task": (
             f"Task ID: {task.id}\n"
@@ -1182,6 +1482,14 @@ def _render_compiler_prompt(state: GraphState, task: ReviewTask, slot: Mapping[s
         ),
         "Surface Ledger": compact_surface_ledger_json(ledger, max_records=40) if ledger else "[]",
         "Repository Code Evidence": str(slot.get("direct_context") or "")[:16000],
+        "Prompt File Scope": _json_for_prompt(
+            {
+                "primary_files": primary_files,
+                "omitted_prompt_files": omitted_prompt_files,
+                "omitted_handling": "Omitted changed files are reviewed through scoped focused-context checks.",
+            },
+            max_chars=2000,
+        ),
         "Mental Model Excerpt": str(slot.get("mental_model_excerpt") or ""),
         "Review KB Context": str(slot.get("review_kb_excerpt") or ""),
         "Mental Model Contract Material": "\n".join(
@@ -1743,18 +2051,68 @@ def _query_for_requirement(requirement: str, check: ReviewCheck) -> str:
 
 def _focused_request_signature(req: FocusedContextRequest | Mapping[str, Any]) -> tuple[Any, ...]:
     if isinstance(req, FocusedContextRequest):
+        file_read_mode = req.file_read_mode
         file_paths = req.file_paths
         symbol_queries = req.symbol_queries
         text_queries = req.text_queries
     else:
+        file_read_mode = str(req.get("file_read_mode") or "slice")
         file_paths = req.get("file_paths", []) if isinstance(req.get("file_paths"), list) else []
         symbol_queries = req.get("symbol_queries", []) if isinstance(req.get("symbol_queries"), list) else []
         text_queries = req.get("text_queries", []) if isinstance(req.get("text_queries"), list) else []
     return (
+        file_read_mode,
         tuple(sorted(str(path).strip().replace("\\", "/") for path in file_paths if str(path).strip())),
         tuple(sorted(str(query).strip().lower() for query in symbol_queries if str(query).strip())),
         tuple(sorted(str(query).strip().lower() for query in text_queries if str(query).strip())),
     )
+
+
+_TRUNCATED_CONTEXT_MARKERS = (
+    "truncated",
+    "only class declaration",
+    "only the class declaration",
+    "class body not",
+    "body is not visible",
+    "implementation is not visible",
+    "implementation details are not visible",
+    "full class definition",
+)
+
+
+def _has_full_file_request_for_check(state: GraphState, check: ReviewCheck) -> bool:
+    for req in state.get("focused_context_requests", []) or []:
+        if isinstance(req, FocusedContextRequest):
+            candidate_id = req.candidate_id
+            mode = req.file_read_mode
+            paths = req.file_paths
+        elif isinstance(req, dict):
+            candidate_id = str(req.get("candidate_id") or "")
+            mode = str(req.get("file_read_mode") or "")
+            paths = req.get("file_paths", []) if isinstance(req.get("file_paths"), list) else []
+        else:
+            continue
+        if candidate_id != check.check_id or mode != "full":
+            continue
+        norm_paths = {str(path).replace("\\", "/") for path in paths}
+        if check.file_path.replace("\\", "/") in norm_paths:
+            return True
+    return False
+
+
+def _should_retry_full_file_for_check(state: GraphState, check: ReviewCheck, latest: ReviewCheckResult | None) -> bool:
+    if latest is None or latest.decision != "unsupported":
+        return False
+    if _has_full_file_request_for_check(state, check):
+        return False
+    blob = " ".join(
+        [
+            latest.reportable_reason,
+            " ".join(latest.missing_evidence),
+            " ".join(latest.warnings),
+        ]
+    ).lower()
+    return any(marker in blob for marker in _TRUNCATED_CONTEXT_MARKERS)
 
 
 def make_review_check_context_planner_node():
@@ -1780,6 +2138,7 @@ def make_review_check_context_planner_node():
         requests: List[FocusedContextRequest] = []
         missing_by_check: Dict[str, List[str]] = {}
         for check in _executable_checks_for_task(state, task.id):
+            latest = _latest_result_by_check(state, task.id).get(check.check_id)
             missing_evidence = _missing_evidence_for_check(
                 state=state,
                 task_id=task.id,
@@ -1794,11 +2153,12 @@ def make_review_check_context_planner_node():
             request_id = _next_request_id_for_check(state, check)
             if request_id in existing_ids:
                 continue
+            file_read_mode = "full" if _should_retry_full_file_for_check(state, check, latest) else "slice"
             req = FocusedContextRequest(
                 request_id=request_id,
                 candidate_id=check.check_id,
                 requested_by_specialty=task.specialty,
-                file_read_mode="slice",
+                file_read_mode=file_read_mode,
                 file_paths=[check.file_path] if check.file_path else task.target_files[:1],
                 symbol_queries=[check.changed_code_anchor] if check.changed_code_anchor else [],
                 text_queries=[

@@ -4,6 +4,7 @@ Task-scoped evidence bundles for critique (symbol/file-complete units, no mid-me
 
 from __future__ import annotations
 
+import ast
 import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
@@ -25,6 +26,10 @@ _SYMBOL_NAME_RE = re.compile(r"\b([A-Z][a-zA-Z0-9_]{2,})\b")
 _CLASS_SCOPE_ISOLATION_PHRASE = "do not review any other class"
 _CLASS_SLICE_TAIL_LINES = 3
 _SIMPLE_CLASS_DEF_RE = re.compile(r"^class\s+([A-Za-z_][A-Za-z0-9_]*)\s*[:\(]", re.MULTILINE)
+_MAX_TASK_EVIDENCE_TARGET_FILES = 18
+_MULTI_FILE_RENDER_MAX_CHARS = 12_000
+_MULTI_FILE_READ_MAX_CHARS = 96_000
+_AST_CHUNK_MAX_CHARS = 6_000
 
 
 @dataclass(frozen=True)
@@ -42,6 +47,9 @@ class TaskEvidenceBundle:
     files_complete: Dict[str, bool] = field(default_factory=dict)
     symbols_included: List[str] = field(default_factory=list)
     diff_hunks: Dict[str, str] = field(default_factory=dict)
+    eligible_files: List[str] = field(default_factory=list)
+    primary_files: List[str] = field(default_factory=list)
+    omitted_prompt_files: List[str] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
     char_total: int = 0
     byte_chop: bool = False
@@ -57,6 +65,9 @@ class TaskEvidenceBundle:
             "rendered_units": dict(self.rendered_units),
             "rendered": self.rendered,
             "diff_hunks": dict(self.diff_hunks),
+            "eligible_files": list(self.eligible_files),
+            "primary_files": list(self.primary_files),
+            "omitted_prompt_files": list(self.omitted_prompt_files),
             "warnings": list(self.warnings),
             "char_total": self.char_total,
             "byte_chop": self.byte_chop,
@@ -180,7 +191,7 @@ def _task_focus_classes(task: ReviewTask, inventory: List[str]) -> List[str]:
     if not mentioned:
         return []
     if _is_class_scoped_task(task):
-        return mentioned[:2]
+        return mentioned
     return mentioned[:2] if len(mentioned) <= 2 else []
 
 
@@ -279,16 +290,102 @@ def _render_units(units: Sequence[EvidenceUnit]) -> str:
     return "\n\n".join(parts)
 
 
+def _ast_chunk_units_for_large_file(
+    file_path: str,
+    file_text: str,
+    *,
+    named_symbols: set[str],
+    changed_lines: set[int],
+) -> List[EvidenceUnit]:
+    if not file_text.strip() or not file_path.endswith(".py"):
+        return []
+    try:
+        tree = ast.parse(file_text)
+    except SyntaxError:
+        return []
+    units: List[EvidenceUnit] = []
+    for node in tree.body:
+        if not isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        start = int(getattr(node, "lineno", 0) or 0)
+        end = int(getattr(node, "end_lineno", 0) or start)
+        if start < 1 or end < start:
+            continue
+        name = str(getattr(node, "name", "") or "")
+        intersects_changed = bool(changed_lines) and any(start <= line <= end for line in changed_lines)
+        if name not in named_symbols and not intersects_changed:
+            continue
+        content = _line_slice_inclusive(file_text, start, end)
+        if not content.strip():
+            continue
+        if len(content) > _AST_CHUNK_MAX_CHARS:
+            continue
+        kind = "class" if isinstance(node, ast.ClassDef) else "function"
+        units.append(
+            EvidenceUnit(
+                priority=0 if intersects_changed else 1,
+                label=f"{file_path}: {kind} {name} (L{start}-L{end})",
+                content=content,
+                kind="symbol",
+            )
+        )
+    return units
+
+
 def _units_by_file(units: Sequence[EvidenceUnit]) -> Dict[str, str]:
     out: Dict[str, List[str]] = {}
     for unit in units:
-        file_path = unit.label.split(":", 1)[0].strip()
+        file_path = _unit_file_path(unit)
         if not file_path:
             continue
         out.setdefault(_normalize_path(file_path), []).append(
             f"--- {unit.label} ---\n{unit.content}"
         )
     return {path: "\n\n".join(parts) for path, parts in out.items()}
+
+
+def _unit_file_path(unit: EvidenceUnit) -> str:
+    head = unit.label.split(":", 1)[0].strip()
+    if " (" in head:
+        head = head.split(" (", 1)[0].strip()
+    return _normalize_path(head)
+
+
+def _select_primary_files(
+    *,
+    task: ReviewTask,
+    eligible_files: Sequence[str],
+    units: Sequence[EvidenceUnit],
+    diff_hunks: Mapping[str, str],
+    named_symbols: set[str],
+) -> List[str]:
+    if not eligible_files:
+        return []
+    if len(eligible_files) == 1:
+        return [_normalize_path(eligible_files[0])]
+    units_by_path: Dict[str, List[EvidenceUnit]] = {}
+    for unit in units:
+        units_by_path.setdefault(_unit_file_path(unit), []).append(unit)
+    task_text = f"{task.title} {task.description}".lower()
+    file_order = {_normalize_path(path): index for index, path in enumerate(eligible_files)}
+
+    def rank(path: str) -> tuple[int, int]:
+        norm = _normalize_path(path)
+        path_units = units_by_path.get(norm, [])
+        unit_text = "\n".join(unit.label.lower() for unit in path_units)
+        explicit_symbol = bool(named_symbols) and any(
+            symbol.lower() in unit_text for symbol in named_symbols
+        )
+        path_explicit = norm.lower() in task_text or norm.rsplit("/", 1)[-1].lower() in task_text
+        if explicit_symbol or path_explicit:
+            return (0, file_order.get(norm, 10**6))
+        if any(unit.kind == "symbol" and unit.priority == 0 for unit in path_units):
+            return (1, file_order.get(norm, 10**6))
+        if str(diff_hunks.get(norm) or "").strip():
+            return (2, file_order.get(norm, 10**6))
+        return (3, file_order.get(norm, 10**6))
+
+    return [min((_normalize_path(path) for path in eligible_files), key=rank)]
 
 
 def build_task_evidence(
@@ -301,17 +398,29 @@ def build_task_evidence(
 ) -> TaskEvidenceBundle:
     settings = settings or get_settings()
     git_diff = state.get("git_diff", "") or ""
-    target_files = [_normalize_path(p) for p in task.target_files[:12] if isinstance(p, str) and p.strip()]
+    target_files = [
+        _normalize_path(p)
+        for p in task.target_files[:_MAX_TASK_EVIDENCE_TARGET_FILES]
+        if isinstance(p, str) and p.strip()
+    ]
     if not target_files:
         target_files = [_normalize_path(p) for p in _extract_files_from_diff(git_diff)[:3]]
 
     principles_reserve = 1200
     budget = max(4000, int(settings.reviewer_critique_packet_max_chars) - principles_reserve)
     single_file = len(target_files) == 1
-    per_file_cap = (
+    render_file_cap = (
         min(int(settings.reviewer_critiquer_single_file_max_chars), int(settings.review_full_file_max_chars))
         if single_file
-        else min(8000, max(2000, budget // max(1, len(target_files))))
+        else min(_MULTI_FILE_RENDER_MAX_CHARS, max(3000, budget // max(1, len(target_files))))
+    )
+    read_file_cap = (
+        render_file_cap
+        if single_file
+        else min(
+            int(settings.review_full_file_max_chars),
+            max(render_file_cap, _MULTI_FILE_READ_MAX_CHARS),
+        )
     )
 
     named_symbols = set(_task_symbol_names(task))
@@ -328,16 +437,17 @@ def build_task_evidence(
         snippet = (ctx.file_snippets.get(fp) or ctx.file_snippets.get(fp.replace("/", "\\")) or "").strip()
         file_text = ""
         if provider is not None:
-            file_text = provider.read_full_file(fp, max_chars=per_file_cap)
+            file_text = provider.read_full_file(fp, max_chars=read_file_cap)
         if not file_text.strip() and snippet:
             file_text = snippet
 
         if file_text:
             file_contents[fp] = file_text
-            if len(file_text) >= per_file_cap:
+            if len(file_text) >= read_file_cap:
                 warnings.append(f"evidence_file_content_capped:{fp}")
 
         entities = ctx.entities_by_file.get(fp) or ctx.entities_by_file.get(fp.replace("/", "\\")) or []
+        changed_lines = changed_lines_for_file(git_diff, fp)
 
         use_class_slices = bool(single_file and file_text and focus_classes)
         if use_class_slices:
@@ -388,9 +498,8 @@ def build_task_evidence(
             files_complete[fp] = False
             warnings.append(f"evidence_file_exceeds_budget:{fp}")
 
-        changed_lines = changed_lines_for_file(git_diff, fp)
-
         if not use_class_slices and not (single_file and file_text and len(file_text) <= budget):
+            ast_chunk_added = False
             for entity in entities:
                 in_task = entity.name in named_symbols
                 in_diff = _entity_intersects_changed(entity, file_text, changed_lines)
@@ -416,17 +525,33 @@ def build_task_evidence(
                 if unit is not None:
                     units.append(unit)
                     symbols_included.append(unit.label)
+                    ast_chunk_added = True
+            if not ast_chunk_added and file_text:
+                for unit in _ast_chunk_units_for_large_file(
+                    fp,
+                    file_text,
+                    named_symbols=named_symbols,
+                    changed_lines=changed_lines,
+                ):
+                    units.append(unit)
+                    symbols_included.append(unit.label)
+                    ast_chunk_added = True
+            if ast_chunk_added and file_text and not files_complete.get(fp):
+                files_complete[fp] = False
 
         if not single_file and file_text and not entities:
+            has_ast_chunks = any(unit.label.startswith(f"{fp}: ") for unit in units)
+            if has_ast_chunks:
+                continue
             units.append(
                 EvidenceUnit(
                     priority=2,
                     label=f"{fp} (file excerpt)",
-                    content=file_text[: min(len(file_text), per_file_cap)],
+                    content=file_text[: min(len(file_text), render_file_cap)],
                     kind="file",
                 )
             )
-            files_complete[fp] = len(file_text) <= per_file_cap
+            files_complete[fp] = len(file_text) <= render_file_cap
 
         hunk = diff_hunk_for_file(git_diff, fp, max_chars=min(8000, max(4000, budget // 3)))
         if hunk:
@@ -443,14 +568,49 @@ def build_task_evidence(
                     EvidenceUnit(
                         priority=2,
                         label=f"{norm} (snippet fallback)",
-                        content=snippet[:per_file_cap],
+                        content=snippet[:render_file_cap],
                         kind="file",
                     )
                 )
 
-    included, byte_chop = _pack_units(units, budget)
-    if not included and units:
+    eligible_files = [
+        fp for fp in target_files
+        if fp in file_contents or fp in diff_hunks
+    ]
+    primary_files = (
+        eligible_files[:1]
+        if single_file
+        else _select_primary_files(
+            task=task,
+            eligible_files=eligible_files,
+            units=units,
+            diff_hunks=diff_hunks,
+            named_symbols=named_symbols,
+        )
+    )
+    primary_file_set = set(primary_files)
+    omitted_prompt_files = [
+        fp for fp in eligible_files
+        if fp not in primary_file_set
+    ]
+    for fp in omitted_prompt_files:
+        warnings.append(f"evidence_file_omitted_from_prompt:{fp}")
+    render_units = [
+        unit for unit in units
+        if single_file or not primary_file_set or _unit_file_path(unit) in primary_file_set
+    ]
+
+    included, byte_chop = _pack_units(render_units, budget)
+    if not included and render_units:
         warnings.append("evidence_all_units_dropped_for_budget")
+    if focus_classes:
+        included_labels = "\n".join(unit.label for unit in included)
+        for class_name in focus_classes:
+            if class_name not in included_labels:
+                for fp in target_files:
+                    if class_name in "\n".join(symbols_included):
+                        warnings.append(f"evidence_class_slice_omitted:{fp}:{class_name}")
+                        break
     rendered = _render_units(included)
     rendered_units = _units_by_file(included)
     for fp, body in rendered_units.items():
@@ -464,9 +624,12 @@ def build_task_evidence(
         files_complete=files_complete,
         symbols_included=symbols_included,
         diff_hunks=diff_hunks,
+        eligible_files=eligible_files,
+        primary_files=primary_files,
+        omitted_prompt_files=omitted_prompt_files,
         warnings=warnings,
         char_total=len(rendered),
-        byte_chop=byte_chop,
+        byte_chop=byte_chop or len(render_units) < len(units),
         rendered=rendered,
         rendered_units=rendered_units,
     )

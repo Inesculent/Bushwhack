@@ -25,6 +25,7 @@ from src.orchestration.context.context_packets import (
     classes_introduced_in_diff,
     enrich_intent_summary_with_diff_scope,
     enforce_packet_budget,
+    focused_snippets_for_candidate,
     merge_probe_flags,
     packet_to_storage_dict,
     spec_risks_excerpt_for_prompt,
@@ -59,6 +60,39 @@ def test_packet_budget_truncates_lowest_tier_first() -> None:
     assert "diff_hunk" in keys
     assert "exploration_ledger" not in keys
     assert enforced.metadata.get("dropped_sections") == ["exploration_ledger"]
+
+
+def test_focused_snippets_render_file_body_before_search_hits_and_kb() -> None:
+    state: GraphState = {
+        "run_id": "r1",
+        "repo_path": "/tmp/repo",
+        "metadata": {},
+        "focused_context_results": {
+            "r1": FocusedContextResult(
+                request_id="r1",
+                candidate_id="check-1",
+                file_snippets={
+                    "repository_kb_context": "KB class declaration only",
+                    "pkg/mod.py": "class Target:\n    def execute(self):\n        return False\n",
+                },
+                search_hits={
+                    "Target": [
+                        SearchResult(
+                            file_path="pkg/mod.py",
+                            line_number=1,
+                            content="class Target:",
+                            context_lines=[],
+                        )
+                    ]
+                },
+            )
+        },
+    }
+
+    text = focused_snippets_for_candidate(state, "check-1")
+
+    assert text.index("--- pkg/mod.py (snippet) ---") < text.index("Query: Target")
+    assert text.index("Query: Target") < text.index("--- repository_kb_context (snippet) ---")
 
 
 def test_critiquer_packet_authority_separation() -> None:
@@ -152,7 +186,7 @@ def test_planner_packet_shrinks_diff_after_bootstrap() -> None:
     assert inv.tier == 1
 
 
-def test_critiquer_packet_omits_diff_when_files_complete() -> None:
+def test_critiquer_packet_keeps_diff_when_files_complete() -> None:
     task = ReviewTask(
         id="t1",
         title="String nodes",
@@ -172,8 +206,8 @@ def test_critiquer_packet_omits_diff_when_files_complete() -> None:
     }
     packet = build_critiquer_packet(state, task, slot)
     keys = {s.key for s in packet.sections}
-    assert "diff_hunk" not in keys
-    assert packet.metadata.get("diff_hunk_suppressed") is True
+    assert "diff_hunk" in keys
+    assert packet.metadata.get("diff_hunk_included_with_complete_evidence") is True
     code = next(s for s in packet.sections if s.key == "code_evidence")
     assert "execute" in code.content
 

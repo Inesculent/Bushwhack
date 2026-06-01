@@ -6,6 +6,13 @@ from src.orchestration.nodes.verifier.source_only import source_only_verify_cand
 from src.domain.verifier_schemas import VerifierAttemptRecord
 
 
+def _task_evidence(file_contents: dict[str, str], *, complete: bool = True) -> dict:
+    return {
+        "file_contents": file_contents,
+        "files_complete": {path: complete for path in file_contents},
+    }
+
+
 def test_source_only_detects_removed_import_still_used() -> None:
     state = {
         "git_diff": "\n".join(
@@ -19,11 +26,9 @@ def test_source_only_detects_removed_import_still_used() -> None:
             "critique_pipeline": {
                 "by_task": {
                     "t1": {
-                        "task_evidence": {
-                            "file_contents": {
-                                "pkg/mod.py": "def f():\n    return time.sleep(1)\n"
-                            }
-                        }
+                        "task_evidence": _task_evidence(
+                            {"pkg/mod.py": "def f():\n    return time.sleep(1)\n"}
+                        )
                     }
                 }
             }
@@ -62,15 +67,15 @@ def test_source_only_detects_missing_return_fallthrough() -> None:
             "critique_pipeline": {
                 "by_task": {
                     "t1": {
-                        "task_evidence": {
-                            "file_contents": {
+                        "task_evidence": _task_evidence(
+                            {
                                 "pkg/mod.py": (
                                     "def execute(mode):\n"
                                     "    if mode == 'A':\n"
                                     "        return (True,)\n"
                                 )
                             }
-                        }
+                        )
                     }
                 }
             }
@@ -99,8 +104,8 @@ def test_source_only_detects_regex_all_matches_data_loss() -> None:
             "critique_pipeline": {
                 "by_task": {
                     "t1": {
-                        "task_evidence": {
-                            "file_contents": {
+                        "task_evidence": _task_evidence(
+                            {
                                 "pkg/mod.py": (
                                     "import re\n"
                                     "def execute(pattern, text):\n"
@@ -108,7 +113,7 @@ def test_source_only_detects_regex_all_matches_data_loss() -> None:
                                     "    return match.group(1) if match else ''\n"
                                 )
                             }
-                        }
+                        )
                     }
                 }
             }
@@ -136,8 +141,8 @@ def test_source_only_detects_regex_findall_tuple_field_data_loss() -> None:
             "critique_pipeline": {
                 "by_task": {
                     "t1": {
-                        "task_evidence": {
-                            "file_contents": {
+                        "task_evidence": _task_evidence(
+                            {
                                 "pkg/mod.py": (
                                     "import re\n"
                                     "def execute(pattern, text):\n"
@@ -145,7 +150,7 @@ def test_source_only_detects_regex_findall_tuple_field_data_loss() -> None:
                                     "    return ','.join([m[0] for m in matches])\n"
                                 )
                             }
-                        }
+                        )
                     }
                 }
             }
@@ -174,8 +179,8 @@ def test_source_only_detects_regex_all_groups_join_none_risk() -> None:
             "critique_pipeline": {
                 "by_task": {
                     "t1": {
-                        "task_evidence": {
-                            "file_contents": {
+                        "task_evidence": _task_evidence(
+                            {
                                 "pkg/mod.py": (
                                     "import re\n"
                                     "def execute(pattern, text, group_index, join_delimiter):\n"
@@ -185,7 +190,7 @@ def test_source_only_detects_regex_all_groups_join_none_risk() -> None:
                                     "    return join_delimiter.join(results)\n"
                                 )
                             }
-                        }
+                        )
                     }
                 }
             }
@@ -205,3 +210,71 @@ def test_source_only_detects_regex_all_groups_join_none_risk() -> None:
     assert verdict == "verified"
     assert "without filtering possible None" in rationale
     assert attempt is not None
+
+
+def test_source_only_abstains_on_incomplete_task_evidence_parse_error() -> None:
+    state = {
+        "git_diff": "",
+        "metadata": {
+            "critique_pipeline": {
+                "by_task": {
+                    "t1": {
+                        "task_evidence": _task_evidence(
+                            {"pkg/mod.py": "def execute():\n    if True:\n"},
+                            complete=False,
+                        )
+                    }
+                }
+            }
+        },
+    }
+    candidate = {
+        "candidate_id": "c1",
+        "patch_task_id": "t1",
+        "file_path": "pkg/mod.py",
+        "line_start": 1,
+        "failure_mode": "syntax parse error",
+    }
+
+    verdict, rationale, attempt = source_only_verify_candidate(state, candidate)
+
+    assert verdict == ""
+    assert "incomplete" in rationale
+    assert attempt is None
+
+
+def test_source_only_abstains_on_incomplete_task_evidence_missing_return() -> None:
+    state = {
+        "git_diff": "",
+        "metadata": {
+            "critique_pipeline": {
+                "by_task": {
+                    "t1": {
+                        "task_evidence": _task_evidence(
+                            {
+                                "pkg/mod.py": (
+                                    "def execute(mode):\n"
+                                    "    if mode == 'A':\n"
+                                    "        return (True,)\n"
+                                )
+                            },
+                            complete=False,
+                        )
+                    }
+                }
+            }
+        },
+    }
+    candidate = {
+        "candidate_id": "c1",
+        "patch_task_id": "t1",
+        "file_path": "pkg/mod.py",
+        "line_start": 1,
+        "failure_mode": "execute has a missing return and can fall through to implicit None",
+    }
+
+    verdict, rationale, attempt = source_only_verify_candidate(state, candidate)
+
+    assert verdict == ""
+    assert "incomplete" in rationale
+    assert attempt is None

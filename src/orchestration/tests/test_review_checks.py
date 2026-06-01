@@ -260,7 +260,7 @@ def test_review_check_coverage_floor_uses_surface_anchor() -> None:
     assert compiled[0]["changed_code_anchor"] == "handle"
 
 
-def test_review_check_compiler_adds_primary_surface_check_for_uncovered_symbol(monkeypatch) -> None:
+def test_review_check_compiler_adds_behavior_check_for_uncovered_symbol(monkeypatch) -> None:
     handle = ReviewSurface(
         surface_id="surface:handle",
         name="handle",
@@ -300,8 +300,10 @@ def test_review_check_compiler_adds_primary_surface_check_for_uncovered_symbol(m
 
     task_meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
     floor = task_meta["compiler_coverage_floor"]
-    assert floor["missing_primary_surface_ids"] == ["surface:parse"]
-    assert any(check["surface_ids"] == ["surface:parse"] for check in floor["added_checks"])
+    assert floor["missing_primary_surface_ids"] == []
+    added_parse = [check for check in floor["added_checks"] if check["surface_ids"] == ["surface:parse"]]
+    assert added_parse
+    assert added_parse[0]["check_id"].startswith("review-logic:uncovered-behavior:")
 
 
 def test_surface_invariant_checks_are_compiled_before_fallback(tmp_path) -> None:
@@ -485,6 +487,67 @@ def test_review_check_compiler_keeps_focused_llm_check_ahead_of_surface_cap(monk
     assert len(compiled_ids) == 12
     assert compiled_ids[0] == "review-logic:regexextract-tuple-indexing"
     assert task_meta["compiler_coverage_floor"]["trimmed_existing_check_ids"]
+
+
+def test_review_check_compiler_adds_tiny_uncovered_surface_behavior_floor(monkeypatch) -> None:
+    surfaces = [
+        ReviewSurface(
+            surface_id=f"surface:s{i}",
+            name=f"Surface{i}",
+            kind="class",
+            file_path="src/app.py",
+            line_start=i * 10 + 1,
+            line_end=i * 10 + 5,
+            confidence=0.95,
+        )
+        for i in range(4)
+    ]
+    concrete = _check(
+        check_id="review-logic:surface0-return",
+        surface_ids=[surfaces[0].surface_id],
+        changed_code_anchor="Surface0",
+        behavioral_question="Does Surface0 return the declared result on every branch?",
+        affected_invariant="declared return shape",
+        required_evidence=["changed implementation for Surface0"],
+    )
+    output = ReviewCheckCompilerOutput(summary="compiled", checks=[concrete])
+    monkeypatch.setattr(
+        "src.orchestration.nodes.application.review_checks.Models.worker",
+        lambda *_args, **_kwargs: _FakeLLM({"parsed": output, "raw": _Raw()}),
+    )
+    task = _task().model_copy(update={"surface_ids": [surface.surface_id for surface in surfaces]})
+    state = _state(
+        task_registry={task.id: task},
+        metadata={
+            **_state()["metadata"],
+            "mental_model": {
+                "surface_ledger": [surface.model_dump(mode="json") for surface in surfaces],
+            },
+            "critique_pipeline": {
+                "by_task": {
+                    "review-logic": {
+                        "direct_context": "class Surface0: pass\nclass Surface1: pass\nclass Surface2: pass\nclass Surface3: pass\n",
+                        "task_evidence": {
+                            "file_contents": {"src/app.py": "class Surface0: pass\n"},
+                            "files_complete": {"src/app.py": True},
+                        },
+                        "coverage_obligations": [],
+                    }
+                }
+            },
+        },
+    )
+
+    out = make_review_check_compiler_node()(state)  # type: ignore[arg-type]
+
+    task_meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
+    compiled = task_meta["compiled_checks"]
+    behavior_checks = [
+        check for check in compiled if ":uncovered-behavior:" in check["check_id"]
+    ]
+    assert len(behavior_checks) == 2
+    assert {check["changed_code_anchor"] for check in behavior_checks} == {"Surface1", "Surface2"}
+    assert not any(check["changed_code_anchor"] == "Surface0" for check in behavior_checks)
 
 
 def test_migration_invariants_capture_vllm_style_caller_reliance() -> None:
@@ -948,6 +1011,145 @@ def test_review_check_compiler_prioritizes_local_behavior_floor_over_broad_surfa
     assert "review-logic:surface:12" in floor["trimmed_existing_check_ids"]
 
 
+def test_review_check_compiler_fans_out_omitted_file_check(monkeypatch) -> None:
+    task = _task().model_copy(update={"target_files": ["src/app.py", "src/other.py"]})
+    output = ReviewCheckCompilerOutput(summary="compiled", checks=[_check()])
+    monkeypatch.setattr(
+        "src.orchestration.nodes.application.review_checks.Models.worker",
+        lambda *_args, **_kwargs: _FakeLLM({"parsed": output, "raw": _Raw()}),
+    )
+    state = _state(
+        task_registry={task.id: task},
+        git_diff=(
+            "diff --git a/src/app.py b/src/app.py\n+++ b/src/app.py\n@@ -1 +1 @@\n+def handle():\n"
+            "diff --git a/src/other.py b/src/other.py\n+++ b/src/other.py\n@@ -1 +1 @@\n+VALUE = 1\n"
+        ),
+        metadata={
+            "critique_pipeline": {
+                "by_task": {
+                    task.id: {
+                        "direct_context": "def handle():\n    return None\n",
+                        "task_evidence": {
+                            "primary_files": ["src/app.py"],
+                            "omitted_prompt_files": ["src/other.py"],
+                        },
+                    }
+                }
+            }
+        },
+    )
+
+    out = make_review_check_compiler_node()(state)  # type: ignore[arg-type]
+
+    task_meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
+    compiled = task_meta["compiled_checks"]
+    omitted = [check for check in compiled if check["check_id"].startswith("review-logic:omitted-file:")]
+    assert omitted, compiled
+    assert omitted[0]["file_path"] == "src/other.py"
+    assert omitted[0]["allowed_retrieval"] == ["focused_context", "task_evidence"]
+
+
+def test_review_check_compiler_fans_out_omitted_changed_surfaces(monkeypatch) -> None:
+    one = ReviewSurface(
+        surface_id="surface:one",
+        name="first_changed",
+        kind="function",
+        file_path="src/other.py",
+        line_start=2,
+        line_end=3,
+        confidence=0.95,
+    )
+    two = ReviewSurface(
+        surface_id="surface:two",
+        name="second_changed",
+        kind="function",
+        file_path="src/other.py",
+        line_start=6,
+        line_end=7,
+        confidence=0.95,
+    )
+    task = _task().model_copy(update={"target_files": ["src/app.py", "src/other.py"]})
+    output = ReviewCheckCompilerOutput(summary="compiled", checks=[_check()])
+    monkeypatch.setattr(
+        "src.orchestration.nodes.application.review_checks.Models.worker",
+        lambda *_args, **_kwargs: _FakeLLM({"parsed": output, "raw": _Raw()}),
+    )
+    state = _state(
+        task_registry={task.id: task},
+        git_diff=(
+            "diff --git a/src/app.py b/src/app.py\n+++ b/src/app.py\n@@ -1 +1 @@\n+def handle():\n"
+            "diff --git a/src/other.py b/src/other.py\n+++ b/src/other.py\n@@ -2,6 +2,6 @@\n"
+            "+def first_changed():\n+    return 1\n+def second_changed():\n+    return 2\n"
+        ),
+        metadata={
+            "mental_model": {"surface_ledger": [one.model_dump(mode="json"), two.model_dump(mode="json")]},
+            "critique_pipeline": {
+                "by_task": {
+                    task.id: {
+                        "direct_context": "def handle():\n    return None\n",
+                        "task_evidence": {
+                            "primary_files": ["src/app.py"],
+                            "omitted_prompt_files": ["src/other.py"],
+                        },
+                    }
+                }
+            },
+        },
+    )
+
+    out = make_review_check_compiler_node()(state)  # type: ignore[arg-type]
+
+    compiled = out["metadata"]["review_checks"]["by_task"]["review-logic"]["compiled_checks"]
+    omitted_surface_ids = [
+        check["surface_ids"][0]
+        for check in compiled
+        if check["check_id"].startswith("review-logic:omitted-surface:")
+    ]
+    assert omitted_surface_ids == ["surface:one", "surface:two"]
+
+
+def test_review_check_compiler_does_not_trim_mandatory_omitted_file_under_cap(monkeypatch) -> None:
+    task = _task().model_copy(update={"target_files": ["src/app.py", "src/other.py"]})
+    llm_checks = [
+        _check(check_id=f"review-logic:check:{idx}", changed_code_anchor="handle")
+        for idx in range(1, 13)
+    ]
+    output = ReviewCheckCompilerOutput(summary="compiled", checks=llm_checks)
+    monkeypatch.setattr(
+        "src.orchestration.nodes.application.review_checks.Models.worker",
+        lambda *_args, **_kwargs: _FakeLLM({"parsed": output, "raw": _Raw()}),
+    )
+    state = _state(
+        task_registry={task.id: task},
+        git_diff=(
+            "diff --git a/src/app.py b/src/app.py\n+++ b/src/app.py\n@@ -1 +1 @@\n+def handle():\n"
+            "diff --git a/src/other.py b/src/other.py\n+++ b/src/other.py\n@@ -1 +1 @@\n+VALUE = 1\n"
+        ),
+        metadata={
+            "critique_pipeline": {
+                "by_task": {
+                    task.id: {
+                        "direct_context": "def handle():\n    return None\n",
+                        "task_evidence": {
+                            "primary_files": ["src/app.py"],
+                            "omitted_prompt_files": ["src/other.py"],
+                        },
+                    }
+                }
+            }
+        },
+    )
+
+    out = make_review_check_compiler_node()(state)  # type: ignore[arg-type]
+
+    task_meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
+    compiled_ids = [check["check_id"] for check in task_meta["compiled_checks"]]
+    skipped = task_meta["compiler_coverage_floor"]["skipped_due_to_cap"]
+    assert task_meta["compiled_count"] == 13
+    assert any(check_id.startswith("review-logic:omitted-file:") for check_id in compiled_ids), compiled_ids
+    assert not any(item.get("dimension") == "omitted prompt file" for item in skipped)
+
+
 def test_review_check_validator_moves_only_valid_checks_to_state() -> None:
     valid = _check()
     invalid = _check(check_id="review-logic:check:bad", behavioral_question="Find bugs")
@@ -1166,6 +1368,47 @@ def test_review_check_context_planner_allows_new_missing_evidence_after_dedupe()
     assert "repository convention" in out["focused_context_requests"][0].text_queries[0]
 
 
+def test_review_check_context_planner_retries_full_file_after_truncated_class_evidence() -> None:
+    check = _check(
+        check_id="review-logic:compare",
+        changed_code_anchor="StringCompare",
+        file_path="src/app.py",
+        line_start=159,
+        line_end=189,
+        budget=2,
+    )
+    existing = FocusedContextRequest(
+        request_id="check:review-logic:compare:1",
+        candidate_id=check.check_id,
+        requested_by_specialty="logic",
+        file_read_mode="slice",
+        file_paths=["src/app.py"],
+        symbol_queries=["StringCompare"],
+        text_queries=["src/app.py StringCompare class body"],
+        reason="first slice",
+    )
+    state = _state(
+        review_checks=[check],
+        focused_context_requests=[existing],
+        review_check_results=[
+            ReviewCheckResult(
+                check_id=check.check_id,
+                patch_task_id="review-logic",
+                decision="unsupported",
+                missing_evidence=["Full class definition including execute method"],
+                reportable_reason="Focused evidence was truncated and only class declaration was visible.",
+            )
+        ],
+    )
+
+    out = make_review_check_context_planner_node()(state)  # type: ignore[arg-type]
+
+    req = out["focused_context_requests"][0]
+    assert req.request_id == "check:review-logic:compare:2"
+    assert req.file_read_mode == "full"
+    assert req.file_paths == ["src/app.py"]
+
+
 def test_review_check_loop_stops_when_budget_exhausted() -> None:
     requests = [
         FocusedContextRequest(
@@ -1321,7 +1564,8 @@ def test_review_check_executor_source_only_overrides_missing_return_no_finding(m
                         "task_evidence": {
                             "file_contents": {
                                 "src/app.py": "def execute(mode):\n    if mode == 'A':\n        return (True,)\n"
-                            }
+                            },
+                            "files_complete": {"src/app.py": True},
                         }
                     }
                 }
@@ -1368,7 +1612,8 @@ def test_review_check_executor_source_only_overrides_syntax_no_finding(monkeypat
                 "by_task": {
                     "review-logic": {
                         "task_evidence": {
-                            "file_contents": {"src/app.py": "def execute():\n    if True:\n"}
+                            "file_contents": {"src/app.py": "def execute():\n    if True:\n"},
+                            "files_complete": {"src/app.py": True},
                         }
                     }
                 }
@@ -1416,7 +1661,8 @@ def test_review_check_executor_source_only_overrides_removed_import_no_finding(m
                 "by_task": {
                     "review-logic": {
                         "task_evidence": {
-                            "file_contents": {"src/app.py": "def execute():\n    return time.sleep(1)\n"}
+                            "file_contents": {"src/app.py": "def execute():\n    return time.sleep(1)\n"},
+                            "files_complete": {"src/app.py": True},
                         }
                     }
                 }

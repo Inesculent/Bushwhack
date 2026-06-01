@@ -41,6 +41,8 @@ MAX_FILE_SLICE_CHARS = 16000
 MAX_TOTAL_RESULT_CHARS = 48000
 MAX_NEIGHBOR_NODES = 12
 MAX_ENTITIES_FROM_GRAPH_PER_FILE = 48
+MAX_TASK_CONTEXT_FILES = 18
+MAX_MULTI_FILE_CRITIQUE_SNIPPET_CHARS = 12_000
 
 MAX_CRITIQUER_STRUCT_CONTEXT_FILES = 8
 MAX_CRITIQUER_STRUCT_NEIGHBORS = 8
@@ -420,7 +422,7 @@ class LazyReviewContextProvider:
         search_results: Dict[str, List[SearchResult]] = {}
         graph_call_edges_by_file: Dict[str, Dict[str, List[str]]] = {}
 
-        target_files = task.target_files[:12]
+        target_files = task.target_files[:MAX_TASK_CONTEXT_FILES]
         single_file_task = len(target_files) == 1
         if single_file_task:
             per_file_snippet_max = min(
@@ -430,8 +432,8 @@ class LazyReviewContextProvider:
         elif critique_mode:
             packet_budget = int(settings.reviewer_critique_packet_max_chars)
             per_file_snippet_max = min(
-                8000,
-                max(2000, packet_budget // max(1, len(target_files))),
+                MAX_MULTI_FILE_CRITIQUE_SNIPPET_CHARS,
+                max(3000, packet_budget // max(1, len(target_files))),
             )
         else:
             per_file_snippet_max = 5000
@@ -844,6 +846,48 @@ def _candidate_matches_focused_path(candidate: CandidateFinding | None, file_pat
     )
 
 
+def _review_check_window_for_focused_request(
+    state: GraphState,
+    check_id: str,
+    file_path: str,
+) -> tuple[int, int] | None:
+    if not check_id:
+        return None
+    target_path = _normalize_repo_path(file_path).lstrip("/")
+    metadata = state.get("metadata", {}) if isinstance(state.get("metadata"), dict) else {}
+    block = metadata.get("review_checks", {}) if isinstance(metadata, dict) else {}
+    by_task = block.get("by_task", {}) if isinstance(block, dict) else {}
+    if not isinstance(by_task, dict):
+        return None
+    for slot in by_task.values():
+        if not isinstance(slot, dict):
+            continue
+        checks = slot.get("compiled_checks", [])
+        if not isinstance(checks, list):
+            continue
+        for raw in checks:
+            if hasattr(raw, "check_id"):
+                raw_id = str(getattr(raw, "check_id", "") or "")
+                raw_path = str(getattr(raw, "file_path", "") or "")
+                line_start = int(getattr(raw, "line_start", 0) or 0)
+                line_end = int(getattr(raw, "line_end", 0) or 0)
+            elif isinstance(raw, dict):
+                raw_id = str(raw.get("check_id") or "")
+                raw_path = str(raw.get("file_path") or "")
+                line_start = int(raw.get("line_start") or 0)
+                line_end = int(raw.get("line_end") or 0)
+            else:
+                continue
+            if raw_id != check_id:
+                continue
+            norm_path = _normalize_repo_path(raw_path).lstrip("/")
+            if target_path and norm_path and target_path != norm_path and not norm_path.endswith("/" + target_path):
+                continue
+            if line_start >= 1:
+                return line_start, max(line_start, line_end or line_start)
+    return None
+
+
 class BoundedReviewContextFulfiller:
     """Fulfill structured focused-context requests with hard caps (no arbitrary shell)."""
 
@@ -956,6 +1000,15 @@ class BoundedReviewContextFulfiller:
                         line_end=int(candidate.line_end),
                         max_chars=MAX_FILE_SLICE_CHARS,
                     )
+                if not body.strip() and callable(read_window):
+                    window = _review_check_window_for_focused_request(state, request.candidate_id, fp)
+                    if window is not None:
+                        body = read_window(
+                            fp,
+                            line_start=window[0],
+                            line_end=window[1],
+                            max_chars=MAX_FILE_SLICE_CHARS,
+                        )
                 if not body.strip():
                     body = self._provider.read_file_slice(fp, max_chars=MAX_FILE_SLICE_CHARS)
                 if not body.strip():

@@ -14,18 +14,19 @@ def _norm(path: str) -> str:
     return (path or "").replace("\\", "/").lstrip("/")
 
 
-def _target_source_from_state(state: Dict[str, Any], candidate: Dict[str, Any]) -> str:
+def _target_source_from_state(state: Dict[str, Any], candidate: Dict[str, Any]) -> tuple[str, bool]:
     tid = str(candidate.get("patch_task_id") or "")
     fp = _norm(str(candidate.get("file_path") or ""))
     if not tid or not fp:
-        return ""
+        return "", False
     slot = task_evidence_slot_from_state(state, tid)
     files = slot.get("file_contents") if isinstance(slot.get("file_contents"), dict) else {}
+    complete = slot.get("files_complete") if isinstance(slot.get("files_complete"), dict) else {}
     for raw_path, body in files.items():
         path = _norm(str(raw_path))
         if path == fp or path.endswith("/" + fp) or fp.endswith("/" + path):
-            return str(body or "")
-    return ""
+            return str(body or ""), bool(complete.get(path) or complete.get(fp) or complete.get(str(raw_path)))
+    return "", False
 
 
 def _removed_import_names(git_diff: str, file_path: str) -> set[str]:
@@ -250,9 +251,11 @@ def source_only_verify_candidate(
     candidate: Dict[str, Any],
 ) -> Tuple[str, str, VerifierAttemptRecord | None]:
     """Return (verdict, rationale, attempt) when static source evidence proves a claim."""
-    source = _target_source_from_state(state, candidate)
+    source, source_complete = _target_source_from_state(state, candidate)
     if not source.strip():
         return "", "", None
+    if not source_complete:
+        return "", "source-only abstained: task evidence for target file is incomplete", None
     fp = _norm(str(candidate.get("file_path") or ""))
     try:
         tree = ast.parse(source)

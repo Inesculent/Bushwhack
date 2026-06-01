@@ -783,11 +783,13 @@ def _task_scoped_diff_excerpt(
     task: ReviewTask,
     *,
     max_chars: int,
+    target_files: Sequence[str] | None = None,
 ) -> str:
     from src.orchestration.context.task_evidence import diff_hunk_for_file
 
     git_diff = state.get("git_diff", "") or ""
-    targets = [p for p in task.target_files if isinstance(p, str) and p.strip()]
+    raw_targets = target_files if target_files is not None else task.target_files
+    targets = [p for p in raw_targets if isinstance(p, str) and p.strip()]
     if not targets:
         from src.orchestration.context.task_evidence import _extract_files_from_diff
 
@@ -833,13 +835,6 @@ def build_critique_packet(
     if evidence_metadata:
         meta.update(dict(evidence_metadata))
     meta["review_principles_version"] = REVIEW_PRINCIPLES_VERSION
-    fc = meta.get("files_complete") if isinstance(meta.get("files_complete"), dict) else {}
-    if diff_hunk_suppressed_for_task(task, fc):
-        meta["diff_hunk_suppressed"] = True
-        meta["diff_hunk_suppress_reason"] = (
-            "Complete file(s) in code_evidence; diff excerpt omitted for critiquer."
-        )
-
     packet = ContextPacket(
         stage="critique_probe",
         char_budget=budget,
@@ -931,9 +926,12 @@ def build_critiquer_packet(
         task.specialty
     )
 
-    struct_excerpt = structural_critiquer_context_excerpt(state, task.target_files)
+    te = pipeline_slot.get("task_evidence") if isinstance(pipeline_slot.get("task_evidence"), dict) else {}
+    primary_files = te.get("primary_files") if isinstance(te.get("primary_files"), list) else []
+    omitted_prompt_files = te.get("omitted_prompt_files") if isinstance(te.get("omitted_prompt_files"), list) else []
+    scoped_files = [str(path) for path in primary_files if str(path).strip()] or task.target_files
+    struct_excerpt = structural_critiquer_context_excerpt(state, scoped_files)
     files_complete = files_complete_from_pipeline_slot(pipeline_slot)
-    omit_diff = diff_hunk_suppressed_for_task(task, files_complete)
     diff_cap = int(settings.reviewer_context_critiquer_diff_hunk_max_chars)
 
     sections: List[ContextSection] = [
@@ -954,8 +952,8 @@ def build_critiquer_packet(
         sections.append(
             _section("structural_excerpt", 2, struct_excerpt, source="structural_graph")
         )
-    if not omit_diff:
-        diff_body = _task_scoped_diff_excerpt(state, task, max_chars=diff_cap)
+    diff_body = _task_scoped_diff_excerpt(state, task, max_chars=diff_cap, target_files=scoped_files)
+    if diff_body.strip():
         sections.append(
             _section("diff_hunk", 1, diff_body, source="git_diff"),
         )
@@ -975,6 +973,17 @@ def build_critiquer_packet(
                 2,
                 review_kb_excerpt.strip(),
                 source="review_kb_query",
+            )
+        )
+    if omitted_prompt_files:
+        omitted_note = "\n".join(f"- {path}" for path in omitted_prompt_files[:18])
+        sections.append(
+            _section(
+                "omitted_prompt_files",
+                4,
+                "These changed files are intentionally omitted from this narrow critiquer prompt "
+                "and are handled by scoped review checks:\n" + omitted_note,
+                source="task_evidence",
             )
         )
     if principles.strip():
@@ -1001,11 +1010,13 @@ def build_critiquer_packet(
     enforced = enforce_packet_budget(packet)
     em = dict(enforced.metadata)
     em["files_complete"] = files_complete
-    if omit_diff:
-        em["diff_hunk_suppressed"] = True
-        em["diff_hunk_suppress_reason"] = (
-            "Complete file in code_evidence; diff excerpt omitted."
-        )
+    if primary_files:
+        em["primary_files"] = primary_files
+    if omitted_prompt_files:
+        em["omitted_prompt_files"] = omitted_prompt_files
+        em["diff_hunk_omitted_files"] = omitted_prompt_files
+    if diff_body.strip() and any(files_complete.values()):
+        em["diff_hunk_included_with_complete_evidence"] = True
     enforced.metadata = em
     return enforced
 
@@ -1108,7 +1119,10 @@ def build_reflection_packet(
 
 def _focused_result_snippet_text(res: FocusedContextResult) -> str:
     parts: List[str] = []
-    for path, body in (res.file_snippets or {}).items():
+    snippets = res.file_snippets or {}
+    for path, body in snippets.items():
+        if path == "repository_kb_context":
+            continue
         parts.append(f"--- {path} (snippet) ---\n{body[:4000]}")
     for path, body in (res.file_contents_full or {}).items():
         parts.append(f"--- {path} (full) ---\n{body[:4000]}")
@@ -1118,6 +1132,9 @@ def _focused_result_snippet_text(res: FocusedContextResult) -> str:
             for h in (hits or [])[:10]
         ]
         parts.append(f"Query: {query}\n" + "\n".join(hit_lines))
+    kb = snippets.get("repository_kb_context")
+    if kb:
+        parts.append(f"--- repository_kb_context (snippet) ---\n{kb[:4000]}")
     if res.warnings:
         parts.append("Warnings: " + "; ".join(res.warnings[:5]))
     return "\n\n".join(parts)
