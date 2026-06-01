@@ -33,6 +33,13 @@ def test_tool_dedupe_key_stable() -> None:
     assert k1 != k3
 
 
+def test_default_plan_revision_budgets_stay_aligned() -> None:
+    settings = Settings()
+
+    assert settings.reviewer_mandate_plan_max_cycles == 5
+    assert settings.reviewer_actor_critic_max_plan_revisions == 5
+
+
 def test_ledger_since_last_patch_uses_applied_count() -> None:
     state: GraphState = {  # type: ignore[assignment]
         "exploration_ledger": [

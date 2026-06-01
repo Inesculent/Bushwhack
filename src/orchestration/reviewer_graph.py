@@ -612,7 +612,6 @@ def build_graph(
         builder.add_node("verifier_subgraph", make_verifier_subgraph_node())
         builder.add_node("post_reflection_evidence_pass", _make_post_reflection_evidence_pass_node())
         builder.add_conditional_edges("review_planner", _route_after_planner)
-        builder.add_conditional_edges("plan_emit", _route_after_planner)
         builder.add_edge("critique_review_subgraph", "initial_focused_context")
         builder.add_edge("initial_focused_context", "adversarial_reflection")
         builder.add_conditional_edges(
@@ -726,13 +725,18 @@ def build_graph(
     builder.add_edge("mandate_explorer_targeted", "mandate_patch")
     builder.add_edge("mandate_finalize", "plan_emit")
     builder.add_edge("plan_emit", "snapshot_pin")
+    snapshot_pin_routes = {
+        "review_planner": "review_planner",
+        "draft_planner": "draft_planner",
+    }
+    if settings.reviewer_use_legacy_specialist_workers:
+        snapshot_pin_routes["review_synthesizer"] = "review_synthesizer"
+    else:
+        snapshot_pin_routes["adversarial_reflection"] = "adversarial_reflection"
     builder.add_conditional_edges(
         "snapshot_pin",
         _route_after_snapshot_pin,
-        {
-            "review_planner": "review_planner",
-            "draft_planner": "draft_planner",
-        },
+        snapshot_pin_routes,
     )
     builder.add_edge("plan_revision", "plan_critic")
     builder.add_edge("review_synthesizer", END)

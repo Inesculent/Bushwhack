@@ -325,6 +325,8 @@ def entities_for_file_from_structural_graph(state: GraphState, file_path: str) -
                 signature=str(node.get("signature") or ""),
                 body="",
                 dependencies=deps,
+                definition_line=node.get("definition_line"),
+                definition_end_line=node.get("definition_end_line"),
             )
         )
         if len(entities) >= MAX_ENTITIES_FROM_GRAPH_PER_FILE:

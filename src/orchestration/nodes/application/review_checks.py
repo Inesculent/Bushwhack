@@ -133,6 +133,26 @@ _DIMENSION_RELEVANCE_KEYWORDS = {
     "aggregation/serialization safety": ("join", "aggregate", "serialize", "serialization", "format", "json"),
     "exception/control-flow scope": ("exception", "error", "try", "except", "raise", "regex", "invalid pattern"),
     "resource-amplification risk": ("resource", "performance", "unbounded", "loop", "regex", "expensive", "redundant"),
+    "migration caller-reliance contract": (
+        "migration",
+        "migrate",
+        "replace",
+        "removed",
+        "caller",
+        "call site",
+        "precondition",
+        "reliance",
+    ),
+    "state/cache lifecycle migration contract": (
+        "state",
+        "cache",
+        "lifecycle",
+        "block",
+        "slot",
+        "queue",
+        "reuse",
+        "invalidate",
+    ),
     "api/signature compatibility": ("api", "signature", "caller", "interface", "type", "public", "framework"),
     "dependency/import availability": ("import", "dependency", "module", "symbol", "undefined", "include"),
     "nullability/panic safety": ("null", "none", "nil", "panic", "optional", "nullable", "guard"),
@@ -253,8 +273,6 @@ def _dimension_to_lens(dimension: str) -> str:
     dim = dimension.lower()
     if "security" in dim or "permission" in dim:
         return "permission_boundary"
-    if "api" in dim or "signature" in dim or "contract" in dim:
-        return "api_compatibility"
     if "state" in dim or "cache" in dim:
         return "state_transition"
     if "null" in dim or "input" in dim or "validation" in dim:
@@ -263,6 +281,8 @@ def _dimension_to_lens(dimension: str) -> str:
         return "error_propagation"
     if "resource" in dim or "lifecycle" in dim:
         return "resource_lifecycle"
+    if "migration" in dim or "caller-reliance" in dim or "api" in dim or "signature" in dim or "contract" in dim:
+        return "api_compatibility"
     if "structured" in dim or "index" in dim or "aggregation" in dim or "serialization" in dim:
         return "data_shape_consistency"
     if "concurrency" in dim or "ordering" in dim:
@@ -485,6 +505,13 @@ def _mental_model_contract_lines(slot: Mapping[str, Any]) -> List[str]:
         "invalid",
         "exception",
         "output",
+        "migration",
+        "migrate",
+        "caller",
+        "call site",
+        "precondition",
+        "reliance",
+        "lifecycle",
     )
     for raw in text.splitlines():
         line = re.sub(r"^[-*#\s]+", "", raw).strip()
@@ -687,6 +714,189 @@ def _coverage_check_for_obligation(
     )
 
 
+def _migration_context_present(state: GraphState, task: ReviewTask, slot: Mapping[str, Any]) -> bool:
+    blob = "\n".join(
+        [
+            str(state.get("git_diff") or ""),
+            task.title,
+            task.description,
+            str(slot.get("mental_model_excerpt") or ""),
+            str(slot.get("review_kb_excerpt") or ""),
+        ]
+    ).lower()
+    markers = (
+        "migration",
+        "migrate",
+        "merged",
+        "merge",
+        "replace",
+        "removed",
+        "removal",
+        "rename",
+    )
+    return any(marker in blob for marker in markers)
+
+
+def _check_covers_dimension(check: ReviewCheck, dimension: str) -> bool:
+    blob = " ".join(
+        [
+            check.lens,
+            check.behavioral_question,
+            check.affected_invariant,
+            " ".join(check.required_evidence),
+        ]
+    ).lower()
+    lower_dimension = dimension.lower()
+    if "migration" in lower_dimension:
+        return "migration" in blob and ("reliance" in blob or "old-path" in blob or "old path" in blob)
+    if "maintainability" in lower_dimension:
+        return check.affected_invariant.strip().lower() == "maintainability contract"
+    tokens = sorted(_meaningful_tokens(dimension))
+    return bool(tokens) and all(token in blob for token in tokens[:2])
+
+
+def _surface_check_for_dimension(
+    *,
+    state: GraphState,
+    task: ReviewTask,
+    surface: ReviewSurface,
+    dimension: str,
+    index: int,
+) -> ReviewCheck:
+    line_start = surface.line_start or 1
+    line_end = surface.line_end or line_start
+    if "state/cache" in dimension:
+        required_evidence = [
+            f"changed state/cache lifecycle code for {surface.name}",
+            "old-path lifecycle ordering from deleted diff or repository precedent",
+            "caller evidence for which state objects are passed, released, reused, or invalidated",
+        ]
+        question = f"Does the migrated {surface.name} preserve state/cache lifecycle ordering?"
+    else:
+        required_evidence = [
+            f"changed implementation or call-site evidence for {surface.name}",
+            "old or deleted-path contract evidence for the behavior being migrated",
+            "new callee signature and required arguments/state inputs",
+            "caller reliance on preconditions, computed state, exception behavior, and lifecycle order",
+        ]
+        question = f"Does the migrated {surface.name} preserve caller-reliance and old-vs-new contract behavior?"
+    return ReviewCheck(
+        check_id=f"{task.id}:coverage:{index}",
+        patch_task_id=task.id,
+        surface_ids=[surface.surface_id],
+        lens=_dimension_to_lens(dimension),  # type: ignore[arg-type]
+        file_path=surface.file_path,
+        line_start=line_start,
+        line_end=line_end,
+        changed_code_anchor=surface.name,
+        behavioral_question=question,
+        affected_invariant=dimension,
+        required_evidence=required_evidence,
+        suppress_criteria=[
+            f"Concrete repository evidence shows {surface.name} preserves {dimension}.",
+        ],
+        report_criteria=[
+            f"The changed {surface.name} violates {dimension} on a concrete reachable path.",
+        ],
+        allowed_retrieval=["task_evidence", "focused_context"],
+        budget=2,
+    )
+
+
+def _migration_floor_checks(
+    state: GraphState,
+    task: ReviewTask,
+    slot: Mapping[str, Any],
+    checks: Sequence[ReviewCheck],
+    start_index: int,
+) -> List[ReviewCheck]:
+    if not _migration_context_present(state, task, slot):
+        return []
+    if any(_check_covers_dimension(check, "migration caller-reliance contract") for check in checks):
+        return []
+    ledger = surface_ledger_from_state(state)
+    by_id = surface_by_id(ledger)
+    surfaces = [by_id[sid] for sid in surface_ids_for_task(task, ledger) if sid in by_id]
+    if not surfaces:
+        target_files = {path.replace("\\", "/") for path in task.target_files}
+        surfaces = [surface for surface in ledger if surface.file_path in target_files and surface.kind != "file"]
+    added: List[ReviewCheck] = []
+    for surface in surfaces[:2]:
+        added.append(
+            _surface_check_for_dimension(
+                state=state,
+                task=task,
+                surface=surface,
+                dimension="migration caller-reliance contract",
+                index=start_index + len(added),
+            )
+        )
+        lower = f"{surface.name} {surface.file_path}".lower()
+        if any(token in lower for token in ("cache", "block", "slot", "state", "queue", "resource")):
+            added.append(
+                _surface_check_for_dimension(
+                    state=state,
+                    task=task,
+                    surface=surface,
+                    dimension="state/cache lifecycle migration contract",
+                    index=start_index + len(added),
+                )
+            )
+    return added
+
+
+def _maintainability_floor_checks(
+    state: GraphState,
+    task: ReviewTask,
+    slot: Mapping[str, Any],
+    checks: Sequence[ReviewCheck],
+    start_index: int,
+) -> List[ReviewCheck]:
+    if any(_check_covers_dimension(check, "maintainability contract") for check in checks):
+        return []
+    blob = "\n".join(
+        [
+            str(state.get("git_diff") or ""),
+            task.title,
+            task.description,
+            str(slot.get("mental_model_excerpt") or ""),
+            str(slot.get("review_kb_excerpt") or ""),
+        ]
+    ).lower()
+    if not any(marker in blob for marker in ("maintainability", "readability", "doc", "comment", "typo", "spelling")):
+        return []
+    if not re.search(r"^\+.*(#|//|/\*|'''|\"\"\"|doc|string|comment|typo|spelling)", blob, re.MULTILINE):
+        return []
+    ledger = surface_ledger_from_state(state)
+    by_id = surface_by_id(ledger)
+    surface = next((by_id[sid] for sid in surface_ids_for_task(task, ledger) if sid in by_id), None)
+    if surface is None:
+        return []
+    line_start = surface.line_start or 1
+    return [
+        ReviewCheck(
+            check_id=f"{task.id}:coverage:{start_index}",
+            patch_task_id=task.id,
+            surface_ids=[surface.surface_id],
+            lens="other",
+            file_path=surface.file_path,
+            line_start=line_start,
+            line_end=surface.line_end or line_start,
+            changed_code_anchor=surface.name,
+            behavioral_question=f"Does the changed {surface.name} avoid concrete docs/comment/readability regressions?",
+            affected_invariant="maintainability contract",
+            required_evidence=[
+                f"changed docs/comment/readability evidence for {surface.name}",
+                "repository naming or documentation convention evidence when needed",
+            ],
+            suppress_criteria=["The changed text is correct, consistent, and non-misleading."],
+            report_criteria=["The changed text is concretely wrong or misleading on the changed surface."],
+            allowed_retrieval=["task_evidence"],
+            budget=1,
+        )
+    ]
+
+
 def _ensure_compiler_coverage_floor(
     *,
     state: GraphState,
@@ -708,6 +918,20 @@ def _ensure_compiler_coverage_floor(
             skipped_due_to_cap.append(dict(obligation))
             continue
         added.append(_coverage_check_for_obligation(state, task, obligation, len(checks) + len(added) + 1))
+
+    deterministic_floor = [
+        *_migration_floor_checks(state, task, slot, [*checks, *added], len(checks) + len(added) + 1),
+        *_maintainability_floor_checks(state, task, slot, [*checks, *added], len(checks) + len(added) + 1),
+    ]
+    for check in deterministic_floor:
+        if len(checks) + len(added) >= _MAX_CHECKS_PER_TASK:
+            skipped_due_to_cap.append(
+                {"file_path": check.file_path, "surface": check.changed_code_anchor, "dimension": check.affected_invariant}
+            )
+            continue
+        if any(existing.check_id == check.check_id for existing in checks + added):
+            check = check.model_copy(update={"check_id": f"{check.check_id}:{len(added) + 1}"})
+        added.append(check)
 
     coverage_files = _changed_task_files(state, task)
     checked_files = {

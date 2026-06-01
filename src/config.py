@@ -446,7 +446,7 @@ class Settings(BaseSettings):
 		),
 	)
 	reviewer_actor_critic_max_plan_revisions: int = Field(
-		default=4,
+		default=5,
 		ge=0,
 		le=5,
 		description="Max plan_revision cycles after plan_critic before emitting tasks anyway.",
@@ -498,7 +498,7 @@ class Settings(BaseSettings):
 		description="Planner/critic bootstrap digest size stored in metadata.mental_model.",
 	)
 	reviewer_mandate_plan_max_cycles: int = Field(
-		default=3,
+		default=5,
 		ge=1,
 		le=8,
 		description="Max joint critic cycles (explorer/patch/revision) before plan_emit.",

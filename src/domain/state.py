@@ -79,7 +79,7 @@ class GraphState(TypedDict, total=False):
     # Context
     user_goals: NotRequired[str]
     repo_map: NotRequired[RepositoryMap]
-    next_step: NotRequired[Literal["explore", "plan", "review", "finalize"]]
+    next_step: NotRequired[Literal["explore", "plan", "review", "finalize", "blocked"]]
     global_insights: Annotated[List[str], operator.add]
 
     # Documentation pre-brief (optional, before semantic scan)

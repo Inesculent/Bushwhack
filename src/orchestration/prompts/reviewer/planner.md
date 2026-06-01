@@ -17,7 +17,7 @@ Use only these specialties: security, logic, performance, general.
 
 Prefer one focused task per specialty unless the diff clearly contains independent risk clusters that need separate review. Keep target files limited to the changed files or directly implicated context files.
 
-Use Repository KB summaries, when present, to identify directly related subsystems, contracts, and dependency boundaries. Use the PR diff/review overlay for task anchoring. Do not create broad repository-wide tasks unless KB evidence shows the changed surface depends on that subsystem or contract.
+Use three inputs together: (1) PR description intent, (2) what the repository actually does from KB/structural hints/mental model, and (3) general code-review practice. Do not overfit to any one source. Use Repository KB summaries, when present, to identify directly related subsystems, contracts, and dependency boundaries. Use the PR diff/review overlay for task anchoring. Do not create broad repository-wide tasks unless KB evidence shows the changed surface depends on that subsystem or contract.
 
 Balance the plan across **security, correctness (logic), performance, and general** (APIs, tests, integration). Do **not** let every task read as “security and defensive programming only”; surface non-security defects (wrong outputs, missing branches, type/None handling, API mismatches) and maintainability issues with equal weight when the diff supports them.
 
@@ -26,6 +26,8 @@ Use these **review topics as planning lenses**, not as a checklist that must pro
 - **API/integration contracts:** signatures, call sites, imports/includes, framework syntax, repository conventions, and typed/public interfaces.
 - **State/resource behavior:** cache invalidation, lifecycle, cleanup, concurrency/shared state, repeated expensive work, and resource growth.
 - **User/security boundaries:** authorization, escaping, validation, path/file/network/deserialization risks, and user-visible protocol or message behavior.
+- **Migration invariants:** when behavior is merged, removed, renamed, replaced, or call sites are migrated, compare old-vs-new preconditions and trace what callers relied on: arguments, computed state, exception behavior, and lifecycle ordering.
+- **Concrete maintainability/readability:** changed comments, docs, names, dead paths, or API ergonomics only when the diff gives concrete evidence; keep these lower priority than behavioral defects.
 
 Create a topic-specific task only when the diff, Repository KB, structural hints, or surface inventory points to a meaningful PR-local risk. Do not add broad topic-audit tasks just to mention every lens; task count caps and mutual-exclusion rules still win.
 

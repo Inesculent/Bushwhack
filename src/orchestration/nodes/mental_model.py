@@ -24,8 +24,8 @@ from src.orchestration.context.context_packets import (
 )
 from src.orchestration.context.mandate_loop_context import mm_meta
 from src.orchestration.context.surface_ledger import (
+    build_migration_invariants_from_diff,
     build_surface_invariants_from_ledger,
-    build_surface_ledger_from_diff,
     surface_inventory_names,
     surface_ledger_from_state,
 )
@@ -185,7 +185,7 @@ def make_intent_extractor_node(settings: Settings | None = None, *, use_llm: boo
             ).strip()
 
         git_diff = state.get("git_diff", "") or ""
-        surface_ledger = build_surface_ledger_from_diff(git_diff)
+        surface_ledger = surface_ledger_from_state({**state, "metadata": meta})
         inventory = surface_inventory_names(surface_ledger)
         intent_summary, scope_warnings = enrich_intent_summary_with_diff_scope(
             intent_summary, git_diff
@@ -283,6 +283,20 @@ def make_mandate_synthesizer_node(settings: Settings | None = None, *, use_llm: 
             except Exception:  # noqa: BLE001
                 store_read = None
 
+        base_invariants = build_surface_invariants_from_ledger(
+            surface_ledger,
+            risk_hypotheses=risks,
+        )
+        migration_invariants = build_migration_invariants_from_diff(
+            surface_ledger,
+            state.get("git_diff", "") or "",
+            intent_summary=str(intent.get("intent_summary", "")),
+            pr_context="\n".join(
+                str(meta.get(key) or "") for key in ("pr_title", "pr_description")
+            ),
+            risk_hypotheses=risks,
+        )
+
         spec = BehavioralSpec(
             intent_summary=str(intent.get("intent_summary", "")),
             behavioral_expectations=expectations,
@@ -296,10 +310,7 @@ def make_mandate_synthesizer_node(settings: Settings | None = None, *, use_llm: 
             reviewer_guidance=guidance,
             evidence_refs=evidence_refs,
             surfaces=surface_ledger,
-            surface_invariants=build_surface_invariants_from_ledger(
-                surface_ledger,
-                risk_hypotheses=risks,
-            ),
+            surface_invariants=[*base_invariants, *migration_invariants],
             confidence=0.55 if warnings else 0.7,
             uncertainties=uncertainties or "LLM synthesis may be incomplete; verify against code.",
         )

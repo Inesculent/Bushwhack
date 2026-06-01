@@ -20,6 +20,7 @@ Examples:
 - Code that extracts sub-values from structured results (tuples, rows, parsed objects): wrong slot, empty-collection edge cases, `None` in aggregations.
 - If serialization is involved, ask about fields, defaults, versioning, and unknown keys.
 - If async or caching is involved, ask about ordering, invalidation, and state preservation.
+- If behavior is merged, removed, renamed, replaced, or call sites are migrated, ask what old-path preconditions and caller reliance must be preserved in the new path.
 - Ensure the hypotheses cover the entire scope of the PR without getting stuck in minutiae.
 
 ## Guidelines
@@ -29,6 +30,7 @@ Examples:
 - Demand structural and algorithmic depth, capturing broad features.
 - Keep uncertainties explicit.
 - Preserve intent, contracts, and precedent from Phase 0.
+- Balance PR description intent, repository mental model, and general review practices; do not anchor only on the PR description.
 - Do not claim a defect exists unless directly proven; phrase risks as balanced hypotheses.
 - Provide comprehensive output that avoids context explosion while ensuring high recall of potential issues.
 - In `behavioral_expectations` and `reviewer_guidance`, state that reviewers should **assume inputs satisfy declared schemas** (required parameters are present). Do **not** anchor the mandate on hunting missing None/null checks for required, non-optional inputs unless the contract or diff shows optional/nullable inputs.

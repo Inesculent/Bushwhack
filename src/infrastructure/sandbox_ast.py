@@ -99,6 +99,7 @@ def _ts_entities(source, lang):
             "body": body,
             "dependencies": _deps(body),
             "definition_line": sl + 1,
+            "definition_end_line": node.end_point[0] + 1,
         })
     return ents
 
@@ -134,6 +135,7 @@ def _stdlib_entities(source):
             "body": body,
             "dependencies": sorted(set(deps)),
             "definition_line": sl + 1,
+            "definition_end_line": el,
         })
     return ents
 

@@ -8,7 +8,7 @@ from typing import Any, Dict, List
 from pydantic import BaseModel, Field
 
 from src.config import Settings, get_settings
-from src.domain.schemas import BehavioralEvidenceRef, BehavioralSpec
+from src.domain.schemas import BehavioralEvidenceRef, BehavioralSpec, ReviewSurface, SurfaceInvariant
 from src.domain.state import GraphState
 from src.infrastructure.behavioral_spec_store import BehavioralSpecStore
 from src.infrastructure.llm.factory import Models
@@ -24,6 +24,12 @@ from src.orchestration.context.mandate_loop_context import (
 )
 from src.orchestration.nodes.application.planner import _target_files
 from src.orchestration.context.mandate_loop_context import mm_meta
+from src.orchestration.context.surface_ledger import (
+    build_migration_invariants_from_diff,
+    build_surface_invariants_from_ledger,
+    surface_inventory_names,
+    surface_ledger_from_state,
+)
 from src.orchestration.prompts.renderer import render_reviewer_prompt
 from src.orchestration.review_principles import DECLARED_INPUT_CONTRACT_GUIDANCE
 
@@ -46,6 +52,8 @@ def _apply_patch_to_spec(
     intent_summary: str,
     patch: MandatePatchOutput,
     changed_files: List[str],
+    surfaces: List[ReviewSurface],
+    surface_invariants: List[SurfaceInvariant],
 ) -> BehavioralSpec:
     guidance = patch.reviewer_guidance.strip() or (
         f"Stay structural and unbiased. {DECLARED_INPUT_CONTRACT_GUIDANCE}"
@@ -58,6 +66,10 @@ def _apply_patch_to_spec(
         if fp not in seen:
             refs.append(BehavioralEvidenceRef(kind="file", ref=fp, note="Changed in this PR"))
             seen.add(fp)
+    merged_surfaces = surfaces or (prior.surfaces if prior else [])
+    merged_invariants = _merge_surface_invariants(
+        [*(prior.surface_invariants if prior else []), *surface_invariants]
+    )
     return BehavioralSpec(
         intent_summary=intent_summary or (prior.intent_summary if prior else ""),
         behavioral_expectations=patch.behavioral_expectations.strip()
@@ -70,10 +82,36 @@ def _apply_patch_to_spec(
         or (prior.risk_hypotheses if prior else "Hypotheses only; verify in code."),
         reviewer_guidance=guidance,
         evidence_refs=refs,
+        surfaces=merged_surfaces,
+        surface_invariants=merged_invariants,
         confidence=0.65 if prior else 0.55,
         uncertainties=patch.uncertainties.strip()
         or (prior.uncertainties if prior else "Verify against repository evidence."),
     )
+
+
+def _merge_surface_invariants(invariants: List[SurfaceInvariant]) -> List[SurfaceInvariant]:
+    merged: dict[tuple[str, str, str], SurfaceInvariant] = {}
+    for invariant in invariants:
+        key = (
+            invariant.surface_id,
+            invariant.dimension.strip().lower(),
+            invariant.expected_behavior.strip().lower()[:120],
+        )
+        existing = merged.get(key)
+        if existing is None:
+            merged[key] = invariant
+            continue
+        merged[key] = existing.model_copy(
+            update={
+                "required_evidence": list(
+                    dict.fromkeys([*existing.required_evidence, *invariant.required_evidence])
+                ),
+                "risk_hypothesis": existing.risk_hypothesis or invariant.risk_hypothesis,
+                "out_of_scope": existing.out_of_scope or invariant.out_of_scope,
+            }
+        )
+    return list(merged.values())
 
 
 def make_mandate_patch_node(settings: Settings | None = None, *, use_llm: bool = True):
@@ -151,11 +189,33 @@ def make_mandate_patch_node(settings: Settings | None = None, *, use_llm: bool =
                 uncertainties="Bootstrap patch may be incomplete.",
             )
 
+        surface_ledger = surface_ledger_from_state({**state, "metadata": meta})
+        surface_invariants = [
+            *build_surface_invariants_from_ledger(
+                surface_ledger,
+                risk_hypotheses=patch_out.risk_hypotheses,
+            ),
+            *build_migration_invariants_from_diff(
+                surface_ledger,
+                state.get("git_diff", "") or "",
+                intent_summary=intent_summary,
+                pr_context="\n".join(
+                    str(meta.get(key) or "") for key in ("pr_title", "pr_description")
+                ),
+                risk_hypotheses=patch_out.risk_hypotheses,
+            ),
+        ]
+        if surface_ledger:
+            slot["surface_ledger"] = [s.model_dump(mode="json") for s in surface_ledger]
+            slot["diff_surface_inventory"] = surface_inventory_names(surface_ledger)
+
         spec = _apply_patch_to_spec(
             prior=prior,
             intent_summary=intent_summary,
             patch=patch_out,
             changed_files=_target_files(state),
+            surfaces=surface_ledger,
+            surface_invariants=surface_invariants,
         )
         ref_new, abs_path = store.write(run_id, spec)
         new_seq = prev_seq + 1

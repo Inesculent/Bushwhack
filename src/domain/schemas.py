@@ -22,6 +22,10 @@ class CodeEntity(BaseModel):
         default=None,
         description="1-based line number of the definition signature when known (AST).",
     )
+    definition_end_line: Optional[int] = Field(
+        default=None,
+        description="1-based inclusive end line of the definition body when known (AST).",
+    )
 
 
 SymbolDefinitionSource = Literal["jedi", "tree_sitter", "regex", "mcp"]

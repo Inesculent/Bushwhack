@@ -294,9 +294,11 @@ def make_plan_emit_node():
             int(ac.get("revision_count", 0)) >= int(resolved.reviewer_actor_critic_max_plan_revisions)
             or int(loop.get("cycles", 0)) >= int(resolved.reviewer_mandate_plan_max_cycles)
         )
-        blocked = critic_exhausted or not bool(plan_validation.get("ok"))
+        if critic_exhausted:
+            warnings.append("plan_critic_misaligned_after_budget")
+        blocked = not bool(plan_validation.get("ok"))
         if blocked:
-            reason = "plan_critic_misaligned_after_budget" if critic_exhausted else "surface_plan_validation_failed"
+            reason = "surface_plan_validation_failed"
             return blocked_update(
                 state,
                 ac=ac,
@@ -331,6 +333,7 @@ def make_plan_emit_node():
         meta2["actor_critic_review"] = {
             "revision_count": ac_done.get("revision_count", 0),
             "aligned": ac_done.get("aligned"),
+            "emitted_after_budget": critic_exhausted,
         }
         out["metadata"] = meta2
         return out

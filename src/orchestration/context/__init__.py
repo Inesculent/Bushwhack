@@ -37,6 +37,7 @@ from src.orchestration.context.task_evidence import (
     code_slice_from_task_evidence,
 )
 from src.orchestration.context.surface_ledger import (
+    build_migration_invariants_from_diff,
     build_surface_ledger_from_diff,
     compact_surface_ledger_json,
     surface_ledger_from_state,
@@ -64,6 +65,7 @@ __all__ = [
     "format_pr_context_section",
     "pr_context_from_state",
     "surface_inventory_from_state",
+    "build_migration_invariants_from_diff",
     "build_surface_ledger_from_diff",
     "compact_surface_ledger_json",
     "surface_ledger_from_state",

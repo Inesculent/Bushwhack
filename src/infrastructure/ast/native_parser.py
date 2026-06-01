@@ -266,6 +266,7 @@ class NativeASTParser(IASTParser):
             body = source_bytes[node.start_byte : node.end_byte].decode("utf-8", errors="replace")
 
             definition_line = int(node.start_point[0]) + 1
+            definition_end_line = int(node.end_point[0]) + 1
             entities.append(
                 CodeEntity(
                     name=cls._node_name(node, source_bytes),
@@ -274,6 +275,7 @@ class NativeASTParser(IASTParser):
                     body=body,
                     dependencies=cls._extract_dependencies(body),
                     definition_line=definition_line,
+                    definition_end_line=definition_end_line,
                 )
             )
 

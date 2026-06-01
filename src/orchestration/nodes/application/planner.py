@@ -933,7 +933,13 @@ def validate_surface_bound_plan(tasks: List[ReviewTask], state: GraphState) -> D
             if changed_files and norm and norm not in changed_files:
                 invalid_target_files.append({"task_id": task.id, "file_path": norm})
         if task.specialty == "logic" and not _task_is_explicit_cross_surface(task):
+            target_files = {path.strip().replace("\\", "/") for path in task.target_files if path.strip()}
             for sid in surface_ids:
+                surface = by_id[sid]
+                if surface.kind == "file":
+                    continue
+                if target_files and surface.file_path and surface.file_path not in target_files:
+                    continue
                 logic_owners.setdefault(sid, []).append(task.id)
 
     high_confidence = [surface for surface in ledger if surface.confidence >= 0.75]

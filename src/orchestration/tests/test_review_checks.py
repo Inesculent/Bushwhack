@@ -27,6 +27,7 @@ from src.orchestration.nodes.application.review_checks import (
     make_review_check_validator_node,
     validate_review_check,
 )
+from src.orchestration.context.surface_ledger import build_migration_invariants_from_diff
 from src.reviewer_agent.harness import aacr
 from src.reviewer_agent.harness.aacr import (
     _coverage_audit_for_pr,
@@ -303,6 +304,131 @@ def test_surface_invariant_checks_are_compiled_before_fallback(tmp_path) -> None
     assert compiled[0]["check_id"] == "review-logic:surface:1"
     assert compiled[0]["surface_ids"] == ["surface:handle"]
     assert compiled[0]["line_start"] == 7
+
+
+def test_migration_invariants_capture_vllm_style_caller_reliance() -> None:
+    surface = ReviewSurface(
+        surface_id="surface:allocate",
+        name="allocate_slots",
+        kind="function",
+        file_path="vllm/v1/core/kv_cache_manager.py",
+        line_start=116,
+        line_end=180,
+        confidence=0.95,
+    )
+    diff = (
+        "diff --git a/vllm/v1/core/scheduler.py b/vllm/v1/core/scheduler.py\n"
+        "+++ b/vllm/v1/core/scheduler.py\n"
+        "@@ -140,7 +140,7 @@\n"
+        "-    manager.append_slots(request, new_computed_blocks)\n"
+        "+    manager.allocate_slots(request, [])\n"
+        "diff --git a/vllm/v1/core/kv_cache_manager.py b/vllm/v1/core/kv_cache_manager.py\n"
+        "+++ b/vllm/v1/core/kv_cache_manager.py\n"
+        "@@ -220,7 +220,6 @@\n"
+        "-def append_slots(request, computed_blocks):\n"
+        "-    return allocate_slots(request, computed_blocks)\n"
+    )
+
+    invariants = build_migration_invariants_from_diff(
+        [surface],
+        diff,
+        intent_summary="Merge append_slots into allocate_slots and migrate scheduler call sites.",
+    )
+
+    assert invariants
+    evidence = " ".join(invariants[0].required_evidence)
+    assert "old-path" in evidence
+    assert "required arguments/state inputs" in evidence
+    assert "caller reliance" in evidence
+
+
+def test_review_check_compiler_adds_migration_floor_check() -> None:
+    surface = ReviewSurface(
+        surface_id="surface:allocate",
+        name="allocate_slots",
+        kind="function",
+        file_path="src/cache.py",
+        line_start=10,
+        line_end=30,
+        confidence=0.95,
+    )
+    task = _task().model_copy(
+        update={
+            "description": "Check migrated call sites from append_slots to allocate_slots.",
+            "surface_ids": [surface.surface_id],
+        }
+    )
+    state = _state(
+        git_diff=(
+            "diff --git a/src/cache.py b/src/cache.py\n"
+            "+++ b/src/cache.py\n"
+            "@@ -20,7 +20,7 @@\n"
+            "-    append_slots(request, computed_blocks)\n"
+            "+    allocate_slots(request, [])\n"
+        ),
+        task_registry={task.id: task},
+        metadata={
+            **_state()["metadata"],
+            "mental_model": {"surface_ledger": [surface.model_dump(mode="json")]},
+        },
+    )
+
+    out = make_review_check_compiler_node(use_llm=False)(state)  # type: ignore[arg-type]
+
+    compiled = out["metadata"]["review_checks"]["by_task"]["review-logic"]["compiled_checks"]
+    assert any(check["affected_invariant"] == "migration caller-reliance contract" for check in compiled)
+    migration_check = next(
+        check for check in compiled if check["affected_invariant"] == "migration caller-reliance contract"
+    )
+    assert "caller reliance" in " ".join(migration_check["required_evidence"])
+
+
+def test_review_check_compiler_adds_concrete_maintainability_floor_check() -> None:
+    surface = ReviewSurface(
+        surface_id="surface:handle",
+        name="handle",
+        kind="function",
+        file_path="src/app.py",
+        line_start=1,
+        line_end=3,
+        confidence=0.95,
+    )
+    task = _task().model_copy(
+        update={
+            "description": "Check behavior first and include concrete maintainability/readability issues.",
+            "surface_ids": [surface.surface_id],
+        }
+    )
+    state = _state(
+        git_diff=(
+            "diff --git a/src/app.py b/src/app.py\n"
+            "+++ b/src/app.py\n"
+            "@@ -1,2 +1,3 @@\n"
+            " def handle():\n"
+            "+    # cacheing result for callers\n"
+            "     return None\n"
+        ),
+        task_registry={task.id: task},
+        metadata={
+            **_state()["metadata"],
+            "mental_model": {"surface_ledger": [surface.model_dump(mode="json")]},
+            "critique_pipeline": {
+                "by_task": {
+                    "review-logic": {
+                        "direct_context": "def handle():\n    # cacheing result for callers\n    return None\n",
+                        "mental_model_excerpt": "Maintainability/readability concerns must be concrete.",
+                        "review_kb_excerpt": "",
+                        "coverage_obligations": [],
+                    }
+                }
+            },
+        },
+    )
+
+    out = make_review_check_compiler_node(use_llm=False)(state)  # type: ignore[arg-type]
+
+    compiled = out["metadata"]["review_checks"]["by_task"]["review-logic"]["compiled_checks"]
+    assert any(check["affected_invariant"] == "maintainability contract" for check in compiled)
 
 
 def test_review_check_validator_rejects_surface_without_line_anchor() -> None:

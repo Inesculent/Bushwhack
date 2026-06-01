@@ -1,4 +1,11 @@
-from src.domain.schemas import ReviewFinding, ReviewTask, StructuralTopologyCommunity, StructuralTopologySummary
+from src.domain.schemas import (
+    CodeEntity,
+    ReviewFinding,
+    ReviewSurface,
+    ReviewTask,
+    StructuralTopologyCommunity,
+    StructuralTopologySummary,
+)
 from src.orchestration.nodes.application.planner import (
     _amend_diff_narrowed_tasks,
     _baseline_diff_local_correctness_task,
@@ -16,7 +23,7 @@ from src.orchestration.nodes.application.planner import (
     validate_surface_bound_plan,
 )
 from src.orchestration.nodes.application.actor_critic_planner import make_plan_emit_node
-from src.orchestration.context.surface_ledger import build_surface_ledger_from_diff
+from src.orchestration.context.surface_ledger import build_surface_ledger_from_diff, surface_ids_for_text
 from src.orchestration.nodes.application.synthesizer import synthesizer_node
 from src.orchestration.nodes.application.worker import (
     ReviewTaskContext,
@@ -222,7 +229,184 @@ def test_surface_plan_validation_rejects_non_changed_target_file() -> None:
     ]
 
 
-def test_plan_emit_fails_closed_when_critic_misaligned_after_budget() -> None:
+def test_surface_ledger_recalls_existing_entity_when_body_changes() -> None:
+    diff = (
+        "diff --git a/src/cache.py b/src/cache.py\n"
+        "+++ b/src/cache.py\n"
+        "@@ -12,7 +12,7 @@\n"
+        " def _untouch(blocks):\n"
+        "     for block in blocks:\n"
+        "-        queue.append(block)\n"
+        "+        queue.appendleft(block)\n"
+    )
+    entities = {
+        "src/cache.py": [
+            CodeEntity(
+                name="_untouch",
+                type="function",
+                signature="def _untouch(blocks):",
+                body="def _untouch(blocks):\n    for block in blocks:\n        queue.appendleft(block)\n",
+                definition_line=10,
+                definition_end_line=14,
+            )
+        ]
+    }
+
+    ledger = build_surface_ledger_from_diff(diff, entities_by_file=entities)
+
+    untouch = next(surface for surface in ledger if surface.name == "_untouch")
+    assert untouch.source == "ast_enclosing_diff_hunk"
+    assert untouch.line_start == 10
+    assert untouch.line_end == 14
+
+
+def test_surface_ledger_does_not_assign_ambiguous_inventory_to_first_file() -> None:
+    diff = (
+        "diff --git a/pkg/a.py b/pkg/a.py\n"
+        "+++ b/pkg/a.py\n"
+        "@@ -1,1 +1,1 @@\n"
+        "-old_a()\n"
+        "+new_a()\n"
+        "diff --git a/pkg/b.py b/pkg/b.py\n"
+        "+++ b/pkg/b.py\n"
+        "@@ -1,1 +1,1 @@\n"
+        "-old_b()\n"
+        "+new_b()\n"
+    )
+
+    ledger = build_surface_ledger_from_diff(diff, inventory=["SharedName"])
+
+    assert all(surface.name != "SharedName" for surface in ledger)
+
+
+def test_surface_ids_for_text_ignores_negated_surface_mentions() -> None:
+    surface = ReviewSurface(
+        surface_id="surface:b",
+        name="model_patcher.py",
+        kind="file",
+        file_path="pkg/model_patcher.py",
+        confidence=0.95,
+    )
+
+    ids = surface_ids_for_text("Audit cache behavior without reviewing model_patcher.py.", [surface])
+
+    assert ids == []
+
+
+def test_surface_plan_validation_ignores_out_of_scope_file_surface_overlap() -> None:
+    diff = (
+        "diff --git a/pkg/a.py b/pkg/a.py\n"
+        "+++ b/pkg/a.py\n"
+        "@@ -0,0 +1,2 @@\n"
+        "+def handle_a():\n"
+        "+    return None\n"
+        "diff --git a/pkg/b.py b/pkg/b.py\n"
+        "+++ b/pkg/b.py\n"
+        "@@ -0,0 +1,2 @@\n"
+        "+def handle_b():\n"
+        "+    return None\n"
+    )
+    file_surface = ReviewSurface(
+        surface_id="surface:file-b",
+        name="b.py",
+        kind="file",
+        file_path="pkg/b.py",
+        confidence=0.95,
+    )
+    handle_a = ReviewSurface(
+        surface_id="surface:handle-a",
+        name="handle_a",
+        kind="function",
+        file_path="pkg/a.py",
+        confidence=0.95,
+    )
+    handle_b = ReviewSurface(
+        surface_id="surface:handle-b",
+        name="handle_b",
+        kind="function",
+        file_path="pkg/b.py",
+        confidence=0.95,
+    )
+    state = {
+        "git_diff": diff,
+        "metadata": {
+            "mental_model": {
+                "surface_ledger": [
+                    file_surface.model_dump(),
+                    handle_a.model_dump(),
+                    handle_b.model_dump(),
+                ]
+            }
+        },
+    }
+    first = ReviewTask(
+        id="logic-a",
+        title="Diff-local correctness in a.py",
+        description="Audit a.py only, without reviewing b.py.",
+        target_files=["pkg/a.py"],
+        surface_ids=["surface:handle-a", "surface:file-b"],
+        specialty="logic",
+    )
+    second = ReviewTask(
+        id="logic-b",
+        title="Diff-local correctness in b.py",
+        description="Audit b.py.",
+        target_files=["pkg/b.py"],
+        surface_ids=["surface:file-b", "surface:handle-b"],
+        specialty="logic",
+    )
+
+    diagnostics = validate_surface_bound_plan([first, second], state)
+
+    assert diagnostics["ok"] is True
+    assert diagnostics["overlapping_tasks"] == []
+
+
+def test_surface_plan_validation_still_rejects_same_symbol_logic_overlap() -> None:
+    diff = (
+        "diff --git a/pkg/a.py b/pkg/a.py\n"
+        "+++ b/pkg/a.py\n"
+        "@@ -0,0 +1,2 @@\n"
+        "+def handle():\n"
+        "+    return None\n"
+    )
+    surface = ReviewSurface(
+        surface_id="surface:handle",
+        name="handle",
+        kind="function",
+        file_path="pkg/a.py",
+        confidence=0.95,
+    )
+    state = {
+        "git_diff": diff,
+        "metadata": {"mental_model": {"surface_ledger": [surface.model_dump()]}},
+    }
+    first = ReviewTask(
+        id="logic-a",
+        title="Diff-local correctness: handle branches",
+        description="Audit handle branch behavior.",
+        target_files=["pkg/a.py"],
+        surface_ids=["surface:handle"],
+        specialty="logic",
+    )
+    second = ReviewTask(
+        id="logic-b",
+        title="Diff-local correctness: handle returns",
+        description="Audit handle return behavior.",
+        target_files=["pkg/a.py"],
+        surface_ids=["surface:handle"],
+        specialty="logic",
+    )
+
+    diagnostics = validate_surface_bound_plan([first, second], state)
+
+    assert diagnostics["ok"] is False
+    assert diagnostics["overlapping_tasks"] == [
+        {"surface_id": "surface:handle", "task_ids": ["logic-a", "logic-b"]}
+    ]
+
+
+def test_plan_emit_emits_surface_valid_plan_when_critic_misaligned_after_budget() -> None:
     diff = (
         "diff --git a/src/app.py b/src/app.py\n"
         "+++ b/src/app.py\n"
@@ -252,10 +436,48 @@ def test_plan_emit_fails_closed_when_critic_misaligned_after_budget() -> None:
 
     out = make_plan_emit_node()(state)
 
+    assert out["next_step"] == "review"
+    assert out["metadata"]["actor_critic_review"]["emitted_after_budget"] is True
+    assert "plan_critic_misaligned_after_budget" in out["metadata"]["review_planner"]["warnings"]
+    assert [task_id for task_id in out["task_registry"] if task_id != out["root_task_id"]] == [
+        "logic-handle"
+    ]
+
+
+def test_plan_emit_still_blocks_surface_invalid_plan_after_budget() -> None:
+    diff = (
+        "diff --git a/src/app.py b/src/app.py\n"
+        "+++ b/src/app.py\n"
+        "@@ -0,0 +1,2 @@\n"
+        "+def handle():\n"
+        "+    return None\n"
+    )
+    task = ReviewTask(
+        id="logic-handle",
+        title="Diff-local correctness: handle",
+        description="Audit handle only.",
+        target_files=["tests/test_app.py"],
+        specialty="logic",
+    )
+    state = {
+        "git_diff": diff,
+        "metadata": {
+            "actor_critic_planner": {
+                "draft_tasks": [task.model_dump(mode="json")],
+                "revision_count": 99,
+                "aligned": False,
+                "last_critique": {"gaps": "missing boundaries"},
+            },
+            "mental_model": {"coupled_loop": {"cycles": 99}},
+        },
+    }
+
+    out = make_plan_emit_node()(state)
+
     assert out["next_step"] == "blocked"
     assert out["metadata"]["review_planner"]["blocked"] is True
     assert out["metadata"]["review_planner"]["plan_validation"]["blocked_reason"] == (
-        "plan_critic_misaligned_after_budget"
+        "surface_plan_validation_failed"
     )
     assert [task_id for task_id in out["task_registry"] if task_id != out["root_task_id"]] == []
 

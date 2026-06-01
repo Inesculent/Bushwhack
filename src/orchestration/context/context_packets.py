@@ -35,7 +35,6 @@ from src.orchestration.context.mandate_loop_context import (
     spec_excerpt_for_prompt,
 )
 from src.orchestration.context.surface_ledger import (
-    build_surface_ledger_from_diff,
     compact_surface_ledger_json,
     surface_inventory_names,
     surface_ledger_from_state,
@@ -420,7 +419,7 @@ def build_intent_extractor_packet(state: GraphState, *, settings: Settings | Non
     pr_cap = 2500
     inventory_cap = 400
     pr_text = format_pr_context_section(title, body, max_chars=pr_cap)
-    ledger = build_surface_ledger_from_diff(git_diff)
+    ledger = surface_ledger_from_state(state)
     inventory = surface_inventory_names(ledger)
     inventory_text = ", ".join(inventory) if inventory else ""
     if len(inventory_text) > inventory_cap:
