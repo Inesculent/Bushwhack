@@ -692,6 +692,21 @@ class Settings(BaseSettings):
 		default=True,
 		description="Instruct the generator to use sys.modules MagicMock prelude for heavy deps.",
 	)
+	verifier_prepare_env_enabled: bool = Field(
+		default=True,
+		description=(
+			"Best-effort verifier environment preparation. When enabled, verifier attempts create a "
+			"local venv in the execution workspace and use it when setup succeeds."
+		),
+	)
+	verifier_prepare_env_install_deps: bool = Field(
+		default=False,
+		description=(
+			"Reserved for targeted verifier dependency installation. Broad repository requirements "
+			"installation is intentionally avoided because review verification only needs imports "
+			"reachable from the candidate target."
+		),
+	)
 	verifier_total_budget_per_pr: int = Field(
 		default=10,
 		ge=1,

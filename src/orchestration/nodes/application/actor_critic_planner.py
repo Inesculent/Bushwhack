@@ -17,7 +17,7 @@ from src.orchestration.nodes.application.planner import (
     _normalize_tasks,
     _trace_enabled,
     build_planner_state_update,
-    finalize_emitted_tasks,
+    prepare_surface_first_tasks,
     run_planner_generation,
     validate_surface_bound_plan,
 )
@@ -284,10 +284,17 @@ def make_plan_emit_node():
         ac = dict(meta.get("actor_critic_planner") or {})
         draft_raw = ac.get("draft_tasks") or []
         tasks = [ReviewTask.model_validate(row) for row in draft_raw] or []
-        tasks = finalize_emitted_tasks(tasks, state)
+        tasks, surface_work_meta = prepare_surface_first_tasks(tasks, state)
         summary = str(ac.get("summary") or "Actor-critic review plan.")
         warnings = [str(w) for w in (ac.get("warnings") or []) if w]
         plan_validation = validate_surface_bound_plan(tasks, state)
+        if _trace_enabled(state):
+            trace_logger.info(
+                "TRACE plan_validation run_id=%s ok=%s diagnostics=%s",
+                state.get("run_id", "unknown"),
+                bool(plan_validation.get("ok")),
+                json.dumps(plan_validation, sort_keys=True)[:4000],
+            )
         resolved = get_settings()
         loop = dict((meta.get("mental_model") or {}).get("coupled_loop") or {})
         critic_exhausted = bool(ac.get("aligned") is False) and (
@@ -304,19 +311,27 @@ def make_plan_emit_node():
                 ac=ac,
                 warnings=warnings,
                 reason=reason,
-                plan_validation=plan_validation,
+                plan_validation={**plan_validation, **surface_work_meta},
             )
         if not tasks:
             tasks, summary, warn2, _t, _trace = run_planner_generation(state, use_llm=False)
             warnings.extend(warn2)
+            tasks, surface_work_meta = prepare_surface_first_tasks(tasks, state)
             plan_validation = validate_surface_bound_plan(tasks, state)
+            if _trace_enabled(state):
+                trace_logger.info(
+                    "TRACE plan_validation run_id=%s ok=%s diagnostics=%s",
+                    state.get("run_id", "unknown"),
+                    bool(plan_validation.get("ok")),
+                    json.dumps(plan_validation, sort_keys=True)[:4000],
+                )
             if not bool(plan_validation.get("ok")):
                 return blocked_update(
                     state,
                     ac=ac,
                     warnings=warnings,
                     reason="surface_plan_validation_failed",
-                    plan_validation=plan_validation,
+                    plan_validation={**plan_validation, **surface_work_meta},
                 )
         out = build_planner_state_update(
             state,
@@ -326,7 +341,7 @@ def make_plan_emit_node():
             0,
             [],
             node_history_name=node_name,
-            metadata_extra={"plan_validation": plan_validation},
+            metadata_extra={"plan_validation": {**plan_validation, **surface_work_meta}},
         )
         meta2 = dict(out["metadata"])
         ac_done = dict(meta.get("actor_critic_planner") or {})

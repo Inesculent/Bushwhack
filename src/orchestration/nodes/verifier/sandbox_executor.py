@@ -10,6 +10,7 @@ via ``create_execution_workspace()``, then runs generated scripts there. Rebuild
 from __future__ import annotations
 
 import ast
+import hashlib
 import logging
 import re
 import time
@@ -180,6 +181,171 @@ def _start_verifier_sandbox(
     return "repo_mount"
 
 
+def _repo_dependency_fingerprint(sandbox: RepoSandbox, workdir: str) -> str:
+    files = ("requirements.txt", "requirements-dev.txt", "pyproject.toml", "setup.py", "setup.cfg")
+    parts: List[str] = []
+    for name in files:
+        result = sandbox.execute_result(["sh", "-lc", f"test -f {name} && sha1sum {name} || true"], workdir=workdir)
+        if result.stdout.strip():
+            parts.append(result.stdout.strip())
+    raw = "\n".join(parts) or workdir
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:12]
+
+
+_MISSING_MODULE_RE = re.compile(r"No module named ['\"]([^'\"]+)['\"]")
+
+
+def _module_name_for_path(file_path: str) -> str:
+    path = file_path.strip().replace("\\", "/").lstrip("/")
+    if not path.endswith(".py"):
+        return ""
+    parts = [part for part in path.removesuffix(".py").split("/") if part]
+    if parts and parts[-1] == "__init__":
+        parts = parts[:-1]
+    if not parts or not all(re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", part) for part in parts):
+        return ""
+    return ".".join(parts)
+
+
+def _target_files_from_graph_state(graph_state: Optional[Dict[str, Any]]) -> List[str]:
+    if not isinstance(graph_state, dict):
+        return []
+    candidate = graph_state.get("verifier_candidate")
+    if not isinstance(candidate, dict):
+        return []
+    raw_paths: List[str] = []
+    file_path = candidate.get("file_path")
+    if isinstance(file_path, str) and file_path.strip():
+        raw_paths.append(file_path)
+    for key in ("file_paths", "target_files"):
+        value = candidate.get(key)
+        if isinstance(value, list):
+            raw_paths.extend(str(item) for item in value if str(item or "").strip())
+    out: List[str] = []
+    seen: set[str] = set()
+    for raw in raw_paths:
+        path = raw.strip().replace("\\", "/").lstrip("/")
+        if path and path not in seen:
+            seen.add(path)
+            out.append(path)
+    return out
+
+
+def _probe_target_imports(
+    sandbox: RepoSandbox,
+    *,
+    python_path: str,
+    workdir: str,
+    target_files: List[str],
+) -> tuple[List[Dict[str, Any]], List[str]]:
+    probes: List[Dict[str, Any]] = []
+    missing: List[str] = []
+    for file_path in target_files:
+        module = _module_name_for_path(file_path)
+        if not module:
+            continue
+        probe = sandbox.execute_result(
+            [python_path, "-c", f"import importlib; importlib.import_module({module!r})"],
+            workdir=workdir,
+        )
+        combined = f"{probe.stdout}\n{probe.stderr}"
+        missing_modules = sorted(set(_MISSING_MODULE_RE.findall(combined)))
+        missing.extend(missing_modules)
+        probes.append(
+            {
+                "file_path": file_path,
+                "module": module,
+                "exit_code": probe.exit_code,
+                "status": "ok" if probe.exit_code == 0 else "failed",
+                "missing_modules": missing_modules,
+                "stdout": _truncate_stream(probe.stdout, 1000),
+                "stderr": _truncate_stream(probe.stderr, 1000),
+            }
+        )
+    return probes, sorted(set(missing))
+
+
+def _prepare_verifier_env(
+    sandbox: RepoSandbox,
+    *,
+    workdir: str,
+    settings: Settings,
+    target_files: List[str] | None = None,
+) -> Dict[str, Any]:
+    """Best-effort per-attempt venv preparation; failures are advisory metadata only."""
+    if not getattr(settings, "verifier_prepare_env_enabled", True):
+        return {"status": "disabled", "python_path": "python"}
+
+    target_files = target_files or []
+    fingerprint = _repo_dependency_fingerprint(sandbox, workdir)
+    venv_dir = f"{workdir.rstrip('/')}/.verifier_venv_{fingerprint}"
+    python_path = f"{venv_dir}/bin/python"
+    metadata: Dict[str, Any] = {
+        "status": "preparing",
+        "fingerprint": fingerprint,
+        "venv_dir": venv_dir,
+        "python_path": python_path,
+        "install_attempts": [],
+        "dependency_install_policy": "targeted_only",
+        "missing_modules": [],
+        "target_files": target_files,
+        "target_import_probes": [],
+        "reused": False,
+    }
+
+    existing_probe = sandbox.execute_result([python_path, "-c", "import sys; print(sys.executable)"], workdir=workdir)
+    if existing_probe.exit_code == 0:
+        metadata["status"] = "usable"
+        metadata["reused"] = True
+        probes, missing = _probe_target_imports(
+            sandbox,
+            python_path=python_path,
+            workdir=workdir,
+            target_files=target_files,
+        )
+        metadata["target_import_probes"] = probes
+        metadata["missing_modules"] = missing
+        return metadata
+
+    create = sandbox.execute_result(["python", "-m", "venv", venv_dir], workdir=workdir)
+    if create.exit_code != 0:
+        metadata.update(
+            {
+                "status": "failed",
+                "failure_reason": "venv_create_failed",
+                "stdout": _truncate_stream(create.stdout, 2000),
+                "stderr": _truncate_stream(create.stderr, 2000),
+                "python_path": "python",
+            }
+        )
+        return metadata
+
+    probe = sandbox.execute_result([python_path, "-c", "import sys; print(sys.executable)"], workdir=workdir)
+    if probe.exit_code != 0:
+        metadata.update(
+            {
+                "status": "failed",
+                "failure_reason": "python_probe_failed",
+                "stdout": _truncate_stream(probe.stdout, 2000),
+                "stderr": _truncate_stream(probe.stderr, 2000),
+                "python_path": "python",
+            }
+        )
+        return metadata
+
+    probes, missing = _probe_target_imports(
+        sandbox,
+        python_path=python_path,
+        workdir=workdir,
+        target_files=target_files,
+    )
+    metadata["target_import_probes"] = probes
+    metadata["missing_modules"] = missing
+
+    metadata["status"] = "usable"
+    return metadata
+
+
 def validate_test_code(test_code: str) -> str | None:
     """Return an error message if ``test_code`` is not valid Python."""
     try:
@@ -230,9 +396,17 @@ def execute_test_script(
         exec_wd = sandbox.execution_workdir
         record.repo_root = exec_wd
         record.sandbox_mode = sandbox_mode
+        env_meta = _prepare_verifier_env(
+            sandbox,
+            workdir=exec_wd,
+            settings=settings,
+            target_files=_target_files_from_graph_state(graph_state),
+        )
+        record.env_metadata = env_meta
         record.lint_runs = _collect_lint_runs(sandbox, settings)
         sandbox.write_file_in_container(remote_path, test_code.encode("utf-8"))
-        cmd = ["python", remote_path]
+        python_cmd = str(env_meta.get("python_path") or "python") if env_meta.get("status") == "usable" else "python"
+        cmd = [python_cmd, remote_path]
 
         def _run() -> tuple[int, str, str]:
             r = sandbox.execute_result(cmd, workdir=exec_wd)

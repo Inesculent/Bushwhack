@@ -187,6 +187,40 @@ def test_verifier_finalize_node() -> None:
     assert "verifier" in res["metadata"]
 
 
+def test_verifier_finalize_records_env_metadata() -> None:
+    attempt = VerifierAttemptRecord(
+        attempt_number=1,
+        env_metadata={
+            "status": "usable",
+            "fingerprint": "abc123",
+            "python_path": "/exec/.verifier_venv_abc123/bin/python",
+            "install_attempts": [{"target": "requirements.txt", "exit_code": 0}],
+            "missing_modules": ["torch"],
+            "target_files": ["pkg/mod.py"],
+            "target_import_probes": [{"file_path": "pkg/mod.py", "module": "pkg.mod", "status": "failed"}],
+            "dependency_install_policy": "targeted_only",
+        },
+    )
+    state = _minimal_state(
+        verifier_verdict="verified",
+        verifier_last_rationale="mismatch",
+        verifier_scope="concrete_behavior",
+        verifier_attempts=[attempt],
+    )
+    with patch("src.orchestration.routing.verifier_fanout._lint_advisory_from_report", return_value=""):
+        res = verifier_finalize_node(state)
+
+    env = res["metadata"]["verifier_env"]["c1"]
+    assert env["status"] == "usable"
+    assert env["fingerprint"] == "abc123"
+    assert env["python_path"].endswith("/bin/python")
+    assert env["install_attempts"][0]["target"] == "requirements.txt"
+    assert env["missing_modules"] == ["torch"]
+    assert env["target_files"] == ["pkg/mod.py"]
+    assert env["target_import_probes"][0]["module"] == "pkg.mod"
+    assert env["dependency_install_policy"] == "targeted_only"
+
+
 def test_verifier_graph_retries_after_harness_failure() -> None:
     state = _minimal_state()
     harness_record = VerifierAttemptRecord(

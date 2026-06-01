@@ -258,6 +258,50 @@ def test_review_check_coverage_floor_uses_surface_anchor() -> None:
     assert compiled[0]["changed_code_anchor"] == "handle"
 
 
+def test_review_check_compiler_adds_primary_surface_check_for_uncovered_symbol(monkeypatch) -> None:
+    handle = ReviewSurface(
+        surface_id="surface:handle",
+        name="handle",
+        kind="function",
+        file_path="src/app.py",
+        line_start=7,
+        line_end=8,
+        confidence=0.95,
+    )
+    parse = ReviewSurface(
+        surface_id="surface:parse",
+        name="parse_payload",
+        kind="function",
+        file_path="src/app.py",
+        line_start=20,
+        line_end=25,
+        confidence=0.95,
+    )
+    task = _task().model_copy(update={"surface_ids": [handle.surface_id, parse.surface_id]})
+    output = ReviewCheckCompilerOutput(
+        summary="compiled",
+        checks=[_check(surface_ids=[handle.surface_id], line_start=7, line_end=8, changed_code_anchor="handle")],
+    )
+    monkeypatch.setattr(
+        "src.orchestration.nodes.application.review_checks.Models.worker",
+        lambda *_args, **_kwargs: _FakeLLM({"parsed": output, "raw": _Raw()}),
+    )
+    state = _state(
+        task_registry={task.id: task},
+        metadata={
+            **_state()["metadata"],
+            "mental_model": {"surface_ledger": [handle.model_dump(mode="json"), parse.model_dump(mode="json")]},
+        },
+    )
+
+    out = make_review_check_compiler_node()(state)  # type: ignore[arg-type]
+
+    task_meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
+    floor = task_meta["compiler_coverage_floor"]
+    assert floor["missing_primary_surface_ids"] == ["surface:parse"]
+    assert any(check["surface_ids"] == ["surface:parse"] for check in floor["added_checks"])
+
+
 def test_surface_invariant_checks_are_compiled_before_fallback(tmp_path) -> None:
     settings = Settings(snapshot_base_path=str(tmp_path))
     surface = ReviewSurface(
@@ -1004,6 +1048,42 @@ def test_review_check_executor_downgrades_weak_no_finding(monkeypatch) -> None:
     assert "weak_no_finding_requires_more_evidence" in result.warnings
     meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
     assert "executor_weak_no_finding_downgraded:review-logic:check:1" in meta["executor_warnings"]
+
+
+def test_review_check_executor_downgrades_weak_no_finding_to_budget_exhausted(monkeypatch) -> None:
+    check = _check(budget=1)
+    request = FocusedContextRequest(
+        request_id="check:review-logic:check:1:1",
+        candidate_id="review-logic:check:1",
+        requested_by_specialty="logic",
+        file_paths=["src/app.py"],
+        text_queries=["declared return contract"],
+        reason="spent budget",
+    )
+    output = ReviewCheckExecutorOutput(
+        results=[
+            ReviewCheckResult(
+                check_id="review-logic:check:1",
+                patch_task_id="review-logic",
+                decision="no_finding",
+                evidence_refs=["src/app.py:1"],
+                suppressing_evidence=["Insufficient evidence to confirm a defect."],
+            )
+        ]
+    )
+    monkeypatch.setattr(
+        "src.orchestration.nodes.application.review_checks.Models.worker",
+        lambda *_args, **_kwargs: _FakeLLM({"parsed": output, "raw": _Raw()}),
+    )
+
+    out = make_review_check_executor_node()(
+        _state(review_checks=[check], focused_context_requests=[request])
+    )  # type: ignore[arg-type]
+
+    result = out["review_check_results"][0]
+    assert result.decision == "budget_exhausted"
+    assert "weak_no_finding_requires_more_evidence" in result.warnings
+    assert "review_check_budget_exhausted" in result.warnings
 
 
 def test_review_check_executor_batches_checks_and_preserves_results(monkeypatch) -> None:

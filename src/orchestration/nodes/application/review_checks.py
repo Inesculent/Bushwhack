@@ -31,6 +31,7 @@ from src.orchestration.context.focus_request_scope import (
 )
 from src.orchestration.context.context_packets import focused_snippets_for_candidate
 from src.orchestration.context.surface_ledger import (
+    changed_file_sources_from_state,
     compact_surface_ledger_json,
     surface_by_id,
     surface_ids_for_task,
@@ -415,13 +416,48 @@ def _looks_like_code_file(path: str) -> bool:
 
 
 def _changed_task_files(state: GraphState, task: ReviewTask) -> List[str]:
-    changed_files = _changed_files_from_diff(str(state.get("git_diff") or ""))
+    changed_files = {
+        path
+        for paths in changed_file_sources_from_state(state).values()
+        for path in paths
+    } or _changed_files_from_diff(str(state.get("git_diff") or ""))
     targets = [path.strip().replace("\\", "/") for path in task.target_files if path and path.strip()]
     if not targets:
         targets = sorted(changed_files)
     if changed_files:
         targets = [path for path in targets if path in changed_files]
     return [path for path in dict.fromkeys(targets) if _looks_like_code_file(path)]
+
+
+def _surface_coverage_check(state: GraphState, task: ReviewTask, surface: ReviewSurface, index: int) -> ReviewCheck:
+    line_start = surface.line_start or 1
+    line_end = surface.line_end or line_start
+    return ReviewCheck(
+        check_id=f"{task.id}:surface-coverage:{index}",
+        patch_task_id=task.id,
+        surface_ids=[surface.surface_id],
+        lens="api_compatibility" if task.specialty == "general" else _dimension_to_lens(task.review_dimension),
+        file_path=surface.file_path,
+        line_start=line_start,
+        line_end=line_end,
+        changed_code_anchor=surface.name,
+        behavioral_question=f"Does the changed {surface.name} preserve its assigned surface behavior?",
+        affected_invariant=(
+            f"{surface.name} in {surface.file_path} preserves the behavior targeted by {task.title}."
+        ),
+        required_evidence=[
+            f"changed implementation for {surface.name}",
+            "repository contract or local caller evidence when the local code is insufficient",
+        ],
+        suppress_criteria=[
+            f"Repository evidence shows {surface.name} preserves the assigned behavior."
+        ],
+        report_criteria=[
+            f"The changed {surface.name} violates the assigned behavior on a reachable path."
+        ],
+        allowed_retrieval=["task_evidence", "focused_context"],
+        budget=2,
+    )
 
 
 def _coverage_check_for_file(state: GraphState, task: ReviewTask, file_path: str, index: int) -> ReviewCheck:
@@ -933,6 +969,28 @@ def _ensure_compiler_coverage_floor(
             check = check.model_copy(update={"check_id": f"{check.check_id}:{len(added) + 1}"})
         added.append(check)
 
+    ledger = surface_ledger_from_state(state)
+    by_id = surface_by_id(ledger)
+    task_surface_ids = [
+        sid for sid in surface_ids_for_task(task, ledger)
+        if sid in by_id and by_id[sid].confidence >= 0.75 and by_id[sid].kind != "file"
+    ]
+    covered_surface_ids = {
+        sid
+        for check in checks + added
+        for sid in check.surface_ids
+        if sid in by_id
+    }
+    missing_surface_ids = [sid for sid in task_surface_ids if sid not in covered_surface_ids]
+    for sid in missing_surface_ids:
+        surface = by_id[sid]
+        if len(checks) + len(added) >= _MAX_CHECKS_PER_TASK:
+            skipped_due_to_cap.append(
+                {"file_path": surface.file_path, "surface": surface.name, "dimension": "surface coverage"}
+            )
+            continue
+        added.append(_surface_coverage_check(state, task, surface, len(checks) + len(added) + 1))
+
     coverage_files = _changed_task_files(state, task)
     checked_files = {
         check.file_path.strip().replace("\\", "/")
@@ -962,6 +1020,8 @@ def _ensure_compiler_coverage_floor(
         "missed_files": missing_files,
         "ranked_obligations": [dict(item) for item in obligations],
         "uncovered_obligations": [dict(item) for item in uncovered_obligations],
+        "primary_surface_ids": task_surface_ids,
+        "missing_primary_surface_ids": missing_surface_ids,
         "added_checks": [check.model_dump(mode="json") for check in added],
         "added_coverage_checks": [check.check_id for check in added],
         "skipped_due_to_cap": skipped_due_to_cap,
@@ -1267,7 +1327,15 @@ def _anchor_matches_changed_surface(
         return True
     file_path = check.file_path.replace("\\", "/")
     task_files = {path.replace("\\", "/") for path in (task.target_files if task else [])}
-    changed_files = _changed_files_from_diff(str((state or {}).get("git_diff") or ""))
+    changed_files = (
+        {
+            path
+            for paths in changed_file_sources_from_state(state or {}).values()
+            for path in paths
+        }
+        if state is not None
+        else set()
+    ) or _changed_files_from_diff(str((state or {}).get("git_diff") or ""))
     if task_files and file_path not in task_files:
         return False
     if changed_files and file_path not in changed_files:
@@ -1785,6 +1853,31 @@ def _missing_evidence_for_weak_no_finding(check: ReviewCheck) -> List[str]:
     return list(check.required_evidence[:3])
 
 
+_INSUFFICIENT_EVIDENCE_MARKERS = (
+    "insufficient evidence",
+    "not enough evidence",
+    "cannot verify",
+    "cannot confirm",
+    "could not verify",
+    "not visible",
+    "missing evidence",
+    "no evidence",
+    "provided evidence does not",
+    "evidence is insufficient",
+)
+
+
+def _no_finding_has_strong_suppression(result: ReviewCheckResult, check: ReviewCheck) -> bool:
+    if not result.evidence_refs or not result.suppressing_evidence:
+        return False
+    blob = " ".join([result.reportable_reason, *result.suppressing_evidence]).lower()
+    if any(marker in blob for marker in _INSUFFICIENT_EVIDENCE_MARKERS):
+        return False
+    check_path = check.file_path.strip().replace("\\", "/")
+    refs = [ref.strip().replace("\\", "/") for ref in result.evidence_refs if str(ref).strip()]
+    return any(check_path in ref or ref.startswith("focused_context:") for ref in refs)
+
+
 def _normalize_executor_results(
     *,
     state: GraphState,
@@ -1825,17 +1918,17 @@ def _normalize_executor_results(
             else:
                 warnings.append(f"executor_candidate_dropped_by_normalizer:{cid}")
                 result = result.model_copy(update={"candidate": None, "decision": "unsupported"})
-        if (
-            result.decision == "no_finding"
-            and _check_budget_remaining(state, check)
-            and (not result.evidence_refs or not result.suppressing_evidence)
-        ):
+        if result.decision == "no_finding" and not _no_finding_has_strong_suppression(result, check):
             warnings.append(f"executor_weak_no_finding_downgraded:{check.check_id}")
+            next_decision = "unsupported" if _check_budget_remaining(state, check) else "budget_exhausted"
+            next_warnings = ["weak_no_finding_requires_more_evidence"]
+            if next_decision == "budget_exhausted":
+                next_warnings.append("review_check_budget_exhausted")
             result = result.model_copy(
                 update={
-                    "decision": "unsupported",
+                    "decision": next_decision,
                     "missing_evidence": _missing_evidence_for_weak_no_finding(check),
-                    "warnings": list(result.warnings) + ["weak_no_finding_requires_more_evidence"],
+                    "warnings": list(result.warnings) + next_warnings,
                 }
             )
         normalized.append(result)
@@ -2123,6 +2216,17 @@ def make_review_check_evidence_gate_node():
                 health_warnings.append("no_executor_candidates_for_valid_checks")
         if checks and not gated_results:
             health_warnings.append("evidence_gate_not_exercised")
+        ledger = surface_ledger_from_state(state)
+        by_id = surface_by_id(ledger)
+        high_confidence_unsupported_surfaces = sorted(
+            {
+                sid
+                for result in latest_results
+                if result.decision in {"unsupported", "budget_exhausted"}
+                for sid in (checks.get(result.check_id).surface_ids if checks.get(result.check_id) else [])
+                if sid in by_id and by_id[sid].confidence >= 0.75
+            }
+        )
 
         metadata = _set_task_review_checks_meta(
             state,
@@ -2135,6 +2239,7 @@ def make_review_check_evidence_gate_node():
                     "reason_counts": gate_reason_counts,
                     "candidate_lifecycle": lifecycle,
                     "health_warnings": health_warnings,
+                    "unsupported_high_confidence_surface_ids": high_confidence_unsupported_surfaces,
                 },
                 "health_warnings": health_warnings,
             },

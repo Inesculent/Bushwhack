@@ -56,6 +56,117 @@ def test_execute_test_script_attaches_ruff_lint_run(tmp_path) -> None:
     assert "R503" in rec.lint_runs[0].stdout
 
 
+def test_execute_test_script_uses_prepared_verifier_python(tmp_path) -> None:
+    commands: list[list[str]] = []
+
+    class FakeSandbox:
+        image_name = "test"
+        execution_workdir = "/repo"
+
+        def __init__(self, *args, **kwargs) -> None:  # noqa: ANN002, ANN003
+            pass
+
+        def start(self, *_args, **_kwargs) -> None:
+            pass
+
+        def write_file_in_container(self, *_args, **_kwargs) -> None:
+            pass
+
+        def stop(self) -> None:
+            pass
+
+        def execute_result(self, cmd, workdir=None):  # noqa: ANN001, ANN201
+            commands.append(list(cmd))
+            joined = " ".join(cmd)
+            if cmd[:2] == ["sh", "-lc"]:
+                return SandboxExecResult(exit_code=0, stdout="", stderr="")
+            if cmd[:3] == ["python", "-m", "venv"]:
+                return SandboxExecResult(exit_code=0, stdout="", stderr="")
+            if cmd and cmd[0].endswith("/bin/python") and "-c" in cmd:
+                return SandboxExecResult(exit_code=0, stdout=cmd[0], stderr="")
+            if cmd and cmd[0].endswith("/bin/python"):
+                return SandboxExecResult(exit_code=0, stdout="STATUS: SAFE\n", stderr="")
+            return SandboxExecResult(exit_code=-1, stdout="", stderr=joined)
+
+    settings = MagicMockSettings()
+    settings.verifier_ruff_enabled = False
+
+    rec = execute_test_script(
+        repo_path=str(tmp_path),
+        candidate_id="c1",
+        attempt_number=1,
+        test_code="print('hi')\n",
+        settings=settings,
+        sandbox_factory=FakeSandbox,
+        graph_state={"metadata": {}},
+    )
+
+    assert rec.status == VerificationStatus.COMPLETED
+    assert rec.env_metadata["status"] == "usable"
+    script_commands = [cmd for cmd in commands if cmd and cmd[-1].startswith("/tmp/verify_")]
+    assert script_commands
+    assert script_commands[0][0] == rec.env_metadata["python_path"]
+
+
+def test_execute_test_script_records_target_import_probe_without_broad_install(tmp_path) -> None:
+    commands: list[list[str]] = []
+
+    class FakeSandbox:
+        image_name = "test"
+        execution_workdir = "/repo"
+
+        def __init__(self, *args, **kwargs) -> None:  # noqa: ANN002, ANN003
+            pass
+
+        def start(self, *_args, **_kwargs) -> None:
+            pass
+
+        def write_file_in_container(self, *_args, **_kwargs) -> None:
+            pass
+
+        def stop(self) -> None:
+            pass
+
+        def execute_result(self, cmd, workdir=None):  # noqa: ANN001, ANN201
+            commands.append(list(cmd))
+            if cmd[:2] == ["sh", "-lc"]:
+                return SandboxExecResult(exit_code=0, stdout="requirements.txt abc123\n", stderr="")
+            if cmd[:3] == ["python", "-m", "venv"]:
+                return SandboxExecResult(exit_code=0, stdout="", stderr="")
+            if cmd and cmd[0].endswith("/bin/python") and "-c" in cmd:
+                code = cmd[-1]
+                if "importlib.import_module('pkg.mod')" in code:
+                    return SandboxExecResult(
+                        exit_code=1,
+                        stdout="",
+                        stderr="ModuleNotFoundError: No module named 'torch'",
+                    )
+                return SandboxExecResult(exit_code=0, stdout=cmd[0], stderr="")
+            if cmd and cmd[0].endswith("/bin/python"):
+                return SandboxExecResult(exit_code=0, stdout="STATUS: SAFE\n", stderr="")
+            return SandboxExecResult(exit_code=-1, stdout="", stderr="unexpected")
+
+    settings = MagicMockSettings()
+    settings.verifier_ruff_enabled = False
+    settings.verifier_prepare_env_install_deps = True
+
+    rec = execute_test_script(
+        repo_path=str(tmp_path),
+        candidate_id="c1",
+        attempt_number=1,
+        test_code="print('hi')\n",
+        settings=settings,
+        sandbox_factory=FakeSandbox,
+        graph_state={"metadata": {}, "verifier_candidate": {"file_path": "pkg/mod.py"}},
+    )
+
+    assert rec.status == VerificationStatus.COMPLETED
+    assert rec.env_metadata["dependency_install_policy"] == "targeted_only"
+    assert rec.env_metadata["missing_modules"] == ["torch"]
+    assert rec.env_metadata["target_import_probes"][0]["module"] == "pkg.mod"
+    assert not any(cmd[:4] == [rec.env_metadata["python_path"], "-m", "pip", "install"] for cmd in commands)
+
+
 class MagicMockSettings:
     sandbox_backend = "docker"
     verifier_image = "test-img"

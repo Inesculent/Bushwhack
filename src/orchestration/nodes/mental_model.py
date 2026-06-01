@@ -24,6 +24,7 @@ from src.orchestration.context.context_packets import (
 )
 from src.orchestration.context.mandate_loop_context import mm_meta
 from src.orchestration.context.surface_ledger import (
+    changed_file_integrity_diagnostics,
     build_migration_invariants_from_diff,
     build_surface_invariants_from_ledger,
     surface_inventory_names,
@@ -275,6 +276,7 @@ def make_mandate_synthesizer_node(settings: Settings | None = None, *, use_llm: 
         if surface_ledger:
             slot["surface_ledger"] = [s.model_dump(mode="json") for s in surface_ledger]
             slot["diff_surface_inventory"] = surface_inventory_names(surface_ledger)
+        slot["changed_file_inventory_diagnostics"] = changed_file_integrity_diagnostics({**state, "metadata": meta})
 
         store_read: BehavioralSpec | None = None
         if isinstance(state.get("behavioral_spec_ref"), str):

@@ -88,6 +88,10 @@ class ReviewTask(BaseModel):
     
     # Static planning metadata for orchestration
     specialty: Literal["security", "performance", "logic", "style", "general"] = "general"
+    review_dimension: str = Field(
+        default="general",
+        description="Generic review dimension used for surface/task dedupe and coverage diagnostics.",
+    )
     depth: int = Field(default = 0, ge = 0, le = 5, description="Depth level for the review task") # Might be useful if we need to define a max depth
     assigned_model: Optional[str] = None
 

@@ -575,6 +575,67 @@ def test_dedupe_merges_failure_mode_from_dropped_duplicate() -> None:
     assert "implicit none" in blob or "no final return" in blob
 
 
+def test_candidate_dedupe_normalizes_behavior_metadata_before_signature() -> None:
+    c1 = _cand(
+        candidate_id="t:path-1",
+        file_path="pkg/files.py",
+        line_start=10,
+        line_end=12,
+        content="open_user_path joins ../ segments into the base directory",
+        failure_mode="path traversal via ../",
+        evidence_summary="source is user path, sink is os.path.join",
+        behavioral_symptom="other",
+        root_operation="other",
+    )
+    c2 = _cand(
+        candidate_id="t:path-2",
+        file_path="pkg/files.py",
+        line_start=10,
+        line_end=12,
+        content="open_user_path allows path traversal",
+        failure_mode="user-controlled ../ escapes base path",
+        evidence_summary="source user input reaches filesystem path sink",
+        behavioral_symptom="wrong_output",
+        root_operation="contract",
+    )
+
+    out, dups = dedupe_candidates_by_signature([c1, c2])
+
+    assert len(out) == 1
+    dropped = {item for values in dups.values() for item in values}
+    assert len(dropped) == 1
+    assert out[0].candidate_id not in dropped
+    assert out[0].behavioral_symptom == "contract_mismatch"
+    assert out[0].root_operation == "resource_use"
+    assert "filesystem path sink" in out[0].evidence_summary
+
+
+def test_candidate_dedupe_keeps_distinct_symptoms_on_same_surface() -> None:
+    crash = _cand(
+        candidate_id="t:crash",
+        file_path="pkg/files.py",
+        line_start=10,
+        line_end=12,
+        content="open_user_path",
+        failure_mode="UnboundLocalError referenced before assignment",
+        evidence_summary="local variable only assigned in one branch",
+    )
+    contract = _cand(
+        candidate_id="t:contract",
+        file_path="pkg/files.py",
+        line_start=10,
+        line_end=12,
+        content="open_user_path",
+        failure_mode="default option is not in the allowed enum",
+        evidence_summary="default value violates allowed options",
+    )
+
+    out, dups = dedupe_candidates_by_signature([crash, contract])
+
+    assert {item.candidate_id for item in out} == {"t:crash", "t:contract"}
+    assert dups == {}
+
+
 def test_dedupe_collapses_stringcompare_duplicates() -> None:
     git_diff = "\n".join(
         [

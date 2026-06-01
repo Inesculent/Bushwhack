@@ -376,6 +376,7 @@ def _render_verifier_advisory_section(
     max_chars: int = 8000,
 ) -> str:
     want = set(candidate_ids)
+    hints = dict((state.get("metadata") or {}).get("verifier_hints") or {})
     parts: List[str] = []
     for raw in state.get("verifier_reports") or []:
         if isinstance(raw, VerifierReport):
@@ -388,6 +389,9 @@ def _render_verifier_advisory_section(
         else:
             continue
         if r.candidate_id not in want:
+            continue
+        hint = hints.get(r.candidate_id) if isinstance(hints.get(r.candidate_id), dict) else {}
+        if hint.get("confidence") != "clean_product_signal":
             continue
         parts.append(_compact_verifier_report_json(r))
     if not parts:
@@ -528,10 +532,7 @@ def _apply_verifier_policy_to_revisions(
                 product_verified=bool(hint.get("product_verified")),
             )
         if harness:
-            note = "runtime unverified (harness)"
-            if note not in summary:
-                row["updated_evidence_summary"] = f"{summary} {note}".strip()
-            warnings.append(f"critique_revision_harness:{cid}")
+            warnings.append(f"critique_revision_verifier_ignored:{cid}:harness")
         elif (
             v_verdict == "refuted"
             and scope == "concrete_behavior"
@@ -555,12 +556,9 @@ def _apply_verifier_policy_to_revisions(
                     row["updated_evidence_summary"] = f"{summary} {note}".strip()
                 warnings.append(f"critique_revision_verifier_inconclusive_wrong_output:{cid}")
         elif v_verdict == "refuted" and verdict == "accept":
-            note = f"runtime advisory only ({confidence})"
-            if note not in summary:
-                row["updated_evidence_summary"] = f"{summary} {note}".strip()
             if confidence == "static_claim_not_runtime_refutable":
                 warnings.append(f"critique_revision_verifier_inconclusive_wrong_output:{cid}")
-            warnings.append(f"critique_revision_verifier_advisory:{cid}:{confidence}")
+            warnings.append(f"critique_revision_verifier_ignored:{cid}:{confidence or 'advisory'}")
         adjusted.append(row)
     return adjusted, warnings
 

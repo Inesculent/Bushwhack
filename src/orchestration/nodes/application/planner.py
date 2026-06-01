@@ -7,7 +7,7 @@ from typing import Any, Dict, Iterable, List
 from pydantic import BaseModel, Field
 
 from src.config import get_settings
-from src.domain.schemas import ReviewTask, StructuralTopologySummary
+from src.domain.schemas import ReviewSurface, ReviewTask, StructuralTopologySummary
 from src.domain.state import GraphState
 from src.infrastructure.llm.factory import Models
 from src.infrastructure.llm.token_usage import parse_structured_output
@@ -19,6 +19,8 @@ from src.orchestration.context.context_packets import (
     surface_inventory_from_state,
 )
 from src.orchestration.context.surface_ledger import (
+    changed_file_integrity_diagnostics,
+    changed_file_sources_from_state,
     changed_files_from_diff,
     surface_by_id,
     surface_ids_for_task,
@@ -202,6 +204,12 @@ def _default_tasks(state: GraphState) -> List[ReviewTask]:
             description=description,
             target_files=files,
             specialty=specialty,  # type: ignore[arg-type]
+            review_dimension={
+                "security": "security_boundary",
+                "logic": "diff_local_correctness",
+                "performance": "resource_lifecycle",
+                "general": "api_contract",
+            }.get(specialty, "general"),
             depth=1,
         )
         for specialty, title, description in task_specs
@@ -310,6 +318,104 @@ def _surface_names_for_task(task: ReviewTask, state: GraphState) -> List[str]:
     if not ledger:
         return []
     return surface_names_for_ids(surface_ids_for_task(task, ledger), ledger)
+
+
+def _required_surfaces_for_plan(ledger: List[ReviewSurface]) -> List[ReviewSurface]:
+    """Surfaces that must have executable work before emit."""
+    high_confidence = [surface for surface in ledger if surface.confidence >= 0.75]
+    symbol_surfaces = [surface for surface in high_confidence if surface.kind != "file"]
+    symbol_files = {surface.file_path for surface in symbol_surfaces}
+    file_fallbacks = [
+        surface
+        for surface in high_confidence
+        if surface.kind == "file" and surface.file_path not in symbol_files
+    ]
+    return sorted(symbol_surfaces + file_fallbacks, key=lambda s: (s.file_path, s.line_start or 10**9, s.name))
+
+
+def _explicit_surface_ids(task: ReviewTask, by_id: dict[str, ReviewSurface]) -> List[str]:
+    return _dedupe_preserve_order(sid for sid in task.surface_ids if sid in by_id)
+
+
+def _task_is_concrete_cross_surface(task: ReviewTask) -> bool:
+    blob = f"{task.id} {task.title} {task.description}".lower()
+    return any(
+        marker in blob
+        for marker in (
+            "call path",
+            "call-path",
+            "caller-reliance",
+            "caller reliance",
+            "migration",
+            "integration contract",
+            "concrete integration",
+        )
+    )
+
+
+def _primary_surface_ids_for_task(task: ReviewTask, by_id: dict[str, ReviewSurface]) -> List[str]:
+    surface_ids = _explicit_surface_ids(task, by_id)
+    if not surface_ids:
+        return []
+    if _task_is_explicit_cross_surface(task) and not _task_is_concrete_cross_surface(task):
+        return []
+    return surface_ids
+
+
+def _logic_covered_surface_ids(tasks: List[ReviewTask], by_id: dict[str, ReviewSurface]) -> set[str]:
+    covered: set[str] = set()
+    for task in tasks:
+        if task.specialty != "logic":
+            continue
+        covered.update(_primary_surface_ids_for_task(task, by_id))
+    return covered
+
+
+def _surface_fill_task(surface: ReviewSurface, *, index: int) -> ReviewTask:
+    line_hint = ""
+    if surface.line_start is not None:
+        line_hint = f" Anchor around line {surface.line_start}."
+    return ReviewTask(
+        id=f"review-logic-surface-fill-{index}",
+        title=f"Diff-local correctness: {surface.name}"[:80],
+        description=(
+            f"Diff-local correctness for {surface.name} only. Verify changed control flow, return "
+            "contracts, type/API consistency, state/resource effects, and reachable edge cases for this "
+            f"surface. {_CLASS_SCOPE_ISOLATION_PHRASE.capitalize()} in the target file.{line_hint}"
+        )[:500],
+        target_files=[surface.file_path],
+        surface_ids=[surface.surface_id],
+        specialty="logic",
+        review_dimension="diff_local_correctness",
+        depth=1,
+    )
+
+
+def surface_work_fill_tasks(tasks: List[ReviewTask], state: GraphState) -> tuple[List[ReviewTask], Dict[str, Any]]:
+    """Add deterministic per-surface logic tasks for high-confidence surfaces with no logic owner."""
+    ledger = surface_ledger_from_state(state)
+    if not ledger:
+        return tasks, {
+            "surface_fill_uncovered_before": [],
+            "surface_fill_added_tasks": [],
+        }
+    by_id = surface_by_id(ledger)
+    required = _required_surfaces_for_plan(ledger)
+    logic_covered = _logic_covered_surface_ids(tasks, by_id)
+    uncovered = [surface for surface in required if surface.surface_id not in logic_covered]
+    added = [_surface_fill_task(surface, index=i + 1) for i, surface in enumerate(uncovered)]
+    return tasks + added, {
+        "surface_fill_uncovered_before": [
+            {
+                "surface_id": surface.surface_id,
+                "name": surface.name,
+                "kind": surface.kind,
+                "file_path": surface.file_path,
+            }
+            for surface in uncovered
+        ],
+        "surface_fill_added_tasks": [task.model_dump(mode="json") for task in added],
+    }
 
 
 def _task_surface_names(task: ReviewTask) -> frozenset[str]:
@@ -425,6 +531,7 @@ def _logic_class_focus_task(
         description=description,
         target_files=files,
         specialty="logic",
+        review_dimension="data_shape_consistency" if focus == "structured" else "diff_local_correctness",
         depth=1,
     )
 
@@ -607,6 +714,7 @@ def _logic_surface_shard_task(
         ),
         target_files=files,
         specialty="logic",
+        review_dimension="diff_local_correctness",
         depth=1,
     )
 
@@ -658,6 +766,7 @@ def _structured_extraction_correctness_task(files: List[str]) -> ReviewTask:
         ),
         target_files=files,
         specialty="logic",
+        review_dimension="data_shape_consistency",
         depth=1,
     )
 
@@ -706,6 +815,7 @@ def _baseline_diff_local_correctness_task(files: List[str], state: GraphState) -
         description=description,
         target_files=files,
         specialty="logic",
+        review_dimension="diff_local_correctness",
         depth=1,
     )
     return _attach_task_surface_ids(task, state)
@@ -900,6 +1010,17 @@ def finalize_emitted_tasks(tasks: List[ReviewTask], state: GraphState) -> List[R
     return [_attach_task_surface_ids(task, state) for task in prepared]
 
 
+def prepare_surface_first_tasks(
+    tasks: List[ReviewTask],
+    state: GraphState,
+) -> tuple[List[ReviewTask], Dict[str, Any]]:
+    """Finalize planner output, add deterministic surface coverage, and dedupe exact task duplicates."""
+    finalized = finalize_emitted_tasks(tasks, state)
+    filled, fill_meta = surface_work_fill_tasks(finalized, state)
+    deduped, dedupe_meta = dedupe_tasks_by_surface_dimension(filled, state)
+    return [_attach_task_surface_ids(task, state) for task in deduped], {**fill_meta, **dedupe_meta}
+
+
 def _task_is_explicit_cross_surface(task: ReviewTask) -> bool:
     blob = f"{task.id} {task.title} {task.description}".lower()
     return (
@@ -914,9 +1035,15 @@ def validate_surface_bound_plan(tasks: List[ReviewTask], state: GraphState) -> D
     """Pre-execution plan gate for changed-surface scope integrity."""
 
     ledger = surface_ledger_from_state(state)
-    changed_files = set(changed_files_from_diff(state.get("git_diff", "") or ""))
+    inventory_diagnostics = changed_file_integrity_diagnostics(state)
+    changed_sources = changed_file_sources_from_state(state)
+    changed_files = {
+        path
+        for paths in changed_sources.values()
+        for path in paths
+    } or set(changed_files_from_diff(state.get("git_diff", "") or ""))
     by_id = surface_by_id(ledger)
-    normalized_tasks = [_attach_task_surface_ids(task, state) for task in tasks]
+    normalized_tasks = list(tasks)
 
     covered: set[str] = set()
     missing_surface_ids: List[str] = []
@@ -924,10 +1051,10 @@ def validate_surface_bound_plan(tasks: List[ReviewTask], state: GraphState) -> D
     logic_owners: Dict[str, List[str]] = {}
 
     for task in normalized_tasks:
-        surface_ids = [sid for sid in task.surface_ids if sid in by_id]
+        surface_ids = _explicit_surface_ids(task, by_id)
         if ledger and not surface_ids:
             missing_surface_ids.append(task.id)
-        covered.update(surface_ids)
+        covered.update(_primary_surface_ids_for_task(task, by_id))
         for path in task.target_files:
             norm = path.strip().replace("\\", "/")
             if changed_files and norm and norm not in changed_files:
@@ -942,16 +1069,17 @@ def validate_surface_bound_plan(tasks: List[ReviewTask], state: GraphState) -> D
                     continue
                 logic_owners.setdefault(sid, []).append(task.id)
 
-    high_confidence = [surface for surface in ledger if surface.confidence >= 0.75]
-    uncovered = [surface.surface_id for surface in high_confidence if surface.surface_id not in covered]
+    required_surfaces = _required_surfaces_for_plan(ledger)
+    uncovered = [surface.surface_id for surface in required_surfaces if surface.surface_id not in covered]
     overlapping = [
         {"surface_id": sid, "task_ids": task_ids}
         for sid, task_ids in sorted(logic_owners.items())
         if len(set(task_ids)) > 1
     ]
     diagnostics = {
-        "ok": not (uncovered or overlapping or invalid_target_files or missing_surface_ids),
+        "ok": not (uncovered or invalid_target_files),
         "surface_count": len(ledger),
+        "required_surface_count": len(required_surfaces),
         "covered_surface_ids": sorted(covered),
         "uncovered_surfaces": [
             {
@@ -965,6 +1093,7 @@ def validate_surface_bound_plan(tasks: List[ReviewTask], state: GraphState) -> D
         "overlapping_tasks": overlapping,
         "invalid_target_files": invalid_target_files,
         "tasks_missing_surface_ids": missing_surface_ids,
+        "changed_file_inventory_diagnostics": inventory_diagnostics,
     }
     return diagnostics
 
@@ -983,6 +1112,91 @@ def _task_similarity(left: ReviewTask, right: ReviewTask) -> float:
     intersection = lt & rt
     union = lt | rt
     return len(intersection) / max(1, len(union))
+
+
+def _review_dimension_for_task(task: ReviewTask) -> str:
+    explicit = str(getattr(task, "review_dimension", "") or "").strip()
+    if explicit and explicit != "general":
+        return explicit
+    blob = f"{task.id} {task.title} {task.description}".lower()
+    if "structured extraction" in blob or "structured" in blob:
+        return "structured_extraction"
+    if "branch" in blob or "return path" in blob or "diff-local correctness" in blob:
+        return "diff_local_correctness"
+    if "migration" in blob or "caller-reliance" in blob or "call site" in blob:
+        return "migration_contract"
+    if "resource" in blob or "vram" in blob or "memory" in blob or "checkpoint" in blob:
+        return "resource_lifecycle"
+    if "security" in blob or "path traversal" in blob or "permission" in blob:
+        return "security_boundary"
+    if "api" in blob or "contract" in blob or "compatibility" in blob:
+        return "api_contract"
+    return task.specialty
+
+
+def _specificity_score(task: ReviewTask) -> tuple[int, int, int]:
+    surface_count = len(task.surface_ids)
+    single_surface = 1 if surface_count == 1 else 0
+    scoped = 1 if _CLASS_SCOPE_ISOLATION_PHRASE in f"{task.title} {task.description}".lower() else 0
+    return (single_surface, scoped, len(task.description or ""))
+
+
+def _merge_duplicate_task(keeper: ReviewTask, challenger: ReviewTask) -> ReviewTask:
+    if _specificity_score(challenger) > _specificity_score(keeper):
+        keeper, challenger = challenger, keeper
+    return keeper.model_copy(
+        update={
+            "target_files": _dedupe_preserve_order([*keeper.target_files, *challenger.target_files]),
+            "surface_ids": _dedupe_preserve_order([*keeper.surface_ids, *challenger.surface_ids]),
+        }
+    )
+
+
+def dedupe_tasks_by_surface_dimension(
+    tasks: List[ReviewTask],
+    state: GraphState,
+) -> tuple[List[ReviewTask], Dict[str, Any]]:
+    """Collapse exact single-surface task duplicates while preserving distinct dimensions."""
+    by_id = surface_by_id(surface_ledger_from_state(state))
+    keyed: dict[tuple[str, str, str], ReviewTask] = {}
+    key_order: List[tuple[str, str, str]] = []
+    out: List[ReviewTask] = []
+    dropped: List[Dict[str, Any]] = []
+
+    for task in tasks:
+        surface_ids = _explicit_surface_ids(task, by_id)
+        if len(surface_ids) != 1:
+            out.append(task)
+            continue
+        key = (surface_ids[0], task.specialty, _review_dimension_for_task(task))
+        existing = keyed.get(key)
+        if existing is None:
+            keyed[key] = task
+            key_order.append(key)
+            continue
+        merged = _merge_duplicate_task(existing, task)
+        dropped_id = existing.id if merged.id == task.id else task.id
+        kept_id = merged.id
+        keyed[key] = merged
+        dropped.append(
+            {
+                "key": {"surface_id": key[0], "specialty": key[1], "dimension": key[2]},
+                "kept_task_id": kept_id,
+                "dropped_task_id": dropped_id,
+            }
+        )
+
+    out.extend(keyed[key] for key in key_order)
+    seen_ids: dict[str, int] = {}
+    renamed: List[ReviewTask] = []
+    for task in out:
+        count = seen_ids.get(task.id, 0)
+        seen_ids[task.id] = count + 1
+        if count == 0:
+            renamed.append(task)
+        else:
+            renamed.append(task.model_copy(update={"id": f"{task.id}-{count + 1}"}))
+    return renamed, {"task_dedupe_dropped": dropped}
 
 
 def _is_duplicate_task(candidate: ReviewTask, existing: List[ReviewTask]) -> bool:

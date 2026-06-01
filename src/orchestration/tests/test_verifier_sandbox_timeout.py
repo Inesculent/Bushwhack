@@ -65,3 +65,4 @@ class _TimeoutSettings:
     verifier_use_execution_workspace = False
     verifier_clone_remote_in_container = False
     verifier_require_repo_in_container = False
+    verifier_prepare_env_enabled = False

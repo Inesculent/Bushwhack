@@ -55,6 +55,102 @@ def changed_files_from_diff(git_diff: str) -> List[str]:
     return files
 
 
+def _coerce_path_list(raw: Any) -> List[str]:
+    if not isinstance(raw, Sequence) or isinstance(raw, (str, bytes)):
+        return []
+    out: List[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        path = normalize_repo_path(str(item or ""))
+        if path and path != "/dev/null" and path not in seen:
+            seen.add(path)
+            out.append(path)
+    return out
+
+
+def _metadata_mapping(state: GraphState) -> Mapping[str, Any]:
+    metadata = state.get("metadata", {}) or {}
+    return metadata if isinstance(metadata, Mapping) else {}
+
+
+def _mapping_child(parent: Mapping[str, Any], key: str) -> Mapping[str, Any]:
+    value = parent.get(key)
+    return value if isinstance(value, Mapping) else {}
+
+
+def changed_file_sources_from_state(state: GraphState) -> dict[str, List[str]]:
+    """Collect changed-file lists from trusted run metadata and overlays."""
+
+    sources: dict[str, List[str]] = {
+        "git_diff": changed_files_from_diff(str(state.get("git_diff") or "")),
+    }
+    for key in (
+        "changed_files",
+        "changed_file_paths",
+        "benchmark_changed_files",
+        "pr_changed_files",
+        "review_changed_files",
+    ):
+        values = _coerce_path_list(state.get(key))
+        if values:
+            sources[f"state.{key}"] = values
+
+    metadata = _metadata_mapping(state)
+    for key in (
+        "changed_files",
+        "changed_file_paths",
+        "benchmark_changed_files",
+        "pr_changed_files",
+        "review_changed_files",
+    ):
+        values = _coerce_path_list(metadata.get(key))
+        if values:
+            sources[f"metadata.{key}"] = values
+
+    repository_kb = _mapping_child(metadata, "repository_kb")
+    semantic_phase2 = _mapping_child(metadata, "semantic_phase2")
+    review_kb = _mapping_child(semantic_phase2, "review_kb")
+    nested_sources = (
+        ("metadata.review_history_context", metadata.get("review_history_context")),
+        ("metadata.docs_prebrief", metadata.get("docs_prebrief")),
+        ("metadata.repository_kb.review_overlay", repository_kb.get("review_overlay")),
+        ("metadata.semantic_phase2.review_kb.review_overlay", review_kb.get("review_overlay")),
+    )
+    for source_name, raw_mapping in nested_sources:
+        if not isinstance(raw_mapping, Mapping):
+            continue
+        values = _coerce_path_list(raw_mapping.get("changed_files") or raw_mapping.get("changed_file_paths"))
+        if values:
+            sources[source_name] = values
+    return sources
+
+
+def changed_file_integrity_diagnostics(state: GraphState) -> dict[str, Any]:
+    sources = changed_file_sources_from_state(state)
+    diff_files = set(sources.get("git_diff", []))
+    trusted_sources = {name: paths for name, paths in sources.items() if name != "git_diff"}
+    trusted_union = sorted({path for paths in trusted_sources.values() for path in paths})
+    missing_from_diff_by_source = {
+        name: sorted(path for path in paths if path not in diff_files)
+        for name, paths in trusted_sources.items()
+        if any(path not in diff_files for path in paths)
+    }
+    extra_in_diff_by_source = {
+        name: sorted(path for path in diff_files if path not in set(paths))
+        for name, paths in trusted_sources.items()
+        if diff_files and any(path not in set(paths) for path in diff_files)
+    }
+    status = "degraded" if missing_from_diff_by_source else "ok"
+    return {
+        "status": status,
+        "sources": sources,
+        "trusted_union": trusted_union,
+        "missing_from_diff_by_source": missing_from_diff_by_source,
+        "extra_in_diff_by_source": extra_in_diff_by_source,
+        "missing_from_diff_union": sorted(path for path in trusted_union if path not in diff_files),
+    }
+
+
 def make_surface_id(file_path: str, name: str, kind: str) -> str:
     norm = f"{normalize_repo_path(file_path)}::{kind}::{name}"
     digest = hashlib.sha1(norm.encode("utf-8")).hexdigest()[:12]
@@ -336,6 +432,23 @@ def surface_ledger_from_state(state: GraphState) -> List[ReviewSurface]:
         inventory=inv,
         entities_by_file=_entities_by_file_from_structural_graph(state),
     )
+    diagnostics = changed_file_integrity_diagnostics(state)
+    existing_files = {surface.file_path for surface in enriched}
+    for file_path in diagnostics.get("missing_from_diff_union", []):
+        if file_path in existing_files:
+            continue
+        enriched.append(
+            _surface_from_parts(
+                file_path=file_path,
+                name=PurePosixPath(file_path).name or file_path,
+                kind="file",
+                line=None,
+                line_end=None,
+                source="changed_file_integrity_guard",
+                confidence=0.65,
+            )
+        )
+        existing_files.add(file_path)
     if isinstance(raw, list) and raw:
         out: List[ReviewSurface] = []
         for item in raw:
@@ -345,7 +458,7 @@ def surface_ledger_from_state(state: GraphState) -> List[ReviewSurface]:
                 continue
         if out:
             return _merge_surface_records([*out, *enriched])
-    return enriched
+    return _merge_surface_records(enriched)
 
 
 def surface_inventory_names(ledger: Iterable[ReviewSurface]) -> List[str]:
@@ -439,6 +552,10 @@ def build_surface_invariants_from_ledger(
     invariants: List[SurfaceInvariant] = []
     risk = risk_hypotheses.strip()[:300]
     for surface in ledger:
+        base_evidence = [
+            f"changed implementation for {surface.name}",
+            "repository contract or local caller evidence when the local code is insufficient",
+        ]
         invariants.append(
             SurfaceInvariant(
                 surface_id=surface.surface_id,
@@ -448,16 +565,82 @@ def build_surface_invariants_from_ledger(
                     "contract unless the PR explicitly changes it."
                 ),
                 risk_hypothesis=risk or "Changed implementation may affect local behavior or contracts.",
-                required_evidence=[
-                    f"changed implementation for {surface.name}",
-                    "repository contract or local caller evidence when the local code is insufficient",
-                ],
+                required_evidence=base_evidence,
                 out_of_scope=(
                     "Do not infer defects outside this surface without direct changed-code or "
                     "repository-contract evidence."
                 ),
             )
         )
+        if surface.kind != "file":
+            invariants.append(
+                SurfaceInvariant(
+                    surface_id=surface.surface_id,
+                    dimension="api contract",
+                    expected_behavior=(
+                        f"{surface.name} preserves caller-visible inputs, outputs, and exception behavior "
+                        "unless the PR explicitly changes that API."
+                    ),
+                    risk_hypothesis=risk or "Changed code may alter a public or internal contract.",
+                    required_evidence=[
+                        *base_evidence,
+                        "declared signature, return shape, or caller usage for this surface",
+                    ],
+                    out_of_scope="Do not require compatibility for behavior the PR explicitly removes or renames.",
+                )
+            )
+        signal_blob = f"{surface.name} {surface.file_path} {risk}".lower()
+        if any(token in signal_blob for token in ("data", "shape", "tuple", "list", "dict", "tensor", "parse", "serialize")):
+            invariants.append(
+                SurfaceInvariant(
+                    surface_id=surface.surface_id,
+                    dimension="data shape consistency",
+                    expected_behavior=(
+                        f"{surface.name} preserves structured values, element ordering, and expected "
+                        "container/tensor shapes across the changed path."
+                    ),
+                    risk_hypothesis=risk or "Changed structured data handling may alter observable results.",
+                    required_evidence=[
+                        *base_evidence,
+                        "producer and consumer expectations for structured values at this surface",
+                    ],
+                    out_of_scope="Do not invent shape requirements without local code or caller evidence.",
+                )
+            )
+        if any(token in signal_blob for token in ("state", "cache", "resource", "memory", "vram", "checkpoint", "load", "save", "move", "train")):
+            invariants.append(
+                SurfaceInvariant(
+                    surface_id=surface.surface_id,
+                    dimension="state/resource lifecycle",
+                    expected_behavior=(
+                        f"{surface.name} preserves state transitions, ownership, cleanup, and resource "
+                        "lifecycle order expected by callers."
+                    ),
+                    risk_hypothesis=risk or "Changed lifecycle behavior may leak, reuse, or invalidate state incorrectly.",
+                    required_evidence=[
+                        *base_evidence,
+                        "state/resource ownership and lifecycle ordering around this changed surface",
+                    ],
+                    out_of_scope="Do not report lifecycle concerns without concrete changed ordering or ownership evidence.",
+                )
+            )
+        if any(token in signal_blob for token in ("path", "file", "permission", "auth", "security", "input", "folder")):
+            invariants.append(
+                SurfaceInvariant(
+                    surface_id=surface.surface_id,
+                    dimension="security boundary",
+                    expected_behavior=(
+                        f"{surface.name} preserves repository security boundaries for user-controlled inputs "
+                        "and filesystem or permission-sensitive operations."
+                    ),
+                    risk_hypothesis=risk or "Changed boundary handling may expose unsafe inputs or filesystem effects.",
+                    required_evidence=[
+                        *base_evidence,
+                        "source of external input and boundary validation for this surface",
+                    ],
+                    out_of_scope="Do not report generic hardening without a reachable changed-code boundary.",
+                )
+            )
     return invariants
 
 

@@ -10,6 +10,8 @@ from src.domain.schemas import CandidateFinding, ReviewFinding
 
 _CLASS_RE = re.compile(r"\bclass\s+([A-Za-z_][A-Za-z0-9_]*)\b", re.IGNORECASE)
 _METHOD_CLASS_RE = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\.execute\b")
+_QUALIFIED_METHOD_RE = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)\b")
+_DEF_NAME_RE = re.compile(r"\b(?:def|function)\s+([A-Za-z_][A-Za-z0-9_]*)\b", re.IGNORECASE)
 _DIFF_CLASS_RE = re.compile(r"^\+.*\bclass\s+([A-Za-z_][A-Za-z0-9_]*)\b")
 
 _RESOLUTION_ONLY_MARKERS = (
@@ -111,7 +113,31 @@ def extract_subject_class(*texts: str) -> Optional[str]:
         match = pattern.search(blob)
         if match:
             return match.group(1)
+    method_match = _QUALIFIED_METHOD_RE.search(blob)
+    if method_match and method_match.group(1)[:1].isupper():
+        return method_match.group(1)
     return None
+
+
+def _extract_subject_function(*texts: str) -> Optional[str]:
+    blob = " ".join(texts)
+    match = _DEF_NAME_RE.search(blob)
+    if match:
+        return match.group(1)
+    return None
+
+
+def _normalized_source_sink_term(*texts: str) -> str:
+    blob = _blob_parts(*texts)
+    if "path traversal" in blob or "../" in blob or "..\\" in blob:
+        return "path_traversal"
+    if "os.path.join" in blob or "realpath" in blob or "abspath" in blob:
+        return "filesystem_path"
+    if "unboundlocal" in blob or "referenced before assignment" in blob or "variable" in blob and "not defined" in blob:
+        return "undefined_local"
+    if "default" in blob and ("allowed" in blob or "option" in blob or "enum" in blob):
+        return "default_contract"
+    return ""
 
 
 def normalized_subject_for_key(
@@ -126,7 +152,11 @@ def normalized_subject_for_key(
     claim_content, _ = split_claim_and_post_context(content)
     subject = extract_subject_class_from_claim(
         claim_content, failure_mode, evidence_summary
-    ) or extract_subject_class(recommendation) or ""
+    ) or extract_subject_class(recommendation) or _extract_subject_function(
+        claim_content, failure_mode, evidence_summary, recommendation
+    ) or _normalized_source_sink_term(
+        claim_content, failure_mode, evidence_summary, recommendation
+    )
     return subject.lower()
 
 
@@ -166,6 +196,16 @@ def candidate_with_behavioral_metadata(candidate: CandidateFinding) -> Candidate
     """Normalize structured behavior metadata without text-based inference."""
     symptom = candidate.behavioral_symptom or "other"
     root = candidate.root_operation or "other"
+    blob = _candidate_blob(candidate)
+    if "path traversal" in blob or "../" in blob or "..\\" in blob:
+        symptom = "contract_mismatch"
+        root = "resource_use"
+    elif "unboundlocal" in blob or "referenced before assignment" in blob:
+        symptom = "crash"
+        root = "exception_scope"
+    elif "default" in blob and ("allowed" in blob or "option" in blob or "enum" in blob):
+        symptom = "contract_mismatch"
+        root = "contract"
     return candidate.model_copy(update={"behavioral_symptom": symptom, "root_operation": root})
 
 
@@ -508,8 +548,14 @@ def dedupe_candidates_by_signature(
         if preferred.candidate_id != dropped.candidate_id:
             duplicates.setdefault(preferred.candidate_id, []).append(dropped.candidate_id)
         merged_mode = _merge_failure_mode_text(preferred.failure_mode, dropped.failure_mode)
+        merged_evidence = _merge_failure_mode_text(preferred.evidence_summary, dropped.evidence_summary)
+        updates: dict[str, str] = {}
         if merged_mode != preferred.failure_mode:
-            preferred = preferred.model_copy(update={"failure_mode": merged_mode})
+            updates["failure_mode"] = merged_mode
+        if merged_evidence != preferred.evidence_summary:
+            updates["evidence_summary"] = merged_evidence[:400]
+        if updates:
+            preferred = preferred.model_copy(update=updates)
         kept[key] = preferred
 
     return [kept[k] for k in order], duplicates
@@ -520,6 +566,18 @@ def review_finding_signature(finding: ReviewFinding) -> FindingSignature:
     recommendation = finding.recommendation or ""
     # Promoted findings often use stub content ("class Foo():") with the real claim in recommendation.
     combined = f"{claim_content}\n{recommendation}".strip()
+    blob = _blob_parts(combined)
+    symptom = finding.behavioral_symptom or "other"
+    root = finding.root_operation or "other"
+    if "path traversal" in blob or "../" in blob or "..\\" in blob:
+        symptom = "contract_mismatch"
+        root = "resource_use"
+    elif "unboundlocal" in blob or "referenced before assignment" in blob:
+        symptom = "crash"
+        root = "exception_scope"
+    elif "default" in blob and ("allowed" in blob or "option" in blob or "enum" in blob):
+        symptom = "contract_mismatch"
+        root = "contract"
     subject = normalized_subject_for_key(
         file_path=finding.file_path,
         content=combined,
@@ -531,8 +589,8 @@ def review_finding_signature(finding: ReviewFinding) -> FindingSignature:
         file_path=_normalized_path(finding.file_path),
         subject=_subject_or_line_scope(subject, finding.line_start, finding.line_end),
         claim_kind=(finding.feedback_type or "other").strip().lower(),
-        behavioral_symptom=finding.behavioral_symptom or "other",
-        root_operation=finding.root_operation or "other",
+        behavioral_symptom=symptom,
+        root_operation=root,
     )
 
 
@@ -635,6 +693,7 @@ def recommendation_cites_foreign_class(
     if not subject:
         return False
     rec = recommendation or ""
-    cited = set(_CLASS_RE.findall(rec)) | {m[0] for m in _METHOD_CLASS_RE.findall(rec)}
+    cited = set(_CLASS_RE.findall(rec)) | set(_METHOD_CLASS_RE.findall(rec))
+    cited.update(match[0] for match in _QUALIFIED_METHOD_RE.findall(rec))
     cited.discard(subject)
     return bool(cited)

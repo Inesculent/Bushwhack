@@ -278,6 +278,24 @@ def verifier_finalize_node(state: GraphState) -> Dict[str, Any]:
         "top_missing_modules": missing_modules_from_attempts(report.attempts)[:10],
     }
     meta["verifier_hints"] = hints
+    env_meta = dict(meta.get("verifier_env") or {})
+    if report.attempts:
+        last_env = dict(report.attempts[-1].env_metadata or {})
+        env_meta[report.candidate_id] = {
+            "status": last_env.get("status", "unknown"),
+            "fingerprint": last_env.get("fingerprint", ""),
+            "python_path": last_env.get("python_path", ""),
+            "install_attempts": last_env.get("install_attempts", []),
+            "missing_modules": (
+                list(last_env.get("missing_modules") or [])
+                or missing_modules_from_attempts(report.attempts)[:10]
+            ),
+            "target_files": last_env.get("target_files", []),
+            "target_import_probes": last_env.get("target_import_probes", []),
+            "dependency_install_policy": last_env.get("dependency_install_policy", ""),
+            "failure_reason": last_env.get("failure_reason", ""),
+        }
+    meta["verifier_env"] = env_meta
     vrun = dict(meta.get("verifier") or {})
     by_c = dict(vrun.get("by_candidate") or {})
     by_c[report.candidate_id] = report.model_dump(mode="json")

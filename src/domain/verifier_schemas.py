@@ -49,6 +49,7 @@ class VerifierAttemptRecord(BaseModel):
     sandbox_mode: str = ""
     repo_root: str = ""
     failure_class: str = ""
+    env_metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
 class VerifierReport(BaseModel):

@@ -17,13 +17,21 @@ from src.orchestration.nodes.application.planner import (
     _normalize_tasks,
     _render_planner_prompt,
     _task_covers_structured_extraction,
+    dedupe_tasks_by_surface_dimension,
     finalize_emitted_tasks,
+    prepare_surface_first_tasks,
     _sanitize_batched_logic_task_description,
     make_review_planner_node,
     validate_surface_bound_plan,
 )
 from src.orchestration.nodes.application.actor_critic_planner import make_plan_emit_node
-from src.orchestration.context.surface_ledger import build_surface_ledger_from_diff, surface_ids_for_text
+from src.orchestration.context.surface_ledger import (
+    build_surface_invariants_from_ledger,
+    build_surface_ledger_from_diff,
+    changed_file_integrity_diagnostics,
+    surface_ids_for_text,
+    surface_ledger_from_state,
+)
 from src.orchestration.nodes.application.synthesizer import synthesizer_node
 from src.orchestration.nodes.application.worker import (
     ReviewTaskContext,
@@ -229,6 +237,55 @@ def test_surface_plan_validation_rejects_non_changed_target_file() -> None:
     ]
 
 
+def test_changed_file_integrity_guard_adds_missing_metadata_surface() -> None:
+    diff = (
+        "diff --git a/src/app.py b/src/app.py\n"
+        "+++ b/src/app.py\n"
+        "@@ -0,0 +1,2 @@\n"
+        "+def handle():\n"
+        "+    return None\n"
+    )
+    state = {
+        "git_diff": diff,
+        "metadata": {"benchmark_changed_files": ["src/app.py", "comfy/ldm/cosmos/blocks.py"]},
+    }
+
+    diagnostics = changed_file_integrity_diagnostics(state)
+    ledger = surface_ledger_from_state(state)
+
+    assert diagnostics["status"] == "degraded"
+    assert diagnostics["missing_from_diff_union"] == ["comfy/ldm/cosmos/blocks.py"]
+    guarded = next(surface for surface in ledger if surface.file_path == "comfy/ldm/cosmos/blocks.py")
+    assert guarded.source == "changed_file_integrity_guard"
+    assert guarded.kind == "file"
+    assert guarded.confidence == 0.65
+
+
+def test_surface_plan_validation_allows_trusted_metadata_changed_file() -> None:
+    diff = (
+        "diff --git a/src/app.py b/src/app.py\n"
+        "+++ b/src/app.py\n"
+        "@@ -0,0 +1,2 @@\n"
+        "+def handle():\n"
+        "+    return None\n"
+    )
+    task = ReviewTask(
+        id="logic-blocks",
+        title="Diff-local correctness: blocks.py",
+        description="Audit blocks.py metadata changed file.",
+        target_files=["comfy/ldm/cosmos/blocks.py"],
+        specialty="logic",
+    )
+
+    diagnostics = validate_surface_bound_plan(
+        [task],
+        {"git_diff": diff, "metadata": {"benchmark_changed_files": ["comfy/ldm/cosmos/blocks.py"]}},
+    )
+
+    assert diagnostics["invalid_target_files"] == []
+    assert diagnostics["changed_file_inventory_diagnostics"]["status"] == "degraded"
+
+
 def test_surface_ledger_recalls_existing_entity_when_body_changes() -> None:
     diff = (
         "diff --git a/src/cache.py b/src/cache.py\n"
@@ -362,7 +419,7 @@ def test_surface_plan_validation_ignores_out_of_scope_file_surface_overlap() -> 
     assert diagnostics["overlapping_tasks"] == []
 
 
-def test_surface_plan_validation_still_rejects_same_symbol_logic_overlap() -> None:
+def test_surface_plan_validation_reports_same_symbol_logic_overlap_without_blocking() -> None:
     diff = (
         "diff --git a/pkg/a.py b/pkg/a.py\n"
         "+++ b/pkg/a.py\n"
@@ -400,9 +457,215 @@ def test_surface_plan_validation_still_rejects_same_symbol_logic_overlap() -> No
 
     diagnostics = validate_surface_bound_plan([first, second], state)
 
-    assert diagnostics["ok"] is False
+    assert diagnostics["ok"] is True
     assert diagnostics["overlapping_tasks"] == [
         {"surface_id": "surface:handle", "task_ids": ["logic-a", "logic-b"]}
+    ]
+
+
+def test_surface_first_fill_adds_missing_load_image_set_node_tasks() -> None:
+    diff = (
+        "diff --git a/comfy_extras/nodes_train.py b/comfy_extras/nodes_train.py\n"
+        "+++ b/comfy_extras/nodes_train.py\n"
+        "@@ -100,6 +100,8 @@\n"
+        "+class LoadImageSetNode:\n"
+        "+    pass\n"
+        "@@ -170,6 +172,8 @@\n"
+        "+class LoadImageSetFromFolderNode:\n"
+        "+    pass\n"
+    )
+    surfaces = [
+        ReviewSurface(
+            surface_id="surface:load-image-set",
+            name="LoadImageSetNode",
+            kind="class",
+            file_path="comfy_extras/nodes_train.py",
+            confidence=0.95,
+            line_start=101,
+        ),
+        ReviewSurface(
+            surface_id="surface:load-image-set-folder",
+            name="LoadImageSetFromFolderNode",
+            kind="class",
+            file_path="comfy_extras/nodes_train.py",
+            confidence=0.95,
+            line_start=173,
+        ),
+    ]
+    state = {
+        "git_diff": diff,
+        "metadata": {"mental_model": {"surface_ledger": [surface.model_dump() for surface in surfaces]}},
+    }
+    planner_task = ReviewTask(
+        id="general-train",
+        title="General train node review",
+        description="Review the train node update broadly.",
+        target_files=["comfy_extras/nodes_train.py"],
+        specialty="general",
+    )
+
+    tasks, meta = prepare_surface_first_tasks([planner_task], state)
+    diagnostics = validate_surface_bound_plan(tasks, state)
+
+    assert diagnostics["ok"] is True
+    assert {task.surface_ids[0] for task in tasks if task.id.startswith("review-logic-surface-fill")} == {
+        "surface:load-image-set",
+        "surface:load-image-set-folder",
+    }
+    assert [item["surface_id"] for item in meta["surface_fill_uncovered_before"]] == [
+        "surface:load-image-set",
+        "surface:load-image-set-folder",
+    ]
+
+
+def test_broad_surface_prose_does_not_create_surface_ownership() -> None:
+    diff = (
+        "diff --git a/comfy_extras/nodes_train.py b/comfy_extras/nodes_train.py\n"
+        "+++ b/comfy_extras/nodes_train.py\n"
+        "@@ -100,6 +100,8 @@\n"
+        "+class LoadImageSetNode:\n"
+        "+    pass\n"
+    )
+    surfaces = [
+        ReviewSurface(
+            surface_id="surface:load-image-set",
+            name="LoadImageSetNode",
+            kind="class",
+            file_path="comfy_extras/nodes_train.py",
+            confidence=0.95,
+        ),
+        ReviewSurface(
+            surface_id="surface:load-image-set-folder",
+            name="LoadImageSetFromFolderNode",
+            kind="class",
+            file_path="comfy_extras/nodes_train.py",
+            confidence=0.95,
+        ),
+    ]
+    state = {
+        "git_diff": diff,
+        "metadata": {"mental_model": {"surface_ledger": [surface.model_dump() for surface in surfaces]}},
+    }
+    task = ReviewTask(
+        id="logic-broad",
+        title="Audit all image-loading surfaces",
+        description=(
+            "Audit every changed entry point, including LoadImageSetNode and "
+            "LoadImageSetFromFolderNode."
+        ),
+        target_files=["comfy_extras/nodes_train.py"],
+        specialty="logic",
+    )
+
+    diagnostics = validate_surface_bound_plan([task], state)
+
+    assert diagnostics["ok"] is False
+    assert {item["surface_id"] for item in diagnostics["uncovered_surfaces"]} == {
+        "surface:load-image-set",
+        "surface:load-image-set-folder",
+    }
+    assert diagnostics["tasks_missing_surface_ids"] == ["logic-broad"]
+
+
+def test_broad_cross_surface_task_does_not_satisfy_primary_surface_coverage() -> None:
+    surfaces = [
+        ReviewSurface(
+            surface_id="surface:first",
+            name="First",
+            kind="class",
+            file_path="pkg/nodes.py",
+            confidence=0.95,
+        ),
+        ReviewSurface(
+            surface_id="surface:second",
+            name="Second",
+            kind="class",
+            file_path="pkg/nodes.py",
+            confidence=0.95,
+        ),
+    ]
+    state = {
+        "git_diff": "diff --git a/pkg/nodes.py b/pkg/nodes.py\n+++ b/pkg/nodes.py\n+class First:\n+    pass\n",
+        "metadata": {"mental_model": {"surface_ledger": [surface.model_dump() for surface in surfaces]}},
+    }
+    task = ReviewTask(
+        id="logic-cross",
+        title="Cross-surface diff-local correctness for all surfaces",
+        description="Audit all changed entry points broadly.",
+        target_files=["pkg/nodes.py"],
+        surface_ids=["surface:first", "surface:second"],
+        specialty="logic",
+    )
+
+    diagnostics = validate_surface_bound_plan([task], state)
+
+    assert diagnostics["ok"] is False
+    assert {item["surface_id"] for item in diagnostics["uncovered_surfaces"]} == {
+        "surface:first",
+        "surface:second",
+    }
+
+
+def test_generic_surface_invariants_are_evidence_requirements_not_predicted_findings() -> None:
+    surface = ReviewSurface(
+        surface_id="surface:parse",
+        name="parse_tensor_shape",
+        kind="function",
+        file_path="pkg/parser.py",
+        confidence=0.95,
+    )
+
+    invariants = build_surface_invariants_from_ledger([surface], risk_hypotheses="")
+
+    dimensions = {invariant.dimension for invariant in invariants}
+    assert {"changed-surface behavior", "api contract", "data shape consistency"} <= dimensions
+    assert all("defect" not in invariant.risk_hypothesis.lower() for invariant in invariants)
+    assert all(invariant.required_evidence for invariant in invariants)
+
+
+def test_task_dedupe_collapses_same_surface_specialty_dimension() -> None:
+    surface = ReviewSurface(
+        surface_id="surface:handle",
+        name="handle",
+        kind="function",
+        file_path="pkg/a.py",
+        confidence=0.95,
+    )
+    state = {
+        "metadata": {"mental_model": {"surface_ledger": [surface.model_dump()]}},
+    }
+    first = ReviewTask(
+        id="logic-handle",
+        title="Diff-local correctness: handle",
+        description="Diff-local correctness for handle only.",
+        target_files=["pkg/a.py"],
+        surface_ids=["surface:handle"],
+        specialty="logic",
+    )
+    duplicate = ReviewTask(
+        id="logic-handle-fill",
+        title="Diff-local correctness: handle branches",
+        description="Diff-local correctness for handle only. Inspect branch behavior.",
+        target_files=["pkg/a.py", "pkg/helpers.py"],
+        surface_ids=["surface:handle"],
+        specialty="logic",
+    )
+
+    tasks, meta = dedupe_tasks_by_surface_dimension([first, duplicate], state)
+
+    assert len(tasks) == 1
+    assert tasks[0].surface_ids == ["surface:handle"]
+    assert tasks[0].target_files == ["pkg/a.py", "pkg/helpers.py"]
+    assert meta["task_dedupe_dropped"] == [
+        {
+            "key": {
+                "surface_id": "surface:handle",
+                "specialty": "logic",
+                "dimension": "diff_local_correctness",
+            },
+            "kept_task_id": "logic-handle-fill",
+            "dropped_task_id": "logic-handle",
+        }
     ]
 
 

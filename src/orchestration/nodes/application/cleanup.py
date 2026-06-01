@@ -852,7 +852,10 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
                 "metadata": metadata,
                 "node_history": [f"{node_name}:empty"],
             }
-        candidates = ensure_unique_candidate_ids(candidates)
+        candidates = [
+            candidate_with_behavioral_metadata(candidate)
+            for candidate in ensure_unique_candidate_ids(candidates)
+        ]
 
         git_diff = (state.get("git_diff", "") or "")[:50000]
         changed_files = changed_files_from_diff(git_diff)

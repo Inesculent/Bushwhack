@@ -84,6 +84,95 @@ flowchart LR
   JUD -->|verified_or_refuted_or_cap| FIN
 ```
 
+## Verifier environment prep
+
+The verifier environment prep is not a one-shot agent. It is a deterministic, observable setup loop inside the sandbox executor. Its job is to prepare enough Python runtime state for the current verifier target, record what worked, and leave final evidence decisions to the verifier judge and critique-revision policy.
+
+The loop is intentionally advisory:
+
+- A usable environment can support a runtime verifier attempt.
+- A failed environment, missing import, timeout, syntax error, harness error, or inconclusive probe does not accept or reject a candidate.
+- Only clean product behavior signals, such as a verifier script reaching `STATUS: MISMATCH` or `STATUS: CRASHED` without harness contamination, can influence the runtime advisory section.
+
+### Structure
+
+```mermaid
+flowchart TB
+  START([execute_test_script])
+  SANDBOX[start or clone sandbox]
+  FINGERPRINT[hash dependency file fingerprints]
+  REUSE{venv already usable?}
+  CREATE[create .verifier_venv_<fingerprint>]
+  PROBE_PY[probe python executable]
+  TARGETS[derive verifier target files]
+  PROBE_IMPORTS[probe target module imports]
+  RECORD[record env_metadata]
+  RUN[run verifier script with prepared python if usable]
+
+  START --> SANDBOX --> FINGERPRINT --> REUSE
+  REUSE -->|yes| TARGETS
+  REUSE -->|no| CREATE --> PROBE_PY --> TARGETS
+  TARGETS --> PROBE_IMPORTS --> RECORD --> RUN
+```
+
+### Inputs
+
+The prep loop receives:
+
+- `workdir`: the sandbox execution directory, usually `/repo` or `/exec_*`.
+- Dependency fingerprints from `requirements.txt`, `requirements-dev.txt`, `pyproject.toml`, `setup.py`, and `setup.cfg`.
+- Target files from `graph_state["verifier_candidate"]`, using `file_path`, `file_paths`, and `target_files` when present.
+
+Target files are converted to importable module names when possible:
+
+- `pkg/mod.py` -> `pkg.mod`
+- `pkg/__init__.py` -> `pkg`
+- Non-Python paths or paths with non-importable segments are skipped.
+
+### What The Loop Does
+
+1. Compute a dependency-file fingerprint.
+2. Reuse `.verifier_venv_<fingerprint>` if its Python executable already works.
+3. Otherwise create the venv and probe `python -c "import sys"`.
+4. Probe only the target modules needed by the current verifier candidate.
+5. Record missing modules from those target import probes.
+6. Run the generated verifier script with the prepared `python_path` only if the venv is usable; otherwise fall back to `python`.
+
+This is deliberately narrower than "install the whole repo." In theory, the verifier only needs dependencies reachable from the review target and test harness. Broad dependency installation is avoided because it is expensive, network-sensitive, and can make unrelated repo dependencies look like verifier blockers.
+
+### Metadata Contract
+
+Each `VerifierAttemptRecord` can carry `env_metadata`. `verifier_finalize_node` copies the latest attempt's environment summary into `metadata.verifier_env[candidate_id]`.
+
+Important fields:
+
+| Field | Meaning |
+|-------|---------|
+| `status` | `usable`, `failed`, or `disabled`. |
+| `fingerprint` | Hash of dependency-file contents used to name/reuse the venv. |
+| `venv_dir` | Sandbox path for `.verifier_venv_<fingerprint>`. |
+| `python_path` | Python executable used for verifier scripts when `status == "usable"`. |
+| `reused` | Whether an existing prepared venv was reused. |
+| `target_files` | Candidate-scoped files used for import probes. |
+| `target_import_probes` | One record per importable target module, including status, exit code, stdout/stderr, and missing modules. |
+| `missing_modules` | Union of missing modules from target import probes. |
+| `install_attempts` | Reserved for targeted dependency installation attempts. It should stay empty unless a future targeted installer is added. |
+| `dependency_install_policy` | Currently `targeted_only`; broad `pip install -r requirements*.txt` is intentionally not part of normal prep. |
+| `failure_reason` | Setup failure class such as `venv_create_failed` or `python_probe_failed`. |
+
+### Dependency Policy
+
+The current policy is `targeted_only`.
+
+That means:
+
+- The prep loop identifies missing imports by probing the candidate target module(s).
+- It records missing modules instead of treating them as product behavior.
+- It does not install every requirements file as a default recovery step.
+- If targeted installation is added later, it should map a missing target import to the narrowest dependency candidate and record each attempt in `install_attempts`.
+
+This keeps runtime verification useful when clean, but prevents environment setup from becoming a second repository-specific reviewer or a noisy source of false negatives.
+
 ## Configuration quick reference
 
 | Env / setting | Role |
@@ -93,6 +182,8 @@ flowchart LR
 | `REVIEW_VERIFIER_RUN_ON_DEFECT` / `_SECURITY` / `_PERFORMANCE` | Claim-type gates (`_SECURITY` defaults **on**). |
 | `REVIEW_VERIFIER_REQUIRE_FOCUSED_EVIDENCE` | If `true`, require focused snippets/hits for that candidate; if `false`, allow diff + candidate JSON only. |
 | `REVIEW_VERIFIER_SKIP_IF_NO_DOCKER` | Skip verifier when Docker is unreachable. |
+| `REVIEW_VERIFIER_PREPARE_ENV_ENABLED` | Enable best-effort venv prep and target import probes. |
+| `REVIEW_VERIFIER_PREPARE_ENV_INSTALL_DEPS` | Reserved for future targeted dependency installation; broad requirements installation is intentionally avoided. |
 
 ## Building the verifier image (manual)
 

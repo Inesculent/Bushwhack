@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from src.domain.schemas import CandidateFinding
 from src.domain.state import GraphState
+from src.domain.verifier_schemas import VerifierAttemptRecord, VerifierReport
 from src.orchestration.nodes.application.critique_revision import (
     _apply_verifier_policy_to_revisions,
     _dedupe_revision_candidate_ids,
+    _render_verifier_advisory_section,
 )
 
 
@@ -75,7 +77,7 @@ def test_apply_verifier_policy_refuted_forces_reject() -> None:
     assert any("critique_revision_verifier_refuted" in w for w in warnings)
 
 
-def test_apply_verifier_policy_harness_annotates_summary() -> None:
+def test_apply_verifier_policy_harness_is_ignored() -> None:
     state: GraphState = {
         "metadata": {
             "verifier_hints": {
@@ -91,7 +93,8 @@ def test_apply_verifier_policy_harness_annotates_summary() -> None:
         [{"candidate_id": "c1", "verdict": "accept", "updated_evidence_summary": ""}],
         state,
     )
-    assert "runtime unverified (harness)" in rows[0]["updated_evidence_summary"]
+    assert rows[0]["verdict"] == "accept"
+    assert rows[0]["updated_evidence_summary"] == ""
 
 
 def test_apply_verifier_policy_refuted_wrong_output_does_not_force_reject() -> None:
@@ -127,4 +130,50 @@ def test_apply_verifier_policy_refuted_wrong_output_does_not_force_reject() -> N
         state,
     )
     assert rows[0]["verdict"] == "accept"
+    assert rows[0]["updated_evidence_summary"] == "still bad"
     assert any("critique_revision_verifier_inconclusive_wrong_output" in w for w in warnings)
+
+
+def test_render_verifier_advisory_section_only_includes_clean_product_signal() -> None:
+    clean = VerifierReport(
+        run_id="r1",
+        candidate_id="clean",
+        verdict="verified",
+        verification_scope="concrete_behavior",
+        attempts=[
+            VerifierAttemptRecord(
+                attempt_number=1,
+                stdout="STATUS: MISMATCH | expected=a actual=b",
+                exit_code=1,
+            )
+        ],
+    )
+    harness = VerifierReport(
+        run_id="r1",
+        candidate_id="harness",
+        verdict="verified",
+        verification_scope="concrete_behavior",
+        attempts=[
+            VerifierAttemptRecord(
+                attempt_number=1,
+                stdout="STATUS: HARNESS_ERROR | ImportError",
+                exit_code=2,
+            )
+        ],
+    )
+    state: GraphState = {
+        "verifier_reports": [clean, harness],
+        "metadata": {
+            "verifier_hints": {
+                "clean": {"confidence": "clean_product_signal"},
+                "harness": {"confidence": "harness_only"},
+            }
+        },
+    }
+
+    rendered = _render_verifier_advisory_section(state, ["clean", "harness"])
+
+    assert "clean" in rendered
+    assert "MISMATCH" in rendered
+    assert "harness" not in rendered
+    assert "HARNESS_ERROR" not in rendered
