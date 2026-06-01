@@ -13,7 +13,10 @@ from src.orchestration.nodes.application.planner import (
     finalize_emitted_tasks,
     _sanitize_batched_logic_task_description,
     make_review_planner_node,
+    validate_surface_bound_plan,
 )
+from src.orchestration.nodes.application.actor_critic_planner import make_plan_emit_node
+from src.orchestration.context.surface_ledger import build_surface_ledger_from_diff
 from src.orchestration.nodes.application.synthesizer import synthesizer_node
 from src.orchestration.nodes.application.worker import (
     ReviewTaskContext,
@@ -159,6 +162,136 @@ def test_chunk_comfy_like_inventory_signal_tasks() -> None:
     compare_tasks = [t for t in logic if "StringCompare" in t.description]
     assert compare_tasks
     assert any("branch-exhaustiveness" in t.description.lower() for t in compare_tasks)
+
+
+def test_finalize_emitted_tasks_preserves_surface_ids_for_many_single_file_surfaces() -> None:
+    surfaces = [f"Node{i}" for i in range(9)]
+    diff = "\n".join(
+        [
+            "diff --git a/pkg/nodes.py b/pkg/nodes.py",
+            "+++ b/pkg/nodes.py",
+            "@@ -0,0 +1,36 @@",
+            *[f"+class {name}:\n+    pass" for name in surfaces],
+        ]
+    )
+    state = {"git_diff": diff}
+    mega = ReviewTask(
+        id="logic-all",
+        title="Diff-local correctness for every node",
+        description="Audit all changed nodes: " + ", ".join(surfaces),
+        target_files=["pkg/nodes.py"],
+        specialty="logic",
+    )
+
+    out = finalize_emitted_tasks([mega], state)
+
+    logic = [task for task in out if task.specialty == "logic"]
+    assert len(logic) >= 4
+    owners: dict[str, str] = {}
+    for task in logic:
+        assert task.surface_ids
+        for sid in task.surface_ids:
+            assert sid not in owners
+            owners[sid] = task.id
+        names_in_description = [name for name in surfaces if name in task.description]
+        assert len(names_in_description) < len(surfaces)
+    assert len(owners) == len(build_surface_ledger_from_diff(diff))
+
+
+def test_surface_plan_validation_rejects_non_changed_target_file() -> None:
+    diff = (
+        "diff --git a/src/app.py b/src/app.py\n"
+        "+++ b/src/app.py\n"
+        "@@ -0,0 +1,2 @@\n"
+        "+def handle():\n"
+        "+    return None\n"
+    )
+    task = ReviewTask(
+        id="logic-handle",
+        title="Diff-local correctness: handle",
+        description="Audit handle only.",
+        target_files=["tests/test_app.py"],
+        specialty="logic",
+    )
+
+    diagnostics = validate_surface_bound_plan([task], {"git_diff": diff})
+
+    assert diagnostics["ok"] is False
+    assert diagnostics["invalid_target_files"] == [
+        {"task_id": "logic-handle", "file_path": "tests/test_app.py"}
+    ]
+
+
+def test_plan_emit_fails_closed_when_critic_misaligned_after_budget() -> None:
+    diff = (
+        "diff --git a/src/app.py b/src/app.py\n"
+        "+++ b/src/app.py\n"
+        "@@ -0,0 +1,2 @@\n"
+        "+def handle():\n"
+        "+    return None\n"
+    )
+    task = ReviewTask(
+        id="logic-handle",
+        title="Diff-local correctness: handle",
+        description="Audit handle only.",
+        target_files=["src/app.py"],
+        specialty="logic",
+    )
+    state = {
+        "git_diff": diff,
+        "metadata": {
+            "actor_critic_planner": {
+                "draft_tasks": [task.model_dump(mode="json")],
+                "revision_count": 99,
+                "aligned": False,
+                "last_critique": {"gaps": "missing boundaries"},
+            },
+            "mental_model": {"coupled_loop": {"cycles": 99}},
+        },
+    }
+
+    out = make_plan_emit_node()(state)
+
+    assert out["next_step"] == "blocked"
+    assert out["metadata"]["review_planner"]["blocked"] is True
+    assert out["metadata"]["review_planner"]["plan_validation"]["blocked_reason"] == (
+        "plan_critic_misaligned_after_budget"
+    )
+    assert [task_id for task_id in out["task_registry"] if task_id != out["root_task_id"]] == []
+
+
+def test_plan_emit_allows_aligned_surface_bound_plan() -> None:
+    diff = (
+        "diff --git a/src/app.py b/src/app.py\n"
+        "+++ b/src/app.py\n"
+        "@@ -0,0 +1,2 @@\n"
+        "+def handle():\n"
+        "+    return None\n"
+    )
+    task = ReviewTask(
+        id="logic-handle",
+        title="Diff-local correctness: handle",
+        description="Audit handle only.",
+        target_files=["src/app.py"],
+        specialty="logic",
+    )
+    state = {
+        "git_diff": diff,
+        "metadata": {
+            "actor_critic_planner": {
+                "draft_tasks": [task.model_dump(mode="json")],
+                "revision_count": 0,
+                "aligned": True,
+            }
+        },
+    }
+
+    out = make_plan_emit_node()(state)
+
+    assert out["next_step"] == "review"
+    leaf_ids = [task_id for task_id in out["task_registry"] if task_id != out["root_task_id"]]
+    assert leaf_ids == ["logic-handle"]
+    assert out["metadata"]["review_planner"]["plan_validation"]["ok"] is True
 
 
 def test_dedupe_allows_same_file_different_class_scopes() -> None:

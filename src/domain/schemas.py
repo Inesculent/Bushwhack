@@ -77,6 +77,7 @@ class ReviewTask(BaseModel):
     title: str = Field(description="Short title summarizing the review task")
     description: str = Field(description="Detailed description of the review task")
     target_files: List[str] = Field(default_factory=list)
+    surface_ids: List[str] = Field(default_factory=list)
     
     # Defining recursive subtasks as necessary
     subtasks: List[Self] = Field(default_factory=list)
@@ -93,6 +94,40 @@ class BehavioralEvidenceRef(BaseModel):
     kind: Literal["file", "symbol", "community", "doc", "diff", "other"] = "other"
     ref: str = Field(description="Human-readable reference, e.g. repo-relative path or node id.")
     note: str = Field(default="", description="Why this evidence matters.")
+
+
+ReviewSurfaceKind = Literal["file", "class", "function", "method", "symbol", "other"]
+
+
+class ReviewSurface(BaseModel):
+    """Changed review boundary that planning and checks can target explicitly."""
+
+    surface_id: str
+    name: str
+    kind: ReviewSurfaceKind = "other"
+    file_path: str = Field(description="Repository-relative file path using '/' separators.")
+    line_start: Optional[int] = Field(default=None, ge=1)
+    line_end: Optional[int] = Field(default=None, ge=1)
+    source: str = Field(default="diff")
+    confidence: float = Field(default=0.5, ge=0.0, le=1.0)
+    evidence_refs: List[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_line_range(self) -> Self:
+        if self.line_start is not None and self.line_end is not None and self.line_end < self.line_start:
+            raise ValueError("line_end must be >= line_start")
+        return self
+
+
+class SurfaceInvariant(BaseModel):
+    """Behavioral contract/risk hypothesis tied to one changed review surface."""
+
+    surface_id: str
+    dimension: str = Field(default="changed-surface behavior")
+    expected_behavior: str = ""
+    risk_hypothesis: str = ""
+    required_evidence: List[str] = Field(default_factory=list)
+    out_of_scope: str = ""
 
 
 class BehavioralSpec(BaseModel):
@@ -123,6 +158,8 @@ class BehavioralSpec(BaseModel):
         description="Instructions to stay structural and unbiased; avoid anchoring on predicted bugs.",
     )
     evidence_refs: List[BehavioralEvidenceRef] = Field(default_factory=list)
+    surfaces: List[ReviewSurface] = Field(default_factory=list)
+    surface_invariants: List[SurfaceInvariant] = Field(default_factory=list)
     confidence: float = Field(default=0.5, ge=0.0, le=1.0)
     uncertainties: str = Field(default="", description="Known gaps in understanding.")
 
@@ -214,6 +251,7 @@ class ReviewCheck(BaseModel):
 
     check_id: str = Field(description="Stable id for this check within the graph run.")
     patch_task_id: str = Field(description="Planner task id this check belongs to.")
+    surface_ids: List[str] = Field(default_factory=list)
     lens: ReviewLens = "other"
     file_path: str = Field(description="Repository-relative file path using '/' separators.")
     line_start: int = Field(default=1, ge=1)

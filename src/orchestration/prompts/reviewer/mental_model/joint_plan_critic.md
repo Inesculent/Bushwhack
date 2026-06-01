@@ -27,9 +27,11 @@ Set `aligned=false` when tasks miss coverage OR the mandate lacks evidence for a
 
 Set `aligned=false` if any of the following apply:
 
-- A surface listed in **Surfaces introduced in diff** (or a distinct feature in **PR context**) has **no** task coverage—neither a dedicated task nor inclusion in a **diff-local correctness** `logic` task that names the surface set.
+- A surface listed in **Surface ledger (JSON)** (or a distinct feature in **PR context**) has **no** task coverage—neither a dedicated task nor inclusion in a **diff-local correctness** `logic` task that names the surface set and declares its `surface_ids`.
+- A task mentions changed surfaces but omits matching `surface_ids` from **Surface ledger (JSON)**.
+- Two non-cross-surface `logic` tasks claim the same `surface_ids`; require disjoint logic scopes unless the task explicitly says it is cross-surface/integration.
 - Handlers with multiple modes/discriminants or multi-path control flow only have security or performance tasks and **no** `logic` task that audits implementation correctness (not merely input-boundary speculation).
-- **One** `logic` task that only says “audit all N handlers” without splitting work when **Surfaces introduced in diff** has **8+** entry points—set `aligned=false` and instruct the reviser to emit **two or more** `logic` tasks with disjoint surface subsets (e.g. first half / second half of the inventory), plus a dedicated **structured extraction and aggregation** `logic` task when the diff uses structured dispatch, row extraction, or `join` on extracted rows.
+- **One** `logic` task that only says “audit all N handlers” without splitting work when **Surface ledger (JSON)** has **8+** entry points—set `aligned=false` and instruct the reviser to emit **two or more** `logic` tasks with disjoint surface subsets (e.g. first half / second half of the inventory), plus a dedicated **structured extraction and aggregation** `logic` task when the diff uses structured dispatch, row extraction, or `join` on extracted rows.
 - The bootstrap digest **Surfaces** segment (when present) is inconsistent with the surface inventory (e.g. clearly fewer surfaces named than in the inventory).
 
 When the fix is task wording or redistribution across specialties, prefer `aligned=false` with clear `revision_instructions` over `exploration_requests`.

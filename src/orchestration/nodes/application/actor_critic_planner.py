@@ -19,6 +19,7 @@ from src.orchestration.nodes.application.planner import (
     build_planner_state_update,
     finalize_emitted_tasks,
     run_planner_generation,
+    validate_surface_bound_plan,
 )
 from src.orchestration.context.context_packets import (
     build_plan_critic_packet,
@@ -237,6 +238,47 @@ def make_mandate_finalize_node(settings: Settings | None = None, *, use_llm: boo
 def make_plan_emit_node():
     node_name = "plan_emit"
 
+    def blocked_update(
+        state: GraphState,
+        *,
+        ac: Dict[str, Any],
+        warnings: List[str],
+        reason: str,
+        plan_validation: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        diagnostics = {
+            **plan_validation,
+            "blocked": True,
+            "blocked_reason": reason,
+            "critic_gaps": dict(ac.get("last_critique") or {}),
+            "revision_count": int(ac.get("revision_count", 0)),
+            "plan_critic_aligned": ac.get("aligned"),
+        }
+        out = build_planner_state_update(
+            state,
+            [],
+            "Review planning blocked before execution; see metadata.review_planner.plan_validation.",
+            [*warnings, reason],
+            0,
+            [],
+            node_history_name=node_name,
+            metadata_extra={
+                "blocked": True,
+                "blocked_reason": reason,
+                "plan_validation": diagnostics,
+            },
+        )
+        out["next_step"] = "blocked"
+        meta2 = dict(out["metadata"])
+        meta2["actor_critic_review"] = {
+            "revision_count": ac.get("revision_count", 0),
+            "aligned": ac.get("aligned"),
+            "blocked": True,
+            "blocked_reason": reason,
+        }
+        out["metadata"] = meta2
+        return out
+
     def plan_emit_node(state: GraphState) -> Dict[str, Any]:
         meta = dict(state.get("metadata", {}) or {})
         ac = dict(meta.get("actor_critic_planner") or {})
@@ -245,9 +287,35 @@ def make_plan_emit_node():
         tasks = finalize_emitted_tasks(tasks, state)
         summary = str(ac.get("summary") or "Actor-critic review plan.")
         warnings = [str(w) for w in (ac.get("warnings") or []) if w]
+        plan_validation = validate_surface_bound_plan(tasks, state)
+        resolved = get_settings()
+        loop = dict((meta.get("mental_model") or {}).get("coupled_loop") or {})
+        critic_exhausted = bool(ac.get("aligned") is False) and (
+            int(ac.get("revision_count", 0)) >= int(resolved.reviewer_actor_critic_max_plan_revisions)
+            or int(loop.get("cycles", 0)) >= int(resolved.reviewer_mandate_plan_max_cycles)
+        )
+        blocked = critic_exhausted or not bool(plan_validation.get("ok"))
+        if blocked:
+            reason = "plan_critic_misaligned_after_budget" if critic_exhausted else "surface_plan_validation_failed"
+            return blocked_update(
+                state,
+                ac=ac,
+                warnings=warnings,
+                reason=reason,
+                plan_validation=plan_validation,
+            )
         if not tasks:
             tasks, summary, warn2, _t, _trace = run_planner_generation(state, use_llm=False)
             warnings.extend(warn2)
+            plan_validation = validate_surface_bound_plan(tasks, state)
+            if not bool(plan_validation.get("ok")):
+                return blocked_update(
+                    state,
+                    ac=ac,
+                    warnings=warnings,
+                    reason="surface_plan_validation_failed",
+                    plan_validation=plan_validation,
+                )
         out = build_planner_state_update(
             state,
             tasks,
@@ -256,6 +324,7 @@ def make_plan_emit_node():
             0,
             [],
             node_history_name=node_name,
+            metadata_extra={"plan_validation": plan_validation},
         )
         meta2 = dict(out["metadata"])
         ac_done = dict(meta.get("actor_critic_planner") or {})

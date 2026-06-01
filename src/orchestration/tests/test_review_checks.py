@@ -6,14 +6,18 @@ from typing import Any
 
 from src.config import Settings
 from src.domain.schemas import (
+    BehavioralSpec,
     CandidateFinding,
     FocusedContextRequest,
     ReviewCheck,
     ReviewCheckCompilerOutput,
     ReviewCheckExecutorOutput,
     ReviewCheckResult,
+    ReviewSurface,
     ReviewTask,
+    SurfaceInvariant,
 )
+from src.infrastructure.behavioral_spec_store import BehavioralSpecStore
 from src.orchestration.nodes.application import critique_pipeline
 from src.orchestration.nodes.application.review_checks import (
     make_review_check_compiler_node,
@@ -226,6 +230,102 @@ def test_review_check_compiler_adds_coverage_floor_for_uncovered_obligation(monk
     assert len(added) == 1
     assert added[0]["changed_code_anchor"] == "parse_index"
     assert validate_review_check(ReviewCheck(**added[0])) == []
+
+
+def test_review_check_coverage_floor_uses_surface_anchor() -> None:
+    surface = ReviewSurface(
+        surface_id="surface:handle",
+        name="handle",
+        kind="function",
+        file_path="src/app.py",
+        line_start=7,
+        line_end=7,
+        confidence=0.95,
+    )
+    state = _state(
+        metadata={
+            **_state()["metadata"],
+            "mental_model": {"surface_ledger": [surface.model_dump(mode="json")]},
+        }
+    )
+
+    out = make_review_check_compiler_node(use_llm=False)(state)  # type: ignore[arg-type]
+
+    compiled = out["metadata"]["review_checks"]["by_task"]["review-logic"]["compiled_checks"]
+    assert compiled[0]["surface_ids"] == ["surface:handle"]
+    assert compiled[0]["line_start"] == 7
+    assert compiled[0]["changed_code_anchor"] == "handle"
+
+
+def test_surface_invariant_checks_are_compiled_before_fallback(tmp_path) -> None:
+    settings = Settings(snapshot_base_path=str(tmp_path))
+    surface = ReviewSurface(
+        surface_id="surface:handle",
+        name="handle",
+        kind="function",
+        file_path="src/app.py",
+        line_start=7,
+        line_end=7,
+        confidence=0.95,
+    )
+    spec = BehavioralSpec(
+        intent_summary="change handle",
+        surfaces=[surface],
+        surface_invariants=[
+            SurfaceInvariant(
+                surface_id=surface.surface_id,
+                dimension="contract completeness",
+                expected_behavior="handle returns the declared result.",
+                required_evidence=["changed handle implementation"],
+            )
+        ],
+    )
+    ref, _ = BehavioralSpecStore(settings).write("r1", spec)
+    state = _state(
+        behavioral_spec_ref=ref,
+        metadata={
+            **_state()["metadata"],
+            "mental_model": {"surface_ledger": [surface.model_dump(mode="json")]},
+            "critique_pipeline": {
+                "by_task": {
+                    "review-logic": {
+                        "direct_context": "def handle():\n    return None\n",
+                        "coverage_obligations": [],
+                    }
+                }
+            },
+        },
+    )
+
+    out = make_review_check_compiler_node(use_llm=False, settings=settings)(state)  # type: ignore[arg-type]
+
+    compiled = out["metadata"]["review_checks"]["by_task"]["review-logic"]["compiled_checks"]
+    assert compiled[0]["check_id"] == "review-logic:surface:1"
+    assert compiled[0]["surface_ids"] == ["surface:handle"]
+    assert compiled[0]["line_start"] == 7
+
+
+def test_review_check_validator_rejects_surface_without_line_anchor() -> None:
+    surface = ReviewSurface(
+        surface_id="surface:handle",
+        name="handle",
+        kind="function",
+        file_path="src/app.py",
+        confidence=0.95,
+    )
+    task = _task().model_copy(update={"surface_ids": [surface.surface_id]})
+    check = _check(surface_ids=[surface.surface_id])
+    state = _state(
+        task_registry={task.id: task},
+        metadata={
+            **_state()["metadata"],
+            "mental_model": {"surface_ledger": [surface.model_dump(mode="json")]},
+        },
+    )
+
+    reasons = validate_review_check(check, state=state, task=task, slot={})
+
+    assert "missing_surface_line_anchor" in reasons
 
 
 def test_review_check_compiler_ranks_obligations_with_mental_model(monkeypatch) -> None:

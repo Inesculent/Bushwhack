@@ -34,6 +34,12 @@ from src.orchestration.context.mandate_loop_context import (
     mm_meta,
     spec_excerpt_for_prompt,
 )
+from src.orchestration.context.surface_ledger import (
+    build_surface_ledger_from_diff,
+    compact_surface_ledger_json,
+    surface_inventory_names,
+    surface_ledger_from_state,
+)
 from src.orchestration.context.review_context import structural_critiquer_context_excerpt
 from src.orchestration.nodes.application.worker import ReviewTaskContext
 from src.orchestration.review_principles import REVIEW_PRINCIPLES_VERSION, principles_for_specialty
@@ -80,6 +86,7 @@ SECTION_HEADINGS: Dict[str, str] = {
     "changed_files_list": "Changed Files",
     "pr_context": "PR context",
     "diff_surface_inventory": "Surfaces introduced in diff",
+    "surface_ledger": "Surface ledger (JSON)",
     "preflight_summary": "Preflight Summary",
     "structural_routing_hints": "Structural Routing Hints",
     "global_insights": "Global Insights",
@@ -369,6 +376,9 @@ def enrich_intent_summary_with_diff_scope(
 
 def surface_inventory_from_state(state: GraphState) -> List[str]:
     _meta, slot = mm_meta(state)
+    ledger = surface_ledger_from_state(state)
+    if ledger:
+        return surface_inventory_names(ledger)
     stored = slot.get("diff_surface_inventory")
     if isinstance(stored, list) and stored:
         return [str(x) for x in stored if str(x).strip()]
@@ -383,16 +393,20 @@ def _scope_sections_for_state(
 ) -> List[ContextSection]:
     title, body = pr_context_from_state(state)
     pr_text = format_pr_context_section(title, body, max_chars=pr_max_chars)
-    inventory = surface_inventory_from_state(state)
+    ledger = surface_ledger_from_state(state)
+    inventory = surface_inventory_names(ledger) if ledger else surface_inventory_from_state(state)
     inventory_text = ", ".join(inventory) if inventory else ""
     if len(inventory_text) > inventory_max_chars:
         inventory_text = inventory_text[: inventory_max_chars - 3] + "..."
     sections: List[ContextSection] = []
     if pr_text:
         sections.append(_section("pr_context", 1, pr_text, source="metadata"))
+    if ledger:
+        ledger_text = compact_surface_ledger_json(ledger, max_records=40)
+        sections.append(_section("surface_ledger", 1, ledger_text, source="mental_model"))
     if inventory_text:
         sections.append(
-            _section("diff_surface_inventory", 1, inventory_text, source="git_diff")
+            _section("diff_surface_inventory", 1, inventory_text, source="surface_ledger")
         )
     return sections
 
@@ -406,7 +420,8 @@ def build_intent_extractor_packet(state: GraphState, *, settings: Settings | Non
     pr_cap = 2500
     inventory_cap = 400
     pr_text = format_pr_context_section(title, body, max_chars=pr_cap)
-    inventory = classes_introduced_in_diff(git_diff)
+    ledger = build_surface_ledger_from_diff(git_diff)
+    inventory = surface_inventory_names(ledger)
     inventory_text = ", ".join(inventory) if inventory else ""
     if len(inventory_text) > inventory_cap:
         inventory_text = inventory_text[: inventory_cap - 3] + "..."
@@ -419,9 +434,13 @@ def build_intent_extractor_packet(state: GraphState, *, settings: Settings | Non
     ]
     if pr_text:
         sections.append(_section("pr_context", 1, pr_text, source="metadata"))
+    if ledger:
+        sections.append(
+            _section("surface_ledger", 1, compact_surface_ledger_json(ledger), source="git_diff")
+        )
     if inventory_text:
         sections.append(
-            _section("diff_surface_inventory", 1, inventory_text, source="git_diff")
+            _section("diff_surface_inventory", 1, inventory_text, source="surface_ledger")
         )
     sections.extend(
         [
@@ -497,13 +516,6 @@ def build_plan_critic_packet(
             int(settings.reviewer_context_plan_critic_max_chars) // 2,
         )
 
-    title, body = pr_context_from_state(state)
-    pr_short = format_pr_context_section(title, body, max_chars=800)
-    inventory = surface_inventory_from_state(state)
-    inventory_text = ", ".join(inventory) if inventory else ""
-    if len(inventory_text) > 400:
-        inventory_text = inventory_text[:397] + "..."
-
     sections: List[ContextSection] = [
         _section(
             "bootstrap_digest_oneliner",
@@ -524,12 +536,7 @@ def build_plan_critic_packet(
             source="mental_model",
         ),
     ]
-    if pr_short:
-        sections.append(_section("pr_context", 1, pr_short, source="metadata"))
-    if inventory_text:
-        sections.append(
-            _section("diff_surface_inventory", 1, inventory_text, source="git_diff")
-        )
+    sections.extend(_scope_sections_for_state(state, pr_max_chars=800, inventory_max_chars=400))
     sections.extend(
         [
             _planner_diff_section(
@@ -640,7 +647,7 @@ def _planner_diff_section(
 
         parts = [
             "Diff excerpt omitted after mandate bootstrap. Scope tasks from "
-            "'Surfaces introduced in diff' and full repository file bodies (workers load complete files).",
+            "'Surface ledger (JSON)' and full repository file bodies (workers load complete files).",
             "Do not limit tasks to classes visible only in a truncated diff hunk.",
         ]
         if inventory:

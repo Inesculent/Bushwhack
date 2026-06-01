@@ -19,11 +19,16 @@ from src.infrastructure.llm.trace import append_trace, trace_from_exception, tra
 from src.orchestration.context.context_packets import (
     build_intent_extractor_packet,
     build_mandate_synthesizer_packet,
-    classes_introduced_in_diff,
     enrich_intent_summary_with_diff_scope,
     packet_to_prompt_sections,
 )
 from src.orchestration.context.mandate_loop_context import mm_meta
+from src.orchestration.context.surface_ledger import (
+    build_surface_invariants_from_ledger,
+    build_surface_ledger_from_diff,
+    surface_inventory_names,
+    surface_ledger_from_state,
+)
 from src.orchestration.nodes.application.planner import _extract_files_from_diff, _target_files
 from src.orchestration.prompts.renderer import render_reviewer_prompt
 from src.orchestration.review_principles import DECLARED_INPUT_CONTRACT_GUIDANCE
@@ -180,7 +185,8 @@ def make_intent_extractor_node(settings: Settings | None = None, *, use_llm: boo
             ).strip()
 
         git_diff = state.get("git_diff", "") or ""
-        inventory = classes_introduced_in_diff(git_diff)
+        surface_ledger = build_surface_ledger_from_diff(git_diff)
+        inventory = surface_inventory_names(surface_ledger)
         intent_summary, scope_warnings = enrich_intent_summary_with_diff_scope(
             intent_summary, git_diff
         )
@@ -191,6 +197,7 @@ def make_intent_extractor_node(settings: Settings | None = None, *, use_llm: boo
             "non_goals": non_goals,
             "warnings": warnings,
         }
+        slot["surface_ledger"] = [s.model_dump(mode="json") for s in surface_ledger]
         slot["diff_surface_inventory"] = inventory
         meta["mental_model"] = slot
         return {
@@ -264,6 +271,11 @@ def make_mandate_synthesizer_node(settings: Settings | None = None, *, use_llm: 
         for fp in _target_files(state)[:12]:
             evidence_refs.append(BehavioralEvidenceRef(kind="file", ref=fp, note="Changed in this PR"))
 
+        surface_ledger = surface_ledger_from_state({**state, "metadata": meta})
+        if surface_ledger:
+            slot["surface_ledger"] = [s.model_dump(mode="json") for s in surface_ledger]
+            slot["diff_surface_inventory"] = surface_inventory_names(surface_ledger)
+
         store_read: BehavioralSpec | None = None
         if isinstance(state.get("behavioral_spec_ref"), str):
             try:
@@ -283,6 +295,11 @@ def make_mandate_synthesizer_node(settings: Settings | None = None, *, use_llm: 
             risk_hypotheses=risks or "None stated; stay unbiased.",
             reviewer_guidance=guidance,
             evidence_refs=evidence_refs,
+            surfaces=surface_ledger,
+            surface_invariants=build_surface_invariants_from_ledger(
+                surface_ledger,
+                risk_hypotheses=risks,
+            ),
             confidence=0.55 if warnings else 0.7,
             uncertainties=uncertainties or "LLM synthesis may be incomplete; verify against code.",
         )

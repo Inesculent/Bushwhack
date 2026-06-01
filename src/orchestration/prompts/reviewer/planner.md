@@ -6,6 +6,8 @@ Return a flat `tasks` array only. Do not create parent/container tasks and do no
 
 Tasks must be **mutually exclusive** in scope. Avoid overlapping coverage (do not restate the same check with different wording). If two tasks would inspect the same lines for the same risk, keep only one.
 
+Each task must declare `surface_ids` from **Surface ledger (JSON)**. Use those IDs as the scope boundary. Do not invent IDs. If a task is intentionally cross-surface, make that explicit in the title or description and include only the relevant surface IDs.
+
 Hard caps:
 - Maximum 10 tasks total (prefer 6).
 - Title <= 80 characters.
@@ -33,7 +35,7 @@ Include **at least one** `logic` task that audits **diff-local general correctne
 
 Phrase that task so it is recognizable (e.g. title or description mentions **“diff-local correctness”**). Example focus: “Verify every branch in the changed function returns or raises consistently” rather than “Find all callers of `foo`.”
 
-When the diff adds **multiple entry points** in the same file (see **Surfaces introduced in diff** when provided), prefer **several disjoint `logic` tasks**—one per class or per small batch (2–3 classes)—instead of one task that lists every handler. Each task must name its in-scope class(es) and state **do not review any other class** in that file.
+When the diff adds **multiple entry points** in the same file (see **Surface ledger (JSON)** when provided), prefer **several disjoint `logic` tasks**—one per class or per small batch (2–3 classes)—instead of one task that lists every handler. Each task must name its in-scope class(es), include only those `surface_ids`, and state **do not review any other class** in that file.
 
 Example scoped tasks (use real class/handler names from the inventory):
 - `FooHandler.process` — type-tracing on structured API return shapes, index/slot selection, and aggregation before return; **only** `FooHandler`.
@@ -48,7 +50,7 @@ Do **not** paste the full surface inventory into every task description when the
 
 Security or performance tasks must not substitute for this logic pass.
 
-When **Surfaces introduced in diff** lists **4 or more** entry points in **one file**, emit **multiple `logic` tasks** with **disjoint** class subsets (typically one class, or two simple classes per task). Never rely on one task that says “audit all N nodes.”
+When **Surface ledger (JSON)** lists **4 or more** entry points in **one file**, emit **multiple `logic` tasks** with **disjoint** class subsets (typically one class, or two simple classes per task). Never rely on one task that says “audit all N nodes.”
 
 When the change includes structured extraction (multi-slot rows/tuples, capture groups, join/format of extracted parts) or multi-branch `elif` dispatch on a discriminant, add **focused** tasks:
 - Handlers that build then aggregate structured results: type-tracing and slot selection (title may mention **structured extraction**).

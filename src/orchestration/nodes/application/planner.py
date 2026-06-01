@@ -18,6 +18,13 @@ from src.orchestration.context.context_packets import (
     packet_to_prompt_sections,
     surface_inventory_from_state,
 )
+from src.orchestration.context.surface_ledger import (
+    changed_files_from_diff,
+    surface_by_id,
+    surface_ids_for_task,
+    surface_ledger_from_state,
+    surface_names_for_ids,
+)
 from src.orchestration.prompts.renderer import render_reviewer_prompt
 
 logger = logging.getLogger(__name__)
@@ -188,7 +195,7 @@ def _default_tasks(state: GraphState) -> List[ReviewTask]:
             "Review maintainability, error handling, tests, and integration consistency for the changed code.",
         ),
     ]
-    return [
+    tasks = [
         ReviewTask(
             id=f"review-{specialty}",
             title=title,
@@ -199,6 +206,7 @@ def _default_tasks(state: GraphState) -> List[ReviewTask]:
         )
         for specialty, title, description in task_specs
     ]
+    return [_attach_task_surface_ids(task, state) for task in tasks]
 
 
 def _task_is_diff_local_correctness(task: ReviewTask) -> bool:
@@ -285,6 +293,23 @@ def _task_covers_structured_extraction(
 
 def _surfaces_mentioned_in_text(text: str, inventory: List[str]) -> List[str]:
     return [name for name in inventory if name in text]
+
+
+def _attach_task_surface_ids(task: ReviewTask, state: GraphState) -> ReviewTask:
+    ledger = surface_ledger_from_state(state)
+    if not ledger:
+        return task
+    surface_ids = surface_ids_for_task(task, ledger)
+    if surface_ids == task.surface_ids:
+        return task
+    return task.model_copy(update={"surface_ids": surface_ids})
+
+
+def _surface_names_for_task(task: ReviewTask, state: GraphState) -> List[str]:
+    ledger = surface_ledger_from_state(state)
+    if not ledger:
+        return []
+    return surface_names_for_ids(surface_ids_for_task(task, ledger), ledger)
 
 
 def _task_surface_names(task: ReviewTask) -> frozenset[str]:
@@ -457,7 +482,12 @@ def _build_class_focus_shards(
 
     shards: List[ReviewTask] = []
     for index, (batch, focus) in enumerate(planned):
-        shards.append(_logic_class_focus_task(files, batch, focus=focus, shard_index=index))
+        shards.append(
+            _attach_task_surface_ids(
+                _logic_class_focus_task(files, batch, focus=focus, shard_index=index),
+                state,
+            )
+        )
     return shards
 
 
@@ -466,6 +496,8 @@ def _is_monolithic_logic_task(task: ReviewTask, inventory: List[str]) -> bool:
         return False
     if _is_class_scoped_logic_task(task, inventory):
         return False
+    if len(task.surface_ids) >= max(3, (len(inventory) + 1) // 2):
+        return True
     if _task_covers_structured_extraction(task, inventory) and len(
         _surfaces_mentioned_in_text(f"{task.title} {task.description}", inventory)
     ) <= 2:
@@ -476,11 +508,20 @@ def _is_monolithic_logic_task(task: ReviewTask, inventory: List[str]) -> bool:
     return len(mentioned) >= max(3, (len(inventory) + 1) // 2)
 
 
-def _surfaces_covered_by_logic_tasks(tasks: List[ReviewTask], inventory: List[str]) -> set[str]:
+def _surfaces_covered_by_logic_tasks(
+    tasks: List[ReviewTask],
+    inventory: List[str],
+    state: GraphState,
+) -> set[str]:
     covered: set[str] = set()
+    id_to_name = {
+        surface.surface_id: surface.name
+        for surface in surface_ledger_from_state(state)
+    }
     for task in tasks:
         if task.specialty != "logic":
             continue
+        covered.update(id_to_name[sid] for sid in task.surface_ids if sid in id_to_name)
         covered.update(_surfaces_mentioned_in_text(f"{task.title} {task.description}", inventory))
     return covered
 
@@ -488,12 +529,15 @@ def _surfaces_covered_by_logic_tasks(tasks: List[ReviewTask], inventory: List[st
 def _surfaces_covered_by_class_scoped_logic_tasks(
     tasks: List[ReviewTask],
     inventory: List[str],
+    state: GraphState,
 ) -> set[str]:
     """Surfaces explicitly assigned to class-scoped logic shards (not mega-audit boilerplate)."""
     covered: set[str] = set()
     for task in tasks:
         if task.specialty != "logic" or not _is_class_scoped_logic_task(task, inventory):
             continue
+        id_to_name = {surface.surface_id: surface.name for surface in surface_ledger_from_state(state)}
+        covered.update(id_to_name[sid] for sid in task.surface_ids if sid in id_to_name)
         covered.update(_surfaces_mentioned_in_text(f"{task.title} {task.description}", inventory))
     return covered
 
@@ -516,7 +560,7 @@ def _chunk_logic_tasks_by_surface(tasks: List[ReviewTask], state: GraphState) ->
             return tasks
 
     kept = [t for t in tasks if t not in monolithic]
-    covered = _surfaces_covered_by_logic_tasks(kept, inventory)
+    covered = _surfaces_covered_by_logic_tasks(kept, inventory, state)
     to_cover = [name for name in inventory if name not in covered]
     if not to_cover:
         out = kept
@@ -539,6 +583,8 @@ def _chunk_logic_tasks_by_surface(tasks: List[ReviewTask], state: GraphState) ->
 def _should_split_monolithic_logic_task(task: ReviewTask, inventory: List[str]) -> bool:
     if task.specialty != "logic" or len(inventory) < _MULTI_SURFACE_SPLIT_MIN_INVENTORY:
         return False
+    if len(task.surface_ids) >= _MULTI_SURFACE_SPLIT_MIN_MENTIONED:
+        return True
     mentioned = _surfaces_mentioned_in_text(task.description, inventory)
     return len(mentioned) >= _MULTI_SURFACE_SPLIT_MIN_MENTIONED
 
@@ -586,7 +632,10 @@ def _split_oversized_logic_tasks(tasks: List[ReviewTask], state: GraphState) -> 
             shards = [chunk for chunk in shards if chunk]
             for index, chunk in enumerate(shards):
                 out.append(
-                    _logic_surface_shard_task(files, chunk, shard_index=index, shard_count=len(shards))
+                    _attach_task_surface_ids(
+                        _logic_surface_shard_task(files, chunk, shard_index=index, shard_count=len(shards)),
+                        state,
+                    )
                 )
             split_applied = True
             continue
@@ -633,7 +682,7 @@ def _ensure_structured_extraction_logic_task(
     if any(_task_covers_structured_extraction(t, inventory) for t in tasks if t.specialty == "logic"):
         return tasks
     files = _target_files(state)
-    extra = _structured_extraction_correctness_task(files)
+    extra = _attach_task_surface_ids(_structured_extraction_correctness_task(files), state)
     if _is_duplicate_task(extra, tasks):
         return tasks
     if len(tasks) >= _MAX_PLANNER_TASKS:
@@ -651,7 +700,7 @@ def _baseline_diff_local_correctness_task(files: List[str], state: GraphState) -
         "and type/API consistency in the changed repository file(s)—without requiring off-diff callers or middleware."
     )
     description += _multi_surface_correctness_suffix(state)
-    return ReviewTask(
+    task = ReviewTask(
         id="review-logic-diff-local",
         title="Diff-local correctness",
         description=description,
@@ -659,6 +708,7 @@ def _baseline_diff_local_correctness_task(files: List[str], state: GraphState) -
         specialty="logic",
         depth=1,
     )
+    return _attach_task_surface_ids(task, state)
 
 
 def _strip_diff_narrowing_scope(text: str) -> str:
@@ -697,6 +747,7 @@ def _amend_diff_narrowed_tasks(tasks: List[ReviewTask], state: GraphState) -> Li
             and task.specialty == "logic"
             and not class_scoped
             and not dedicated_structured
+            and not task.surface_ids
         )
         if task.specialty == "logic" and (narrowed or append_global_suffix):
             desc = _strip_diff_narrowing_scope(desc)
@@ -723,7 +774,7 @@ def _ensure_diff_local_correctness_task(tasks: List[ReviewTask], state: GraphSta
     inventory = surface_inventory_from_state(state)
     if _surface_chunking_enabled(state):
         scoped = [t for t in tasks if _is_class_scoped_logic_task(t, inventory)]
-        if scoped and len(_surfaces_covered_by_class_scoped_logic_tasks(tasks, inventory)) >= len(
+        if scoped and len(_surfaces_covered_by_class_scoped_logic_tasks(tasks, inventory, state)) >= len(
             inventory
         ):
             return tasks
@@ -732,7 +783,11 @@ def _ensure_diff_local_correctness_task(tasks: List[ReviewTask], state: GraphSta
         if suffix:
             enriched: List[ReviewTask] = []
             for task in tasks:
-                if _task_is_diff_local_correctness(task) and suffix not in task.description:
+                if (
+                    _task_is_diff_local_correctness(task)
+                    and suffix not in task.description
+                    and not task.surface_ids
+                ):
                     desc = _strip_diff_narrowing_scope(task.description) + suffix
                     enriched.append(task.model_copy(update={"description": desc.strip()}))
                 else:
@@ -782,6 +837,7 @@ def _normalize_tasks(tasks: List[ReviewTask], state: GraphState) -> List[ReviewT
                 "subtasks": [],
             }
         )
+        candidate = _attach_task_surface_ids(candidate, state)
         if _is_duplicate_task(candidate, normalized):
             continue
         normalized.append(candidate)
@@ -812,7 +868,7 @@ def _sanitize_batched_logic_task_description(
     else:
         desc = _CROSS_SURFACE_AUDIT_RE.sub("", desc).strip()
     title_head = task.title.split(":", 1)[0]
-    mentioned = [name for name in inventory if name in title_head]
+    mentioned = [name for name in inventory if name in title_head] or _surface_names_for_task(task, state)
     if 1 <= len(mentioned) <= 5 and _CLASS_SCOPE_ISOLATION_PHRASE not in desc.lower():
         desc = f"{desc} {_CLASS_SCOPE_ISOLATION_PHRASE.capitalize()} in the target file.".strip()
     return desc
@@ -826,6 +882,7 @@ def finalize_emitted_tasks(tasks: List[ReviewTask], state: GraphState) -> List[R
     inventory = surface_inventory_from_state(state)
     prepared: List[ReviewTask] = []
     for task in tasks:
+        task = _attach_task_surface_ids(task, state)
         description = _sanitize_batched_logic_task_description(task, state, inventory)
         prepared.append(
             task.model_copy(
@@ -839,7 +896,71 @@ def finalize_emitted_tasks(tasks: List[ReviewTask], state: GraphState) -> List[R
     prepared = _amend_diff_narrowed_tasks(prepared, state)
     prepared = _chunk_logic_tasks_by_surface(prepared, state)
     prepared = _ensure_diff_local_correctness_task(prepared, state)
-    return _ensure_structured_extraction_logic_task(prepared, state)
+    prepared = _ensure_structured_extraction_logic_task(prepared, state)
+    return [_attach_task_surface_ids(task, state) for task in prepared]
+
+
+def _task_is_explicit_cross_surface(task: ReviewTask) -> bool:
+    blob = f"{task.id} {task.title} {task.description}".lower()
+    return (
+        task.id == "review-logic-structured-extraction"
+        or "cross-surface" in blob
+        or "integration" in blob
+        or "call path" in blob
+    )
+
+
+def validate_surface_bound_plan(tasks: List[ReviewTask], state: GraphState) -> Dict[str, Any]:
+    """Pre-execution plan gate for changed-surface scope integrity."""
+
+    ledger = surface_ledger_from_state(state)
+    changed_files = set(changed_files_from_diff(state.get("git_diff", "") or ""))
+    by_id = surface_by_id(ledger)
+    normalized_tasks = [_attach_task_surface_ids(task, state) for task in tasks]
+
+    covered: set[str] = set()
+    missing_surface_ids: List[str] = []
+    invalid_target_files: List[Dict[str, Any]] = []
+    logic_owners: Dict[str, List[str]] = {}
+
+    for task in normalized_tasks:
+        surface_ids = [sid for sid in task.surface_ids if sid in by_id]
+        if ledger and not surface_ids:
+            missing_surface_ids.append(task.id)
+        covered.update(surface_ids)
+        for path in task.target_files:
+            norm = path.strip().replace("\\", "/")
+            if changed_files and norm and norm not in changed_files:
+                invalid_target_files.append({"task_id": task.id, "file_path": norm})
+        if task.specialty == "logic" and not _task_is_explicit_cross_surface(task):
+            for sid in surface_ids:
+                logic_owners.setdefault(sid, []).append(task.id)
+
+    high_confidence = [surface for surface in ledger if surface.confidence >= 0.75]
+    uncovered = [surface.surface_id for surface in high_confidence if surface.surface_id not in covered]
+    overlapping = [
+        {"surface_id": sid, "task_ids": task_ids}
+        for sid, task_ids in sorted(logic_owners.items())
+        if len(set(task_ids)) > 1
+    ]
+    diagnostics = {
+        "ok": not (uncovered or overlapping or invalid_target_files or missing_surface_ids),
+        "surface_count": len(ledger),
+        "covered_surface_ids": sorted(covered),
+        "uncovered_surfaces": [
+            {
+                "surface_id": sid,
+                "name": by_id[sid].name,
+                "file_path": by_id[sid].file_path,
+            }
+            for sid in uncovered
+            if sid in by_id
+        ],
+        "overlapping_tasks": overlapping,
+        "invalid_target_files": invalid_target_files,
+        "tasks_missing_surface_ids": missing_surface_ids,
+    }
+    return diagnostics
 
 
 def _task_tokens(task: ReviewTask) -> set[str]:

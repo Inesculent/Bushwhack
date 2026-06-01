@@ -14,6 +14,8 @@ A review check is a narrow, temporary contract that can be executed against repo
 
 The changed code anchor must be on a changed file and should name a changed function, class, line range, or behavior visible in the supplied diff/context.
 
+Every check must carry exactly one primary `surface_id` from the assigned task unless the check is explicitly cross-surface/integration. Prefer the assigned surface ledger anchor and line range over file-level fallbacks.
+
 Use the mental model and Review KB to understand repository-specific contracts, expected behavior, relevant risks, suppressions, and uncertainties. They are hypotheses and context, not defects.
 
 Prefer a small set of high-signal checks over broad coverage, but "small" does not mean skipping changed entry points. Use the ranked obligations as relevance hints, not as proof or as a mandatory ordering. Choose checks based on the changed code plus mental-model/KB contracts.

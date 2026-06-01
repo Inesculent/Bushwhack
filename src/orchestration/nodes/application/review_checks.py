@@ -9,6 +9,7 @@ from typing import Any, Dict, Iterable, List, Mapping, Sequence
 
 from src.config import Settings, get_settings
 from src.domain.schemas import (
+    BehavioralSpec,
     CandidateFinding,
     FocusedContextRequest,
     InvalidReviewCheck,
@@ -17,8 +18,10 @@ from src.domain.schemas import (
     ReviewCheckExecutorOutput,
     ReviewCheckResult,
     ReviewTask,
+    ReviewSurface,
 )
 from src.domain.state import GraphState
+from src.infrastructure.behavioral_spec_store import BehavioralSpecStore
 from src.infrastructure.llm.factory import Models
 from src.infrastructure.llm.token_usage import parse_structured_output
 from src.infrastructure.llm.trace import trace_from_exception, trace_llm_call
@@ -27,6 +30,13 @@ from src.orchestration.context.focus_request_scope import (
     clamp_focused_context_request,
 )
 from src.orchestration.context.context_packets import focused_snippets_for_candidate
+from src.orchestration.context.surface_ledger import (
+    compact_surface_ledger_json,
+    surface_by_id,
+    surface_ids_for_task,
+    surface_ids_for_text,
+    surface_ledger_from_state,
+)
 from src.orchestration.nodes.application.critiquer import _normalize_candidates
 from src.orchestration.prompts.renderer import render_reviewer_prompt
 
@@ -165,6 +175,16 @@ def _trace_enabled(state: GraphState) -> bool:
     return bool(metadata.get("review_trace_enabled"))
 
 
+def _explicit_surface_ledger_from_state(state: GraphState | None) -> List[ReviewSurface]:
+    if state is None:
+        return []
+    metadata = state.get("metadata", {}) or {}
+    slot = metadata.get("mental_model", {}) if isinstance(metadata, Mapping) else {}
+    if not isinstance(slot, Mapping) or not isinstance(slot.get("surface_ledger"), list):
+        return []
+    return surface_ledger_from_state(state)
+
+
 def _task_from_state(state: GraphState) -> ReviewTask | None:
     task_id = state.get("current_task_id")
     registry = state.get("task_registry", {}) or {}
@@ -252,7 +272,48 @@ def _dimension_to_lens(dimension: str) -> str:
     return "other"
 
 
-def _fallback_checks(task: ReviewTask, slot: Mapping[str, Any]) -> List[ReviewCheck]:
+def _surface_ids_for_check_context(
+    *,
+    task: ReviewTask,
+    file_path: str,
+    anchor: str,
+    state: GraphState,
+) -> List[str]:
+    ledger = surface_ledger_from_state(state)
+    if not ledger:
+        return list(task.surface_ids)
+    ids = surface_ids_for_text(anchor, ledger)
+    if not ids:
+        by_id = surface_by_id(ledger)
+        ids = [sid for sid in task.surface_ids if sid in by_id]
+    if not ids and (not anchor.strip() or anchor.strip().replace("\\", "/") == file_path):
+        ids = surface_ids_for_task(task, ledger)
+    if file_path and ids:
+        by_id = surface_by_id(ledger)
+        file_matches = [sid for sid in ids if by_id.get(sid) and by_id[sid].file_path == file_path]
+        if file_matches:
+            ids = file_matches
+    return ids
+
+
+def _surface_anchor_update(surface_ids: List[str], state: GraphState) -> Dict[str, Any]:
+    if len(surface_ids) != 1:
+        return {}
+    surface = surface_by_id(surface_ledger_from_state(state)).get(surface_ids[0])
+    if surface is None:
+        return {}
+    update: Dict[str, Any] = {
+        "file_path": surface.file_path,
+        "changed_code_anchor": surface.name,
+        "surface_ids": [surface.surface_id],
+    }
+    if surface.line_start is not None:
+        update["line_start"] = surface.line_start
+        update["line_end"] = surface.line_end or surface.line_start
+    return update
+
+
+def _fallback_checks(state: GraphState, task: ReviewTask, slot: Mapping[str, Any]) -> List[ReviewCheck]:
     obligations = _rotate_tied_obligations(_ranked_coverage_obligations(task, slot))
     checks: List[ReviewCheck] = []
     for index, raw in enumerate(obligations[:6], start=1):
@@ -260,6 +321,15 @@ def _fallback_checks(task: ReviewTask, slot: Mapping[str, Any]) -> List[ReviewCh
         file_path = str(row.get("file_path") or (task.target_files[0] if task.target_files else ""))
         dimension = str(row.get("dimension") or "task contract")
         surface = str(row.get("surface") or file_path or "changed code")
+        surface_ids = _surface_ids_for_check_context(
+            task=task,
+            file_path=file_path,
+            anchor=surface,
+            state=state,
+        )[:1]
+        anchor_update = _surface_anchor_update(surface_ids, state)
+        file_path = str(anchor_update.get("file_path") or file_path)
+        surface = str(anchor_update.get("changed_code_anchor") or surface)
         contract_material = [
             f"mental model/KB contract hypothesis to verify: {item}"
             for item in row.get("mental_model_contract_material", [])
@@ -269,10 +339,11 @@ def _fallback_checks(task: ReviewTask, slot: Mapping[str, Any]) -> List[ReviewCh
             ReviewCheck(
                 check_id=f"{task.id}:check:{index}",
                 patch_task_id=task.id,
+                surface_ids=surface_ids,
                 lens=_dimension_to_lens(dimension),  # type: ignore[arg-type]
                 file_path=file_path,
-                line_start=1,
-                line_end=1,
+                line_start=int(anchor_update.get("line_start") or 1),
+                line_end=int(anchor_update.get("line_end") or anchor_update.get("line_start") or 1),
                 changed_code_anchor=surface,
                 behavioral_question=f"Does the changed {surface} preserve {dimension}?",
                 affected_invariant=dimension,
@@ -290,15 +361,23 @@ def _fallback_checks(task: ReviewTask, slot: Mapping[str, Any]) -> List[ReviewCh
     if checks:
         return checks
     file_path = task.target_files[0] if task.target_files else ""
+    surface_ids = _surface_ids_for_check_context(
+        task=task,
+        file_path=file_path,
+        anchor=task.title,
+        state=state,
+    )[:1]
+    anchor_update = _surface_anchor_update(surface_ids, state)
     return [
         ReviewCheck(
             check_id=f"{task.id}:check:1",
             patch_task_id=task.id,
+            surface_ids=surface_ids,
             lens="other",
-            file_path=file_path,
-            line_start=1,
-            line_end=1,
-            changed_code_anchor=file_path or task.title,
+            file_path=str(anchor_update.get("file_path") or file_path),
+            line_start=int(anchor_update.get("line_start") or 1),
+            line_end=int(anchor_update.get("line_end") or anchor_update.get("line_start") or 1),
+            changed_code_anchor=str(anchor_update.get("changed_code_anchor") or file_path or task.title),
             behavioral_question=f"Does the changed code satisfy the task-specific behavior: {task.title}?",
             affected_invariant=task.description[:400],
             required_evidence=["changed-code behavior at the task anchor"],
@@ -325,15 +404,23 @@ def _changed_task_files(state: GraphState, task: ReviewTask) -> List[str]:
     return [path for path in dict.fromkeys(targets) if _looks_like_code_file(path)]
 
 
-def _coverage_check_for_file(task: ReviewTask, file_path: str, index: int) -> ReviewCheck:
+def _coverage_check_for_file(state: GraphState, task: ReviewTask, file_path: str, index: int) -> ReviewCheck:
+    surface_ids = _surface_ids_for_check_context(
+        task=task,
+        file_path=file_path,
+        anchor=file_path,
+        state=state,
+    )[:1]
+    anchor_update = _surface_anchor_update(surface_ids, state)
     return ReviewCheck(
         check_id=f"{task.id}:coverage:{index}",
         patch_task_id=task.id,
+        surface_ids=surface_ids,
         lens="other",
-        file_path=file_path,
-        line_start=1,
-        line_end=1,
-        changed_code_anchor=file_path,
+        file_path=str(anchor_update.get("file_path") or file_path),
+        line_start=int(anchor_update.get("line_start") or 1),
+        line_end=int(anchor_update.get("line_end") or anchor_update.get("line_start") or 1),
+        changed_code_anchor=str(anchor_update.get("changed_code_anchor") or file_path),
         behavioral_question=(
             f"Does the changed code in {file_path} preserve the task-specific behavior for {task.title}?"
         ),
@@ -549,6 +636,7 @@ def _check_covers_obligation(check: ReviewCheck, obligation: Mapping[str, Any]) 
 
 
 def _coverage_check_for_obligation(
+    state: GraphState,
     task: ReviewTask,
     obligation: Mapping[str, Any],
     index: int,
@@ -557,6 +645,15 @@ def _coverage_check_for_obligation(
     surface = str(obligation.get("surface") or file_path or "changed code")
     dimension = str(obligation.get("dimension") or "task contract")
     evidence = str(obligation.get("evidence") or f"repository evidence for {dimension}")
+    surface_ids = _surface_ids_for_check_context(
+        task=task,
+        file_path=file_path,
+        anchor=surface,
+        state=state,
+    )[:1]
+    anchor_update = _surface_anchor_update(surface_ids, state)
+    file_path = str(anchor_update.get("file_path") or file_path)
+    surface = str(anchor_update.get("changed_code_anchor") or surface)
     contract_material = [
         f"mental model/KB contract hypothesis to verify: {item}"
         for item in obligation.get("mental_model_contract_material", [])
@@ -565,10 +662,11 @@ def _coverage_check_for_obligation(
     return ReviewCheck(
         check_id=f"{task.id}:coverage:{index}",
         patch_task_id=task.id,
+        surface_ids=surface_ids,
         lens=_dimension_to_lens(dimension),  # type: ignore[arg-type]
         file_path=file_path,
-        line_start=1,
-        line_end=1,
+        line_start=int(anchor_update.get("line_start") or 1),
+        line_end=int(anchor_update.get("line_end") or anchor_update.get("line_start") or 1),
         changed_code_anchor=surface,
         behavioral_question=f"Does the changed {surface} preserve {dimension}?",
         affected_invariant=dimension,
@@ -609,7 +707,7 @@ def _ensure_compiler_coverage_floor(
         if len(checks) + len(added) >= _MAX_CHECKS_PER_TASK:
             skipped_due_to_cap.append(dict(obligation))
             continue
-        added.append(_coverage_check_for_obligation(task, obligation, len(checks) + len(added) + 1))
+        added.append(_coverage_check_for_obligation(state, task, obligation, len(checks) + len(added) + 1))
 
     coverage_files = _changed_task_files(state, task)
     checked_files = {
@@ -624,7 +722,7 @@ def _ensure_compiler_coverage_floor(
                 {"file_path": file_path, "surface": file_path, "dimension": "file coverage"}
             )
             continue
-        added.append(_coverage_check_for_file(task, file_path, len(checks) + len(added) + 1))
+        added.append(_coverage_check_for_file(state, task, file_path, len(checks) + len(added) + 1))
 
     trimmed_existing: List[str] = []
     if len(checks) > _MAX_CHECKS_PER_TASK:
@@ -649,10 +747,88 @@ def _ensure_compiler_coverage_floor(
     }
 
 
-def _normalize_compiled_checks(task: ReviewTask, checks: Iterable[ReviewCheck]) -> List[ReviewCheck]:
+def _behavioral_spec_from_state(state: GraphState, settings: Settings) -> BehavioralSpec | None:
+    ref = state.get("behavioral_spec_ref")
+    if not isinstance(ref, str) or not ref.strip():
+        return None
+    try:
+        return BehavioralSpecStore(settings).read(ref)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _checks_from_surface_invariants(
+    state: GraphState,
+    task: ReviewTask,
+    *,
+    settings: Settings,
+) -> List[ReviewCheck]:
+    spec = _behavioral_spec_from_state(state, settings)
+    if spec is None or not spec.surface_invariants:
+        return []
+    ledger = spec.surfaces or surface_ledger_from_state(state)
+    by_id = surface_by_id(ledger)
+    task_surface_ids = surface_ids_for_task(task, ledger)
+    checks: List[ReviewCheck] = []
+    for invariant in spec.surface_invariants:
+        if invariant.surface_id not in task_surface_ids:
+            continue
+        surface = by_id.get(invariant.surface_id)
+        if surface is None:
+            continue
+        line_start = surface.line_start or 1
+        line_end = surface.line_end or line_start
+        checks.append(
+            ReviewCheck(
+                check_id=f"{task.id}:surface:{len(checks) + 1}",
+                patch_task_id=task.id,
+                surface_ids=[surface.surface_id],
+                lens=_dimension_to_lens(invariant.dimension),  # type: ignore[arg-type]
+                file_path=surface.file_path,
+                line_start=line_start,
+                line_end=line_end,
+                changed_code_anchor=surface.name,
+                behavioral_question=(
+                    f"Does the changed {surface.name} preserve {invariant.dimension}?"
+                ),
+                affected_invariant=invariant.expected_behavior[:400] or invariant.dimension,
+                required_evidence=invariant.required_evidence
+                or [f"changed implementation for {surface.name}"],
+                suppress_criteria=[
+                    f"Repository evidence shows {surface.name} preserves {invariant.dimension}."
+                ],
+                report_criteria=[
+                    f"The changed {surface.name} violates {invariant.dimension} on a reachable path."
+                ],
+                allowed_retrieval=["task_evidence", "focused_context"],
+                budget=2,
+            )
+        )
+        if len(checks) >= _MAX_CHECKS_PER_TASK:
+            break
+    return checks
+
+
+def _dedupe_checks(checks: Iterable[ReviewCheck]) -> List[ReviewCheck]:
+    seen: set[str] = set()
+    out: List[ReviewCheck] = []
+    for check in checks:
+        if check.check_id in seen:
+            continue
+        seen.add(check.check_id)
+        out.append(check)
+    return out
+
+
+def _normalize_compiled_checks(
+    state: GraphState,
+    task: ReviewTask,
+    checks: Iterable[ReviewCheck],
+) -> List[ReviewCheck]:
     normalized: List[ReviewCheck] = []
     seen: set[str] = set()
     fallback_path = task.target_files[0] if task.target_files else ""
+    ledger = surface_ledger_from_state(state)
     for index, check in enumerate(checks, start=1):
         cid = check.check_id.strip() or f"{task.id}:check:{index}"
         if not cid.startswith(task.id):
@@ -661,16 +837,34 @@ def _normalize_compiled_checks(task: ReviewTask, checks: Iterable[ReviewCheck]) 
             cid = f"{cid}:{index}"
         seen.add(cid)
         path = check.file_path.strip().replace("\\", "/") or fallback_path
+        surface_ids = [sid for sid in check.surface_ids if sid in surface_by_id(ledger)]
+        if ledger and not surface_ids:
+            surface_ids = _surface_ids_for_check_context(
+                task=task,
+                file_path=path,
+                anchor=f"{check.changed_code_anchor} {check.behavioral_question}",
+                state=state,
+            )
+        anchor_update = _surface_anchor_update(surface_ids[:1], state)
+        if anchor_update:
+            path = str(anchor_update.get("file_path") or path)
         line_start = max(1, check.line_start)
         line_end = max(line_start, check.line_end)
+        if anchor_update.get("line_start") and line_start == 1 and line_end == 1:
+            line_start = int(anchor_update["line_start"])
+            line_end = int(anchor_update.get("line_end") or line_start)
         normalized.append(
             check.model_copy(
                 update={
                     "check_id": cid,
                     "patch_task_id": task.id,
+                    "surface_ids": surface_ids,
                     "file_path": path,
                     "line_start": line_start,
                     "line_end": line_end,
+                    "changed_code_anchor": str(
+                        anchor_update.get("changed_code_anchor") or check.changed_code_anchor
+                    ),
                 }
             )
         )
@@ -679,14 +873,18 @@ def _normalize_compiled_checks(task: ReviewTask, checks: Iterable[ReviewCheck]) 
 
 def _render_compiler_prompt(state: GraphState, task: ReviewTask, slot: Mapping[str, Any]) -> str:
     ranked_obligations = _ranked_coverage_obligations(task, slot)
+    ledger = surface_ledger_from_state(state)
+    task_surface_ids = surface_ids_for_task(task, ledger) if ledger else task.surface_ids
     sections = {
         "Assigned Task": (
             f"Task ID: {task.id}\n"
             f"Title: {task.title}\n"
             f"Description: {task.description}\n"
             f"Specialty: {task.specialty}\n"
-            f"Target files: {task.target_files}"
+            f"Target files: {task.target_files}\n"
+            f"Surface IDs: {task_surface_ids}"
         ),
+        "Surface Ledger": compact_surface_ledger_json(ledger, max_records=40) if ledger else "[]",
         "Repository Code Evidence": str(slot.get("direct_context") or "")[:16000],
         "Mental Model Excerpt": str(slot.get("mental_model_excerpt") or ""),
         "Review KB Context": str(slot.get("review_kb_excerpt") or ""),
@@ -717,7 +915,13 @@ def make_review_check_compiler_node(
         llm_tokens = 0
         llm_trace: List[Dict[str, Any]] = []
         summary = ""
-        checks: List[ReviewCheck] = []
+        checks: List[ReviewCheck] = _checks_from_surface_invariants(
+            state,
+            task,
+            settings=resolved,
+        )
+        if checks:
+            warnings.append(f"surface_invariant_checks_added:{len(checks)}")
 
         if use_llm:
             selected_model = model_key or resolved.reviewer_worker_model_key
@@ -740,7 +944,8 @@ def make_review_check_compiler_node(
                 response = parse_structured_output(traced.result, ReviewCheckCompilerOutput)
                 llm_tokens = traced.tokens
                 llm_trace = traced.trace_records
-                checks = _normalize_compiled_checks(task, response.checks)
+                llm_checks = _normalize_compiled_checks(state, task, response.checks)
+                checks = _dedupe_checks([*checks, *llm_checks])
                 summary = response.summary
                 warnings.extend(response.warnings)
             except Exception as exc:  # noqa: BLE001
@@ -749,7 +954,7 @@ def make_review_check_compiler_node(
                 logger.warning("%s failed for task_id=%s: %s", node_name, task.id, exc)
 
         if not checks:
-            checks = _fallback_checks(task, slot)
+            checks = _fallback_checks(state, task, slot)
             if not summary:
                 summary = "Deterministic fallback checks from task evidence obligations."
             warnings.append("review_check_compiler_fallback_used")
@@ -862,6 +1067,11 @@ def _anchor_matches_changed_surface(
     return any(token in blob for token in tokens)
 
 
+def _check_is_cross_surface(check: ReviewCheck) -> bool:
+    blob = f"{check.changed_code_anchor} {check.behavioral_question} {check.affected_invariant}".lower()
+    return "cross-surface" in blob or "integration" in blob or "call path" in blob
+
+
 def validate_review_check(
     check: ReviewCheck,
     *,
@@ -870,6 +1080,20 @@ def validate_review_check(
     slot: Mapping[str, Any] | None = None,
 ) -> List[str]:
     reasons: List[str] = []
+    ledger = _explicit_surface_ledger_from_state(state)
+    if ledger:
+        by_id = surface_by_id(ledger)
+        valid_surface_ids = [sid for sid in check.surface_ids if sid in by_id]
+        if not valid_surface_ids:
+            reasons.append("missing_surface_id")
+        elif len(valid_surface_ids) > 1 and not _check_is_cross_surface(check):
+            reasons.append("ambiguous_surface_id")
+        elif len(valid_surface_ids) == 1:
+            surface = by_id[valid_surface_ids[0]]
+            if check.file_path.strip().replace("\\", "/") != surface.file_path:
+                reasons.append("surface_file_mismatch")
+            if surface.line_start is None:
+                reasons.append("missing_surface_line_anchor")
     if not check.file_path.strip():
         reasons.append("missing_file_path")
     if not check.changed_code_anchor.strip():
