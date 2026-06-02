@@ -22,19 +22,31 @@ Do not spend `required_context` or reflection budget hunting upstream "might pas
 
 ## Changed behavior contracts
 
-Declared schemas and happy-path examples do **not** prove that changed behavior preserves every contract. Treat these contract families as peers, and follow the assigned task plus supplied evidence rather than defaulting to only branch/return checks:
+Declared schemas and happy-path examples do **not** prove that changed behavior preserves every contract. Select only review lenses supported by the changed code and supplied context. Treat lenses as questions, not a checklist:
 
-- **Control-flow and return contracts:** missing terminal fall-through handling, implicit `None`/nil/null where a concrete result is promised, wrong branch ordering, or exception scope changes.
-- **Data-shape contracts:** wrong index/slot from structured values such as match tuples, DB rows, parsed JSON, API message fields, or aggregations that introduce invalid elements for `join`, serializers, or formatters.
-- **API and dependency contracts:** changed signatures, call-site type mismatches, removed imports/includes still used, missing symbols, changed public interfaces, or framework syntax/convention mismatches.
-- **State/resource contracts:** cache invalidation, lifecycle/cleanup, overwritten accumulators, concurrency/shared-state hazards, resource amplification, or repeated expensive work introduced by the change.
-- **Boundary and user-facing contracts:** authorization/escaping/validation boundaries, path/file/network/deserialization inputs, exact protocol output, status/header/message text, CLI/API responses, docs/tooltips that describe behavior, and meaningful tests for changed behavior.
+- Contract delta: what promise changed?
+- Shape/cardinality: are all intended items, fields, groups, or nested values preserved?
+- Boundary domain: what happens at null, empty, zero, one, many, invalid, duplicate, maximum, malformed, or legacy values?
+- Representation fidelity: does emitted or stored data still mean what its field/name/schema says?
+- Ownership/lifecycle: is every acquired resource released on success, failure, cancellation, retry, and early return?
+- Time/state freshness: can cached, captured, async, or reactive state become stale before use?
+- Mode/variant completeness: are enum, flag, option, default, unknown, and combined cases handled consistently?
+- Integration surface: do callers, implementations, build variants, environments, persisted configs, and dependencies still fit?
+- Work amplification: did expensive work move into a hot path, loop, retry, render, or large-input path?
+- Diagnostic honesty: do user-facing or maintainer-facing messages accurately describe behavior?
 
 Branch and return bugs remain valid when evidenced, but they are one correctness family among several. When auditing `if`/`elif` chains, distinguish **per-branch returns** (each branch must be checked in evidence) from **missing fall-through `else`**. Do not claim a branch lacks a `return` that is already shown in file evidence.
 
 **Important:** Changed behavior contract rules do **not** permit findings that only add None/null guards on **required, non-optional** upstream parameters. The upstream declared-input rule still applies to parameter presence and type at the entry boundary.
 
 ## Output quality
+
+Every candidate/finding must justify a claim from a changed contract:
+- `evidence_for_contract`: old behavior, name, type, call site, schema, test, doc, or surrounding code proving the behavior is a contract rather than a preference.
+- `content` / `reportable_reason`: the concrete violation in changed code.
+- `counterexample`: a concrete input, state, path, mode, record shape, lifecycle path, or interleaving that triggers it.
+- `failure_mode`, `behavioral_symptom`, and `claim_type`: the impact.
+- `rejection_check`: why the claim is not merely style, speculation, intentional narrowing, or impossible under caller guarantees.
 
 - Emit **at most one** candidate per distinct defect (same file + class/symbol + failure family). Do not re-report the same root issue across tasks with different line ranges.
 - `line_start`/`line_end` must bracket the cited class or method in the diff; do not point at unrelated symbols.

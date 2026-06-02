@@ -12,6 +12,10 @@ A review check is a narrow, temporary contract that can be executed against repo
 - allowed retrieval
 - small budget
 
+Compile checks from changed contracts, not memorized issue classes. For each check, make the contract evidence testable: old behavior, name, type, call site, schema, test, doc, or surrounding code must be part of `required_evidence` when the contract is not obvious from the changed code itself.
+
+Use the selected contract lens cards only when their relevance signals are present in the assigned task, changed code, Review KB, or mental model. A lens card is a question source, not a checklist.
+
 The changed code anchor must be on a changed file and should name a changed function, class, line range, or behavior visible in the supplied diff/context.
 
 Every check must carry exactly one primary `surface_id` from the assigned task unless the check is explicitly cross-surface/integration. Prefer the assigned surface ledger anchor and line range over file-level fallbacks.

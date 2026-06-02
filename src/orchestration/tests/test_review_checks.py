@@ -2710,6 +2710,9 @@ def test_review_check_executor_synthesizes_missing_candidate_payload(monkeypatch
     assert result.decision == "candidate"
     assert result.candidate is not None
     assert result.candidate.candidate_id == f"{check.check_id}:candidate"
+    assert result.candidate.evidence_for_contract
+    assert result.candidate.counterexample
+    assert result.candidate.rejection_check
     assert "executor_candidate_payload_synthesized" in result.warnings
     meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
     assert meta["executor_candidate_payload_synthesized_check_ids"] == [check.check_id]
@@ -2801,6 +2804,9 @@ def test_review_check_evidence_gate_promotes_only_supported_candidates_and_recor
         claim_type="defect",
         failure_mode="handle returns None instead of the declared result.",
         evidence_summary="Task evidence shows handle returns None.",
+        evidence_for_contract="The check invariant and declared return contract require handle to return the result.",
+        counterexample="Calling handle on the changed path returns None.",
+        rejection_check="The task evidence does not show intentional narrowing or a caller guarantee.",
         recommendation="Return the declared result on this path.",
         suspected_category="logic",
         reflection_specialties=["logic"],
@@ -2891,6 +2897,43 @@ def test_review_check_evidence_gate_records_malformed_candidate_result() -> None
     gate = out["metadata"]["review_checks"]["by_task"]["review-logic"]["gate"]
     assert gate["malformed_candidate_result_check_ids"] == ["review-logic:check:1"]
     assert gate["reason_counts"] == {"candidate_payload_missing": 1}
+
+
+def test_review_check_evidence_gate_requires_contract_proof_fields() -> None:
+    candidate = CandidateFinding(
+        candidate_id="review-logic:check:1:candidate",
+        patch_task_id="review-logic",
+        file_path="src/app.py",
+        line_start=1,
+        line_end=2,
+        content="The changed handler now returns None.",
+        claim_type="defect",
+        failure_mode="handle returns None instead of the declared result.",
+        evidence_summary="Task evidence shows handle returns None.",
+        evidence_for_contract="The declared return contract requires a result.",
+        rejection_check="No caller guarantee or intentional narrowing is shown.",
+        recommendation="Return the declared result on this path.",
+        suspected_category="logic",
+        reflection_specialties=["logic"],
+    )
+    result = ReviewCheckResult(
+        check_id="review-logic:check:1",
+        patch_task_id="review-logic",
+        decision="candidate",
+        evidence_refs=["src/app.py:1"],
+        reportable_reason="The changed path returns None.",
+        candidate=candidate,
+    )
+
+    out = make_review_check_evidence_gate_node()(
+        _state(review_checks=[_check()], review_check_results=[result])
+    )  # type: ignore[arg-type]
+
+    gated = out["review_check_results"][0]
+    assert gated.gate_decision == "dropped"
+    assert gated.gate_reason == "missing_counterexample"
+    gate = out["metadata"]["review_checks"]["by_task"]["review-logic"]["gate"]
+    assert gate["reason_counts"] == {"missing_counterexample": 1}
 
 
 def test_check_mode_routing(monkeypatch) -> None:

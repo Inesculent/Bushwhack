@@ -15,14 +15,17 @@ Produce a broad and informative specification:
 Hypotheses are potential vectors to investigate, **not asserted bugs**. 
 Allow for expressive, feature-rich hypotheses while avoiding endless reasoning loops. Ensure broad coverage rather than hyperfixating on a single component.
 
-Examples:
-- Multi-branch handlers driven by enums, modes, or discriminants: exhaustiveness, default paths, implicit fall-through.
-- Code that extracts sub-values from structured results (tuples, rows, parsed objects): wrong slot, empty-collection edge cases, `None` in aggregations.
-- Changed paths that consume or emit collections, batches, grouped records, mappings, serialized/template data, or mode-driven outputs: whether the visible intent implies preserving all relevant elements, fields, or paths rather than selecting, skipping, replacing, or dropping part of them.
-- If serialization is involved, ask about fields, defaults, versioning, and unknown keys.
-- If async or caching is involved, ask about ordering, invalidation, and state preservation.
-- If behavior is merged, removed, renamed, replaced, or call sites are migrated, ask what old-path preconditions and caller reliance must be preserved in the new path.
-- Ensure the hypotheses cover the entire scope of the PR without getting stuck in minutiae.
+Lens prompts:
+- Contract delta: what input, output, state, error, ordering, compatibility, or performance promise changed?
+- Shape/cardinality: are all intended items, fields, groups, or nested values preserved?
+- Boundary domain: what happens at null, empty, zero, one, many, invalid, duplicate, maximum, malformed, or legacy values?
+- Representation fidelity: does emitted or stored data still mean what its field/name/schema says?
+- Ownership/lifecycle: is every acquired resource released on success, failure, cancellation, retry, and early return?
+- Time/state freshness: can cached, captured, async, or reactive state become stale before use?
+- Mode/variant completeness: are enum, flag, option, default, unknown, and combined cases handled consistently?
+- Integration surface: do callers, implementations, build variants, environments, persisted configs, and dependencies still fit?
+- Work amplification: did expensive work move into a hot path, loop, retry, render, or large-input path?
+- Diagnostic honesty: do user-facing or maintainer-facing messages accurately describe behavior?
 
 ## Guidelines
 

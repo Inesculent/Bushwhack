@@ -22,9 +22,9 @@ CONCRETE_FAILURE_GUIDANCE = (
 )
 
 STRUCTURED_RESULT_GUIDANCE = (
-    "Structured data checks: prioritize clear slot/index/branch-order/escaping/import "
-    "asymmetries, overwritten accumulators, and aggregation bugs. Avoid checklist findings "
-    "that merely ask for more guards."
+    "Contract lens checks: select only lenses supported by changed code, infer the contract, "
+    "then require a concrete counterexample and impact. Avoid checklist findings that merely "
+    "ask for more guards."
 )
 IN_FUNCTION_CONTRACT_GUIDANCE = STRUCTURED_RESULT_GUIDANCE
 

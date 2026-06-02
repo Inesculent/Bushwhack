@@ -31,6 +31,8 @@ Use these **review topics as planning lenses**, not as a checklist that must pro
 
 Create a topic-specific task only when the diff, Repository KB, structural hints, or surface inventory points to a meaningful PR-local risk. Do not add broad topic-audit tasks just to mention every lens; task count caps and mutual-exclusion rules still win.
 
+Phrase tasks around contract justification: identify the changed surface, the evidence that makes a behavior contractual, the counterexample family that would prove a violation, and the impact category to check. Do not ask workers to remember concrete issue classes.
+
 ### Required baseline: diff-local general correctness
 
 Include **at least one** `logic` task that audits **diff-local general correctness**—control flow, return paths, off-by-one bounds, and type/API consistency visible in the changed hunks. Do **not** frame that task as auditing missing None/null guards for required, non-optional declared inputs (see global **Declared input contracts**). This task must **not** be framed as hunting off-diff callers, middleware, authorization chains, or repo-wide configuration; those belong in separate context-dependent tasks.
@@ -39,25 +41,20 @@ Phrase that task so it is recognizable (e.g. title or description mentions **“
 
 When the diff adds **multiple entry points** in the same file (see **Surface ledger (JSON)** when provided), prefer **several disjoint `logic` tasks**—one per class or per small batch (2–3 classes)—instead of one task that lists every handler. Each task must name its in-scope class(es), include only those `surface_ids`, and state **do not review any other class** in that file.
 
-Example scoped tasks (use real class/handler names from the inventory):
-- `FooHandler.process` — type-tracing on structured API return shapes, index/slot selection, and aggregation before return; **only** `FooHandler`.
-- `BarHandler.process` — branch exhaustiveness and a terminal `else` for invalid discriminant; **only** `BarHandler`.
+Example scoped task shape: `<surface name>` - verify the changed contract, relevant counterexample family, and concrete impact for only that surface.
 
 Do **not** paste the full surface inventory into every task description when the list has **4 or more** classes; the pipeline will shard oversized plans. A single mega checklist causes workers to skim and miss defects.
 
-**Technology-neutral checklist** (include in each scoped diff-local `logic` task description, not one combined essay):
-- Every **discriminant branch** (`mode`, `op`, `kind`, …): all paths return or raise per the declared contract.
-- Every **structured result** path (match tuples, rows, parsed nodes, message fields): correct index/slot—not only the first element.
-- Every **build-then-aggregate** path (`join`, format, serialize): no `None` in collections unless the contract allows it.
+**Technology-neutral contract framing** (include compactly in each scoped diff-local `logic` task description):
+- Which branch, shape, boundary, representation, state, or integration contract does the changed surface imply?
+- What concrete input, state, mode, record shape, lifecycle path, or caller path would violate it?
+- What impact would result: wrong output, data loss, crash, contract mismatch, leak, misleading behavior, or meaningful performance regression?
 
 Security or performance tasks must not substitute for this logic pass.
 
-When **Surface ledger (JSON)** lists **4 or more** entry points in **one file**, emit **multiple `logic` tasks** with **disjoint** class subsets (typically one class, or two simple classes per task). Never rely on one task that says “audit all N nodes.”
+When **Surface ledger (JSON)** lists **4 or more** entry points in **one file**, emit **multiple `logic` tasks** with **disjoint** class subsets (typically one class, or two simple classes per task). Never rely on one task that says "audit all N nodes."
 
-When the change includes structured extraction (multi-slot rows/tuples, capture groups, join/format of extracted parts) or multi-branch `elif` dispatch on a discriminant, add **focused** tasks:
-- Handlers that build then aggregate structured results: type-tracing and slot selection (title may mention **structured extraction**).
-- Handlers with discriminant dispatch: branch exhaustiveness and terminal `else`.
-
+When the change includes multiple independent contract surfaces in one file, add **focused** tasks that keep those contracts disjoint. Do not create a single mega-task that asks one worker to audit every lens and every handler.
 Duplicate `logic` tasks on the **same file** are acceptable when each names a **different** class scope.
 
 When bootstrap completed / diff omitted, workers read **full repository files**. Do **not** scope tasks to “visible in the diff excerpt” or “first N nodes in the hunk”—but **do** scope each task to the class names it lists, not the whole file.

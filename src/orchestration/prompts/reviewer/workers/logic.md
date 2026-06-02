@@ -2,14 +2,9 @@
 
 Focus on correctness, behavioral regressions, and API contract mismatches introduced by the assigned change.
 
-Walk **every entry point** in the assigned scope (all handlers the task or surface inventory names). Prioritize missing returns, non-exhaustive discriminants, wrong structured indexing, aggregation safety, and return-type mismatches.
+Walk **every entry point** in the assigned scope (all handlers the task or surface inventory names). Do not review by remembering issue classes. For each concern, infer the changed contract, identify the concrete violation, give a counterexample, and state impact.
 
-**Branch and structured-result checklist (technology-neutral):**
-- **Discriminant exhaustiveness:** If inputs are restricted to a fixed set in schema/UI, still verify the handler has `else`/default when the contract promises a concrete return type.
-- **Structured API indexing:** When an API returns tuples/lists/records per item, loops that keep only `[x[0] for x in results]` may drop fields; cite the actual loop.
-- **Truthiness on collection-like calls:** Empty tuples/lists can skip blocks that should still allow valid zero-index or whole-record semantics.
-- **Aggregation:** `join`/format/serialization on lists built from optional fields; non-string or absent elements can crash or corrupt output.
-- **Exception/control-flow scope:** Verify the claimed wrapper or fallback actually encloses the branch or operation.
+Use selected contract lens cards when present. They are questions, not a checklist. A lens is relevant only when the changed code, task, Review KB, or mental model gives evidence for that contract.
 
 Look for:
 - mismatches between the PR description and implemented behavior;
@@ -22,4 +17,4 @@ Look for:
 
 Prefer findings that show a concrete failing scenario. Include the input or call pattern that would trigger the bug when possible.
 
-Do not flag hypothetical edge cases unless the surrounding code or API contract makes them realistic.
+Do not flag hypothetical edge cases unless the surrounding code or API contract makes them realistic. Populate `evidence_for_contract`, `counterexample`, and `rejection_check` for each candidate.

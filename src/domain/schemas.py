@@ -212,6 +212,27 @@ class ReviewFinding(BaseModel):
     references: List[str] = Field(default_factory=list)
     behavioral_symptom: Optional[BehavioralSymptom] = None
     root_operation: Optional[RootOperation] = None
+    evidence_for_contract: str = Field(
+        default="",
+        description=(
+            "Why the reviewed behavior is a contract rather than a preference: old behavior, name, "
+            "type, call site, schema, test, doc, or surrounding code."
+        ),
+        max_length=500,
+    )
+    counterexample: str = Field(
+        default="",
+        description="Concrete input, state, path, mode, record shape, lifecycle path, or interleaving that triggers it.",
+        max_length=500,
+    )
+    rejection_check: str = Field(
+        default="",
+        description=(
+            "Why the claim is not merely style, speculation, intentional narrowing, "
+            "or impossible under caller guarantees."
+        ),
+        max_length=500,
+    )
 
 
 class ReviewerWorkerReport(BaseModel):
@@ -322,6 +343,27 @@ class ReviewCheckResult(BaseModel):
         description="Concrete required evidence still needed before this check can be decided.",
     )
     reportable_reason: str = Field(default="", max_length=500)
+    evidence_for_contract: str = Field(
+        default="",
+        description=(
+            "Why the check's report criteria reflect a real contract: old behavior, name, type, "
+            "call site, schema, test, doc, or surrounding code."
+        ),
+        max_length=500,
+    )
+    counterexample: str = Field(
+        default="",
+        description="Concrete input, state, path, mode, record shape, lifecycle path, or interleaving that triggers it.",
+        max_length=500,
+    )
+    rejection_check: str = Field(
+        default="",
+        description=(
+            "Why a candidate is not merely style, speculation, intentional narrowing, "
+            "or impossible under caller guarantees."
+        ),
+        max_length=500,
+    )
     candidate: Optional["CandidateFinding"] = None
     gate_decision: ReviewCheckGateDecision = "pending"
     gate_reason: str = ""
@@ -396,6 +438,27 @@ class CandidateFinding(BaseModel):
     root_operation: Optional[RootOperation] = Field(
         default=None,
         description="Generic operation family where the defect arises.",
+    )
+    evidence_for_contract: str = Field(
+        default="",
+        description=(
+            "Why the reviewed behavior is a contract rather than a preference: old behavior, name, "
+            "type, call site, schema, test, doc, or surrounding code."
+        ),
+        max_length=500,
+    )
+    counterexample: str = Field(
+        default="",
+        description="Concrete input, state, path, mode, record shape, lifecycle path, or interleaving that triggers it.",
+        max_length=500,
+    )
+    rejection_check: str = Field(
+        default="",
+        description=(
+            "Why the claim is not merely style, speculation, intentional narrowing, "
+            "or impossible under caller guarantees."
+        ),
+        max_length=500,
     )
 
     @model_validator(mode="after")

@@ -30,7 +30,9 @@ Repository KB context, when supplied, can identify cross-file contracts, signatu
 
 **Rejecting missing-return / structured-return bugs:** Do not reject missing `else`/return, implicit `None` vs declared return types, wrong indexing into structured results, or `None` in aggregations solely because COMBO/enum schemas or framework UIs restrict inputs. Those are in-function contract issues per global rules. Full class or handler bodies in `code_evidence` are valid Tier-1 evidence—do not dismiss solely because a diff hunk is truncated.
 
-**Recall-phase guardrail:** If `code_evidence` shows a concrete changed-behavior contract failure, use **`accept`** or **`needs_verification`**—not **`reject`**—unless the excerpt clearly disproves the failure. Examples include missing fall-through handling, wrong structured-result slot, `None` breaking `join`/format, API/signature mismatch, state/cache overwrite, or exact output mismatch. Do not reject solely because “schema restricts enum values” when the finding is about changed in-function behavior (see global **Changed behavior contracts**).
+**Recall-phase guardrail:** If `code_evidence` shows a concrete changed-behavior contract failure, use **`accept`** or **`needs_verification`**—not **`reject`**—unless the excerpt clearly disproves the failure. Do not reject solely because “schema restricts enum values” when the finding is about changed in-function behavior (see global **Changed behavior contracts**).
+
+**Contract proof fields:** Judge `evidence_for_contract`, `counterexample`, and `rejection_check` directly. Reject or request context when a candidate only names a lens but does not prove the contract, gives no concrete trigger, or fails to explain why the issue is not intentional narrowing, style, speculation, or impossible under caller guarantees.
 
 Verdicts:
 - `accept` — actionable correctness or contract issue with concrete evidence and a clear failure mode.

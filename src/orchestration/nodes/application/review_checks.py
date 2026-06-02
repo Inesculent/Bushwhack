@@ -1637,6 +1637,9 @@ def _candidate_speculative(candidate: CandidateFinding, result: ReviewCheckResul
             candidate.content,
             candidate.failure_mode,
             candidate.evidence_summary,
+            candidate.evidence_for_contract,
+            candidate.counterexample,
+            candidate.rejection_check,
             result.reportable_reason,
         ]
     ).lower()
@@ -1653,6 +1656,9 @@ def _candidate_names_affected_path(
             candidate.content,
             candidate.failure_mode,
             candidate.evidence_summary,
+            candidate.evidence_for_contract,
+            candidate.counterexample,
+            candidate.rejection_check,
             result.reportable_reason,
         ]
     ).lower()
@@ -1687,6 +1693,12 @@ def _candidate_passes_gate(
         return False, "invalid_candidate_line_range"
     if not check.affected_invariant.strip():
         return False, "missing_check_invariant"
+    if not candidate.evidence_for_contract.strip():
+        return False, "missing_contract_evidence"
+    if not candidate.counterexample.strip():
+        return False, "missing_counterexample"
+    if not candidate.rejection_check.strip():
+        return False, "missing_rejection_check"
     if not candidate.failure_mode.strip():
         return False, "missing_failure_mode"
     if not _candidate_names_affected_path(candidate, result, check):

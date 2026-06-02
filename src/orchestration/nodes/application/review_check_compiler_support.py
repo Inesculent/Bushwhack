@@ -14,6 +14,10 @@ from src.orchestration.context.contract_vocabulary import (
     COMPLETENESS_CONTRACT_TERMS,
     has_any_contract_term,
 )
+from src.orchestration.context.lens_cards import (
+    format_lens_cards,
+    select_lens_cards,
+)
 from src.orchestration.context.surface_ledger import (
     compact_surface_ledger_json,
     surface_by_id,
@@ -1595,6 +1599,17 @@ def render_compiler_prompt(state: GraphState, task: ReviewTask, slot: Mapping[st
         "Review KB Context": str(slot.get("review_kb_excerpt") or ""),
         "Mental Model Contract Material": "\n".join(
             f"- {line}" for line in mental_model_contract_lines(slot)
+        ),
+        "Selected Contract Lens Cards": format_lens_cards(
+            select_lens_cards(
+                task=task,
+                text="\n".join(
+                    str(slot.get(key) or "")
+                    for key in ("direct_context", "mental_model_excerpt", "review_kb_excerpt")
+                ),
+                obligations=ranked_obligations,
+                max_cards=4,
+            )
         ),
         "Ranked Coverage Obligations": json_for_prompt(ranked_obligations, max_chars=9000),
         "Available Lenses": ", ".join(REVIEW_CHECK_LENSES),

@@ -173,6 +173,49 @@ def candidate_with_check_behavioral_metadata(
     return candidate.model_copy(update=updates)
 
 
+def _contract_evidence_from_check(check: ReviewCheck, result: ReviewCheckResult | None = None) -> str:
+    if result is not None and result.evidence_for_contract.strip():
+        return result.evidence_for_contract.strip()[:500]
+    parts = [check.affected_invariant.strip()]
+    parts.extend(str(item).strip() for item in check.required_evidence if str(item).strip())
+    return "; ".join(part for part in parts if part)[:500]
+
+
+def _counterexample_from_result(check: ReviewCheck, result: ReviewCheckResult) -> str:
+    if result.counterexample.strip():
+        return result.counterexample.strip()[:500]
+    reason = result.reportable_reason.strip()
+    if reason:
+        return reason[:500]
+    return (check.report_criteria[0] if check.report_criteria else check.behavioral_question)[:500]
+
+
+def _rejection_check_from_result(check: ReviewCheck, result: ReviewCheckResult) -> str:
+    if result.rejection_check.strip():
+        return result.rejection_check.strip()[:500]
+    suppress = "; ".join(str(item).strip() for item in check.suppress_criteria if str(item).strip())
+    if suppress:
+        return f"No suppressing evidence found for: {suppress}"[:500]
+    return "Concrete changed-code evidence supports the claim; no intentional narrowing or caller guarantee suppresses it."
+
+
+def candidate_with_check_contract_proof(
+    candidate: CandidateFinding,
+    check: ReviewCheck,
+    result: ReviewCheckResult,
+) -> CandidateFinding:
+    updates: dict[str, str] = {}
+    if not candidate.evidence_for_contract.strip():
+        updates["evidence_for_contract"] = _contract_evidence_from_check(check, result)
+    if not candidate.counterexample.strip():
+        updates["counterexample"] = _counterexample_from_result(check, result)
+    if not candidate.rejection_check.strip():
+        updates["rejection_check"] = _rejection_check_from_result(check, result)
+    if not updates:
+        return candidate
+    return candidate.model_copy(update=updates)
+
+
 def _candidate_payload_is_concrete(result: ReviewCheckResult) -> bool:
     if result.suppressing_evidence:
         return False
@@ -220,6 +263,9 @@ def _synthesize_candidate_from_result(
         recommendation=recommendation[:400],
         behavioral_symptom=symptom,  # type: ignore[arg-type]
         root_operation=operation,  # type: ignore[arg-type]
+        evidence_for_contract=_contract_evidence_from_check(check, result),
+        counterexample=_counterexample_from_result(check, result),
+        rejection_check=_rejection_check_from_result(check, result),
     )
 
 
@@ -352,7 +398,7 @@ def source_only_backstop_candidate(
     elif "join" in rationale.lower():
         symptom = "crash"
         operation = "aggregation"
-    elif "tuple element 0" in rationale.lower() or "re.search" in rationale.lower():
+    elif "element 0" in rationale.lower() or "structured fields" in rationale.lower():
         symptom = "data_loss"
         operation = "indexing"
     else:
@@ -379,6 +425,9 @@ def source_only_backstop_candidate(
         recommendation="Fix the source-local behavior proven by static source evidence.",
         behavioral_symptom=symptom,  # type: ignore[arg-type]
         root_operation=operation,  # type: ignore[arg-type]
+        evidence_for_contract=check.affected_invariant or check.behavioral_question,
+        counterexample=rationale[:500],
+        rejection_check="Source-only verifier proved the changed source behavior; no suppressing evidence was found.",
     )
     return finding, rationale
 
@@ -438,6 +487,7 @@ def normalize_executor_results(
                 candidate = None
         if candidate is not None:
             candidate = candidate_with_check_behavioral_metadata(candidate, check)
+            candidate = candidate_with_check_contract_proof(candidate, check, result)
             cid = candidate.candidate_id.strip() or f"{check.check_id}:candidate"
             patched = candidate.model_copy(
                 update={

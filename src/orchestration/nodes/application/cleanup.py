@@ -1136,6 +1136,17 @@ def _required_context_satisfied_by_verifier(
     return candidate_has_local_defect_signature(candidate)
 
 
+def _missing_contract_proof_fields(candidate: CandidateFinding) -> List[str]:
+    missing: List[str] = []
+    if not candidate.evidence_for_contract.strip():
+        missing.append("evidence_for_contract")
+    if not candidate.counterexample.strip():
+        missing.append("counterexample")
+    if not candidate.rejection_check.strip():
+        missing.append("rejection_check")
+    return missing
+
+
 def _misroute_redirect_category(not_applicable_reports: Sequence[ReflectionReport]) -> ReviewCategory | None:
     for report in not_applicable_reports:
         parsed = parse_misroute_redirect_category(report.rationale)
@@ -1522,6 +1533,14 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
                     ):
                         drop(candidate, "security_unverified_harness_error")
                         continue
+                    missing_contract_proof = _missing_contract_proof_fields(candidate)
+                    if missing_contract_proof:
+                        drop(
+                            candidate,
+                            "missing_contract_proof",
+                            {"missing_fields": missing_contract_proof},
+                        )
+                        continue
                     category = redirect_category
                     feedback_type = _category_to_feedback(category)  # type: ignore[arg-type]
                     rev = revisions.get(candidate.candidate_id) or {}
@@ -1547,6 +1566,9 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
                             references=[],
                             behavioral_symptom=candidate.behavioral_symptom,
                             root_operation=candidate.root_operation,
+                            evidence_for_contract=candidate.evidence_for_contract,
+                            counterexample=candidate.counterexample,
+                            rejection_check=candidate.rejection_check,
                         )
                     )
                     lifecycle[candidate.candidate_id] = {
@@ -1762,6 +1784,15 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
             if harness_error and revision_accepted and "runtime unverified" not in evidence_extra.lower():
                 evidence_extra += "\n\n(runtime unverified: verifier harness error)"
 
+            missing_contract_proof = _missing_contract_proof_fields(candidate)
+            if missing_contract_proof:
+                drop(
+                    candidate,
+                    "missing_contract_proof",
+                    {"missing_fields": missing_contract_proof},
+                )
+                continue
+
             promoted.append(
                 ReviewFinding(
                     id=candidate.candidate_id,
@@ -1775,6 +1806,9 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
                     references=[],
                     behavioral_symptom=candidate.behavioral_symptom,
                     root_operation=candidate.root_operation,
+                    evidence_for_contract=candidate.evidence_for_contract,
+                    counterexample=candidate.counterexample,
+                    rejection_check=candidate.rejection_check,
                 )
             )
             promote_reason = (

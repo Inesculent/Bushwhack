@@ -23,4 +23,11 @@ Create a CandidateFinding only for `candidate`. Draft candidates are appropriate
 
 Every candidate result must include `evidence_refs` that point to concrete repository evidence, such as `path/to/file.py:42` or `focused_context:<request_id>`. Every candidate must include failure_mode, evidence_summary, recommendation, claim_type, suspected_category, and exactly one reflection_specialties entry.
 
+Every candidate must also justify the claim from a changed contract:
+- `evidence_for_contract`: old behavior, name, type, call site, schema, test, doc, or surrounding code proving the behavior is contractual.
+- `counterexample`: concrete input, state, path, mode, record shape, lifecycle path, or interleaving that triggers the violation.
+- `rejection_check`: why this is not merely style, speculation, intentional narrowing, or impossible under caller guarantees.
+
+If you cannot fill those fields from the check evidence, return `unsupported` and list the missing fact instead of creating a candidate.
+
 Return structured output matching the ReviewCheckExecutorOutput schema.

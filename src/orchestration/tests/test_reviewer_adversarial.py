@@ -71,6 +71,9 @@ def _recall_candidate(
         reflection_specialties=["logic"],
         behavioral_symptom=behavioral_symptom,  # type: ignore[arg-type]
         root_operation=root_operation,  # type: ignore[arg-type]
+        evidence_for_contract="The changed handler is expected to return a concrete result.",
+        counterexample="Calling the handler with an unexpected mode reaches the fall-through path.",
+        rejection_check="The visible code does not show intentional narrowing or an upstream guarantee.",
     )
 
 
@@ -471,6 +474,9 @@ def test_adversarial_cleanup_promotes_on_unanimous_accept() -> None:
         evidence_summary="The diff shows the branch returning False where True is expected.",
         suspected_category="logic",
         recommendation="Return the expected value for this branch.",
+        evidence_for_contract="The changed branch is expected to return the previous true result.",
+        counterexample="Calling the accepted branch now returns False.",
+        rejection_check="All relevant reflectors accepted the concrete behavior claim.",
     )
     reports = [
         ReflectionReport(
@@ -507,6 +513,9 @@ def test_adversarial_cleanup_does_not_drop_qualified_module_recommendation() -> 
         evidence_summary="The diff returns the joined path string without normalizing it first.",
         suspected_category="logic",
         recommendation="Resolve with os.path.realpath and compare against folder_paths.get_input_directory().",
+        evidence_for_contract="The node name and callers expect normalized path output.",
+        counterexample="A relative path reaches the changed return without normalization.",
+        rejection_check="The recommendation names the same module contract and is not a foreign reference.",
     )
     reports = [
         ReflectionReport(
@@ -578,6 +587,9 @@ def test_adversarial_cleanup_revision_accept_overrides_reflector_reject() -> Non
         reflection_specialties=["logic"],
         recommendation="Add else branch returning a boolean tuple.",
         required_context=["Confirm execute return paths"],
+        evidence_for_contract="The execute method contract expects a boolean tuple return.",
+        counterexample="An invalid mode reaches the missing fallback path.",
+        rejection_check="Focused revision and verifier evidence support the changed behavior.",
     )
     reports = [
         ReflectionReport(
@@ -696,6 +708,9 @@ def test_adversarial_cleanup_ignores_off_domain_reject() -> None:
         suspected_category="security",
         reflection_specialties=["security"],
         recommendation="Validate or bound the regex before executing it.",
+        evidence_for_contract="The changed code accepts user-provided input at the regex boundary.",
+        counterexample="An attacker-controlled input reaches the unbounded regex.",
+        rejection_check="Focused context supports the security boundary and no bound is shown.",
     )
     reports = [
         ReflectionReport(
@@ -750,6 +765,9 @@ def test_adversarial_cleanup_promotes_source_local_security_without_focused_cont
         suspected_category="security",
         reflection_specialties=["security"],
         recommendation="Bound or validate regex input.",
+        evidence_for_contract="The changed source-local path compiles user-controlled input.",
+        counterexample="A user-controlled pattern reaches compilation without bounds.",
+        rejection_check="The security reflector accepted local support for the concrete path.",
     )
     reports = [
         ReflectionReport(
@@ -794,6 +812,9 @@ def test_adversarial_cleanup_promotes_verified_with_required_context_localized_r
         suspected_category="logic",
         reflection_specialties=["logic"],
         recommendation="Allow group_index=0 for full match in All Groups mode.",
+        evidence_for_contract="The mode and group_index parameter imply group_index=0 is supported.",
+        counterexample="All Groups with group_index=0 reaches the wrong selection path.",
+        rejection_check="Runtime verifier evidence supports the concrete behavior.",
     )
     reports = [
         ReflectionReport(
@@ -927,6 +948,9 @@ def test_adversarial_cleanup_revision_accept_with_concrete_evidence_promotes_unr
         recommendation="Add a fallback return or raise.",
         behavioral_symptom="missing_return",
         root_operation="dispatch",
+        evidence_for_contract="The changed dispatch branch is expected to return or raise.",
+        counterexample="A changed dispatch path falls through without a return.",
+        rejection_check="The critique revision cites concrete changed-branch evidence.",
     )
     reports = [
         ReflectionReport(
@@ -988,6 +1012,9 @@ def test_adversarial_cleanup_promotes_needs_verification_with_runtime_verified()
         suspected_category="logic",
         reflection_specialties=["logic"],
         recommendation="Handle None before calling str methods.",
+        evidence_for_contract="The changed node accepts the input value used by the string operation.",
+        counterexample="A None input reaches the changed .strip() call.",
+        rejection_check="Runtime verification supports the concrete crash path.",
     )
     reports = [
         ReflectionReport(
@@ -1040,6 +1067,9 @@ def test_adversarial_cleanup_product_verified_skips_incomplete_contradiction() -
         recommendation="Complete the branch body.",
         behavioral_symptom="crash",
         root_operation="contract",
+        evidence_for_contract="The changed branch must contain a valid implementation.",
+        counterexample="Executing the incomplete branch produces a syntax error.",
+        rejection_check="Product verifier evidence supports the source-local crash claim.",
     )
     reports = [
         ReflectionReport(
@@ -1252,6 +1282,9 @@ def test_adversarial_cleanup_promotes_accepted_localized_defect_with_stale_conte
         suspected_category="logic",
         reflection_specialties=["logic"],
         recommendation="Handle None or document the non-None invariant before slicing.",
+        evidence_for_contract="The changed slice operation relies on a non-None string contract.",
+        counterexample="A None value reaches the direct slice operation.",
+        rejection_check="The logic reflector accepted this as a local changed-code failure.",
     )
     report = ReflectionReport(
         candidate_id=cand.candidate_id,
@@ -1330,6 +1363,9 @@ def test_adversarial_cleanup_accept_overrides_stray_relevant_not_applicable() ->
         suspected_category="logic",
         reflection_specialties=["logic", "general"],
         recommendation="Return an explicit error state or preserve failure information.",
+        evidence_for_contract="The parse result contract must distinguish failure from valid empty output.",
+        counterexample="A parser error returns the same empty string as a valid empty value.",
+        rejection_check="The logic reflector accepted the concrete ambiguity despite a general misroute.",
     )
     reports = [
         ReflectionReport(
@@ -1377,6 +1413,9 @@ def test_adversarial_cleanup_promotes_when_routed_expert_times_out_partial_quoru
         suspected_category="logic",
         reflection_specialties=["logic", "general"],
         recommendation="Validate the group extraction branch with patterns that have no captures.",
+        evidence_for_contract="The extraction branch is expected to preserve match data for its mode.",
+        counterexample="A pattern with no captures reaches the wrong extraction behavior.",
+        rejection_check="The available reflector accepted the actionability after the routed expert timed out.",
     )
     reports = [
         ReflectionReport(

@@ -121,15 +121,38 @@ _MISSING_RETURN_MARKERS = (
     "fall through",
 )
 
-_STRUCTURED_EXTRACTION_MARKERS = (
-    "regex",
-    "extract",
-    "all matches",
-    "all groups",
-    "first match",
-    "first group",
+_SHAPE_CARDINALITY_MARKERS = (
+    "all",
+    "complete",
+    "preserve",
     "data loss",
     "structured",
+    "field",
+    "fields",
+    "slot",
+    "slots",
+    "record",
+    "records",
+    "row",
+    "rows",
+    "element",
+    "elements",
+    "item",
+    "items",
+    "nested",
+    "cardinality",
+)
+_ABSENT_AGGREGATION_MARKERS = (
+    "absent",
+    "optional",
+    "none",
+    "null",
+    "non-string",
+    "non string",
+    "aggregation",
+    "join",
+    "format",
+    "serialize",
 )
 
 
@@ -202,46 +225,48 @@ def _source_only_missing_return(
     return "", None
 
 
-def _source_only_structured_extraction(
+def _contains_zero_subscript(node: ast.AST) -> bool:
+    if not isinstance(node, ast.Subscript):
+        return False
+    idx = node.slice
+    if isinstance(idx, ast.Constant):
+        return idx.value == 0
+    return False
+
+
+def _returns_or_projects_first_slot(func: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    for node in ast.walk(func):
+        if isinstance(node, ast.Return) and node.value is not None and any(
+            _contains_zero_subscript(child) for child in ast.walk(node.value)
+        ):
+            return True
+        if isinstance(node, ast.ListComp) and any(
+            _contains_zero_subscript(child) for child in ast.walk(node.elt)
+        ):
+            return True
+    return False
+
+
+def _source_only_shape_cardinality(
     source: str,
     tree: ast.AST,
     candidate: Dict[str, Any],
 ) -> tuple[str, VerifierAttemptRecord | None]:
     blob = _candidate_blob(candidate)
-    if not ("regex" in blob and any(marker in blob for marker in _STRUCTURED_EXTRACTION_MARKERS)):
+    if not any(marker in blob for marker in _SHAPE_CARDINALITY_MARKERS):
         return "", None
     for func in _target_functions(tree, candidate):
         text = _source_segment(source, func).lower()
-        all_matches_claim = "all matches" in blob or "findall" in blob or "finditer" in blob
-        all_groups_claim = "all groups" in blob or "group tuple" in blob or "groups" in blob
-        tuple_first_slot_claim = any(
-            marker in blob
-            for marker in ("m[0]", "first element", "first group", "only the first")
-        )
-        group_index_claim = "group_index" in blob or "group index" in blob
-        if all_matches_claim and "re.search" in text and "re.findall" not in text and "re.finditer" not in text:
-            reason = f"{func.name} uses re.search for an all-matches regex extraction claim"
+        if _returns_or_projects_first_slot(func):
+            reason = f"{func.name} keeps only element 0 where the claim requires preserving structured fields or cardinality"
             return reason, _attempt(reason)
         if (
-            all_matches_claim
-            and "re.findall" in text
-            and "[m[0] for m in matches]" in text
-            and (tuple_first_slot_claim or group_index_claim)
-        ):
-            reason = f"{func.name} keeps only tuple element 0 for an all-matches regex extraction claim"
-            return reason, _attempt(reason)
-        if all_groups_claim and ".group(1)" in text and ".groups(" not in text:
-            reason = f"{func.name} extracts only group(1) for an all-groups regex extraction claim"
-            return reason, _attempt(reason)
-        if (
-            all_groups_claim
-            and ".group(" in text
-            and ".append(" in text
+            any(marker in blob for marker in _ABSENT_AGGREGATION_MARKERS)
             and ".join(" in text
             and "is not none" not in text
             and " or \"\"" not in text
         ):
-            reason = f"{func.name} joins regex group results without filtering possible None values"
+            reason = f"{func.name} joins or aggregates values without proving absent or non-string elements are normalized"
             return reason, _attempt(reason)
     return "", None
 
@@ -277,7 +302,7 @@ def source_only_verify_candidate(
     if attempt is not None:
         return "verified", reason, attempt
 
-    reason, attempt = _source_only_structured_extraction(source, tree, candidate)
+    reason, attempt = _source_only_shape_cardinality(source, tree, candidate)
     if attempt is not None:
         return "verified", reason, attempt
 

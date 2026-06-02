@@ -97,7 +97,7 @@ def test_source_only_detects_missing_return_fallthrough() -> None:
     assert attempt.failure_class == "missing_return"
 
 
-def test_source_only_detects_regex_all_matches_data_loss() -> None:
+def test_source_only_detects_shape_cardinality_first_element_data_loss() -> None:
     state = {
         "git_diff": "",
         "metadata": {
@@ -107,10 +107,8 @@ def test_source_only_detects_regex_all_matches_data_loss() -> None:
                         "task_evidence": _task_evidence(
                             {
                                 "pkg/mod.py": (
-                                    "import re\n"
-                                    "def execute(pattern, text):\n"
-                                    "    match = re.search(pattern, text)\n"
-                                    "    return match.group(1) if match else ''\n"
+                                    "def execute(records):\n"
+                                    "    return ','.join([row[0] for row in records])\n"
                                 )
                             }
                         )
@@ -123,18 +121,19 @@ def test_source_only_detects_regex_all_matches_data_loss() -> None:
         "candidate_id": "c1",
         "patch_task_id": "t1",
         "file_path": "pkg/mod.py",
-        "line_start": 2,
-        "failure_mode": "Regex extraction loses all matches because it returns only the first match.",
+        "line_start": 1,
+        "failure_mode": "Record serialization loses data because complete records should preserve all fields.",
+        "evidence_summary": "The changed path keeps only one field from each record.",
     }
 
     verdict, rationale, attempt = source_only_verify_candidate(state, candidate)
 
     assert verdict == "verified"
-    assert "re.search" in rationale
+    assert "element 0" in rationale
     assert attempt is not None
 
 
-def test_source_only_detects_regex_findall_tuple_field_data_loss() -> None:
+def test_source_only_detects_nested_item_projection_data_loss() -> None:
     state = {
         "git_diff": "",
         "metadata": {
@@ -144,10 +143,9 @@ def test_source_only_detects_regex_findall_tuple_field_data_loss() -> None:
                         "task_evidence": _task_evidence(
                             {
                                 "pkg/mod.py": (
-                                    "import re\n"
-                                    "def execute(pattern, text):\n"
-                                    "    matches = re.findall(pattern, text)\n"
-                                    "    return ','.join([m[0] for m in matches])\n"
+                                    "def execute(items):\n"
+                                    "    projected = [item[0] for item in items]\n"
+                                    "    return projected\n"
                                 )
                             }
                         )
@@ -160,19 +158,19 @@ def test_source_only_detects_regex_findall_tuple_field_data_loss() -> None:
         "candidate_id": "c1",
         "patch_task_id": "t1",
         "file_path": "pkg/mod.py",
-        "line_start": 2,
-        "failure_mode": "Regex all matches data loss: tuple results keep only the first group.",
-        "evidence_summary": "The all matches branch ignores later tuple fields.",
+        "line_start": 1,
+        "failure_mode": "Nested item data loss: complete structured items keep only the first element.",
+        "evidence_summary": "The changed projection ignores later item fields.",
     }
 
     verdict, rationale, attempt = source_only_verify_candidate(state, candidate)
 
     assert verdict == "verified"
-    assert "tuple element 0" in rationale
+    assert "element 0" in rationale
     assert attempt is not None
 
 
-def test_source_only_detects_regex_all_groups_join_none_risk() -> None:
+def test_source_only_detects_optional_value_join_risk() -> None:
     state = {
         "git_diff": "",
         "metadata": {
@@ -182,11 +180,10 @@ def test_source_only_detects_regex_all_groups_join_none_risk() -> None:
                         "task_evidence": _task_evidence(
                             {
                                 "pkg/mod.py": (
-                                    "import re\n"
-                                    "def execute(pattern, text, group_index, join_delimiter):\n"
+                                    "def execute(rows, join_delimiter):\n"
                                     "    results = []\n"
-                                    "    for match in re.finditer(pattern, text):\n"
-                                    "        results.append(match.group(group_index))\n"
+                                    "    for row in rows:\n"
+                                    "        results.append(row.get('name'))\n"
                                     "    return join_delimiter.join(results)\n"
                                 )
                             }
@@ -200,15 +197,15 @@ def test_source_only_detects_regex_all_groups_join_none_risk() -> None:
         "candidate_id": "c1",
         "patch_task_id": "t1",
         "file_path": "pkg/mod.py",
-        "line_start": 2,
-        "failure_mode": "Regex all groups can crash or lose output when optional groups produce None.",
-        "evidence_summary": "All groups are appended and joined without filtering None.",
+        "line_start": 1,
+        "failure_mode": "Aggregation can crash when optional record fields produce None.",
+        "evidence_summary": "Optional values are appended and joined without normalization.",
     }
 
     verdict, rationale, attempt = source_only_verify_candidate(state, candidate)
 
     assert verdict == "verified"
-    assert "without filtering possible None" in rationale
+    assert "absent or non-string" in rationale
     assert attempt is not None
 
 

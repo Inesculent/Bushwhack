@@ -46,6 +46,9 @@ def _cand(**kwargs) -> CandidateFinding:
         reflection_specialties=["logic"],
         suspected_category="logic",
         severity="high",
+        evidence_for_contract="The changed execute method is expected to return a result.",
+        counterexample="Calling execute with an unrecognized mode falls through.",
+        rejection_check="No caller guarantee or intentional narrowing is shown.",
     )
     base.update(kwargs)
     return CandidateFinding(**base)  # type: ignore[arg-type]
@@ -766,6 +769,33 @@ def test_cleanup_preserves_structured_behavior_metadata_on_promoted_finding() ->
     finding = out["findings"][0]
     assert finding.behavioral_symptom == "data_loss"
     assert finding.root_operation == "indexing"
+
+
+def test_cleanup_drops_promotable_candidate_missing_contract_proof() -> None:
+    node = make_adversarial_cleanup_node()
+    cand = _cand(counterexample="")
+
+    out = node(
+        {
+            "run_id": "t",
+            "git_diff": "diff --git a/comfy_extras/nodes_string.py b/comfy_extras/nodes_string.py\n+++ b/comfy_extras/nodes_string.py\n+pass\n",
+            "candidate_findings": [cand],
+            "reflection_reports": [
+                ReflectionReport(
+                    candidate_id=cand.candidate_id,
+                    reflector_specialty="logic",
+                    verdict="accept",
+                    rationale="The changed behavior is a concrete defect.",
+                )
+            ],
+            "metadata": {},
+        }
+    )
+
+    assert out["findings"] == []
+    lifecycle = out["metadata"]["adversarial_cleanup"]["candidate_lifecycle"]
+    assert lifecycle[cand.candidate_id]["reason"] == "missing_contract_proof"
+    assert lifecycle[cand.candidate_id]["missing_fields"] == ["counterexample"]
 
 
 def test_cleanup_llm_equivalence_merges_same_issue_with_different_wording() -> None:

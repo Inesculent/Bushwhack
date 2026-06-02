@@ -36,8 +36,9 @@ def test_global_prompt_declared_input_contracts() -> None:
     assert "required and non-optional" in text
     assert "Optional" in text or "optional" in text
     assert "Changed behavior contracts" in text
-    assert "API and dependency contracts" in text
-    assert "State/resource contracts" in text
+    assert "Contract delta: what promise changed?" in text
+    assert "Shape/cardinality: are all intended items" in text
+    assert "Ownership/lifecycle: is every acquired resource released" in text
     assert "Branch and return bugs remain valid" in text
     assert "## In-function contracts" not in text
 
@@ -52,7 +53,8 @@ def test_critiquer_prompt_contains_routing_hardcap() -> None:
     text = load_reviewer_prompt("critiquer.md")
     assert "Single-Specialty Hardcap" in text
     assert "Hierarchy of Needs" in text
-    assert "Aggregation and structured returns" in text
+    assert "Contract Claim Discipline" in text
+    assert "Contract before issue class" in text
     assert "Changed behavior contracts" in load_reviewer_prompt("global.md")
     assert "Review KB context" in text
 
@@ -61,7 +63,10 @@ def test_critiquer_prompt_uses_evidence_gated_broad_dimensions() -> None:
     text = load_reviewer_prompt("critiquer.md")
     assert "Evidence-gated scope" in text
     assert "Do not turn the broad dimension list into a generic audit" in text
-    assert "Lead generation pass" in text
+    assert "Contract-lens pass" in text
+    assert "evidence_for_contract" in text
+    assert "counterexample" in text
+    assert "rejection_check" in text
     assert "claim_type: uncertain" in text
     assert "Diversity before depth on broad tasks" in text
     assert "api/signature compatibility" in text

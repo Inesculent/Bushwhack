@@ -237,6 +237,34 @@ def test_critiquer_packet_task_scoped_diff() -> None:
     assert "bar.py" not in hunk.content
 
 
+def test_critiquer_packet_includes_selected_contract_lens_cards() -> None:
+    task = ReviewTask(
+        id="t1",
+        title="Serialize records",
+        description="Review JSON output shape for record fields",
+        target_files=["foo.py"],
+    )
+    slot = {
+        "direct_context": "def emit(records):\n    return json.dumps([row['id'] for row in records])\n",
+        "context_packet": {"sections": []},
+        "coverage_obligations": [
+            {
+                "surface": "emit",
+                "dimension": "representation fidelity",
+                "evidence": "schema names records with id and name fields",
+            }
+        ],
+    }
+
+    packet = build_critiquer_packet(_minimal_state(), task, slot)
+
+    cards = next(s for s in packet.sections if s.key == "contract_lens_cards")
+    assert "Representation fidelity" in cards.content
+    assert "Shape/cardinality" in cards.content
+    assert cards.content.count("### ") <= 4
+    assert "Ownership/lifecycle" not in cards.content
+
+
 def test_principles_for_specialty_logic_in_probe() -> None:
     from src.orchestration.review_principles import (
         IN_FUNCTION_CONTRACT_GUIDANCE,

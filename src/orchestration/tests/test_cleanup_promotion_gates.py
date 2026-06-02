@@ -21,6 +21,9 @@ def _security_cand(**kwargs) -> CandidateFinding:
         reflection_specialties=["security"],
         suspected_category="security",
         severity="high",
+        evidence_for_contract="The changed handler accepts a user-controlled pattern.",
+        counterexample="A crafted pattern reaches the regex call without a timeout.",
+        rejection_check="No bound, timeout, or caller guarantee is shown.",
     )
     base.update(kwargs)
     return CandidateFinding(**base)  # type: ignore[arg-type]

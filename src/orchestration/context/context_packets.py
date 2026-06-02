@@ -35,6 +35,10 @@ from src.orchestration.context.mandate_loop_context import (
     mm_meta,
     spec_excerpt_for_prompt,
 )
+from src.orchestration.context.lens_cards import (
+    format_lens_cards,
+    select_lens_cards,
+)
 from src.orchestration.context.surface_ledger import (
     changed_files_from_diff,
     compact_surface_ledger_json,
@@ -75,7 +79,7 @@ SECTION_HEADINGS: Dict[str, str] = {
     "code_evidence": "Direct Context Gathered By Tools",
     "structural_excerpt": "Structural context (1-hop)",
     "assigned_task": "Assigned Task",
-    "structured_extraction_checklist": "Structured extraction checklist (mandatory)",
+    "contract_lens_cards": "Selected Contract Lens Cards",
     "diff_hunk": "Git Diff Excerpt",
     "mental_model_hypothesis": "Mental model excerpt (optional, pull-based)",
     "review_kb_context": "Review KB context (retrieved)",
@@ -994,30 +998,6 @@ def build_critique_probe_packet(
     return build_critique_packet(state, task, ctx, **kwargs)
 
 
-def _structured_extraction_critiquer_checklist(task: ReviewTask) -> str:
-    """Inject orthogonal structured-result checks when the task mandate targets extraction paths."""
-    blob = f"{task.title} {task.description}".lower()
-    signals = (
-        "structured extraction",
-        "structured result",
-        "row",
-        "tuple",
-        "[0]",
-        "join(",
-        "aggregate",
-        "serialize",
-        "extract",
-    )
-    if task.specialty != "logic" or not any(s in blob for s in signals):
-        return ""
-    return (
-        "Before closing this task, audit each in-scope handler for these **distinct** defect families "
-        "(emit a separate candidate for each you can support with evidence—do not stop after the first):\n"
-        "1) **Slot truncation:** structured rows normalized with only `[0]` when other slots may matter.\n"
-        "2) **Boundary / truthiness:** index-0 or whole-record semantics skipped by empty/falsy collections.\n"
-        "3) **Aggregation:** `join`, formatters, or serializers receiving absent or non-string elements before return.\n"
-        "Stopping after one severe finding in the same handler is a recall failure."
-    )
 
 
 def probe_direct_context_for_task(
@@ -1119,14 +1099,27 @@ def build_critiquer_packet(
         sections.append(
             _section("review_principles", 5, principles.strip(), source="review_principles"),
         )
-    structured_checklist = _structured_extraction_critiquer_checklist(task)
-    if structured_checklist:
+    obligations = pipeline_slot.get("coverage_obligations")
+    if not isinstance(obligations, list):
+        obligations = []
+    lens_cards = format_lens_cards(
+        select_lens_cards(
+            task=task,
+            text="\n".join(
+                str(pipeline_slot.get(key) or "")
+                for key in ("direct_context", "mental_model_excerpt", "review_kb_excerpt")
+            ),
+            obligations=[row for row in obligations if isinstance(row, Mapping)],
+            max_cards=4,
+        )
+    )
+    if lens_cards:
         sections.append(
             _section(
-                "structured_extraction_checklist",
-                3,
-                structured_checklist,
-                source="task_mandate",
+                "contract_lens_cards",
+                4,
+                lens_cards,
+                source="contract_lens_selection",
             ),
         )
 
@@ -1323,6 +1316,9 @@ def build_verifier_generator_packet(
         "required_context",
         "confidence",
         "severity",
+        "evidence_for_contract",
+        "counterexample",
+        "rejection_check",
     )
     slim = {k: candidate[k] for k in keep if k in candidate}
     focused = focused_snippets_for_candidate(state, cid)
