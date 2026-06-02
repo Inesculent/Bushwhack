@@ -10,6 +10,10 @@ from typing import Any, Iterable, List, Mapping, Sequence
 
 from src.domain.schemas import CodeEntity, ReviewSurface, ReviewTask, SurfaceInvariant
 from src.domain.state import GraphState
+from src.orchestration.context.contract_vocabulary import (
+    DATA_SHAPE_CONTRACT_TERMS,
+    has_any_contract_term,
+)
 
 _HUNK_RE = re.compile(r"@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@")
 _CLASS_RE = re.compile(r"^\+\s*class\s+([A-Za-z_][A-Za-z0-9_]*)")
@@ -31,54 +35,6 @@ _MIGRATION_MARKERS = (
     "call site",
     "callsite",
 )
-_DATA_SHAPE_MARKERS = {
-    "aggregate",
-    "aggregation",
-    "array",
-    "batch",
-    "batches",
-    "collection",
-    "complete",
-    "data",
-    "dict",
-    "each",
-    "element",
-    "elements",
-    "every",
-    "field",
-    "fields",
-    "flatten",
-    "full",
-    "group",
-    "grouped",
-    "groups",
-    "items",
-    "list",
-    "mapping",
-    "mappings",
-    "map",
-    "matches",
-    "mode",
-    "parse",
-    "record",
-    "records",
-    "row",
-    "rows",
-    "serialize",
-    "shape",
-    "slot",
-    "slots",
-    "structured",
-    "template",
-    "tuple",
-}
-
-
-def _has_data_shape_contract_signal(text: str) -> bool:
-    tokens = set(re.findall(r"[a-z][a-z0-9_]*", text.lower()))
-    return bool(tokens & _DATA_SHAPE_MARKERS)
-
-
 def normalize_repo_path(path: str) -> str:
     return path.strip().replace("\\", "/").lstrip("/")
 
@@ -648,7 +604,7 @@ def build_surface_invariants_from_ledger(
                 )
             )
         signal_blob = f"{surface.name} {surface.file_path} {risk}".lower()
-        if _has_data_shape_contract_signal(signal_blob) or "tensor" in signal_blob:
+        if has_any_contract_term(signal_blob, DATA_SHAPE_CONTRACT_TERMS) or "tensor" in signal_blob:
             invariants.append(
                 SurfaceInvariant(
                     surface_id=surface.surface_id,

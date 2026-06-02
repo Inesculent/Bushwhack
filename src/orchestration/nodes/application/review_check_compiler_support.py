@@ -10,6 +10,10 @@ from src.config import Settings
 from src.domain.schemas import BehavioralSpec, ReviewCheck, ReviewSurface, ReviewTask
 from src.domain.state import GraphState
 from src.infrastructure.behavioral_spec_store import BehavioralSpecStore
+from src.orchestration.context.contract_vocabulary import (
+    COMPLETENESS_CONTRACT_TERMS,
+    has_any_contract_term,
+)
 from src.orchestration.context.surface_ledger import (
     compact_surface_ledger_json,
     surface_by_id,
@@ -43,35 +47,6 @@ REVIEW_CHECK_LENSES = (
 )
 
 MAX_CHECKS_PER_TASK = 12
-
-_COMPLETENESS_CONTRACT_TERMS = {
-    "all",
-    "batch",
-    "batches",
-    "cardinality",
-    "collection",
-    "complete",
-    "completeness",
-    "each",
-    "element",
-    "elements",
-    "every",
-    "field",
-    "fields",
-    "group",
-    "grouped",
-    "groups",
-    "item",
-    "items",
-    "mapping",
-    "mappings",
-    "record",
-    "records",
-    "row",
-    "rows",
-    "slot",
-    "slots",
-}
 
 
 def check_origin(
@@ -403,8 +378,7 @@ def mental_model_contract_lines(slot: Mapping[str, Any]) -> List[str]:
 
 
 def _has_completeness_contract_signal(text: str) -> bool:
-    tokens = set(meaningful_tokens(text))
-    return bool(tokens & _COMPLETENESS_CONTRACT_TERMS)
+    return has_any_contract_term(" ".join(meaningful_tokens(text)), COMPLETENESS_CONTRACT_TERMS)
 
 
 def completeness_contract_lines(slot: Mapping[str, Any]) -> List[str]:
