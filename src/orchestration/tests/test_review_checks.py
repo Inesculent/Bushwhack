@@ -233,6 +233,11 @@ def test_review_check_compiler_adds_coverage_floor_for_uncovered_obligation(monk
     assert len(added) == 1
     assert added[0]["changed_code_anchor"] == "parse_index"
     assert validate_review_check(ReviewCheck(**added[0])) == []
+    origins = task_meta["compiled_check_origins"]
+    assert origins["review-logic:check:1"]["origin_kind"] == "llm_compiled"
+    added_origin = task_meta["compiler_coverage_floor"]["added_check_origins"][added[0]["check_id"]]
+    assert added_origin["origin_kind"] == "coverage_obligation"
+    assert added_origin == origins[added[0]["check_id"]]
 
 
 def test_review_check_coverage_floor_uses_surface_anchor() -> None:
@@ -1200,6 +1205,7 @@ def test_review_check_compiler_does_not_trim_mandatory_omitted_file_under_cap(mo
     assert task_meta["compiled_count"] == 13
     assert any(check_id.startswith("review-logic:omitted-file:") for check_id in compiled_ids), compiled_ids
     assert not any(item.get("dimension") == "omitted prompt file" for item in skipped)
+    assert all(item.get("origin_kind") for item in skipped)
 
 
 def test_review_check_validator_moves_only_valid_checks_to_state() -> None:
