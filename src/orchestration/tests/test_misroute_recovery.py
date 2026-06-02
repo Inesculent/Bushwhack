@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from src.domain.schemas import CandidateFinding, ReflectionReport
-from src.orchestration.nodes.application.cleanup import make_adversarial_cleanup_node
+from src.orchestration.nodes.application.cleanup import RevisionSupportAuditOutput, make_adversarial_cleanup_node
 from src.orchestration.routing.misroute_recovery import parse_misroute_redirect_category
 from src.orchestration.routing.normalize_critiquer_candidates import normalize_critiquer_candidates
 from src.domain.schemas import ReviewTask
@@ -251,7 +251,7 @@ def test_cleanup_misroute_recovered_when_redirect_parsed() -> None:
     assert life["final_category"] == "security"
 
 
-def test_cleanup_revision_accept_overrides_required_context() -> None:
+def test_cleanup_revision_accept_does_not_override_required_context_with_inconclusive_verifier(monkeypatch) -> None:
     node = make_adversarial_cleanup_node()
     cand = CandidateFinding(
         candidate_id="sec-needs-ctx",
@@ -276,6 +276,14 @@ def test_cleanup_revision_accept_overrides_required_context() -> None:
             rationale="Needs runtime proof.",
         )
     ]
+    audit = RevisionSupportAuditOutput(
+        verdict="unresolved",
+        rationale="The revision does not resolve the required context.",
+    )
+    monkeypatch.setattr(
+        "src.orchestration.nodes.application.cleanup.Models.worker",
+        lambda *_args, **_kwargs: type("FakeLLM", (), {"invoke": lambda self, _prompt: {"parsed": audit}})(),
+    )
     out = node(
         {
             "run_id": "t",
@@ -298,6 +306,6 @@ def test_cleanup_revision_accept_overrides_required_context() -> None:
             },
         }
     )
-    assert len(out["findings"]) == 1
+    assert out["findings"] == []
     life = out["metadata"]["adversarial_cleanup"]["candidate_lifecycle"][cand.candidate_id]
-    assert life["context_requirement_overridden"] == "critique_revision_accept"
+    assert life["reason"] == "required_context_not_gathered"

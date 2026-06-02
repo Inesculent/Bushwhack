@@ -5,7 +5,9 @@ from __future__ import annotations
 import ast
 import logging
 import re
-from typing import Any, Dict, List, Mapping, Sequence
+from typing import Any, Dict, List, Literal, Mapping, Sequence
+
+from pydantic import BaseModel, Field
 
 from src.domain.schemas import (
     CandidateFinding,
@@ -16,6 +18,9 @@ from src.domain.schemas import (
 )
 from src.config import Settings, get_settings
 from src.domain.state import GraphState
+from src.infrastructure.llm.factory import Models
+from src.infrastructure.llm.token_usage import parse_structured_output
+from src.infrastructure.llm.trace import trace_from_exception, trace_llm_call
 from src.orchestration.routing.misroute_recovery import parse_misroute_redirect_category
 from src.orchestration.nodes.verifier.failure_class import verifier_refutation_applies
 from src.orchestration.routing.finding_dedupe import (
@@ -50,6 +55,12 @@ EXPECTED_REFLECTORS = {"security", "logic", "performance", "general"}
 DOMAIN_REFLECTORS = {"security", "logic", "performance", "general"}
 PROMOTABLE_CLAIM_TYPES = {"defect", "security_risk", "performance_regression", "missing_test"}
 CONTEXT_REQUIRED_CLAIM_TYPES = frozenset({"security_risk", "performance_regression"})
+
+
+class RevisionSupportAuditOutput(BaseModel):
+    verdict: Literal["resolved", "unresolved", "unsupported"] = "unsupported"
+    rationale: str = Field(default="", max_length=500)
+    warnings: List[str] = Field(default_factory=list)
 _CONCRETE_LOCAL_SYMPTOMS = frozenset(
     {
         "wrong_output",
@@ -872,6 +883,60 @@ def _revision_evidence_extra(
     return f"\n\nPost-context evidence: {summary}"
 
 
+def _revision_accept_has_concrete_support(
+    candidate: CandidateFinding,
+    revision: Mapping[str, Any],
+) -> bool:
+    return False
+
+
+def _render_revision_support_audit_prompt(
+    *,
+    candidate: CandidateFinding,
+    reports: Sequence[ReflectionReport],
+    revision: Mapping[str, Any],
+    verifier_hint: Mapping[str, Any] | None,
+    focused_context: Sequence[Mapping[str, Any]],
+) -> str:
+    return (
+        "Audit whether a critique-revision accept resolves an earlier unresolved reflection.\n"
+        "Return resolved only when the revision supplies concrete source, focused-context, or runtime evidence "
+        "that directly answers the uncertainty in the needs_context or needs_verification reports.\n"
+        "Return unresolved when the revision mostly restates the claim, uses generic language, or verifier evidence "
+        "is inconclusive/harness-only. Return unsupported if the provided material is insufficient to judge.\n\n"
+        f"Candidate JSON:\n{candidate.model_dump_json()}\n\n"
+        f"Relevant Reflection Reports JSON:\n{json_for_cleanup_prompt([r.model_dump(mode='json') for r in reports])}\n\n"
+        f"Revision JSON:\n{json_for_cleanup_prompt(dict(revision))}\n\n"
+        f"Focused Context JSON:\n{json_for_cleanup_prompt(list(focused_context))}\n\n"
+        f"Verifier Advisory JSON:\n{json_for_cleanup_prompt(dict(verifier_hint or {}))}"
+    )
+
+
+def json_for_cleanup_prompt(value: Any, *, max_chars: int = 12000) -> str:
+    import json
+
+    text = json.dumps(value, ensure_ascii=False, indent=2)
+    if len(text) <= max_chars:
+        return text
+    return text[:max_chars] + "\n...<truncated>"
+
+
+def _focused_context_payload_for_candidate(state: GraphState, candidate_id: str) -> List[Mapping[str, Any]]:
+    raw = state.get("focused_context_results") or {}
+    items = raw.values() if isinstance(raw, dict) else raw
+    out: List[Mapping[str, Any]] = []
+    for item in items or []:
+        if isinstance(item, FocusedContextResult):
+            row = item.model_dump(mode="json")
+        elif isinstance(item, dict):
+            row = dict(item)
+        else:
+            continue
+        if str(row.get("candidate_id") or "") == candidate_id:
+            out.append(row)
+    return out[:3]
+
+
 def _verifier_concrete_behavior_verified(candidate_id: str, verifier_hints: Mapping[str, Any]) -> bool:
     hint = verifier_hints.get(candidate_id)
     if not isinstance(hint, dict):
@@ -944,6 +1009,11 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
         metadata = dict(state.get("metadata", {}))
         revisions = _revision_map(metadata)
         verifier_hints: Dict[str, Any] = dict(metadata.get("verifier_hints") or {})
+        resolved_settings = settings or get_settings()
+        selected_model = getattr(resolved_settings, "reviewer_worker_model_key", None)
+        llm_tokens = 0
+        llm_trace: List[Dict[str, Any]] = []
+        revision_support_audits: Dict[str, Dict[str, Any]] = {}
 
         if not candidates:
             return {
@@ -1137,6 +1207,44 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
             )
             has_focused_context = _focused_hits_for_candidate(state, candidate.candidate_id)
             revision_accepted = _revision_accepts(candidate.candidate_id, revisions)
+            rev = revisions.get(candidate.candidate_id) or {}
+            revision_supported = _revision_accept_has_concrete_support(candidate, rev)
+            if (
+                revision_accepted
+                and not revision_supported
+                and (any(report.verdict == "needs_context" for report in relevant_reports) or relevant_needs_verification)
+                and not _verifier_concrete_behavior_verified(candidate.candidate_id, verifier_hints)
+            ):
+                try:
+                    llm = Models.worker(RevisionSupportAuditOutput, model_key=selected_model, max_completion_tokens=900)
+                    prompt = _render_revision_support_audit_prompt(
+                        candidate=candidate,
+                        reports=relevant_reports,
+                        revision=rev,
+                        verifier_hint=verifier_hints.get(candidate.candidate_id),
+                        focused_context=_focused_context_payload_for_candidate(state, candidate.candidate_id),
+                    )
+                    traced = trace_llm_call(
+                        llm,
+                        prompt,
+                        state=state,
+                        node_name="adversarial_cleanup_revision_support_audit",
+                        model_key=selected_model,
+                        schema_name="RevisionSupportAuditOutput",
+                        input_summary={"candidate_id": candidate.candidate_id},
+                    )
+                    audit = parse_structured_output(traced.result, RevisionSupportAuditOutput)
+                    llm_tokens += traced.tokens
+                    llm_trace.extend(traced.trace_records)
+                    revision_support_audits[candidate.candidate_id] = audit.model_dump(mode="json")
+                    revision_supported = audit.verdict == "resolved"
+                except Exception as exc:  # noqa: BLE001
+                    llm_trace.extend(trace_from_exception(exc))
+                    revision_support_audits[candidate.candidate_id] = {
+                        "verdict": "unsupported",
+                        "rationale": f"audit_failed:{exc.__class__.__name__}: {exc}",
+                        "warnings": ["revision_support_audit_failed"],
+                    }
             revision_overrides_reject = _revision_overrides_reflector_reject(
                 state,
                 candidate.candidate_id,
@@ -1365,7 +1473,7 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
             harness_error = _verifier_harness_error(candidate.candidate_id, verifier_hints)
             if (
                 _optimization_without_impact(candidate)
-                and not revision_accepted
+                and not revision_supported
                 and not _verifier_concrete_behavior_verified(candidate.candidate_id, verifier_hints)
             ):
                 drop(candidate, "optimization_without_concrete_impact")
@@ -1376,7 +1484,7 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
                 candidate,
                 relevant_reports,
                 has_focused_context=has_focused_context,
-                revision_accepted=revision_accepted,
+                revision_accepted=revision_supported,
                 verifier_concrete=_verifier_concrete_behavior_verified(candidate.candidate_id, verifier_hints),
                 concrete_local_supported=concrete_local_supported,
             ):
@@ -1399,14 +1507,14 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
             if requires_context and not has_focused_context:
                 context_requirement_overridden = (
                     _accepted_local_source_supported_claim(candidate, relevant_reports)
-                    or revision_accepted
+                    or revision_supported
                     or verifier_satisfies_context
                 )
                 if (
                     candidate.claim_type == "security_risk"
                     and harness_error
                     and not verifier_satisfies_context
-                    and not revision_accepted
+                    and not revision_supported
                 ):
                     context_requirement_overridden = False
             if requires_context and not has_focused_context and not context_requirement_overridden:
@@ -1437,7 +1545,6 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
                 continue
 
             if needs_context or relevant_needs_verification:
-                rev = revisions.get(candidate.candidate_id) or {}
                 verdict = str(rev.get("verdict", "")).lower()
                 if verdict == "reject":
                     drop(candidate, "revision_reject")
@@ -1462,6 +1569,27 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
                     and str(hint.get("verdict", "")).lower() == "verified"
                     and not hint.get("harness_error")
                 )
+                only_unresolved_reflection = not any(
+                    report.verdict in {"accept", "reclassify"} for report in relevant_reports
+                )
+                if (
+                    only_unresolved_reflection
+                    and harness_error
+                    and not verified_hint
+                    and not _verifier_concrete_behavior_verified(candidate.candidate_id, verifier_hints)
+                ):
+                    drop(candidate, "needs_context_with_inconclusive_verifier")
+                    continue
+                if (
+                    verdict == "accept"
+                    and not (
+                        revision_supported
+                        or verified_hint
+                        or _verifier_concrete_behavior_verified(candidate.candidate_id, verifier_hints)
+                    )
+                ):
+                    drop(candidate, "needs_context_without_concrete_followup")
+                    continue
                 if (
                     verdict != "accept"
                     and not has_focused_context
@@ -1472,7 +1600,6 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
                     continue
 
             feedback_type = _category_to_feedback(category)  # type: ignore[arg-type]
-            rev = revisions.get(candidate.candidate_id) or {}
             evidence_extra = _revision_evidence_extra(candidate, rev)
             evidence_extra += _verifier_evidence_extra(
                 candidate.candidate_id,
@@ -1591,12 +1718,16 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
             cleanup_meta["semantic_dedupe_duplicates"] = semantic_duplicates
         if finding_duplicates:
             cleanup_meta["semantic_dedupe_finding_duplicates"] = finding_duplicates
+        if revision_support_audits:
+            cleanup_meta["revision_support_audits"] = revision_support_audits
         metadata["adversarial_cleanup"] = cleanup_meta
 
         return {
             "findings": promoted,
             "metadata": metadata,
             "node_history": [node_name],
+            "token_usage": llm_tokens,
+            "llm_trace": llm_trace,
         }
 
     return adversarial_cleanup_node

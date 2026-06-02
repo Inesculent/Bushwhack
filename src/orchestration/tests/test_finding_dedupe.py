@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from src.domain.schemas import CandidateFinding, ReflectionReport, ReviewFinding
-from src.orchestration.nodes.application.cleanup import make_adversarial_cleanup_node
+from src.orchestration.nodes.application.cleanup import RevisionSupportAuditOutput, make_adversarial_cleanup_node
 from src.orchestration.nodes.application.synthesizer import synthesizer_node
 from src.orchestration.routing.finding_dedupe import (
     candidate_signature_key,
@@ -1576,7 +1576,7 @@ def test_cleanup_uses_rendered_units_when_file_contents_are_malformed() -> None:
     )
 
 
-def test_revision_evidence_for_same_candidate_is_appended_without_text_classification() -> None:
+def test_revision_evidence_for_same_candidate_is_appended_without_text_classification(monkeypatch) -> None:
     node = make_adversarial_cleanup_node()
     cand = _cand(
         candidate_id="agg",
@@ -1587,6 +1587,15 @@ def test_revision_evidence_for_same_candidate_is_appended_without_text_classific
         recommendation="Normalize absent capture values before joining.",
         behavioral_symptom="crash",
         root_operation="aggregation",
+    )
+
+    audit = RevisionSupportAuditOutput(
+        verdict="resolved",
+        rationale="Focused evidence and revision identify the tuple-row aggregation loss.",
+    )
+    monkeypatch.setattr(
+        "src.orchestration.nodes.application.cleanup.Models.worker",
+        lambda *_args, **_kwargs: type("FakeLLM", (), {"invoke": lambda self, _prompt: {"parsed": audit}})(),
     )
 
     out = node(

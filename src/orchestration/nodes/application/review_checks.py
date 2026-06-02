@@ -5,7 +5,9 @@ from __future__ import annotations
 import json
 import logging
 import re
-from typing import Any, Dict, Iterable, List, Mapping, Sequence
+from typing import Any, Dict, Iterable, List, Literal, Mapping, Sequence
+
+from pydantic import BaseModel, Field
 
 from src.config import Settings, get_settings
 from src.domain.schemas import (
@@ -36,6 +38,7 @@ from src.orchestration.context.surface_ledger import (
 )
 from src.orchestration.nodes.application.review_check_executor_support import (
     missing_evidence_for_weak_no_finding as _support_missing_evidence_for_weak_no_finding,
+    no_finding_needs_semantic_suppression_audit,
     normalize_executor_results as _support_normalize_executor_results,
 )
 from src.orchestration.nodes.application import review_check_compiler_support as compiler_support
@@ -107,6 +110,18 @@ _GENERIC_QUERY_PHRASES = (
     "confirm explicit bounds",
     "confirm unexpected behavior",
 )
+
+
+class SuppressionAuditItem(BaseModel):
+    check_id: str
+    verdict: Literal["sufficient", "insufficient", "unsupported"] = "unsupported"
+    rationale: str = Field(default="", max_length=500)
+    missing_evidence: List[str] = Field(default_factory=list)
+
+
+class SuppressionAuditOutput(BaseModel):
+    items: List[SuppressionAuditItem] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
 
 
 def _trace_enabled(state: GraphState) -> bool:
@@ -948,6 +963,116 @@ def _check_batches(checks: Sequence[ReviewCheck]) -> List[List[ReviewCheck]]:
     return [list(checks[index : index + _EXECUTOR_BATCH_SIZE]) for index in range(0, len(checks), _EXECUTOR_BATCH_SIZE)]
 
 
+def _render_suppression_audit_prompt(
+    *,
+    task: ReviewTask,
+    checks_by_id: Mapping[str, ReviewCheck],
+    results: Sequence[ReviewCheckResult],
+) -> str:
+    payload = []
+    for result in results:
+        check = checks_by_id[result.check_id]
+        payload.append(
+            {
+                "check": check.model_dump(mode="json"),
+                "result": result.model_dump(mode="json"),
+            }
+        )
+    return (
+        "Audit these no_finding review-check results.\n"
+        "Decide whether each suppression directly answers the exact check dimension and report criteria.\n"
+        "Return sufficient only when the suppressing evidence addresses the named behavior, not merely a nearby "
+        "dimension such as outer return type, container shape, branch visibility, schema declaration, or generic "
+        "absence of proof.\n"
+        "Return insufficient when the result should become unsupported because the suppression proves only a "
+        "neighboring dimension. Return unsupported when the evidence is too incomplete to decide.\n\n"
+        f"Task: {task.model_dump(mode='json')}\n\n"
+        f"Audit Items JSON:\n{_json_for_prompt(payload, max_chars=18000)}"
+    )
+
+
+def _audit_no_finding_suppressions(
+    *,
+    state: GraphState,
+    task: ReviewTask,
+    checks: Sequence[ReviewCheck],
+    results: List[ReviewCheckResult],
+    selected_model: str,
+    llm_tokens: int,
+    llm_trace: List[Dict[str, Any]],
+    warnings: List[str],
+) -> tuple[List[ReviewCheckResult], int, List[Dict[str, Any]], List[str]]:
+    checks_by_id = {check.check_id: check for check in checks}
+    targets = [
+        result for result in results
+        if result.check_id in checks_by_id
+        and no_finding_needs_semantic_suppression_audit(result, checks_by_id[result.check_id])
+    ]
+    if not targets:
+        return results, llm_tokens, llm_trace, warnings
+    prompt = _render_suppression_audit_prompt(task=task, checks_by_id=checks_by_id, results=targets)
+    audit_by_id: Dict[str, SuppressionAuditItem] = {}
+    try:
+        llm = Models.worker(SuppressionAuditOutput, model_key=selected_model, max_completion_tokens=1600)
+        traced = trace_llm_call(
+            llm,
+            prompt,
+            state=state,
+            node_name="review_check_suppression_audit",
+            model_key=selected_model,
+            schema_name="SuppressionAuditOutput",
+            input_summary={"task_id": task.id, "check_ids": [result.check_id for result in targets]},
+        )
+        response = parse_structured_output(traced.result, SuppressionAuditOutput)
+        llm_tokens += traced.tokens
+        llm_trace.extend(traced.trace_records)
+        warnings.extend(response.warnings)
+        audit_by_id = {
+            item.check_id: item
+            for item in response.items
+            if item.check_id in checks_by_id
+        }
+    except Exception as exc:  # noqa: BLE001
+        llm_trace.extend(trace_from_exception(exc))
+        warnings.append(f"review_check_suppression_audit_failed:{exc.__class__.__name__}: {exc}")
+    audited: List[ReviewCheckResult] = []
+    target_ids = {result.check_id for result in targets}
+    for result in results:
+        if result.check_id not in target_ids:
+            audited.append(result)
+            continue
+        item = audit_by_id.get(result.check_id)
+        if item is not None and item.verdict == "sufficient":
+            audited.append(
+                result.model_copy(
+                    update={
+                        "warnings": list(result.warnings) + ["llm_suppression_audit_sufficient"],
+                    }
+                )
+            )
+            continue
+        check = checks_by_id[result.check_id]
+        missing = list(item.missing_evidence) if item is not None and item.missing_evidence else _missing_evidence_for_weak_no_finding(check)
+        warning = "llm_suppression_audit_insufficient"
+        if item is None:
+            warning = "llm_suppression_audit_missing_or_failed"
+        elif item.verdict == "unsupported":
+            warning = "llm_suppression_audit_unsupported"
+        audited.append(
+            result.model_copy(
+                update={
+                    "decision": "unsupported",
+                    "missing_evidence": missing[:3],
+                    "suppressing_evidence": [],
+                    "warnings": list(result.warnings) + [warning],
+                    "reportable_reason": (item.rationale if item is not None else result.reportable_reason)[:500],
+                }
+            )
+        )
+        warnings.append(f"{warning}:{result.check_id}")
+    return audited, llm_tokens, llm_trace, warnings
+
+
 def make_review_check_executor_node(
     model_key: str | None = None,
     use_llm: bool = True,
@@ -1098,6 +1223,16 @@ def make_review_check_executor_node(
                                     warnings=["executor_missing_result_after_retry"],
                                 )
                             )
+                    batch_results, llm_tokens, llm_trace, warnings = _audit_no_finding_suppressions(
+                        state=state,
+                        task=task,
+                        checks=batch,
+                        results=batch_results,
+                        selected_model=selected_model,
+                        llm_tokens=llm_tokens,
+                        llm_trace=llm_trace,
+                        warnings=warnings,
+                    )
                     results.extend(batch_results)
                     warnings.extend(response.warnings)
                     warnings.extend(norm_warnings)

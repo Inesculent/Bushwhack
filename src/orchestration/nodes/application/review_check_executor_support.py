@@ -22,6 +22,94 @@ _INSUFFICIENT_EVIDENCE_MARKERS = (
     "evidence is insufficient",
 )
 
+_OUTER_ONLY_SUPPRESSION_MARKERS = (
+    "return type",
+    "returns a string",
+    "returns string",
+    "outer container",
+    "container type",
+    "consistent return",
+    "all branches return",
+    "schema",
+    "enum",
+    "declared option",
+)
+
+_DIMENSION_MARKERS = {
+    "aggregation": (
+        "aggregat",
+        "serializ",
+        "join",
+        "combine",
+        "collect",
+        "structured",
+        "data shape",
+        "tuple",
+        "field",
+        "slot",
+        "element",
+        "entry",
+        "row",
+    ),
+    "indexing": (
+        "index",
+        "indices",
+        "bounds",
+        "slot",
+        "field",
+        "key",
+        "value",
+        "element",
+        "entry",
+        "row",
+        "offset",
+    ),
+    "dispatch": (
+        "branch",
+        "dispatch",
+        "fallback",
+        "fallthrough",
+        "exhaust",
+        "default",
+        "else",
+        "mode",
+        "case",
+        "return path",
+    ),
+}
+
+_AGGREGATION_PRESERVATION_MARKERS = (
+    "all",
+    "each",
+    "every",
+    "preserve",
+    "preserved",
+    "loss",
+    "lost",
+    "drop",
+    "dropped",
+    "omit",
+    "omitted",
+    "truncate",
+    "truncated",
+    "remaining",
+    "count",
+    "order",
+    "field",
+    "fields",
+    "slot",
+    "slots",
+    "row",
+    "rows",
+    "entry",
+    "entries",
+)
+
+
+def _has_any(text: str, markers: Iterable[str]) -> bool:
+    return any(marker in text for marker in markers)
+
+
 def file_contents_from_slot(slot: Mapping[str, Any]) -> Mapping[str, str] | None:
     te = slot.get("task_evidence") if isinstance(slot.get("task_evidence"), dict) else {}
     if isinstance(te, dict) and isinstance(te.get("file_contents"), dict):
@@ -59,9 +147,53 @@ def no_finding_has_strong_suppression(result: ReviewCheckResult, check: ReviewCh
     blob = " ".join([result.reportable_reason, *result.suppressing_evidence]).lower()
     if any(marker in blob for marker in _INSUFFICIENT_EVIDENCE_MARKERS):
         return False
+    check_blob = " ".join(
+        [
+            check.behavioral_question,
+            check.affected_invariant,
+            " ".join(check.required_evidence),
+            " ".join(check.report_criteria),
+            " ".join(check.suppress_criteria),
+        ]
+    ).lower()
+    if no_finding_needs_semantic_suppression_audit(result, check):
+        return True
     check_path = check.file_path.strip().replace("\\", "/")
     refs = [ref.strip().replace("\\", "/") for ref in result.evidence_refs if str(ref).strip()]
     return any(check_path in ref or ref.startswith("focused_context:") for ref in refs)
+
+
+def no_finding_needs_semantic_suppression_audit(
+    result: ReviewCheckResult,
+    check: ReviewCheck,
+) -> bool:
+    if result.decision != "no_finding" or not result.evidence_refs or not result.suppressing_evidence:
+        return False
+    blob = " ".join([result.reportable_reason, *result.suppressing_evidence]).lower()
+    if any(marker in blob for marker in _INSUFFICIENT_EVIDENCE_MARKERS):
+        return False
+    check_blob = " ".join(
+        [
+            check.behavioral_question,
+            check.affected_invariant,
+            " ".join(check.required_evidence),
+            " ".join(check.report_criteria),
+            " ".join(check.suppress_criteria),
+        ]
+    ).lower()
+    categories = {
+        category
+        for category, markers in _DIMENSION_MARKERS.items()
+        if _has_any(check_blob, markers)
+    }
+    if categories and _has_any(blob, _OUTER_ONLY_SUPPRESSION_MARKERS):
+        if "aggregation" in categories and not _has_any(blob, _AGGREGATION_PRESERVATION_MARKERS):
+            return True
+        if "indexing" in categories and not _has_any(blob, _DIMENSION_MARKERS["indexing"]):
+            return True
+        if "dispatch" in categories and not _has_any(blob, _DIMENSION_MARKERS["dispatch"]):
+            return True
+    return False
 
 
 def source_only_backstop_candidate(

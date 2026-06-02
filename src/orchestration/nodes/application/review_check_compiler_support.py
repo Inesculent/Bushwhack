@@ -480,6 +480,8 @@ def check_covers_obligation(check: ReviewCheck, obligation: Mapping[str, Any]) -
         return False
     surface = str(obligation.get("surface") or "")
     dimension = str(obligation.get("dimension") or "")
+    if check_is_broad_surface_invariant(check):
+        return False
     blob = " ".join(
         [
             check.changed_code_anchor,
@@ -736,6 +738,19 @@ _BROAD_SURFACE_INVARIANTS = (
     "preserves caller-visible inputs, outputs, and exception behavior",
     "assigned surface behavior",
 )
+
+
+def check_is_broad_surface_invariant(check: ReviewCheck) -> bool:
+    blob = " ".join(
+        [
+            check.check_id,
+            check.behavioral_question,
+            check.affected_invariant,
+            " ".join(check.suppress_criteria),
+            " ".join(check.report_criteria),
+        ]
+    ).lower()
+    return any(marker in blob for marker in _BROAD_SURFACE_INVARIANTS)
 
 
 def check_is_concrete_source_local_behavior(
@@ -1163,16 +1178,37 @@ def ensure_compiler_coverage_floor(
         if kind == "mandatory_omitted_file"
     }
     mandatory_ranked = [check for check in ranked if check.check_id in mandatory_ids]
-    capped = ranked[:MAX_CHECKS_PER_TASK]
+    capped = surface_fair_cap_checks(
+        ranked,
+        task_surface_ids=task_surface_ids,
+        by_id=by_id,
+        slot=slot,
+        task_files=coverage_files,
+        max_checks=MAX_CHECKS_PER_TASK,
+    )
     capped_ids = {check.check_id for check in capped}
     final_checks = [*capped, *(check for check in mandatory_ranked if check.check_id not in capped_ids)]
     final_ids = {check.check_id for check in final_checks}
+    selected_surface_ids = {
+        sid
+        for check in final_checks
+        for sid in check.surface_ids
+        if sid in by_id
+    }
+    added_check_by_id = {check.check_id: check for check, _meta, _kind in added_candidates}
     added = [check for check in final_checks if check.check_id not in original_ids]
     trimmed_existing: List[str] = [
         check.check_id for check in checks if check.check_id not in final_ids
     ]
     skipped_due_to_cap: List[Dict[str, Any]] = [
-        {**dict(added_by_id[check_id]), "check_id": check_id}
+        {
+            **dict(added_by_id[check_id]),
+            "check_id": check_id,
+            "surface_already_selected": any(
+                sid in selected_surface_ids
+                for sid in (added_check_by_id.get(check_id).surface_ids if added_check_by_id.get(check_id) else [])
+            ),
+        }
         for check_id in added_by_id
         if check_id not in final_ids
     ]
@@ -1331,6 +1367,53 @@ def prioritize_compiled_checks(
         return (0, -relevance, 0 if check.surface_ids else 1, 0)
 
     return [check for _, check in sorted(enumerate(checks), key=lambda item: (*rank(item[1]), item[0]))]
+
+
+def surface_fair_cap_checks(
+    ranked: Sequence[ReviewCheck],
+    *,
+    task_surface_ids: Sequence[str],
+    by_id: Mapping[str, ReviewSurface],
+    slot: Mapping[str, Any],
+    task_files: Sequence[str],
+    max_checks: int,
+) -> List[ReviewCheck]:
+    if max_checks <= 0:
+        return []
+    selected: List[ReviewCheck] = []
+    selected_ids: set[str] = set()
+    local_task_files = {path.strip().replace("\\", "/") for path in task_files if path and path.strip()}
+    for sid in task_surface_ids:
+        if len(selected) >= max_checks:
+            break
+        if sid not in by_id:
+            continue
+        match = next(
+            (
+                check
+                for check in ranked
+                if check.check_id not in selected_ids
+                and sid in check.surface_ids
+                and check_is_concrete_source_local_behavior(
+                    check,
+                    slot=slot,
+                    task_files=local_task_files,
+                )
+            ),
+            None,
+        )
+        if match is None:
+            continue
+        selected.append(match)
+        selected_ids.add(match.check_id)
+    for check in ranked:
+        if len(selected) >= max_checks:
+            break
+        if check.check_id in selected_ids:
+            continue
+        selected.append(check)
+        selected_ids.add(check.check_id)
+    return selected
 
 
 def normalize_compiled_checks(

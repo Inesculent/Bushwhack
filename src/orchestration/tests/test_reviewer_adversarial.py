@@ -19,7 +19,7 @@ from src.domain.schemas import (
     ReviewTask,
 )
 from src.domain.state import merge_graph_metadata
-from src.orchestration.nodes.application.cleanup import make_adversarial_cleanup_node
+from src.orchestration.nodes.application.cleanup import RevisionSupportAuditOutput, make_adversarial_cleanup_node
 from src.orchestration.nodes.application.critiquer import _needs_orthogonal_recall
 from src.orchestration.nodes.application.reflection import make_adversarial_reflection_node
 
@@ -829,6 +829,147 @@ def test_adversarial_cleanup_promotes_verified_with_required_context_localized_r
     life = out["metadata"]["adversarial_cleanup"]["candidate_lifecycle"][cand.candidate_id]
     assert life["decision"] == "promoted"
     assert life.get("context_requirement_overridden") == "runtime_verifier_concrete_behavior"
+
+
+def test_adversarial_cleanup_drops_needs_context_with_inconclusive_verifier(monkeypatch) -> None:
+    node = make_adversarial_cleanup_node()
+    cand = CandidateFinding(
+        candidate_id="security-resource-context",
+        patch_task_id="security-resource",
+        file_path="src/x.py",
+        line_start=1,
+        line_end=12,
+        content="Changed code may allow unbounded resource use.",
+        claim_type="security_risk",
+        failure_mode="Resource amplification depends on unresolved caller exposure.",
+        evidence_summary="Local code shows the primitive, but exposure is unresolved.",
+        suspected_category="security",
+        reflection_specialties=["security"],
+        required_context=["Confirm whether the input reaches an untrusted boundary."],
+        recommendation="Add a concrete bound if the boundary is confirmed.",
+    )
+    reports = [
+        ReflectionReport(
+            candidate_id=cand.candidate_id,
+            reflector_specialty="security",
+            verdict="needs_context",
+            rationale="The code primitive is visible, but caller exposure is unresolved.",
+            support_scope="needs_context",
+        )
+    ]
+    audit = RevisionSupportAuditOutput(
+        verdict="unresolved",
+        rationale="The revision restates the concern but does not resolve caller exposure.",
+    )
+    monkeypatch.setattr(
+        "src.orchestration.nodes.application.cleanup.Models.worker",
+        lambda *_args, **_kwargs: type("FakeLLM", (), {"invoke": lambda self, _prompt: {"parsed": audit}})(),
+    )
+
+    out = node(
+        {
+            "run_id": "t",
+            "candidate_findings": [cand],
+            "reflection_reports": reports,
+            "focused_context_results": {
+                "ctx": FocusedContextResult(
+                    request_id="ctx",
+                    candidate_id=cand.candidate_id,
+                    file_snippets={"src/x.py": "def changed(value):\n    return value\n"},
+                )
+            },
+            "metadata": {
+                "critique_revision": {
+                    "revisions": [
+                        {
+                            "candidate_id": cand.candidate_id,
+                            "verdict": "accept",
+                            "updated_evidence_summary": "Follow-up still does not resolve caller exposure.",
+                        }
+                    ]
+                },
+                "verifier_hints": {
+                    cand.candidate_id: {
+                        "verdict": "inconclusive",
+                        "verification_scope": "concrete_behavior",
+                        "harness_error": True,
+                        "product_verified": False,
+                        "final_rationale": "Harness error before product behavior.",
+                    }
+                },
+            },
+        }
+    )
+
+    assert out["findings"] == []
+    assert (
+        out["metadata"]["adversarial_cleanup"]["candidate_lifecycle"][cand.candidate_id]["reason"]
+        == "needs_context_with_inconclusive_verifier"
+    )
+    assert out["metadata"]["adversarial_cleanup"]["revision_support_audits"][cand.candidate_id]["verdict"] == "unresolved"
+
+
+def test_adversarial_cleanup_revision_accept_with_concrete_evidence_promotes_unresolved_reflection(monkeypatch) -> None:
+    node = make_adversarial_cleanup_node()
+    cand = CandidateFinding(
+        candidate_id="logic-context-revised",
+        patch_task_id="logic-context",
+        file_path="src/x.py",
+        line_start=3,
+        line_end=8,
+        content="Changed dispatch may fall through.",
+        claim_type="defect",
+        failure_mode="Missing fallback return on a changed branch.",
+        evidence_summary="The initial check needed follow-up evidence.",
+        suspected_category="logic",
+        reflection_specialties=["logic"],
+        required_context=["Confirm the branch body and return contract."],
+        recommendation="Add a fallback return or raise.",
+        behavioral_symptom="missing_return",
+        root_operation="dispatch",
+    )
+    reports = [
+        ReflectionReport(
+            candidate_id=cand.candidate_id,
+            reflector_specialty="logic",
+            verdict="needs_context",
+            rationale="Need the changed branch body.",
+            support_scope="needs_context",
+        )
+    ]
+    audit = RevisionSupportAuditOutput(
+        verdict="resolved",
+        rationale="The revision cites the changed dispatch branch and missing return path.",
+    )
+    monkeypatch.setattr(
+        "src.orchestration.nodes.application.cleanup.Models.worker",
+        lambda *_args, **_kwargs: type("FakeLLM", (), {"invoke": lambda self, _prompt: {"parsed": audit}})(),
+    )
+
+    out = node(
+        {
+            "run_id": "t",
+            "candidate_findings": [cand],
+            "reflection_reports": reports,
+            "focused_context_results": {},
+            "metadata": {
+                "critique_revision": {
+                    "revisions": [
+                        {
+                            "candidate_id": cand.candidate_id,
+                            "verdict": "accept",
+                            "updated_evidence_summary": (
+                                "Changed code line shows the dispatch branch can fall through without a return."
+                            ),
+                        }
+                    ]
+                },
+            },
+        }
+    )
+
+    assert len(out["findings"]) == 1
+    assert out["metadata"]["adversarial_cleanup"]["candidate_lifecycle"][cand.candidate_id]["decision"] == "promoted"
 
 
 def test_adversarial_cleanup_promotes_needs_verification_with_runtime_verified() -> None:

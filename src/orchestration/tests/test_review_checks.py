@@ -20,6 +20,8 @@ from src.domain.schemas import (
 from src.infrastructure.behavioral_spec_store import BehavioralSpecStore
 from src.orchestration.nodes.application import critique_pipeline
 from src.orchestration.nodes.application.review_checks import (
+    SuppressionAuditOutput,
+    SuppressionAuditItem,
     make_review_check_compiler_node,
     make_review_check_context_planner_node,
     make_review_check_evidence_gate_node,
@@ -54,9 +56,12 @@ class _FakeLLM:
     def __init__(self, result: Any) -> None:
         self.result = result
         self.prompts: list[str] = []
+        self._results = list(result) if isinstance(result, list) else None
 
     def invoke(self, prompt: str) -> Any:
         self.prompts.append(prompt)
+        if self._results is not None:
+            return self._results.pop(0)
         return self.result
 
 
@@ -173,6 +178,8 @@ def test_review_check_executor_prompt_frames_result_completeness_as_accounting(m
     assert "Declared schemas, enums, or UI choices" in prompt
     assert "terminal fallback" in prompt
     assert "structured values" in prompt
+    assert "Treat each check dimension independently" in prompt
+    assert "directly addresses that check's report criteria" in prompt
 
 
 def test_review_check_compiler_records_checks_and_trace(monkeypatch) -> None:
@@ -1030,6 +1037,125 @@ def test_review_check_compiler_coverage_floor_respects_cap(monkeypatch) -> None:
     assert len(floor["skipped_due_to_cap"]) == 0
 
 
+def test_review_check_compiler_fair_cap_keeps_later_surface_source_local_check(monkeypatch) -> None:
+    alpha = ReviewSurface(
+        surface_id="surface:alpha",
+        name="alpha",
+        kind="function",
+        file_path="src/app.py",
+        line_start=1,
+        line_end=3,
+        confidence=0.95,
+    )
+    beta = ReviewSurface(
+        surface_id="surface:beta",
+        name="beta",
+        kind="function",
+        file_path="src/app.py",
+        line_start=5,
+        line_end=7,
+        confidence=0.95,
+    )
+    task = _task().model_copy(update={"surface_ids": [alpha.surface_id, beta.surface_id]})
+    llm_checks = [
+        _check(
+            check_id=f"review-logic:alpha:{idx}",
+            surface_ids=[alpha.surface_id],
+            changed_code_anchor="alpha",
+            behavioral_question="Does alpha preserve branch behavior and return shape?",
+            affected_invariant="branch behavior and return shape",
+            required_evidence=["changed alpha implementation", "branch and return evidence"],
+            report_criteria=["A reachable alpha branch returns the wrong shape."],
+        )
+        for idx in range(1, 13)
+    ]
+    llm_checks.append(
+        _check(
+            check_id="review-logic:beta:1",
+            surface_ids=[beta.surface_id],
+            changed_code_anchor="beta",
+            behavioral_question="Does beta preserve branch behavior and return shape?",
+            affected_invariant="branch behavior and return shape",
+            required_evidence=["changed beta implementation", "branch and return evidence"],
+            report_criteria=["A reachable beta branch returns the wrong shape."],
+        )
+    )
+    output = ReviewCheckCompilerOutput(summary="compiled", checks=llm_checks)
+    monkeypatch.setattr(
+        "src.orchestration.nodes.application.review_checks.Models.worker",
+        lambda *_args, **_kwargs: _FakeLLM({"parsed": output, "raw": _Raw()}),
+    )
+    state = _state(
+        task_registry={task.id: task},
+        metadata={
+            "mental_model": {"surface_ledger": [alpha.model_dump(mode="json"), beta.model_dump(mode="json")]},
+            "critique_pipeline": {
+                "by_task": {
+                    task.id: {
+                        "direct_context": "def alpha():\n    return 1\n\ndef beta():\n    return 2\n",
+                        "task_evidence": {
+                            "file_contents": {
+                                "src/app.py": "def alpha():\n    return 1\n\ndef beta():\n    return 2\n",
+                            },
+                            "files_complete": {"src/app.py": True},
+                        },
+                        "coverage_obligations": [],
+                    }
+                }
+            },
+        },
+    )
+
+    out = make_review_check_compiler_node()(state)  # type: ignore[arg-type]
+
+    task_meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
+    compiled_ids = [check["check_id"] for check in task_meta["compiled_checks"]]
+    assert task_meta["compiled_count"] == 12
+    assert "review-logic:beta:1" in compiled_ids
+    assert "review-logic:alpha:12" in task_meta["compiler_coverage_floor"]["trimmed_existing_check_ids"]
+
+
+def test_review_check_compiler_broad_surface_check_does_not_cover_specific_dimension(monkeypatch) -> None:
+    broad = _check(
+        check_id="review-logic:surface:1",
+        changed_code_anchor="handle",
+        behavioral_question="Does the changed handle preserve api contract?",
+        affected_invariant="handle preserves caller-visible inputs, outputs, and exception behavior unless changed.",
+        required_evidence=["changed implementation for handle"],
+        report_criteria=["The changed handle violates api contract on a reachable path."],
+    )
+    output = ReviewCheckCompilerOutput(summary="compiled", checks=[broad])
+    monkeypatch.setattr(
+        "src.orchestration.nodes.application.review_checks.Models.worker",
+        lambda *_args, **_kwargs: _FakeLLM({"parsed": output, "raw": _Raw()}),
+    )
+    state = _state(
+        metadata={
+            **_state()["metadata"],
+            "critique_pipeline": {
+                "by_task": {
+                    "review-logic": {
+                        "direct_context": "def handle(mode):\n    if mode:\n        return 1\n",
+                        "coverage_obligations": [
+                            {
+                                "file_path": "src/app.py",
+                                "surface": "handle",
+                                "dimension": "branch exhaustiveness",
+                                "evidence": "conditional branch chain present",
+                            }
+                        ],
+                    }
+                }
+            },
+        },
+    )
+
+    out = make_review_check_compiler_node()(state)  # type: ignore[arg-type]
+
+    floor = out["metadata"]["review_checks"]["by_task"]["review-logic"]["compiler_coverage_floor"]
+    assert any(check["affected_invariant"] == "branch exhaustiveness" for check in floor["added_checks"])
+
+
 def test_review_check_compiler_prioritizes_local_behavior_floor_over_broad_surface_cap(monkeypatch) -> None:
     llm_checks = [
         _check(
@@ -1233,6 +1359,7 @@ def test_review_check_compiler_does_not_trim_mandatory_omitted_file_under_cap(mo
     assert any(check_id.startswith("review-logic:omitted-file:") for check_id in compiled_ids), compiled_ids
     assert not any(item.get("dimension") == "omitted prompt file" for item in skipped)
     assert all(item.get("origin_kind") for item in skipped)
+    assert all("surface_already_selected" in item for item in skipped)
 
 
 def test_review_check_validator_moves_only_valid_checks_to_state() -> None:
@@ -1579,6 +1706,83 @@ def test_review_check_executor_downgrades_weak_no_finding(monkeypatch) -> None:
     assert "weak_no_finding_requires_more_evidence" in result.warnings
     meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
     assert "executor_weak_no_finding_downgraded:review-logic:check:1" in meta["executor_warnings"]
+
+
+def test_review_check_executor_downgrades_dimension_thin_no_finding(monkeypatch) -> None:
+    check = _check(
+        behavioral_question="Does build_output preserve each aggregation field and slot?",
+        affected_invariant="aggregation field preservation",
+        required_evidence=["changed build_output aggregation path", "field and slot preservation evidence"],
+        suppress_criteria=["Each aggregated field and slot is preserved."],
+        report_criteria=["A reachable path drops, truncates, or reorders an aggregated field."],
+    )
+    output = ReviewCheckExecutorOutput(
+        results=[
+            ReviewCheckResult(
+                check_id=check.check_id,
+                patch_task_id="review-logic",
+                decision="no_finding",
+                evidence_refs=["src/app.py:1"],
+                suppressing_evidence=["All branches return a string and the return type is consistent."],
+            )
+        ]
+    )
+    audit = SuppressionAuditOutput(
+        items=[
+            SuppressionAuditItem(
+                check_id=check.check_id,
+                verdict="insufficient",
+                rationale="The suppression proves return shape but not field or slot preservation.",
+                missing_evidence=["field and slot preservation evidence"],
+            )
+        ]
+    )
+    fake = _FakeLLM([
+        {"parsed": output, "raw": _Raw()},
+        {"parsed": audit, "raw": _Raw()},
+    ])
+    monkeypatch.setattr(
+        "src.orchestration.nodes.application.review_checks.Models.worker",
+        lambda *_args, **_kwargs: fake,
+    )
+
+    out = make_review_check_executor_node()(_state(review_checks=[check]))  # type: ignore[arg-type]
+
+    result = out["review_check_results"][0]
+    assert result.decision == "unsupported"
+    assert "llm_suppression_audit_insufficient" in result.warnings
+    assert len(fake.prompts) == 2
+
+
+def test_review_check_executor_keeps_dimension_specific_no_finding(monkeypatch) -> None:
+    check = _check(
+        behavioral_question="Does build_output preserve each aggregation field and slot?",
+        affected_invariant="aggregation field preservation",
+        required_evidence=["changed build_output aggregation path", "field and slot preservation evidence"],
+        suppress_criteria=["Each aggregated field and slot is preserved."],
+        report_criteria=["A reachable path drops, truncates, or reorders an aggregated field."],
+    )
+    output = ReviewCheckExecutorOutput(
+        results=[
+            ReviewCheckResult(
+                check_id=check.check_id,
+                patch_task_id="review-logic",
+                decision="no_finding",
+                evidence_refs=["src/app.py:1"],
+                suppressing_evidence=[
+                    "Each field and slot is preserved in order during aggregation; no entries are dropped."
+                ],
+            )
+        ]
+    )
+    monkeypatch.setattr(
+        "src.orchestration.nodes.application.review_checks.Models.worker",
+        lambda *_args, **_kwargs: _FakeLLM({"parsed": output, "raw": _Raw()}),
+    )
+
+    out = make_review_check_executor_node()(_state(review_checks=[check]))  # type: ignore[arg-type]
+
+    assert out["review_check_results"][0].decision == "no_finding"
 
 
 def test_review_check_executor_downgrades_weak_no_finding_to_budget_exhausted(monkeypatch) -> None:
