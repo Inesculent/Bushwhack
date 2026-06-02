@@ -3,7 +3,12 @@
 from __future__ import annotations
 
 from src.domain.schemas import CandidateFinding, ReflectionReport, ReviewFinding
-from src.orchestration.nodes.application.cleanup import RevisionSupportAuditOutput, make_adversarial_cleanup_node
+from src.orchestration.nodes.application.cleanup import (
+    RevisionSupportAuditOutput,
+    SemanticEquivalenceAuditItem,
+    SemanticEquivalenceAuditOutput,
+    make_adversarial_cleanup_node,
+)
 from src.orchestration.nodes.application.synthesizer import synthesizer_node
 from src.orchestration.routing.finding_dedupe import (
     candidate_signature_key,
@@ -760,6 +765,144 @@ def test_cleanup_preserves_structured_behavior_metadata_on_promoted_finding() ->
     finding = out["findings"][0]
     assert finding.behavioral_symptom == "data_loss"
     assert finding.root_operation == "indexing"
+
+
+def test_cleanup_llm_equivalence_merges_same_issue_with_different_wording(monkeypatch) -> None:
+    node = make_adversarial_cleanup_node()
+    broad = _cand(
+        candidate_id="broad",
+        file_path="src/x.py",
+        line_start=10,
+        line_end=40,
+        content="class Handler: structured extraction drops a selected value.",
+        failure_mode="Selected value is skipped on a reachable path.",
+        evidence_summary="The changed aggregation path omits the selected value.",
+        recommendation="Handle the selected value before aggregating results.",
+        behavioral_symptom="data_loss",
+        root_operation="indexing",
+    )
+    specific = _cand(
+        candidate_id="specific",
+        file_path="src/x.py",
+        line_start=20,
+        line_end=24,
+        content="class Handler: the selected value is skipped before aggregation.",
+        failure_mode="Same selected value omission.",
+        evidence_summary="The same changed path omits the value.",
+        recommendation="Handle the selected value before aggregating results.",
+        behavioral_symptom="wrong_output",
+        root_operation="indexing",
+    )
+    audit = SemanticEquivalenceAuditOutput(
+        items=[
+            SemanticEquivalenceAuditItem(
+                finding_id="broad",
+                equivalent_to="specific",
+                verdict="same_issue",
+                rationale="Same root cause, behavior, and fix.",
+            )
+        ]
+    )
+    monkeypatch.setattr(
+        "src.orchestration.nodes.application.cleanup.Models.worker",
+        lambda *_args, **_kwargs: type("FakeLLM", (), {"invoke": lambda self, _prompt: {"parsed": audit}})(),
+    )
+
+    out = node(
+        {
+            "run_id": "t",
+            "candidate_findings": [broad, specific],
+            "reflection_reports": [
+                ReflectionReport(
+                    candidate_id=broad.candidate_id,
+                    reflector_specialty="logic",
+                    verdict="accept",
+                    rationale="Supported.",
+                ),
+                ReflectionReport(
+                    candidate_id=specific.candidate_id,
+                    reflector_specialty="logic",
+                    verdict="accept",
+                    rationale="Duplicate of broad but supported.",
+                ),
+            ],
+            "metadata": {},
+        }
+    )
+
+    assert [finding.id for finding in out["findings"]] == ["broad"]
+    meta = out["metadata"]["adversarial_cleanup"]
+    assert meta["semantic_equivalence_duplicates"] == {"broad": ["specific"]}
+    assert meta["semantic_equivalence_audits"][0]["verdict"] == "same_issue"
+
+
+def test_cleanup_llm_equivalence_preserves_distinct_dimensions(monkeypatch) -> None:
+    node = make_adversarial_cleanup_node()
+    indexing = _cand(
+        candidate_id="indexing",
+        file_path="src/x.py",
+        line_start=10,
+        line_end=20,
+        content="class Handler: selected slot is dropped.",
+        failure_mode="Slot selection loses data.",
+        evidence_summary="The changed path keeps only one slot.",
+        recommendation="Preserve the selected slot.",
+        behavioral_symptom="data_loss",
+        root_operation="indexing",
+    )
+    aggregation = _cand(
+        candidate_id="aggregation",
+        file_path="src/x.py",
+        line_start=18,
+        line_end=28,
+        content="class Handler: absent value can reach aggregation.",
+        failure_mode="Aggregation can receive an absent value.",
+        evidence_summary="The changed path aggregates an absent value.",
+        recommendation="Normalize absent values before aggregation.",
+        behavioral_symptom="crash",
+        root_operation="aggregation",
+    )
+    audit = SemanticEquivalenceAuditOutput(
+        items=[
+            SemanticEquivalenceAuditItem(
+                finding_id="indexing",
+                equivalent_to="aggregation",
+                verdict="distinct",
+                rationale="Same surface but different dimensions and fixes.",
+            )
+        ]
+    )
+    monkeypatch.setattr(
+        "src.orchestration.nodes.application.cleanup.Models.worker",
+        lambda *_args, **_kwargs: type("FakeLLM", (), {"invoke": lambda self, _prompt: {"parsed": audit}})(),
+    )
+
+    out = node(
+        {
+            "run_id": "t",
+            "candidate_findings": [indexing, aggregation],
+            "reflection_reports": [
+                ReflectionReport(
+                    candidate_id=indexing.candidate_id,
+                    reflector_specialty="logic",
+                    verdict="accept",
+                    rationale="Supported.",
+                ),
+                ReflectionReport(
+                    candidate_id=aggregation.candidate_id,
+                    reflector_specialty="logic",
+                    verdict="accept",
+                    rationale="Supported.",
+                ),
+            ],
+            "metadata": {},
+        }
+    )
+
+    assert {finding.id for finding in out["findings"]} == {"indexing", "aggregation"}
+    meta = out["metadata"]["adversarial_cleanup"]
+    assert "semantic_equivalence_duplicates" not in meta
+    assert meta["semantic_equivalence_audits"][0]["verdict"] == "distinct"
 
 
 def test_cleanup_drops_scope_claim_contradicted_by_code_evidence() -> None:

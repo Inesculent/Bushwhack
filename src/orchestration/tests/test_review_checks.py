@@ -1752,6 +1752,8 @@ def test_review_check_executor_downgrades_dimension_thin_no_finding(monkeypatch)
     assert result.decision == "unsupported"
     assert "llm_suppression_audit_insufficient" in result.warnings
     assert len(fake.prompts) == 2
+    meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
+    assert meta["suppression_audits"][check.check_id]["verdict"] == "insufficient"
 
 
 def test_review_check_executor_keeps_dimension_specific_no_finding(monkeypatch) -> None:
@@ -1775,9 +1777,22 @@ def test_review_check_executor_keeps_dimension_specific_no_finding(monkeypatch) 
             )
         ]
     )
+    audit = SuppressionAuditOutput(
+        items=[
+            SuppressionAuditItem(
+                check_id=check.check_id,
+                verdict="sufficient",
+                rationale="The suppression directly addresses field and slot preservation.",
+            )
+        ]
+    )
+    fake = _FakeLLM([
+        {"parsed": output, "raw": _Raw()},
+        {"parsed": audit, "raw": _Raw()},
+    ])
     monkeypatch.setattr(
         "src.orchestration.nodes.application.review_checks.Models.worker",
-        lambda *_args, **_kwargs: _FakeLLM({"parsed": output, "raw": _Raw()}),
+        lambda *_args, **_kwargs: fake,
     )
 
     out = make_review_check_executor_node()(_state(review_checks=[check]))  # type: ignore[arg-type]
@@ -1889,9 +1904,22 @@ def test_review_check_executor_source_only_abstains_on_unconditional_return(monk
             )
         ]
     )
+    audit = SuppressionAuditOutput(
+        items=[
+            SuppressionAuditItem(
+                check_id=check.check_id,
+                verdict="sufficient",
+                rationale="The suppression directly addresses the missing-return check.",
+            )
+        ]
+    )
+    fake = _FakeLLM([
+        {"parsed": output, "raw": _Raw()},
+        {"parsed": audit, "raw": _Raw()},
+    ])
     monkeypatch.setattr(
         "src.orchestration.nodes.application.review_checks.Models.worker",
-        lambda *_args, **_kwargs: _FakeLLM({"parsed": output, "raw": _Raw()}),
+        lambda *_args, **_kwargs: fake,
     )
     state = _state(
         review_checks=[check],
@@ -2105,6 +2133,58 @@ def test_review_check_executor_retries_missing_batch_results(monkeypatch) -> Non
         "executor_missing_result_after_retry" in result.warnings
         for result in out["review_check_results"]
     )
+
+
+def test_review_check_executor_canonicalizes_duplicate_results(monkeypatch) -> None:
+    check = _check()
+    candidate = CandidateFinding(
+        candidate_id="review-logic:check:1:candidate",
+        patch_task_id="review-logic",
+        file_path="src/app.py",
+        line_start=1,
+        line_end=3,
+        content="handle returns the wrong result on a changed path",
+        claim_type="defect",
+        failure_mode="wrong result",
+        evidence_summary="changed handle implementation returns the wrong value",
+        confidence=0.8,
+        suspected_category="logic",
+        feedback_type="defect_detection",
+        severity="high",
+        recommendation="Return the declared result for the changed path.",
+    )
+    output = ReviewCheckExecutorOutput(
+        results=[
+            ReviewCheckResult(
+                check_id=check.check_id,
+                patch_task_id="review-logic",
+                decision="unsupported",
+                missing_evidence=["changed handle implementation"],
+            ),
+            ReviewCheckResult(
+                check_id=check.check_id,
+                patch_task_id="review-logic",
+                decision="candidate",
+                evidence_refs=["src/app.py:1"],
+                reportable_reason="The changed path returns the wrong result.",
+                candidate=candidate,
+            ),
+        ]
+    )
+    monkeypatch.setattr(
+        "src.orchestration.nodes.application.review_checks.Models.worker",
+        lambda *_args, **_kwargs: _FakeLLM({"parsed": output, "raw": _Raw()}),
+    )
+
+    out = make_review_check_executor_node()(_state(review_checks=[check]))  # type: ignore[arg-type]
+
+    assert len(out["review_check_results"]) == 1
+    result = out["review_check_results"][0]
+    assert result.decision == "candidate"
+    assert result.candidate is not None
+    meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
+    assert meta["executor_duplicate_result_check_ids"] == [check.check_id]
+    assert meta["executor_result_count_before_canonicalization"] == 2
 
 
 def test_review_check_executor_marks_missing_after_retry_without_candidate(monkeypatch) -> None:

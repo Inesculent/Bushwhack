@@ -991,6 +991,71 @@ def _render_suppression_audit_prompt(
     )
 
 
+def _check_has_concrete_suppression_contract(check: ReviewCheck) -> bool:
+    return bool(
+        any(str(item).strip() for item in check.report_criteria)
+        and any(str(item).strip() for item in check.suppress_criteria)
+    )
+
+
+def _check_file_in_changed_task_files(check: ReviewCheck, task_files: set[str]) -> bool:
+    normalized = check.file_path.strip().replace("\\", "/")
+    return bool(normalized and normalized in task_files)
+
+
+def _source_local_no_finding_should_be_audited(
+    *,
+    result: ReviewCheckResult,
+    check: ReviewCheck,
+    slot: Mapping[str, Any],
+    task_files: set[str],
+) -> bool:
+    if result.decision != "no_finding" or not result.evidence_refs or not result.suppressing_evidence:
+        return False
+    if no_finding_needs_semantic_suppression_audit(result, check):
+        return True
+    return (
+        _check_has_concrete_suppression_contract(check)
+        and _check_file_in_changed_task_files(check, task_files)
+        and _compiled_check_is_source_local(check, None, slot, task_files)
+    )
+
+
+def _executor_result_rank(result: ReviewCheckResult) -> int:
+    if result.decision == "candidate" and result.candidate is not None:
+        return 50
+    if result.decision == "no_finding" and "llm_suppression_audit_sufficient" in result.warnings:
+        return 40
+    if result.decision == "no_finding":
+        return 30
+    if result.decision == "unsupported":
+        return 20
+    if result.decision == "budget_exhausted":
+        return 10
+    return 0
+
+
+def _canonicalize_executor_results(
+    results: Sequence[ReviewCheckResult],
+) -> tuple[List[ReviewCheckResult], List[str]]:
+    best: Dict[str, tuple[int, int, ReviewCheckResult]] = {}
+    order: List[str] = []
+    counts: Dict[str, int] = {}
+    for index, result in enumerate(results):
+        check_id = result.check_id
+        counts[check_id] = counts.get(check_id, 0) + 1
+        if check_id not in best:
+            order.append(check_id)
+            best[check_id] = (_executor_result_rank(result), index, result)
+            continue
+        rank = _executor_result_rank(result)
+        old_rank, old_index, _old = best[check_id]
+        if (rank, index) >= (old_rank, old_index):
+            best[check_id] = (rank, index, result)
+    duplicates = [check_id for check_id, count in counts.items() if count > 1]
+    return [best[check_id][2] for check_id in order], duplicates
+
+
 def _audit_no_finding_suppressions(
     *,
     state: GraphState,
@@ -1001,15 +1066,22 @@ def _audit_no_finding_suppressions(
     llm_tokens: int,
     llm_trace: List[Dict[str, Any]],
     warnings: List[str],
-) -> tuple[List[ReviewCheckResult], int, List[Dict[str, Any]], List[str]]:
+) -> tuple[List[ReviewCheckResult], int, List[Dict[str, Any]], List[str], Dict[str, Dict[str, Any]]]:
     checks_by_id = {check.check_id: check for check in checks}
+    slot = _pipeline_slot(state, task.id)
+    task_files = _changed_task_files(state, task)
     targets = [
         result for result in results
         if result.check_id in checks_by_id
-        and no_finding_needs_semantic_suppression_audit(result, checks_by_id[result.check_id])
+        and _source_local_no_finding_should_be_audited(
+            result=result,
+            check=checks_by_id[result.check_id],
+            slot=slot,
+            task_files=task_files,
+        )
     ]
     if not targets:
-        return results, llm_tokens, llm_trace, warnings
+        return results, llm_tokens, llm_trace, warnings, {}
     prompt = _render_suppression_audit_prompt(task=task, checks_by_id=checks_by_id, results=targets)
     audit_by_id: Dict[str, SuppressionAuditItem] = {}
     try:
@@ -1037,12 +1109,14 @@ def _audit_no_finding_suppressions(
         warnings.append(f"review_check_suppression_audit_failed:{exc.__class__.__name__}: {exc}")
     audited: List[ReviewCheckResult] = []
     target_ids = {result.check_id for result in targets}
+    audit_meta: Dict[str, Dict[str, Any]] = {}
     for result in results:
         if result.check_id not in target_ids:
             audited.append(result)
             continue
         item = audit_by_id.get(result.check_id)
         if item is not None and item.verdict == "sufficient":
+            audit_meta[result.check_id] = item.model_dump(mode="json")
             audited.append(
                 result.model_copy(
                     update={
@@ -1058,6 +1132,16 @@ def _audit_no_finding_suppressions(
             warning = "llm_suppression_audit_missing_or_failed"
         elif item.verdict == "unsupported":
             warning = "llm_suppression_audit_unsupported"
+        audit_meta[result.check_id] = (
+            item.model_dump(mode="json")
+            if item is not None
+            else {
+                "check_id": result.check_id,
+                "verdict": "unsupported",
+                "rationale": "suppression audit missing or failed",
+                "missing_evidence": missing[:3],
+            }
+        )
         audited.append(
             result.model_copy(
                 update={
@@ -1070,7 +1154,7 @@ def _audit_no_finding_suppressions(
             )
         )
         warnings.append(f"{warning}:{result.check_id}")
-    return audited, llm_tokens, llm_trace, warnings
+    return audited, llm_tokens, llm_trace, warnings, audit_meta
 
 
 def make_review_check_executor_node(
@@ -1100,8 +1184,11 @@ def make_review_check_executor_node(
         llm_trace: List[Dict[str, Any]] = []
         results: List[ReviewCheckResult] = []
         missing_result_check_ids: List[str] = []
+        duplicate_result_check_ids: List[str] = []
+        result_count_before_canonicalization = 0
         executor_retry_count = 0
         executor_retry_success_count = 0
+        suppression_audits: Dict[str, Dict[str, Any]] = {}
 
         if use_llm:
             selected_model = model_key or resolved.reviewer_worker_model_key
@@ -1223,7 +1310,16 @@ def make_review_check_executor_node(
                                     warnings=["executor_missing_result_after_retry"],
                                 )
                             )
-                    batch_results, llm_tokens, llm_trace, warnings = _audit_no_finding_suppressions(
+                    result_count_before_canonicalization += len(batch_results)
+                    batch_results, batch_duplicate_ids = _canonicalize_executor_results(batch_results)
+                    duplicate_result_check_ids.extend(batch_duplicate_ids)
+                    (
+                        batch_results,
+                        llm_tokens,
+                        llm_trace,
+                        warnings,
+                        batch_audits,
+                    ) = _audit_no_finding_suppressions(
                         state=state,
                         task=task,
                         checks=batch,
@@ -1233,6 +1329,7 @@ def make_review_check_executor_node(
                         llm_trace=llm_trace,
                         warnings=warnings,
                     )
+                    suppression_audits.update(batch_audits)
                     results.extend(batch_results)
                     warnings.extend(response.warnings)
                     warnings.extend(norm_warnings)
@@ -1261,6 +1358,12 @@ def make_review_check_executor_node(
                 )
                 for check in checks
             ]
+            result_count_before_canonicalization = len(results)
+        else:
+            if result_count_before_canonicalization < len(results):
+                result_count_before_canonicalization = len(results)
+            results, final_duplicate_ids = _canonicalize_executor_results(results)
+            duplicate_result_check_ids.extend(final_duplicate_ids)
 
         metadata = _set_task_review_checks_meta(
             state,
@@ -1280,8 +1383,11 @@ def make_review_check_executor_node(
                 "executor_batch_size": _EXECUTOR_BATCH_SIZE,
                 "executor_batch_count": len(_check_batches(checks)),
                 "executor_missing_result_check_ids": list(dict.fromkeys(missing_result_check_ids)),
+                "executor_duplicate_result_check_ids": list(dict.fromkeys(duplicate_result_check_ids)),
+                "executor_result_count_before_canonicalization": result_count_before_canonicalization,
                 "executor_retry_count": executor_retry_count,
                 "executor_retry_success_count": executor_retry_success_count,
+                "suppression_audits": suppression_audits,
             },
         )
         if _trace_enabled(state):

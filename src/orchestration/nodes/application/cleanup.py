@@ -61,6 +61,20 @@ class RevisionSupportAuditOutput(BaseModel):
     verdict: Literal["resolved", "unresolved", "unsupported"] = "unsupported"
     rationale: str = Field(default="", max_length=500)
     warnings: List[str] = Field(default_factory=list)
+
+
+class SemanticEquivalenceAuditItem(BaseModel):
+    finding_id: str
+    equivalent_to: str
+    verdict: Literal["same_issue", "distinct", "unsupported"] = "unsupported"
+    rationale: str = Field(default="", max_length=500)
+
+
+class SemanticEquivalenceAuditOutput(BaseModel):
+    items: List[SemanticEquivalenceAuditItem] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
+
+
 _CONCRETE_LOCAL_SYMPTOMS = frozenset(
     {
         "wrong_output",
@@ -937,6 +951,89 @@ def _focused_context_payload_for_candidate(state: GraphState, candidate_id: str)
     return out[:3]
 
 
+def _lines_overlap_or_close(a: ReviewFinding, b: ReviewFinding, *, distance: int = 40) -> bool:
+    if a.line_end < b.line_start:
+        return b.line_start - a.line_end <= distance
+    if b.line_end < a.line_start:
+        return a.line_start - b.line_end <= distance
+    return True
+
+
+def _reflection_duplicate_hint(reports: Sequence[ReflectionReport]) -> bool:
+    return any("duplicate" in str(report.rationale or "").lower() for report in reports)
+
+
+def _semantic_equivalence_pairs(
+    findings: Sequence[ReviewFinding],
+    raw_by_cand: Mapping[str, Sequence[ReflectionReport]],
+) -> List[Dict[str, Any]]:
+    pairs: List[Dict[str, Any]] = []
+    keys = {finding.id: review_finding_semantic_key(finding) for finding in findings}
+    for left_index, left in enumerate(findings):
+        for right in findings[left_index + 1 :]:
+            left_key = keys[left.id]
+            right_key = keys[right.id]
+            same_file = left_key[0] == right_key[0]
+            same_subject = bool(left_key[1] and left_key[1] == right_key[1])
+            close_lines = left.file_path == right.file_path and _lines_overlap_or_close(left, right)
+            left_reports = list(raw_by_cand.get(left.id, []))
+            right_reports = list(raw_by_cand.get(right.id, []))
+            duplicate_hint = _reflection_duplicate_hint(left_reports) or _reflection_duplicate_hint(right_reports)
+            if not (same_file and (same_subject or close_lines or duplicate_hint)):
+                continue
+            pairs.append(
+                {
+                    "finding_a": left.model_dump(mode="json"),
+                    "finding_b": right.model_dump(mode="json"),
+                    "selection_reason": {
+                        "same_subject": same_subject,
+                        "close_lines": close_lines,
+                        "reflection_duplicate_hint": duplicate_hint,
+                    },
+                    "reflection_a": [report.model_dump(mode="json") for report in left_reports[:3]],
+                    "reflection_b": [report.model_dump(mode="json") for report in right_reports[:3]],
+                }
+            )
+            if len(pairs) >= 8:
+                return pairs
+    return pairs
+
+
+def _render_semantic_equivalence_audit_prompt(pairs: Sequence[Mapping[str, Any]]) -> str:
+    return (
+        "Audit possible duplicate final review findings.\n"
+        "Return same_issue only when two findings describe the same root cause, the same violated behavior, "
+        "and substantially the same practical fix. Preserve distinct findings when they cover different "
+        "dimensions, symptoms, triggers, data elements, or fixes, even on the same surface.\n"
+        "Return distinct for nearby but orthogonal issues. Return unsupported if the provided material is "
+        "insufficient to decide.\n\n"
+        f"Pairs JSON:\n{json_for_cleanup_prompt(list(pairs), max_chars=18000)}"
+    )
+
+
+def _apply_semantic_equivalence_audit(
+    findings: Sequence[ReviewFinding],
+    audit: SemanticEquivalenceAuditOutput,
+) -> tuple[List[ReviewFinding], Dict[str, List[str]]]:
+    by_id = {finding.id: finding for finding in findings}
+    order = {finding.id: index for index, finding in enumerate(findings)}
+    duplicates: Dict[str, List[str]] = {}
+    dropped: set[str] = set()
+    for item in audit.items:
+        if item.verdict != "same_issue":
+            continue
+        left = item.finding_id
+        right = item.equivalent_to
+        if left not in by_id or right not in by_id or left == right:
+            continue
+        if left in dropped or right in dropped:
+            continue
+        keeper, duplicate = (left, right) if order[left] <= order[right] else (right, left)
+        dropped.add(duplicate)
+        duplicates.setdefault(keeper, []).append(duplicate)
+    return [finding for finding in findings if finding.id not in dropped], duplicates
+
+
 def _verifier_concrete_behavior_verified(candidate_id: str, verifier_hints: Mapping[str, Any]) -> bool:
     hint = verifier_hints.get(candidate_id)
     if not isinstance(hint, dict):
@@ -1691,8 +1788,42 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
         resource_filtered = ensure_unique_finding_ids(resource_filtered)
         promoted, finding_duplicates = dedupe_review_findings_by_signature(resource_filtered)
         promoted = ensure_unique_finding_ids(promoted)
+        semantic_equivalence_audits: List[Dict[str, Any]] = []
+        semantic_equivalence_duplicates: Dict[str, List[str]] = {}
+        semantic_equivalence_warnings: List[str] = []
+        equivalence_pairs = _semantic_equivalence_pairs(promoted, raw_by_cand)
+        if equivalence_pairs:
+            try:
+                llm = Models.worker(
+                    SemanticEquivalenceAuditOutput,
+                    model_key=selected_model,
+                    max_completion_tokens=1200,
+                )
+                traced = trace_llm_call(
+                    llm,
+                    _render_semantic_equivalence_audit_prompt(equivalence_pairs),
+                    state=state,
+                    node_name="adversarial_cleanup_semantic_equivalence_audit",
+                    model_key=selected_model,
+                    schema_name="SemanticEquivalenceAuditOutput",
+                    input_summary={"pair_count": len(equivalence_pairs)},
+                )
+                audit = parse_structured_output(traced.result, SemanticEquivalenceAuditOutput)
+                llm_tokens += traced.tokens
+                llm_trace.extend(traced.trace_records)
+                semantic_equivalence_audits = [item.model_dump(mode="json") for item in audit.items]
+                semantic_equivalence_warnings.extend(audit.warnings)
+                promoted, semantic_equivalence_duplicates = _apply_semantic_equivalence_audit(promoted, audit)
+            except Exception as exc:  # noqa: BLE001
+                llm_trace.extend(trace_from_exception(exc))
+                semantic_equivalence_warnings.append(
+                    f"semantic_equivalence_audit_failed:{exc.__class__.__name__}: {exc}"
+                )
+        promoted = ensure_unique_finding_ids(promoted)
         dropped_semantic_finding_ids = [
             fid for ids in finding_duplicates.values() for fid in ids
+        ] + [
+            fid for ids in semantic_equivalence_duplicates.values() for fid in ids
         ] + dropped_resource_ids
 
         if _trace_enabled(state):
@@ -1718,6 +1849,12 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
             cleanup_meta["semantic_dedupe_duplicates"] = semantic_duplicates
         if finding_duplicates:
             cleanup_meta["semantic_dedupe_finding_duplicates"] = finding_duplicates
+        if semantic_equivalence_audits:
+            cleanup_meta["semantic_equivalence_audits"] = semantic_equivalence_audits
+        if semantic_equivalence_duplicates:
+            cleanup_meta["semantic_equivalence_duplicates"] = semantic_equivalence_duplicates
+        if semantic_equivalence_warnings:
+            cleanup_meta["semantic_equivalence_warnings"] = semantic_equivalence_warnings
         if revision_support_audits:
             cleanup_meta["revision_support_audits"] = revision_support_audits
         metadata["adversarial_cleanup"] = cleanup_meta

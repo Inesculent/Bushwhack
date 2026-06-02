@@ -117,6 +117,43 @@ def file_contents_from_slot(slot: Mapping[str, Any]) -> Mapping[str, str] | None
     return None
 
 
+def _behavioral_defaults_for_check(check: ReviewCheck) -> tuple[str, str]:
+    blob = " ".join([str(check.lens), check.affected_invariant, check.behavioral_question]).lower()
+    if check.lens == "error_propagation":
+        return "uncaught_exception", "exception_scope"
+    if check.lens == "resource_lifecycle":
+        return "unbounded_work", "resource_use"
+    if check.lens == "data_shape_consistency":
+        if any(term in blob for term in ("index", "slot", "field", "bound")):
+            return "data_loss", "indexing"
+        if any(term in blob for term in ("aggregat", "join", "serial")):
+            return "data_loss", "aggregation"
+        return "data_loss", "serialization"
+    if check.lens in {"api_compatibility", "input_validation", "permission_boundary", "test_oracle_strength"}:
+        return "contract_mismatch", "contract"
+    if check.lens == "state_transition":
+        return "wrong_output", "dispatch"
+    if check.lens == "concurrency_ordering":
+        return "wrong_output", "resource_use"
+    return "other", "other"
+
+
+def candidate_with_check_behavioral_metadata(
+    candidate: CandidateFinding,
+    check: ReviewCheck,
+) -> CandidateFinding:
+    """Fill missing generic behavior identity from the originating check."""
+    symptom, root = _behavioral_defaults_for_check(check)
+    updates: dict[str, str] = {}
+    if not candidate.behavioral_symptom:
+        updates["behavioral_symptom"] = symptom
+    if not candidate.root_operation:
+        updates["root_operation"] = root
+    if not updates:
+        return candidate
+    return candidate.model_copy(update=updates)
+
+
 def file_evidence_is_complete(slot: Mapping[str, Any], file_path: str) -> bool:
     te = slot.get("task_evidence") if isinstance(slot.get("task_evidence"), dict) else {}
     if not isinstance(te, dict):
@@ -297,6 +334,7 @@ def normalize_executor_results(
         result = raw.model_copy(update={"patch_task_id": task.id})
         candidate = result.candidate
         if candidate is not None:
+            candidate = candidate_with_check_behavioral_metadata(candidate, check)
             cid = candidate.candidate_id.strip() or f"{check.check_id}:candidate"
             patched = candidate.model_copy(
                 update={
