@@ -260,6 +260,58 @@ def test_review_check_coverage_floor_uses_surface_anchor() -> None:
     assert compiled[0]["changed_code_anchor"] == "handle"
 
 
+def test_review_check_compiler_narrows_generic_execute_surface_to_named_anchor(monkeypatch) -> None:
+    regex = ReviewSurface(
+        surface_id="surface:regex",
+        name="RegexExtract",
+        kind="class",
+        file_path="src/app.py",
+        line_start=20,
+        line_end=40,
+        confidence=0.95,
+    )
+    execute = ReviewSurface(
+        surface_id="surface:execute",
+        name="execute",
+        kind="function",
+        file_path="src/app.py",
+        line_start=25,
+        line_end=35,
+        confidence=0.95,
+    )
+    task = _task().model_copy(update={"surface_ids": [regex.surface_id, execute.surface_id]})
+    output = ReviewCheckCompilerOutput(
+        summary="compiled",
+        checks=[
+            _check(
+                check_id="review-logic:check:regex",
+                changed_code_anchor="RegexExtract",
+                behavioral_question="Does RegexExtract validate group_index before accessing match groups?",
+                surface_ids=[],
+                line_start=20,
+                line_end=40,
+            )
+        ],
+    )
+    monkeypatch.setattr(
+        "src.orchestration.nodes.application.review_checks.Models.worker",
+        lambda *_args, **_kwargs: _FakeLLM({"parsed": output, "raw": _Raw()}),
+    )
+    state = _state(
+        task_registry={task.id: task},
+        metadata={
+            **_state()["metadata"],
+            "mental_model": {"surface_ledger": [regex.model_dump(mode="json"), execute.model_dump(mode="json")]},
+        },
+    )
+
+    out = make_review_check_compiler_node()(state)  # type: ignore[arg-type]
+
+    compiled = out["metadata"]["review_checks"]["by_task"]["review-logic"]["compiled_checks"]
+    check = next(item for item in compiled if item["check_id"] == "review-logic:check:regex")
+    assert check["surface_ids"] == ["surface:regex"]
+
+
 def test_review_check_compiler_adds_behavior_check_for_uncovered_symbol(monkeypatch) -> None:
     handle = ReviewSurface(
         surface_id="surface:handle",

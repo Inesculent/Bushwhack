@@ -30,7 +30,8 @@ from src.orchestration.context.surface_ledger import (
     surface_inventory_names,
     surface_ledger_from_state,
 )
-from src.orchestration.nodes.application.planner import _extract_files_from_diff, _target_files
+from src.orchestration.context.surface_ledger import changed_files_from_diff
+from src.orchestration.nodes.application.planner import _target_files
 from src.orchestration.prompts.renderer import render_reviewer_prompt
 from src.orchestration.review_principles import DECLARED_INPUT_CONTRACT_GUIDANCE
 
@@ -164,7 +165,7 @@ def make_intent_extractor_node(settings: Settings | None = None, *, use_llm: boo
                     node_name=node_name,
                     model_key=resolved.reviewer_worker_model_key,
                     schema_name="IntentExtractorOutput",
-                    input_summary={"changed_files": _extract_files_from_diff(state.get("git_diff", "") or "")},
+                    input_summary={"changed_files": changed_files_from_diff(state.get("git_diff", "") or "")},
                 )
                 invoke_result = traced.result
                 out = parse_structured_output(invoke_result, IntentExtractorOutput)
@@ -178,7 +179,7 @@ def make_intent_extractor_node(settings: Settings | None = None, *, use_llm: boo
                 logger.warning("%s LLM fallback: %s", node_name, exc)
 
         if not intent_summary:
-            files = _extract_files_from_diff(state.get("git_diff", "") or "")
+            files = changed_files_from_diff(state.get("git_diff", "") or "")
             goals = str(state.get("user_goals", "") or "")
             intent_summary = (
                 f"Heuristic intent: change touches {len(files)} file(s). "

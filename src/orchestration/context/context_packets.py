@@ -24,6 +24,7 @@ from src.domain.schemas import (
     CandidateFinding,
     FocusedContextResult,
     ReviewTask,
+    StructuralTopologySummary,
 )
 from src.domain.state import GraphState
 from src.infrastructure.behavioral_spec_store import BehavioralSpecStore
@@ -35,6 +36,7 @@ from src.orchestration.context.mandate_loop_context import (
     spec_excerpt_for_prompt,
 )
 from src.orchestration.context.surface_ledger import (
+    changed_files_from_diff,
     compact_surface_ledger_json,
     surface_inventory_names,
     surface_ledger_from_state,
@@ -44,6 +46,7 @@ from src.orchestration.nodes.application.worker import ReviewTaskContext
 from src.orchestration.review_principles import REVIEW_PRINCIPLES_VERSION, principles_for_specialty
 
 PACKET_VERSION = "0"
+_MAX_PLANNER_RELATED_ITEMS = 8
 
 AUTHORITY_NOTES = (
     "Authority: (1) diff/code slices, (2) tool results, (3) task mandate, "
@@ -311,6 +314,136 @@ def _extract_files_from_diff(git_diff: str) -> List[str]:
             if path and path != "/dev/null":
                 files.append(path)
     return files
+
+
+def _extract_files_from_structural_graph(state: GraphState) -> List[str]:
+    graph_payload = state.get("structural_graph_node_link") or {}
+    nodes = graph_payload.get("nodes", []) if isinstance(graph_payload, dict) else []
+    file_paths: List[str] = []
+    seen: set[str] = set()
+    for node in nodes:
+        if not isinstance(node, dict):
+            continue
+        if node.get("node_type") != "file" or not isinstance(node.get("file_path"), str):
+            continue
+        file_path = node["file_path"].strip().replace("\\", "/")
+        if file_path and file_path not in seen:
+            seen.add(file_path)
+            file_paths.append(file_path)
+    return file_paths
+
+
+def _planner_target_files(state: GraphState) -> List[str]:
+    diff_files = changed_files_from_diff(state.get("git_diff", "") or "")
+    if diff_files:
+        return diff_files
+    return _extract_files_from_structural_graph(state)
+
+
+def _structural_routing_hints(state: GraphState, changed_files: List[str]) -> Dict[str, Any]:
+    """Summarize only changed-file structural signals useful for task routing."""
+    graph_payload = state.get("structural_graph_node_link") or {}
+    topology = state.get("structural_topology")
+    if topology is not None and not isinstance(topology, StructuralTopologySummary):
+        topology = StructuralTopologySummary.model_validate(topology)
+    if not isinstance(graph_payload, dict):
+        return {"changed_files": changed_files}
+
+    nodes = graph_payload.get("nodes", [])
+    edges = graph_payload.get("edges", [])
+    if not isinstance(nodes, list) or not isinstance(edges, list):
+        return {"changed_files": changed_files}
+
+    node_by_id = {
+        str(node.get("id", "")): node
+        for node in nodes
+        if isinstance(node, dict) and node.get("id") is not None
+    }
+    file_node_ids = {path: f"file:{path}" for path in changed_files}
+
+    neighbor_ids_by_file: Dict[str, set[str]] = {path: set() for path in changed_files}
+    edge_counts_by_file: Dict[str, int] = {path: 0 for path in changed_files}
+    for edge in edges:
+        if not isinstance(edge, dict):
+            continue
+        source = str(edge.get("source", ""))
+        target = str(edge.get("target", ""))
+        for path, file_node_id in file_node_ids.items():
+            if source == file_node_id and target:
+                neighbor_ids_by_file[path].add(target)
+                edge_counts_by_file[path] += 1
+            elif target == file_node_id and source:
+                neighbor_ids_by_file[path].add(source)
+                edge_counts_by_file[path] += 1
+
+    community_by_id = topology.node_to_community if topology is not None else {}
+    community_stats: Dict[int, Dict[str, Any]] = {}
+    if topology is not None:
+        community_stats = {
+            community.community_id: {
+                "cohesion": community.cohesion,
+                "file_count": community.file_count,
+                "symbol_count": community.symbol_count,
+            }
+            for community in topology.communities
+        }
+
+    file_ids_by_community: Dict[int, List[str]] = {}
+    for node_id, node in node_by_id.items():
+        if node.get("node_type") != "file":
+            continue
+        cid = community_by_id.get(node_id)
+        if cid is None:
+            continue
+        fp = node.get("file_path")
+        if isinstance(fp, str):
+            file_ids_by_community.setdefault(cid, []).append(fp)
+
+    hints: List[Dict[str, Any]] = []
+    for path in changed_files:
+        file_node_id = file_node_ids[path]
+        community_id = community_by_id.get(file_node_id)
+        neighbor_nodes = [node_by_id.get(node_id, {}) for node_id in neighbor_ids_by_file[path]]
+        defined_symbols = sorted(
+            {
+                str(node.get("symbol_name"))
+                for node in neighbor_nodes
+                if node.get("node_type") == "symbol" and node.get("symbol_name")
+            }
+        )
+        related_files = sorted(
+            {
+                str(node.get("file_path"))
+                for node in neighbor_nodes
+                if node.get("node_type") == "file" and node.get("file_path") and node.get("file_path") != path
+            }
+        )
+        if community_id is not None:
+            related_files.extend(
+                fp
+                for fp in sorted(file_ids_by_community.get(community_id, []))
+                if fp != path and fp not in related_files
+            )
+
+        hints.append(
+            {
+                "file_path": path,
+                "community_id": community_id,
+                "community": community_stats.get(community_id) if community_id is not None else None,
+                "direct_edge_count": edge_counts_by_file[path],
+                "defined_or_adjacent_symbols": defined_symbols[:_MAX_PLANNER_RELATED_ITEMS],
+                "related_files": related_files[:_MAX_PLANNER_RELATED_ITEMS],
+            }
+        )
+
+    return {
+        "changed_file_count": len(changed_files),
+        "structural_node_count": len(nodes),
+        "structural_edge_count": len(edges),
+        "topology_algorithm": topology.algorithm if topology is not None else None,
+        "topology_community_count": topology.community_count if topology is not None else None,
+        "changed_file_hints": hints,
+    }
 
 
 def pr_context_from_state(state: GraphState) -> tuple[str, str]:
@@ -675,12 +808,8 @@ def build_draft_planner_packet(
 ) -> ContextPacket:
     """Planner prompt sections (mandate context + structural hints + diff)."""
     settings = settings or get_settings()
-    from src.orchestration.nodes.application.planner import (
-        _structural_routing_hints,
-        _target_files,
-    )
 
-    files = _target_files(state)
+    files = _planner_target_files(state)
     preflight = state.get("preflight_summary")
     insights = state.get("global_insights", []) or []
     git_diff = state.get("git_diff", "") or ""

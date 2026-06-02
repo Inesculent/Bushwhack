@@ -16,6 +16,7 @@ from src.orchestration.nodes.application.planner import (
     _is_duplicate_task,
     _normalize_tasks,
     _render_planner_prompt,
+    _target_files,
     _task_covers_structured_extraction,
     dedupe_tasks_by_surface_dimension,
     finalize_emitted_tasks,
@@ -83,6 +84,36 @@ def test_amend_diff_narrowed_tasks_expands_logic_scope_after_bootstrap() -> None
     assert "entry point" in out[0].description.lower()
 
 
+def test_amend_diff_narrowed_tasks_removes_generic_excerpt_limiting_scope() -> None:
+    state = {
+        "git_diff": "",
+        "metadata": {
+            "mental_model": {
+                "bootstrap_completed": True,
+                "diff_surface_inventory": ["Alpha", "Beta", "Gamma", "Delta"],
+            }
+        },
+    }
+    narrow = ReviewTask(
+        id="logic-visible-subset",
+        title="Diff-local correctness for displayed subset",
+        description=(
+            "Audit the changed handlers. Restrict review to code shown in the snippet; "
+            "ignore handlers that are not included in the displayed patch."
+        ),
+        target_files=["pkg/nodes.py"],
+        specialty="logic",
+    )
+
+    out = _amend_diff_narrowed_tasks([narrow], state)
+
+    lowered = out[0].description.lower()
+    assert "restrict review" not in lowered
+    assert "ignore handlers" not in lowered
+    assert "Alpha" in out[0].description
+    assert "entry point" in lowered
+
+
 def test_diff_signals_structured_extraction_from_findall_and_join() -> None:
     diff = "\n".join(
         [
@@ -109,7 +140,7 @@ def test_mega_logic_checklist_does_not_block_structured_extraction_task() -> Non
     assert _task_covers_structured_extraction(mega) is False
 
 
-def test_chunk_monolithic_logic_into_class_scoped_shards() -> None:
+def test_chunk_monolithic_logic_into_surface_scoped_shards() -> None:
     surfaces = [f"Node{i}" for i in range(10)]
     state = {
         "git_diff": "diff --git a/pkg/h.py b/pkg/h.py\n+++ b/pkg/h.py\n+import re\n+re.findall(x)\n",
@@ -128,7 +159,7 @@ def test_chunk_monolithic_logic_into_class_scoped_shards() -> None:
     )
     logic = [t for t in out if t.specialty == "logic"]
     assert len(logic) >= 5
-    assert all("do not review any other class" in t.description.lower() for t in logic)
+    assert all("do not review any other surface" in t.description.lower() for t in logic)
     mentioned = {name for t in logic for name in surfaces if name in t.description}
     assert mentioned == set(surfaces)
 
@@ -235,6 +266,22 @@ def test_surface_plan_validation_rejects_non_changed_target_file() -> None:
     assert diagnostics["invalid_target_files"] == [
         {"task_id": "logic-handle", "file_path": "tests/test_app.py"}
     ]
+
+
+def test_target_files_uses_canonical_new_paths_for_renames() -> None:
+    diff = (
+        "diff --git a/src/old_name.py b/src/new_name.py\n"
+        "similarity index 88%\n"
+        "rename from src/old_name.py\n"
+        "rename to src/new_name.py\n"
+        "--- a/src/old_name.py\n"
+        "+++ b/src/new_name.py\n"
+        "@@ -1 +1 @@\n"
+        "-old = True\n"
+        "+new = True\n"
+    )
+
+    assert _target_files({"git_diff": diff}) == ["src/new_name.py"]
 
 
 def test_changed_file_integrity_guard_adds_missing_metadata_surface() -> None:
@@ -745,6 +792,46 @@ def test_plan_emit_still_blocks_surface_invalid_plan_after_budget() -> None:
     assert [task_id for task_id in out["task_registry"] if task_id != out["root_task_id"]] == []
 
 
+def test_plan_emit_prunes_non_changed_context_target_when_changed_target_remains() -> None:
+    diff = (
+        "diff --git a/src/app.py b/src/app.py\n"
+        "+++ b/src/app.py\n"
+        "@@ -0,0 +1,2 @@\n"
+        "+def handle():\n"
+        "+    return None\n"
+    )
+    task = ReviewTask(
+        id="test-coverage",
+        title="Test coverage for changed behavior",
+        description="Audit tests and changed implementation.",
+        target_files=["tests/", "src/app.py"],
+        specialty="general",
+    )
+    state = {
+        "git_diff": diff,
+        "metadata": {
+            "actor_critic_planner": {
+                "draft_tasks": [task.model_dump(mode="json")],
+                "revision_count": 99,
+                "aligned": False,
+                "last_critique": {"gaps": "missing boundaries"},
+            },
+            "mental_model": {"coupled_loop": {"cycles": 99}},
+        },
+    }
+
+    out = make_plan_emit_node()(state)
+
+    assert out["next_step"] == "review"
+    emitted = out["task_registry"]["test-coverage"]
+    assert emitted.target_files == ["src/app.py"]
+    validation = out["metadata"]["review_planner"]["plan_validation"]
+    assert validation["invalid_target_files"] == []
+    assert validation["task_target_files_pruned"] == [
+        {"task_id": "test-coverage", "dropped": ["tests/"], "kept": ["src/app.py"]}
+    ]
+
+
 def test_plan_emit_allows_aligned_surface_bound_plan() -> None:
     diff = (
         "diff --git a/src/app.py b/src/app.py\n"
@@ -830,7 +917,7 @@ def test_sanitize_batched_logic_strips_cross_surface_boilerplate() -> None:
     )
     cleaned = _sanitize_batched_logic_task_description(task, state, inventory)
     assert "Audit every changed entry point in:" not in cleaned
-    assert "do not review any other class" in cleaned.lower()
+    assert "do not review any other surface" in cleaned.lower()
 
 
 def test_finalize_emitted_tasks_injects_structured_logic_task() -> None:
@@ -908,8 +995,8 @@ def test_ensure_diff_local_not_skipped_when_only_structured_scoped_task() -> Non
             id="review-logic-structured-extraction",
             title="Structured extraction and aggregation",
             description=(
-                "Audit structured extraction and aggregation in changed handlers. "
-                "Do not review any other class in the target file."
+                "Audit structured extraction and aggregation in changed entry points. "
+                "Do not review any other surface in the target file."
             ),
             target_files=["pkg/h.py"],
             specialty="logic",

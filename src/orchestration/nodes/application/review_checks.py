@@ -297,6 +297,40 @@ def _surface_anchor_update(surface_ids: List[str], state: GraphState) -> Dict[st
     return update
 
 
+def _narrow_surface_ids_to_anchor(
+    surface_ids: List[str],
+    *,
+    anchor: str,
+    question: str,
+    by_id: Mapping[str, ReviewSurface],
+) -> List[str]:
+    if len(surface_ids) <= 1:
+        return surface_ids
+    valid = [sid for sid in surface_ids if sid in by_id]
+    if len(valid) <= 1:
+        return valid
+    blob = f"{anchor} {question}".lower()
+    concrete = [
+        sid for sid in valid
+        if by_id[sid].kind != "file" and by_id[sid].name.lower() not in {"execute", "input_types"}
+    ]
+    mentioned_concrete = [
+        sid for sid in concrete
+        if by_id[sid].name.lower() in blob
+    ]
+    if len(mentioned_concrete) == 1:
+        return [mentioned_concrete[0]]
+    if len(mentioned_concrete) > 1:
+        return valid
+    anchor_lower = anchor.strip().lower()
+    exact = [sid for sid in concrete if by_id[sid].name.lower() == anchor_lower]
+    if len(exact) == 1:
+        return [exact[0]]
+    if len(concrete) == 1:
+        return [concrete[0]]
+    return valid
+
+
 def _fallback_checks(state: GraphState, task: ReviewTask, slot: Mapping[str, Any]) -> List[ReviewCheck]:
     obligations = _rotate_tied_obligations(_ranked_coverage_obligations(task, slot))
     checks: List[ReviewCheck] = []
@@ -1422,6 +1456,7 @@ def _normalize_compiled_checks(
     seen: set[str] = set()
     fallback_path = task.target_files[0] if task.target_files else ""
     ledger = surface_ledger_from_state(state)
+    by_id = surface_by_id(ledger)
     for index, check in enumerate(checks, start=1):
         cid = check.check_id.strip() or f"{task.id}:check:{index}"
         if not cid.startswith(task.id):
@@ -1430,7 +1465,7 @@ def _normalize_compiled_checks(
             cid = f"{cid}:{index}"
         seen.add(cid)
         path = check.file_path.strip().replace("\\", "/") or fallback_path
-        surface_ids = [sid for sid in check.surface_ids if sid in surface_by_id(ledger)]
+        surface_ids = [sid for sid in check.surface_ids if sid in by_id]
         if ledger and not surface_ids:
             surface_ids = _surface_ids_for_check_context(
                 task=task,
@@ -1438,6 +1473,12 @@ def _normalize_compiled_checks(
                 anchor=f"{check.changed_code_anchor} {check.behavioral_question}",
                 state=state,
             )
+        surface_ids = _narrow_surface_ids_to_anchor(
+            surface_ids,
+            anchor=check.changed_code_anchor,
+            question=check.behavioral_question,
+            by_id=by_id,
+        )
         anchor_update = _surface_anchor_update(surface_ids[:1], state)
         if anchor_update:
             path = str(anchor_update.get("file_path") or path)

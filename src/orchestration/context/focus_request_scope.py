@@ -6,7 +6,7 @@ from typing import Iterable, Sequence
 
 from src.domain.schemas import FocusedContextRequest
 from src.domain.state import GraphState
-from src.orchestration.nodes.application.planner import _extract_files_from_diff
+from src.orchestration.context.surface_ledger import changed_files_from_diff
 
 
 def _norm_path(path: str) -> str:
@@ -21,7 +21,7 @@ def allowed_review_paths(
 ) -> frozenset[str]:
     """Paths the reviewer may read for this PR (diff-visible files plus explicit anchors)."""
     paths: list[str] = []
-    paths.extend(_extract_files_from_diff(state.get("git_diff", "") or ""))
+    paths.extend(changed_files_from_diff(state.get("git_diff", "") or ""))
     if task_target_files:
         paths.extend(task_target_files)
     if candidate_file_path and candidate_file_path.strip():

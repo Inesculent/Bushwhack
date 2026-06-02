@@ -17,7 +17,7 @@ from src.orchestration.context.review_context import (
     structural_neighbor_summary,
     symbol_call_edges_for_file,
 )
-from src.orchestration.nodes.application.planner import _extract_files_from_diff, _target_files
+from src.orchestration.nodes.application.planner import _target_files
 
 logger = logging.getLogger(__name__)
 
