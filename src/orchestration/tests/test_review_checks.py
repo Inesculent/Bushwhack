@@ -2196,6 +2196,53 @@ def test_review_check_executor_retries_missing_batch_results(monkeypatch) -> Non
     )
 
 
+def test_review_check_executor_compact_retries_missing_result_length_limit(monkeypatch) -> None:
+    class LengthFinishReasonError(Exception):
+        pass
+
+    checks = [_check(check_id=f"review-logic:check:{idx}") for idx in range(1, 3)]
+    prompts: list[str] = []
+    actions: list[Any] = [
+        ReviewCheckExecutorOutput(
+            results=[
+                ReviewCheckResult(
+                    check_id=checks[0].check_id,
+                    patch_task_id="review-logic",
+                    decision="unsupported",
+                    missing_evidence=["changed handle implementation"],
+                )
+            ]
+        ),
+        LengthFinishReasonError("Could not parse response content as the length limit was reached"),
+        ReviewCheckExecutorOutput(
+            results=[
+                ReviewCheckResult(
+                    check_id=checks[1].check_id,
+                    patch_task_id="review-logic",
+                    decision="unsupported",
+                    missing_evidence=["declared return contract"],
+                )
+            ]
+        ),
+    ]
+    monkeypatch.setattr(
+        "src.orchestration.nodes.application.review_checks.Models.worker",
+        lambda *_args, **_kwargs: _SequencedLLM(actions, prompts),
+    )
+
+    out = make_review_check_executor_node()(_state(review_checks=checks))  # type: ignore[arg-type]
+
+    assert [result.check_id for result in out["review_check_results"]] == [check.check_id for check in checks]
+    assert len(prompts) == 3
+    assert "This retry contains exactly one input check" in prompts[2]
+    meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
+    assert meta["executor_retry_count"] == 1
+    assert meta["executor_retry_success_count"] == 1
+    assert meta["executor_length_limit_retry_count"] == 1
+    assert meta["executor_length_limit_retry_success_count"] == 1
+    assert "executor_length_limit_missing_retry:1" in meta["executor_warnings"]
+
+
 def test_review_check_executor_canonicalizes_duplicate_results(monkeypatch) -> None:
     check = _check()
     candidate = CandidateFinding(
@@ -2480,6 +2527,110 @@ def test_review_check_executor_stages_candidate_in_result(monkeypatch) -> None:
     assert out["token_usage"] == 7
 
 
+def test_review_check_executor_synthesizes_missing_candidate_payload(monkeypatch) -> None:
+    check = _check()
+    output = ReviewCheckExecutorOutput(
+        results=[
+            ReviewCheckResult(
+                check_id=check.check_id,
+                patch_task_id="review-logic",
+                decision="candidate",
+                evidence_refs=["src/app.py:1"],
+                reportable_reason="The changed handle path returns None on a reachable changed path.",
+            )
+        ]
+    )
+    monkeypatch.setattr(
+        "src.orchestration.nodes.application.review_checks.Models.worker",
+        lambda *_args, **_kwargs: _FakeLLM({"parsed": output, "raw": _Raw()}),
+    )
+
+    out = make_review_check_executor_node()(_state(review_checks=[check]))  # type: ignore[arg-type]
+
+    result = out["review_check_results"][0]
+    assert result.decision == "candidate"
+    assert result.candidate is not None
+    assert result.candidate.candidate_id == f"{check.check_id}:candidate"
+    assert "executor_candidate_payload_synthesized" in result.warnings
+    meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
+    assert meta["executor_candidate_payload_synthesized_check_ids"] == [check.check_id]
+
+
+def test_review_check_executor_downgrades_missing_candidate_payload_without_evidence(monkeypatch) -> None:
+    check = _check()
+    output = ReviewCheckExecutorOutput(
+        results=[
+            ReviewCheckResult(
+                check_id=check.check_id,
+                patch_task_id="review-logic",
+                decision="candidate",
+                reportable_reason="Maybe there is a problem.",
+            )
+        ]
+    )
+    monkeypatch.setattr(
+        "src.orchestration.nodes.application.review_checks.Models.worker",
+        lambda *_args, **_kwargs: _FakeLLM({"parsed": output, "raw": _Raw()}),
+    )
+
+    out = make_review_check_executor_node()(_state(review_checks=[check]))  # type: ignore[arg-type]
+
+    result = out["review_check_results"][0]
+    assert result.decision == "unsupported"
+    assert result.candidate is None
+    assert "executor_candidate_missing_payload" in result.warnings
+    meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
+    assert meta["executor_candidate_missing_payload_check_ids"] == [check.check_id]
+
+
+def test_review_check_executor_audits_schema_only_fallback_suppression(monkeypatch) -> None:
+    check = _check(
+        behavioral_question="Does execute have an explicit fallback for unexpected mode values?",
+        affected_invariant="dispatch fallback completeness",
+        report_criteria=["A reachable unexpected mode falls through without a return."],
+        suppress_criteria=["The fallback or schema enforcement directly handles unexpected modes."],
+    )
+    output = ReviewCheckExecutorOutput(
+        results=[
+            ReviewCheckResult(
+                check_id=check.check_id,
+                patch_task_id="review-logic",
+                decision="no_finding",
+                evidence_refs=["src/app.py:1"],
+                suppressing_evidence=[
+                    "The declared mode enum lists all visible options, so no explicit fallback is needed."
+                ],
+            )
+        ]
+    )
+    audit = SuppressionAuditOutput(
+        items=[
+            SuppressionAuditItem(
+                check_id=check.check_id,
+                verdict="insufficient",
+                rationale="The suppression relies on declared options but does not prove fallback handling.",
+                missing_evidence=["fallback handling for unexpected mode values"],
+            )
+        ]
+    )
+    fake = _FakeLLM([
+        {"parsed": output, "raw": _Raw()},
+        {"parsed": audit, "raw": _Raw()},
+    ])
+    monkeypatch.setattr(
+        "src.orchestration.nodes.application.review_checks.Models.worker",
+        lambda *_args, **_kwargs: fake,
+    )
+
+    out = make_review_check_executor_node()(_state(review_checks=[check]))  # type: ignore[arg-type]
+
+    result = out["review_check_results"][0]
+    assert result.decision == "unsupported"
+    assert "llm_suppression_audit_insufficient" in result.warnings
+    meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
+    assert meta["suppression_audits"][check.check_id]["verdict"] == "insufficient"
+
+
 def test_review_check_evidence_gate_promotes_only_supported_candidates_and_records_gate_results() -> None:
     good = CandidateFinding(
         candidate_id="review-logic:check:1:candidate",
@@ -2557,6 +2708,30 @@ def test_review_check_evidence_gate_records_candidate_liveness_warning() -> None
     gate = out["metadata"]["review_checks"]["by_task"]["review-logic"]["gate"]
     assert "no_executor_candidates_for_valid_checks" in gate["health_warnings"]
     assert "evidence_gate_not_exercised" in gate["health_warnings"]
+
+
+def test_review_check_evidence_gate_records_malformed_candidate_result() -> None:
+    out = make_review_check_evidence_gate_node()(
+        _state(
+            review_checks=[_check()],
+            review_check_results=[
+                ReviewCheckResult(
+                    check_id="review-logic:check:1",
+                    patch_task_id="review-logic",
+                    decision="candidate",
+                    evidence_refs=["src/app.py:1"],
+                    reportable_reason="The changed path returns the wrong result.",
+                )
+            ],
+        )
+    )  # type: ignore[arg-type]
+
+    result = out["review_check_results"][0]
+    assert result.gate_decision == "dropped"
+    assert result.gate_reason == "candidate_payload_missing"
+    gate = out["metadata"]["review_checks"]["by_task"]["review-logic"]["gate"]
+    assert gate["malformed_candidate_result_check_ids"] == ["review-logic:check:1"]
+    assert gate["reason_counts"] == {"candidate_payload_missing": 1}
 
 
 def test_check_mode_routing(monkeypatch) -> None:

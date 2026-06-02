@@ -796,6 +796,8 @@ def test_build_test_generator_prompt_escapes_python_braces() -> None:
     assert "PngImagePlugin" in text
     assert "comfy.comfy_types" not in text
     assert "inspect.signature" in text
+    assert "Do not stub or shadow Python standard-library modules" in text
+    assert "`typing`" in text
 
 
 def test_build_test_generator_prompt_uses_execution_workspace_root() -> None:

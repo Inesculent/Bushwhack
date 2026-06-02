@@ -190,6 +190,9 @@ def test_verifier_finalize_node() -> None:
 def test_verifier_finalize_records_env_metadata() -> None:
     attempt = VerifierAttemptRecord(
         attempt_number=1,
+        exit_code=2,
+        stdout="STATUS: HARNESS_ERROR | setup failed",
+        stderr="ModuleNotFoundError: No module named 'missing_dep'",
         env_metadata={
             "status": "usable",
             "fingerprint": "abc123",
@@ -219,6 +222,16 @@ def test_verifier_finalize_records_env_metadata() -> None:
     assert env["target_files"] == ["pkg/mod.py"]
     assert env["target_import_probes"][0]["module"] == "pkg.mod"
     assert env["dependency_install_policy"] == "targeted_only"
+    report = res["verifier_reports"][0]
+    assert report.metadata["verifier_env_repair_hints_used"] is True
+    assert report.metadata["verifier_repeated_harness_error_count"] == 1
+    assert report.metadata["verifier_unrepaired_missing_modules"] == ["missing_dep", "torch"]
+    hint = res["metadata"]["verifier_hints"]["c1"]
+    assert hint["verifier_env_repair_hints_used"] is True
+    assert hint["verifier_unrepaired_missing_modules"] == ["missing_dep", "torch"]
+    summary = res["metadata"]["verifier"]["failure_summary_by_candidate"]["c1"]
+    assert summary["verifier_repeated_harness_error_count"] == 1
+    assert summary["verifier_unrepaired_missing_modules"] == ["missing_dep", "torch"]
 
 
 def test_verifier_graph_retries_after_harness_failure() -> None:
@@ -228,8 +241,12 @@ def test_verifier_graph_retries_after_harness_failure() -> None:
         test_code="broken",
         exit_code=2,
         stdout="STATUS: HARNESS_ERROR | SyntaxError: invalid syntax",
-        stderr="",
+        stderr="ModuleNotFoundError: No module named 'missing_dep'",
         sandbox_mode="harness_preflight",
+        env_metadata={
+            "missing_modules": ["heavy_dep"],
+            "target_import_probes": [{"module": "pkg.mod", "status": "failed"}],
+        },
     )
     ok_record = VerifierAttemptRecord(
         attempt_number=2,
@@ -263,6 +280,8 @@ def test_verifier_graph_retries_after_harness_failure() -> None:
     assert len(generate_calls) == 2
     assert generate_calls[1].get("retry_feedback", "").strip() not in ("", "(none)")
     assert "signature_mismatch" in generate_calls[1]["retry_feedback"] or "harness_error" in generate_calls[1]["retry_feedback"] or "syntax_error" in generate_calls[1]["retry_feedback"]
+    assert "Missing modules seen: missing_dep, heavy_dep" in generate_calls[1]["retry_feedback"]
+    assert "Failed target import probes: pkg.mod" in generate_calls[1]["retry_feedback"]
     assert final_state["verifier_verdict"] == "refuted"
     hint = final_state["metadata"]["verifier_hints"]["c1"]
     assert hint["harness_error"] is True

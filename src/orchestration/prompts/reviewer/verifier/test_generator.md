@@ -36,6 +36,8 @@ When mock_heavy_deps is **disabled**, do not mock torch/PIL unless an import act
    - If imports fail before product code is invoked, print `STATUS: HARNESS_ERROR` and exit 2; do not report these as product crashes.
    - On import failure: add **minimal** `sys.modules` stubs only for names appearing in the traceback (e.g. one missing attribute on a namespace — do not copy a fixed enum list for a specific framework).
 
+   - Do not stub or shadow Python standard-library modules such as `typing`, `types`, `re`, `inspect`, `importlib`, `os`, or `sys`; import them normally. When stubbing package trees, preserve real standard-library imports.
+
 3. Import **only** what you need from the repo; avoid `pytest` / `unittest` test runners.
 
 4. Exercise the code path around `{file_path}` near lines {line_start}-{line_end} using the **failure_mode** field as guidance.

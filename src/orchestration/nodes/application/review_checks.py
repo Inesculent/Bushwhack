@@ -1248,6 +1248,109 @@ def make_review_check_executor_node(
 
         if use_llm:
             selected_model = model_key or resolved.reviewer_worker_model_key
+            changed_task_files = set(_changed_task_files(state, task))
+
+            def _run_compact_length_retry(
+                *,
+                check: ReviewCheck,
+                batch_index: int,
+            ) -> tuple[List[ReviewCheckResult], bool]:
+                nonlocal llm_tokens, llm_trace, result_count_before_canonicalization
+                nonlocal length_limit_retry_count, length_limit_retry_success_count
+                nonlocal warnings
+                length_limit_retry_count += 1
+                try:
+                    retry_llm = Models.worker(
+                        ReviewCheckExecutorOutput,
+                        model_key=selected_model,
+                        max_completion_tokens=resolved.reviewer_critiquer_max_completion_tokens,
+                    )
+                    retry_prompt = _render_executor_prompt(
+                        state,
+                        task,
+                        [check],
+                        slot,
+                        compact_retry=True,
+                    )
+                    retry_traced = trace_llm_call(
+                        retry_llm,
+                        retry_prompt,
+                        state=state,
+                        node_name=node_name,
+                        model_key=selected_model,
+                        schema_name="ReviewCheckExecutorOutput",
+                        request_label="compact_length_retry",
+                        input_summary={
+                            "task_id": task.id,
+                            "batch": batch_index,
+                            "length_limit_retry_check_id": check.check_id,
+                        },
+                    )
+                    retry_response = parse_structured_output(
+                        retry_traced.result,
+                        ReviewCheckExecutorOutput,
+                    )
+                    llm_tokens += retry_traced.tokens
+                    llm_trace.extend(retry_traced.trace_records)
+                    retry_results, retry_warnings = _support_normalize_executor_results(
+                        state=state,
+                        task=task,
+                        slot=slot,
+                        checks=[check],
+                        results=retry_response.results,
+                        git_diff=state.get("git_diff", "") or "",
+                        check_budget_remaining=_check_budget_remaining,
+                        evidence_requirements_for_check=_evidence_requirements_for_check,
+                        compiled_check_is_source_local=lambda item: _compiled_check_is_source_local(
+                            item,
+                            None,
+                            slot,
+                            changed_task_files,
+                        ),
+                        include_missing_results=False,
+                    )
+                    retry_present = any(result.check_id == check.check_id for result in retry_results)
+                    if not retry_present:
+                        raise ValueError("compact length retry returned no result for requested check")
+                    result_count_before_canonicalization += len(retry_results)
+                    retry_results, retry_duplicate_ids = _canonicalize_executor_results(retry_results)
+                    duplicate_result_check_ids.extend(retry_duplicate_ids)
+                    (
+                        retry_results,
+                        llm_tokens,
+                        llm_trace,
+                        warnings,
+                        retry_audits,
+                    ) = _audit_no_finding_suppressions(
+                        state=state,
+                        task=task,
+                        checks=[check],
+                        results=retry_results,
+                        selected_model=selected_model,
+                        llm_tokens=llm_tokens,
+                        llm_trace=llm_trace,
+                        warnings=warnings,
+                    )
+                    suppression_audits.update(retry_audits)
+                    warnings.extend(retry_response.warnings)
+                    warnings.extend(retry_warnings)
+                    length_limit_retry_success_count += 1
+                    return retry_results, True
+                except Exception as retry_exc:  # noqa: BLE001
+                    llm_trace.extend(trace_from_exception(retry_exc))
+                    length_limit_retry_failed_check_ids.append(check.check_id)
+                    warnings.append(f"executor_length_limit_retry_failed:{check.check_id}")
+                    result_count_before_canonicalization += 1
+                    return [
+                        ReviewCheckResult(
+                            check_id=check.check_id,
+                            patch_task_id=task.id,
+                            decision="unsupported",
+                            missing_evidence=_missing_evidence_for_weak_no_finding(check),
+                            warnings=["executor_length_limit_retry_failed"],
+                        )
+                    ], False
+
             for batch_index, batch in enumerate(_check_batches(checks), start=1):
                 try:
                     llm = Models.worker(
@@ -1272,7 +1375,6 @@ def make_review_check_executor_node(
                     response = parse_structured_output(traced.result, ReviewCheckExecutorOutput)
                     llm_tokens += traced.tokens
                     llm_trace.extend(traced.trace_records)
-                    changed_task_files = set(_changed_task_files(state, task))
                     batch_results, norm_warnings = _support_normalize_executor_results(
                         state=state,
                         task=task,
@@ -1346,17 +1448,29 @@ def make_review_check_executor_node(
                             ]
                         except Exception as retry_exc:  # noqa: BLE001
                             llm_trace.extend(trace_from_exception(retry_exc))
-                            warnings.append(
-                                f"{node_name}_retry_failed:{batch_index}:{retry_exc.__class__.__name__}: {retry_exc}"
-                            )
-                            logger.warning(
-                                "%s retry failed for task_id=%s batch=%s: %s",
-                                node_name,
-                                task.id,
-                                batch_index,
-                                retry_exc,
-                            )
-                            still_missing = missing_checks
+                            if _is_length_finish_error(retry_exc):
+                                warnings.append(f"executor_length_limit_missing_retry:{batch_index}")
+                                still_missing = []
+                                for check in missing_checks:
+                                    compact_results, compact_success = _run_compact_length_retry(
+                                        check=check,
+                                        batch_index=batch_index,
+                                    )
+                                    batch_results.extend(compact_results)
+                                    if compact_success:
+                                        executor_retry_success_count += 1
+                            else:
+                                warnings.append(
+                                    f"{node_name}_retry_failed:{batch_index}:{retry_exc.__class__.__name__}: {retry_exc}"
+                                )
+                                logger.warning(
+                                    "%s retry failed for task_id=%s batch=%s: %s",
+                                    node_name,
+                                    task.id,
+                                    batch_index,
+                                    retry_exc,
+                                )
+                                still_missing = missing_checks
                         for check in still_missing:
                             batch_results.append(
                                 ReviewCheckResult(
@@ -1406,100 +1520,12 @@ def make_review_check_executor_node(
                             batch_index,
                             [check.check_id for check in batch],
                         )
-                        changed_task_files = set(_changed_task_files(state, task))
                         for check in batch:
-                            length_limit_retry_count += 1
-                            try:
-                                retry_llm = Models.worker(
-                                    ReviewCheckExecutorOutput,
-                                    model_key=selected_model,
-                                    max_completion_tokens=resolved.reviewer_critiquer_max_completion_tokens,
-                                )
-                                retry_prompt = _render_executor_prompt(
-                                    state,
-                                    task,
-                                    [check],
-                                    slot,
-                                    compact_retry=True,
-                                )
-                                retry_traced = trace_llm_call(
-                                    retry_llm,
-                                    retry_prompt,
-                                    state=state,
-                                    node_name=node_name,
-                                    model_key=selected_model,
-                                    schema_name="ReviewCheckExecutorOutput",
-                                    request_label="compact_length_retry",
-                                    input_summary={
-                                        "task_id": task.id,
-                                        "batch": batch_index,
-                                        "length_limit_retry_check_id": check.check_id,
-                                    },
-                                )
-                                retry_response = parse_structured_output(
-                                    retry_traced.result,
-                                    ReviewCheckExecutorOutput,
-                                )
-                                llm_tokens += retry_traced.tokens
-                                llm_trace.extend(retry_traced.trace_records)
-                                retry_results, retry_warnings = _support_normalize_executor_results(
-                                    state=state,
-                                    task=task,
-                                    slot=slot,
-                                    checks=[check],
-                                    results=retry_response.results,
-                                    git_diff=state.get("git_diff", "") or "",
-                                    check_budget_remaining=_check_budget_remaining,
-                                    evidence_requirements_for_check=_evidence_requirements_for_check,
-                                    compiled_check_is_source_local=lambda item: _compiled_check_is_source_local(
-                                        item,
-                                        None,
-                                        slot,
-                                        changed_task_files,
-                                    ),
-                                    include_missing_results=False,
-                                )
-                                retry_present = any(result.check_id == check.check_id for result in retry_results)
-                                if not retry_present:
-                                    raise ValueError("compact length retry returned no result for requested check")
-                                result_count_before_canonicalization += len(retry_results)
-                                retry_results, retry_duplicate_ids = _canonicalize_executor_results(retry_results)
-                                duplicate_result_check_ids.extend(retry_duplicate_ids)
-                                (
-                                    retry_results,
-                                    llm_tokens,
-                                    llm_trace,
-                                    warnings,
-                                    retry_audits,
-                                ) = _audit_no_finding_suppressions(
-                                    state=state,
-                                    task=task,
-                                    checks=[check],
-                                    results=retry_results,
-                                    selected_model=selected_model,
-                                    llm_tokens=llm_tokens,
-                                    llm_trace=llm_trace,
-                                    warnings=warnings,
-                                )
-                                results.extend(retry_results)
-                                suppression_audits.update(retry_audits)
-                                warnings.extend(retry_response.warnings)
-                                warnings.extend(retry_warnings)
-                                length_limit_retry_success_count += 1
-                            except Exception as retry_exc:  # noqa: BLE001
-                                llm_trace.extend(trace_from_exception(retry_exc))
-                                length_limit_retry_failed_check_ids.append(check.check_id)
-                                warnings.append(f"executor_length_limit_retry_failed:{check.check_id}")
-                                result_count_before_canonicalization += 1
-                                results.append(
-                                    ReviewCheckResult(
-                                        check_id=check.check_id,
-                                        patch_task_id=task.id,
-                                        decision="unsupported",
-                                        missing_evidence=_missing_evidence_for_weak_no_finding(check),
-                                        warnings=["executor_length_limit_retry_failed"],
-                                    )
-                                )
+                            compact_results, _compact_success = _run_compact_length_retry(
+                                check=check,
+                                batch_index=batch_index,
+                            )
+                            results.extend(compact_results)
                         continue
                     warnings.append(f"{node_name}_batch_failed:{batch_index}:{exc.__class__.__name__}: {exc}")
                     logger.warning("%s failed for task_id=%s batch=%s: %s", node_name, task.id, batch_index, exc)
@@ -1530,6 +1556,16 @@ def make_review_check_executor_node(
                 result_count_before_canonicalization = len(results)
             results, final_duplicate_ids = _canonicalize_executor_results(results)
             duplicate_result_check_ids.extend(final_duplicate_ids)
+        synthesized_candidate_check_ids = [
+            warning.split(":", 1)[1]
+            for warning in warnings
+            if warning.startswith("executor_candidate_payload_synthesized:")
+        ]
+        missing_candidate_payload_check_ids = [
+            warning.split(":", 1)[1]
+            for warning in warnings
+            if warning.startswith("executor_candidate_missing_payload:")
+        ]
 
         metadata = _set_task_review_checks_meta(
             state,
@@ -1553,6 +1589,12 @@ def make_review_check_executor_node(
                 "executor_result_count_before_canonicalization": result_count_before_canonicalization,
                 "executor_retry_count": executor_retry_count,
                 "executor_retry_success_count": executor_retry_success_count,
+                "executor_candidate_payload_synthesized_check_ids": list(
+                    dict.fromkeys(synthesized_candidate_check_ids)
+                ),
+                "executor_candidate_missing_payload_check_ids": list(
+                    dict.fromkeys(missing_candidate_payload_check_ids)
+                ),
                 "executor_length_limit_batch_failures": length_limit_batch_failures,
                 "executor_length_limit_retry_count": length_limit_retry_count,
                 "executor_length_limit_retry_success_count": length_limit_retry_success_count,
@@ -1671,11 +1713,26 @@ def make_review_check_evidence_gate_node():
         lifecycle: Dict[str, Any] = {}
         gated_results: List[ReviewCheckResult] = []
         gate_reason_counts: Dict[str, int] = {}
+        malformed_candidate_result_check_ids: List[str] = []
         dropped = 0
         for result in _results_for_task(state, task.id):
             check = checks.get(result.check_id)
             candidate = result.candidate
-            if result.decision != "candidate" or candidate is None or check is None:
+            if result.decision == "candidate" and candidate is None:
+                reason = "candidate_payload_missing"
+                malformed_candidate_result_check_ids.append(result.check_id)
+                dropped += 1
+                gated_results.append(
+                    result.model_copy(update={"gate_decision": "dropped", "gate_reason": reason})
+                )
+                lifecycle[result.check_id] = {
+                    "decision": "dropped",
+                    "check_id": result.check_id,
+                    "reason": reason,
+                }
+                gate_reason_counts[reason] = gate_reason_counts.get(reason, 0) + 1
+                continue
+            if result.decision != "candidate" or check is None:
                 continue
             passed, reason = _candidate_passes_gate(candidate, result, check)
             if passed:
@@ -1730,6 +1787,7 @@ def make_review_check_evidence_gate_node():
                     "evaluated_count": len(gated_results),
                     "reason_counts": gate_reason_counts,
                     "candidate_lifecycle": lifecycle,
+                    "malformed_candidate_result_check_ids": malformed_candidate_result_check_ids,
                     "health_warnings": health_warnings,
                     "unsupported_high_confidence_surface_ids": high_confidence_unsupported_surfaces,
                 },

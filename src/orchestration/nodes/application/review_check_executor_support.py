@@ -104,6 +104,25 @@ _AGGREGATION_PRESERVATION_MARKERS = (
     "entry",
     "entries",
 )
+_FALLBACK_EXHAUSTIVENESS_MARKERS = (
+    "fallback",
+    "fallthrough",
+    "fall through",
+    "default",
+    "else",
+    "unexpected",
+    "invalid",
+    "exhaustive",
+    "exhaustiveness",
+)
+_SCHEMA_SUPPRESSION_MARKERS = (
+    "schema",
+    "enum",
+    "combo",
+    "declared option",
+    "declared mode",
+    "input_types",
+)
 
 
 def _has_any(text: str, markers: Iterable[str]) -> bool:
@@ -152,6 +171,56 @@ def candidate_with_check_behavioral_metadata(
     if not updates:
         return candidate
     return candidate.model_copy(update=updates)
+
+
+def _candidate_payload_is_concrete(result: ReviewCheckResult) -> bool:
+    if result.suppressing_evidence:
+        return False
+    if not result.reportable_reason.strip() or not result.evidence_refs:
+        return False
+    blob = result.reportable_reason.lower()
+    if _has_any(blob, _INSUFFICIENT_EVIDENCE_MARKERS):
+        return False
+    return True
+
+
+def _synthesize_candidate_from_result(
+    *,
+    task: ReviewTask,
+    check: ReviewCheck,
+    result: ReviewCheckResult,
+) -> CandidateFinding | None:
+    if not _candidate_payload_is_concrete(result):
+        return None
+    symptom, operation = _behavioral_defaults_for_check(check)
+    specialty = task.specialty if task.specialty in {"security", "performance", "logic", "general"} else "general"
+    category = specialty if specialty in {"security", "performance", "logic", "general"} else "other"
+    reason = result.reportable_reason.strip()
+    invariant = check.affected_invariant.strip() or check.behavioral_question.strip()
+    recommendation = (
+        f"Update the changed path so it preserves: {invariant}."
+        if invariant
+        else "Update the changed path so it satisfies the check's report criteria."
+    )
+    return CandidateFinding(
+        candidate_id=f"{check.check_id}:candidate",
+        patch_task_id=task.id,
+        file_path=check.file_path,
+        line_start=check.line_start,
+        line_end=check.line_end,
+        content=reason[:600],
+        claim_type="defect",
+        failure_mode=(invariant or reason)[:400],
+        evidence_summary=reason[:400],
+        confidence=0.65,
+        suspected_category=category,  # type: ignore[arg-type]
+        reflection_specialties=[specialty],  # type: ignore[list-item]
+        feedback_type="defect_detection",
+        severity="medium",
+        recommendation=recommendation[:400],
+        behavioral_symptom=symptom,  # type: ignore[arg-type]
+        root_operation=operation,  # type: ignore[arg-type]
+    )
 
 
 def file_evidence_is_complete(slot: Mapping[str, Any], file_path: str) -> bool:
@@ -223,6 +292,11 @@ def no_finding_needs_semantic_suppression_audit(
         for category, markers in _DIMENSION_MARKERS.items()
         if _has_any(check_blob, markers)
     }
+    if _has_any(check_blob, _FALLBACK_EXHAUSTIVENESS_MARKERS) and _has_any(
+        blob,
+        _SCHEMA_SUPPRESSION_MARKERS,
+    ):
+        return True
     if categories and _has_any(blob, _OUTER_ONLY_SUPPRESSION_MARKERS):
         if "aggregation" in categories and not _has_any(blob, _AGGREGATION_PRESERVATION_MARKERS):
             return True
@@ -333,6 +407,35 @@ def normalize_executor_results(
         check = by_check[raw.check_id]
         result = raw.model_copy(update={"patch_task_id": task.id})
         candidate = result.candidate
+        if result.decision == "candidate" and candidate is None:
+            candidate = _synthesize_candidate_from_result(
+                task=task,
+                check=check,
+                result=result,
+            )
+            if candidate is not None:
+                warnings.append(f"executor_candidate_payload_synthesized:{check.check_id}")
+                result = result.model_copy(
+                    update={
+                        "candidate": candidate,
+                        "warnings": list(result.warnings) + ["executor_candidate_payload_synthesized"],
+                    }
+                )
+            else:
+                warnings.append(f"executor_candidate_missing_payload:{check.check_id}")
+                result = result.model_copy(
+                    update={
+                        "decision": "unsupported",
+                        "candidate": None,
+                        "missing_evidence": result.missing_evidence
+                        or missing_evidence_for_weak_no_finding(
+                            check,
+                            evidence_requirements_for_check,
+                        ),
+                        "warnings": list(result.warnings) + ["executor_candidate_missing_payload"],
+                    }
+                )
+                candidate = None
         if candidate is not None:
             candidate = candidate_with_check_behavioral_metadata(candidate, check)
             cid = candidate.candidate_id.strip() or f"{check.check_id}:candidate"

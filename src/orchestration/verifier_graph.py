@@ -22,6 +22,7 @@ from src.orchestration.nodes.verifier.result_judge import (
     infer_verification_scope,
     judge_attempt,
     missing_modules_from_attempts,
+    verifier_env_diagnostics_for_attempts,
     verifier_hint_flags_for_attempts,
 )
 from src.orchestration.nodes.verifier.sandbox_executor import execute_test_script
@@ -263,6 +264,24 @@ def verifier_finalize_node(state: GraphState) -> Dict[str, Any]:
         stdout=last_attempt.stdout if last_attempt is not None else "",
         stderr=last_attempt.stderr if last_attempt is not None else "",
     )
+    env_diagnostics = verifier_env_diagnostics_for_attempts(
+        report.attempts,
+        target_file_path=target_file_path,
+    )
+    env_hints_used = bool(
+        env_diagnostics["missing_modules"]
+        or env_diagnostics["failed_target_import_probes"]
+        or env_diagnostics["repeated_harness_error_count"] >= 2
+    )
+    report.metadata.update(
+        {
+            "harness_error": harness_error,
+            "product_verified": product_verified,
+            "verifier_env_repair_hints_used": env_hints_used,
+            "verifier_repeated_harness_error_count": env_diagnostics["repeated_harness_error_count"],
+            "verifier_unrepaired_missing_modules": env_diagnostics["missing_modules"],
+        }
+    )
     hints[report.candidate_id] = {
         "verdict": report.verdict,
         "verification_scope": report.verification_scope,
@@ -276,6 +295,9 @@ def verifier_finalize_node(state: GraphState) -> Dict[str, Any]:
         "confidence": confidence,
         "failure_classes": [a.failure_class for a in report.attempts if a.failure_class],
         "top_missing_modules": missing_modules_from_attempts(report.attempts)[:10],
+        "verifier_env_repair_hints_used": env_hints_used,
+        "verifier_repeated_harness_error_count": env_diagnostics["repeated_harness_error_count"],
+        "verifier_unrepaired_missing_modules": env_diagnostics["missing_modules"],
     }
     meta["verifier_hints"] = hints
     env_meta = dict(meta.get("verifier_env") or {})
@@ -308,6 +330,9 @@ def verifier_finalize_node(state: GraphState) -> Dict[str, Any]:
         "top_missing_modules": missing_modules_from_attempts(report.attempts)[:10],
         "product_verified": product_verified,
         "harness_error": harness_error,
+        "verifier_env_repair_hints_used": env_hints_used,
+        "verifier_repeated_harness_error_count": env_diagnostics["repeated_harness_error_count"],
+        "verifier_unrepaired_missing_modules": env_diagnostics["missing_modules"],
     }
     vrun["failure_summary_by_candidate"] = failure_by_candidate
     meta["verifier"] = vrun
