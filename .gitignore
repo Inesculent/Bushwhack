@@ -15,6 +15,7 @@ opencode.json
 .logs/
 logs/
 knowledge-base/
+pet-runs/
 
 # Keep template env files if added.
 !.env.example

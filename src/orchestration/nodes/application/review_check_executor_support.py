@@ -22,30 +22,25 @@ _INSUFFICIENT_EVIDENCE_MARKERS = (
     "evidence is insufficient",
 )
 
-_SOURCE_ONLY_BACKSTOP_MARKERS = (
-    "syntax",
-    "parse",
-    "import",
-    "missing return",
-    "return",
-    "fallthrough",
-    "fall through",
-    "branch",
-    "structured",
-    "extraction",
-    "regex",
-    "findall",
-    "tuple",
-    "join",
-    "data loss",
-)
-
-
 def file_contents_from_slot(slot: Mapping[str, Any]) -> Mapping[str, str] | None:
     te = slot.get("task_evidence") if isinstance(slot.get("task_evidence"), dict) else {}
     if isinstance(te, dict) and isinstance(te.get("file_contents"), dict):
         return te["file_contents"]
     return None
+
+
+def file_evidence_is_complete(slot: Mapping[str, Any], file_path: str) -> bool:
+    te = slot.get("task_evidence") if isinstance(slot.get("task_evidence"), dict) else {}
+    if not isinstance(te, dict):
+        return False
+    files = te.get("file_contents") if isinstance(te.get("file_contents"), dict) else {}
+    if not isinstance(files, dict):
+        return False
+    normalized = file_path.strip().replace("\\", "/")
+    if not normalized or not str(files.get(normalized) or "").strip():
+        return False
+    complete = te.get("files_complete") if isinstance(te.get("files_complete"), dict) else {}
+    return bool(complete.get(normalized) or complete.get(file_path))
 
 
 def missing_evidence_for_weak_no_finding(
@@ -73,10 +68,13 @@ def source_only_backstop_candidate(
     *,
     state: GraphState,
     task: ReviewTask,
+    slot: Mapping[str, Any],
     check: ReviewCheck,
     check_is_source_local: bool,
 ) -> tuple[CandidateFinding | None, str]:
     if not check_is_source_local:
+        return None, ""
+    if not file_evidence_is_complete(slot, check.file_path):
         return None, ""
     check_blob = " ".join(
         [
@@ -87,11 +85,6 @@ def source_only_backstop_candidate(
             " ".join(check.report_criteria),
         ]
     )
-    if not any(marker in check_blob.lower() for marker in _SOURCE_ONLY_BACKSTOP_MARKERS):
-        return None, ""
-    family_hint = ""
-    if "return" in check_blob.lower() or "branch" in check_blob.lower():
-        family_hint = " missing return fall through"
     candidate = {
         "candidate_id": f"{check.check_id}:source-only",
         "patch_task_id": task.id,
@@ -99,7 +92,7 @@ def source_only_backstop_candidate(
         "line_start": check.line_start,
         "line_end": check.line_end,
         "content": check.behavioral_question or check.affected_invariant,
-        "failure_mode": f"{check.affected_invariant} {family_hint}".strip(),
+        "failure_mode": check.affected_invariant,
         "evidence_summary": check_blob,
         "recommendation": "Fix the source-local behavior proven by static source evidence.",
     }
@@ -158,6 +151,8 @@ def normalize_executor_results(
     check_budget_remaining: Callable[[GraphState, ReviewCheck], int],
     evidence_requirements_for_check: Callable[[ReviewCheck], List[str]],
     compiled_check_is_source_local: Callable[[ReviewCheck], bool],
+    include_missing_results: bool = True,
+    missing_result_warning: str = "executor_missing_result",
 ) -> tuple[List[ReviewCheckResult], List[str]]:
     warnings: List[str] = []
     by_check = {check.check_id: check for check in checks}
@@ -195,6 +190,7 @@ def normalize_executor_results(
             source_candidate, source_rationale = source_only_backstop_candidate(
                 state=state,
                 task=task,
+                slot=slot,
                 check=check,
                 check_is_source_local=compiled_check_is_source_local(check),
             )
@@ -239,14 +235,15 @@ def normalize_executor_results(
             )
             normalized[-1] = result
     present = {item.check_id for item in normalized}
-    for check in checks:
-        if check.check_id not in present:
-            normalized.append(
-                ReviewCheckResult(
-                    check_id=check.check_id,
-                    patch_task_id=task.id,
-                    decision="unsupported",
-                    warnings=["executor_missing_result"],
+    if include_missing_results:
+        for check in checks:
+            if check.check_id not in present:
+                normalized.append(
+                    ReviewCheckResult(
+                        check_id=check.check_id,
+                        patch_task_id=task.id,
+                        decision="unsupported",
+                        warnings=[missing_result_warning],
+                    )
                 )
-            )
     return normalized, warnings

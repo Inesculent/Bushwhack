@@ -148,6 +148,33 @@ def test_review_check_executor_schema_generates_with_candidate_forward_ref() -> 
     assert "ReviewCheckResult" in schema.get("$defs", {})
 
 
+def test_review_check_executor_prompt_frames_result_completeness_as_accounting(monkeypatch) -> None:
+    output = ReviewCheckExecutorOutput(
+        results=[
+            ReviewCheckResult(
+                check_id="review-logic:check:1",
+                patch_task_id="review-logic",
+                decision="unsupported",
+                missing_evidence=["changed handle implementation"],
+            )
+        ]
+    )
+    fake = _FakeLLM({"parsed": output, "raw": _Raw()})
+    monkeypatch.setattr(
+        "src.orchestration.nodes.application.review_checks.Models.worker",
+        lambda *_args, **_kwargs: fake,
+    )
+
+    make_review_check_executor_node()(_state(review_checks=[_check()]))  # type: ignore[arg-type]
+
+    prompt = fake.prompts[0]
+    assert "bookkeeping requirement" in prompt
+    assert "not a requirement to find an issue" in prompt
+    assert "Declared schemas, enums, or UI choices" in prompt
+    assert "terminal fallback" in prompt
+    assert "structured values" in prompt
+
+
 def test_review_check_compiler_records_checks_and_trace(monkeypatch) -> None:
     output = ReviewCheckCompilerOutput(summary="compiled", checks=[_check()])
     monkeypatch.setattr(
@@ -1640,6 +1667,55 @@ def test_review_check_executor_source_only_overrides_missing_return_no_finding(m
     assert "source_only_no_finding_overridden" in result.warnings
 
 
+def test_review_check_executor_source_only_abstains_on_unconditional_return(monkeypatch) -> None:
+    check = _check(
+        behavioral_question="Does execute have a missing return fallthrough?",
+        affected_invariant="missing return fallthrough",
+        required_evidence=["changed execute implementation"],
+        report_criteria=["A changed path falls through without returning."],
+    )
+    output = ReviewCheckExecutorOutput(
+        results=[
+            ReviewCheckResult(
+                check_id=check.check_id,
+                patch_task_id="review-logic",
+                decision="no_finding",
+                evidence_refs=["src/app.py:1"],
+                suppressing_evidence=["The changed function returns unconditionally."],
+            )
+        ]
+    )
+    monkeypatch.setattr(
+        "src.orchestration.nodes.application.review_checks.Models.worker",
+        lambda *_args, **_kwargs: _FakeLLM({"parsed": output, "raw": _Raw()}),
+    )
+    state = _state(
+        review_checks=[check],
+        metadata={
+            **_state()["metadata"],
+            "critique_pipeline": {
+                "by_task": {
+                    "review-logic": {
+                        "task_evidence": {
+                            "file_contents": {
+                                "src/app.py": "def execute(mode):\n    return (True,)\n"
+                            },
+                            "files_complete": {"src/app.py": True},
+                        }
+                    }
+                }
+            },
+        },
+    )
+
+    out = make_review_check_executor_node()(state)  # type: ignore[arg-type]
+
+    result = out["review_check_results"][0]
+    assert result.decision == "no_finding"
+    assert result.candidate is None
+    assert "source_only_no_finding_overridden" not in result.warnings
+
+
 def test_review_check_executor_source_only_overrides_syntax_no_finding(monkeypatch) -> None:
     check = _check(
         behavioral_question="Does the changed file avoid syntax parse errors?",
@@ -1777,6 +1853,86 @@ def test_review_check_executor_batches_checks_and_preserves_results(monkeypatch)
     meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
     assert meta["executor_batch_size"] == 3
     assert meta["executor_batch_count"] == 2
+
+
+def test_review_check_executor_retries_missing_batch_results(monkeypatch) -> None:
+    checks = [_check(check_id=f"review-logic:check:{idx}") for idx in range(1, 4)]
+    outputs = [
+        ReviewCheckExecutorOutput(
+            results=[
+                ReviewCheckResult(
+                    check_id=checks[0].check_id,
+                    patch_task_id="review-logic",
+                    decision="no_finding",
+                    evidence_refs=["src/app.py:1"],
+                    suppressing_evidence=["changed path keeps the contract"],
+                )
+            ]
+        ),
+        ReviewCheckExecutorOutput(
+            results=[
+                ReviewCheckResult(
+                    check_id=check.check_id,
+                    patch_task_id="review-logic",
+                    decision="unsupported",
+                    missing_evidence=["changed handle implementation"],
+                )
+                for check in checks[1:]
+            ]
+        ),
+    ]
+
+    def fake_worker(*_args: object, **_kwargs: object) -> _FakeLLM:
+        return _FakeLLM({"parsed": outputs.pop(0), "raw": _Raw()})
+
+    monkeypatch.setattr("src.orchestration.nodes.application.review_checks.Models.worker", fake_worker)
+
+    out = make_review_check_executor_node()(_state(review_checks=checks))  # type: ignore[arg-type]
+
+    assert [result.check_id for result in out["review_check_results"]] == [
+        check.check_id for check in checks
+    ]
+    assert all(result.candidate is None for result in out["review_check_results"])
+    meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
+    assert meta["executor_missing_result_check_ids"] == [checks[1].check_id, checks[2].check_id]
+    assert meta["executor_retry_count"] == 2
+    assert meta["executor_retry_success_count"] == 2
+    assert not any(
+        "executor_missing_result_after_retry" in result.warnings
+        for result in out["review_check_results"]
+    )
+
+
+def test_review_check_executor_marks_missing_after_retry_without_candidate(monkeypatch) -> None:
+    checks = [_check(check_id=f"review-logic:check:{idx}") for idx in range(1, 3)]
+    outputs = [
+        ReviewCheckExecutorOutput(
+            results=[
+                ReviewCheckResult(
+                    check_id=checks[0].check_id,
+                    patch_task_id="review-logic",
+                    decision="unsupported",
+                    missing_evidence=["changed handle implementation"],
+                )
+            ]
+        ),
+        ReviewCheckExecutorOutput(results=[]),
+    ]
+
+    def fake_worker(*_args: object, **_kwargs: object) -> _FakeLLM:
+        return _FakeLLM({"parsed": outputs.pop(0), "raw": _Raw()})
+
+    monkeypatch.setattr("src.orchestration.nodes.application.review_checks.Models.worker", fake_worker)
+
+    out = make_review_check_executor_node()(_state(review_checks=checks))  # type: ignore[arg-type]
+
+    results = {result.check_id: result for result in out["review_check_results"]}
+    assert results[checks[1].check_id].decision == "unsupported"
+    assert results[checks[1].check_id].candidate is None
+    assert "executor_missing_result_after_retry" in results[checks[1].check_id].warnings
+    meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
+    assert meta["executor_retry_count"] == 1
+    assert meta["executor_retry_success_count"] == 0
 
 
 def test_review_check_executor_stages_candidate_in_result(monkeypatch) -> None:

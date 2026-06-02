@@ -974,6 +974,9 @@ def make_review_check_executor_node(
         llm_tokens = 0
         llm_trace: List[Dict[str, Any]] = []
         results: List[ReviewCheckResult] = []
+        missing_result_check_ids: List[str] = []
+        executor_retry_count = 0
+        executor_retry_success_count = 0
 
         if use_llm:
             selected_model = model_key or resolved.reviewer_worker_model_key
@@ -1017,7 +1020,84 @@ def make_review_check_executor_node(
                             slot,
                             changed_task_files,
                         ),
+                        include_missing_results=False,
                     )
+                    present = {result.check_id for result in batch_results}
+                    missing_checks = [check for check in batch if check.check_id not in present]
+                    if missing_checks:
+                        missing_result_check_ids.extend(check.check_id for check in missing_checks)
+                        executor_retry_count += len(missing_checks)
+                        warnings.extend(f"executor_missing_result:{check.check_id}" for check in missing_checks)
+                        try:
+                            retry_llm = Models.worker(
+                                ReviewCheckExecutorOutput,
+                                model_key=selected_model,
+                                max_completion_tokens=resolved.reviewer_critiquer_max_completion_tokens,
+                            )
+                            retry_prompt = _render_executor_prompt(state, task, missing_checks, slot)
+                            retry_traced = trace_llm_call(
+                                retry_llm,
+                                retry_prompt,
+                                state=state,
+                                node_name=node_name,
+                                model_key=selected_model,
+                                schema_name="ReviewCheckExecutorOutput",
+                                input_summary={
+                                    "task_id": task.id,
+                                    "batch": batch_index,
+                                    "retry_missing_check_ids": [c.check_id for c in missing_checks],
+                                },
+                            )
+                            retry_response = parse_structured_output(retry_traced.result, ReviewCheckExecutorOutput)
+                            llm_tokens += retry_traced.tokens
+                            llm_trace.extend(retry_traced.trace_records)
+                            retry_results, retry_warnings = _support_normalize_executor_results(
+                                state=state,
+                                task=task,
+                                slot=slot,
+                                checks=missing_checks,
+                                results=retry_response.results,
+                                git_diff=state.get("git_diff", "") or "",
+                                check_budget_remaining=_check_budget_remaining,
+                                evidence_requirements_for_check=_evidence_requirements_for_check,
+                                compiled_check_is_source_local=lambda check: _compiled_check_is_source_local(
+                                    check,
+                                    None,
+                                    slot,
+                                    changed_task_files,
+                                ),
+                                include_missing_results=False,
+                            )
+                            retry_present = {result.check_id for result in retry_results}
+                            executor_retry_success_count += len(retry_present)
+                            batch_results.extend(retry_results)
+                            warnings.extend(retry_response.warnings)
+                            warnings.extend(retry_warnings)
+                            still_missing = [
+                                check for check in missing_checks if check.check_id not in retry_present
+                            ]
+                        except Exception as retry_exc:  # noqa: BLE001
+                            llm_trace.extend(trace_from_exception(retry_exc))
+                            warnings.append(
+                                f"{node_name}_retry_failed:{batch_index}:{retry_exc.__class__.__name__}: {retry_exc}"
+                            )
+                            logger.warning(
+                                "%s retry failed for task_id=%s batch=%s: %s",
+                                node_name,
+                                task.id,
+                                batch_index,
+                                retry_exc,
+                            )
+                            still_missing = missing_checks
+                        for check in still_missing:
+                            batch_results.append(
+                                ReviewCheckResult(
+                                    check_id=check.check_id,
+                                    patch_task_id=task.id,
+                                    decision="unsupported",
+                                    warnings=["executor_missing_result_after_retry"],
+                                )
+                            )
                     results.extend(batch_results)
                     warnings.extend(response.warnings)
                     warnings.extend(norm_warnings)
@@ -1064,6 +1144,9 @@ def make_review_check_executor_node(
                 "executor_warnings": warnings,
                 "executor_batch_size": _EXECUTOR_BATCH_SIZE,
                 "executor_batch_count": len(_check_batches(checks)),
+                "executor_missing_result_check_ids": list(dict.fromkeys(missing_result_check_ids)),
+                "executor_retry_count": executor_retry_count,
+                "executor_retry_success_count": executor_retry_success_count,
             },
         )
         if _trace_enabled(state):
