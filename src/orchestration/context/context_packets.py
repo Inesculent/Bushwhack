@@ -37,6 +37,7 @@ from src.orchestration.context.mandate_loop_context import (
 )
 from src.orchestration.context.lens_cards import (
     format_lens_cards,
+    lens_card_selection_diagnostics,
     select_lens_cards,
 )
 from src.orchestration.context.surface_ledger import (
@@ -1102,14 +1103,22 @@ def build_critiquer_packet(
     obligations = pipeline_slot.get("coverage_obligations")
     if not isinstance(obligations, list):
         obligations = []
+    lens_text = "\n".join(
+        str(pipeline_slot.get(key) or "")
+        for key in ("direct_context", "mental_model_excerpt", "review_kb_excerpt")
+    )
+    lens_obligations = [row for row in obligations if isinstance(row, Mapping)]
+    lens_diagnostics = lens_card_selection_diagnostics(
+        task=task,
+        text=lens_text,
+        obligations=lens_obligations,
+        max_cards=4,
+    )
     lens_cards = format_lens_cards(
         select_lens_cards(
             task=task,
-            text="\n".join(
-                str(pipeline_slot.get(key) or "")
-                for key in ("direct_context", "mental_model_excerpt", "review_kb_excerpt")
-            ),
-            obligations=[row for row in obligations if isinstance(row, Mapping)],
+            text=lens_text,
+            obligations=lens_obligations,
             max_cards=4,
         )
     )
@@ -1132,6 +1141,8 @@ def build_critiquer_packet(
     enforced = enforce_packet_budget(packet)
     em = dict(enforced.metadata)
     em["files_complete"] = files_complete
+    em["contract_lens_selection"] = lens_diagnostics
+    em["contract_lens_cards_included"] = any(sec.key == "contract_lens_cards" for sec in enforced.sections)
     if primary_files:
         em["primary_files"] = primary_files
     if omitted_prompt_files:

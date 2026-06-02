@@ -796,6 +796,38 @@ def test_cleanup_drops_promotable_candidate_missing_contract_proof() -> None:
     lifecycle = out["metadata"]["adversarial_cleanup"]["candidate_lifecycle"]
     assert lifecycle[cand.candidate_id]["reason"] == "missing_contract_proof"
     assert lifecycle[cand.candidate_id]["missing_fields"] == ["counterexample"]
+    proof = out["metadata"]["adversarial_cleanup"]["contract_proof_drops"]
+    assert proof["missing_contract_proof_candidate_ids"] == [cand.candidate_id]
+    assert proof["missing_contract_proof_count"] == 1
+
+
+def test_cleanup_drops_promotable_candidate_with_self_doubting_contract_proof() -> None:
+    node = make_adversarial_cleanup_node()
+    cand = _cand(counterexample="Calling execute with this mode returns None, though this may be intentional.")
+
+    out = node(
+        {
+            "run_id": "t",
+            "git_diff": "diff --git a/comfy_extras/nodes_string.py b/comfy_extras/nodes_string.py\n+++ b/comfy_extras/nodes_string.py\n+pass\n",
+            "candidate_findings": [cand],
+            "reflection_reports": [
+                ReflectionReport(
+                    candidate_id=cand.candidate_id,
+                    reflector_specialty="logic",
+                    verdict="accept",
+                    rationale="The changed behavior is a concrete defect.",
+                )
+            ],
+            "metadata": {},
+        }
+    )
+
+    assert out["findings"] == []
+    lifecycle = out["metadata"]["adversarial_cleanup"]["candidate_lifecycle"]
+    assert lifecycle[cand.candidate_id]["reason"] == "weak_contract_proof"
+    proof = out["metadata"]["adversarial_cleanup"]["contract_proof_drops"]
+    assert proof["weak_contract_proof_candidate_ids"] == [cand.candidate_id]
+    assert proof["weak_contract_proof_count"] == 1
 
 
 def test_cleanup_llm_equivalence_merges_same_issue_with_different_wording() -> None:

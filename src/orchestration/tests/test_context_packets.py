@@ -263,6 +263,10 @@ def test_critiquer_packet_includes_selected_contract_lens_cards() -> None:
     assert "Shape/cardinality" in cards.content
     assert cards.content.count("### ") <= 4
     assert "Ownership/lifecycle" not in cards.content
+    selection = packet.metadata["contract_lens_selection"]
+    assert selection["selected_keys"]
+    assert selection["obligation_count"] == 1
+    assert packet.metadata["contract_lens_cards_included"] is True
 
 
 def test_principles_for_specialty_logic_in_probe() -> None:

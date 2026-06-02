@@ -16,6 +16,7 @@ from src.orchestration.context.contract_vocabulary import (
 )
 from src.orchestration.context.lens_cards import (
     format_lens_cards,
+    lens_card_selection_diagnostics,
     select_lens_cards,
 )
 from src.orchestration.context.surface_ledger import (
@@ -1615,3 +1616,20 @@ def render_compiler_prompt(state: GraphState, task: ReviewTask, slot: Mapping[st
         "Available Lenses": ", ".join(REVIEW_CHECK_LENSES),
     }
     return render_reviewer_prompt("review_check_compiler.md", sections)
+
+
+def compiler_lens_selection_diagnostics(
+    task: ReviewTask,
+    slot: Mapping[str, Any],
+) -> Dict[str, Any]:
+    ranked_obligations = ranked_coverage_obligations(task, slot)
+    text = "\n".join(
+        str(slot.get(key) or "")
+        for key in ("direct_context", "mental_model_excerpt", "review_kb_excerpt")
+    )
+    return lens_card_selection_diagnostics(
+        task=task,
+        text=text,
+        obligations=ranked_obligations,
+        max_cards=4,
+    )

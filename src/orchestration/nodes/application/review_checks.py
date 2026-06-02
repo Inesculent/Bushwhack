@@ -273,6 +273,7 @@ def make_review_check_compiler_node(
 
         resolved = settings or get_settings()
         slot = _pipeline_slot(state, task.id)
+        lens_selection = compiler_support.compiler_lens_selection_diagnostics(task, slot)
         warnings: List[str] = []
         llm_tokens = 0
         llm_trace: List[Dict[str, Any]] = []
@@ -375,15 +376,17 @@ def make_review_check_compiler_node(
                 "compiled_count": len(checks),
                 "compiler_coverage_floor": coverage_floor,
                 "compiler_warnings": warnings,
+                "contract_lens_selection": lens_selection,
             },
         )
         if _trace_enabled(state):
             trace_logger.info(
-                "TRACE %s run_id=%s task_id=%s checks=%s",
+                "TRACE %s run_id=%s task_id=%s checks=%s lens_keys=%s",
                 node_name,
                 state.get("run_id", "unknown"),
                 task.id,
                 len(checks),
+                lens_selection.get("selected_keys", []),
             )
         return {
             "metadata": metadata,
@@ -1571,6 +1574,23 @@ def make_review_check_executor_node(
             for warning in warnings
             if warning.startswith("executor_candidate_missing_payload:")
         ]
+        contract_backfill_events = []
+        for warning in warnings:
+            if not warning.startswith("executor_contract_proof_backfilled:"):
+                continue
+            _prefix, rest = warning.split(":", 1)
+            check_id, raw_fields = (rest.rsplit(":", 1) + [""])[:2]
+            contract_backfill_events.append(
+                {
+                    "check_id": check_id,
+                    "fields": [field for field in raw_fields.split(",") if field],
+                }
+            )
+        source_only_override_check_ids = [
+            warning.split(":", 1)[1]
+            for warning in warnings
+            if warning.startswith("executor_source_only_no_finding_overridden:")
+        ]
 
         metadata = _set_task_review_checks_meta(
             state,
@@ -1600,6 +1620,9 @@ def make_review_check_executor_node(
                 "executor_candidate_missing_payload_check_ids": list(
                     dict.fromkeys(missing_candidate_payload_check_ids)
                 ),
+                "executor_contract_proof_backfills": contract_backfill_events,
+                "executor_contract_proof_backfill_count": len(contract_backfill_events),
+                "executor_source_only_override_check_ids": list(dict.fromkeys(source_only_override_check_ids)),
                 "executor_length_limit_batch_failures": length_limit_batch_failures,
                 "executor_length_limit_retry_count": length_limit_retry_count,
                 "executor_length_limit_retry_success_count": length_limit_retry_success_count,
@@ -1699,6 +1722,24 @@ def _candidate_passes_gate(
         return False, "missing_counterexample"
     if not candidate.rejection_check.strip():
         return False, "missing_rejection_check"
+    proof_blob = " ".join(
+        [
+            candidate.evidence_for_contract,
+            candidate.counterexample,
+            candidate.rejection_check,
+        ]
+    ).lower()
+    if any(
+        marker in proof_blob
+        for marker in (
+            "may be intentional",
+            "might be intentional",
+            "could be intentional",
+            "may not align with user expectations",
+            "clarify whether",
+        )
+    ):
+        return False, "weak_contract_proof"
     if not candidate.failure_mode.strip():
         return False, "missing_failure_mode"
     if not _candidate_names_affected_path(candidate, result, check):
@@ -1731,6 +1772,8 @@ def make_review_check_evidence_gate_node():
         gated_results: List[ReviewCheckResult] = []
         gate_reason_counts: Dict[str, int] = {}
         malformed_candidate_result_check_ids: List[str] = []
+        missing_contract_proof_candidate_ids: List[str] = []
+        weak_contract_proof_candidate_ids: List[str] = []
         dropped = 0
         for result in _results_for_task(state, task.id):
             check = checks.get(result.check_id)
@@ -1764,6 +1807,14 @@ def make_review_check_evidence_gate_node():
                 }
             else:
                 dropped += 1
+                if reason in {
+                    "missing_contract_evidence",
+                    "missing_counterexample",
+                    "missing_rejection_check",
+                }:
+                    missing_contract_proof_candidate_ids.append(candidate.candidate_id)
+                elif reason == "weak_contract_proof":
+                    weak_contract_proof_candidate_ids.append(candidate.candidate_id)
                 gated_results.append(
                     result.model_copy(update={"gate_decision": "dropped", "gate_reason": reason})
                 )
@@ -1805,6 +1856,12 @@ def make_review_check_evidence_gate_node():
                     "reason_counts": gate_reason_counts,
                     "candidate_lifecycle": lifecycle,
                     "malformed_candidate_result_check_ids": malformed_candidate_result_check_ids,
+                    "contract_proof": {
+                        "missing_candidate_ids": missing_contract_proof_candidate_ids,
+                        "weak_candidate_ids": weak_contract_proof_candidate_ids,
+                        "missing_count": len(missing_contract_proof_candidate_ids),
+                        "weak_count": len(weak_contract_proof_candidate_ids),
+                    },
                     "health_warnings": health_warnings,
                     "unsupported_high_confidence_surface_ids": high_confidence_unsupported_surfaces,
                 },

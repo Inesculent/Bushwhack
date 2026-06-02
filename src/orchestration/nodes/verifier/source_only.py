@@ -122,9 +122,6 @@ _MISSING_RETURN_MARKERS = (
 )
 
 _SHAPE_CARDINALITY_MARKERS = (
-    "all",
-    "complete",
-    "preserve",
     "data loss",
     "structured",
     "field",

@@ -1147,6 +1147,26 @@ def _missing_contract_proof_fields(candidate: CandidateFinding) -> List[str]:
     return missing
 
 
+def _contract_proof_is_weak(candidate: CandidateFinding) -> bool:
+    blob = " ".join(
+        [
+            candidate.evidence_for_contract,
+            candidate.counterexample,
+            candidate.rejection_check,
+        ]
+    ).lower()
+    return any(
+        marker in blob
+        for marker in (
+            "may be intentional",
+            "might be intentional",
+            "could be intentional",
+            "may not align with user expectations",
+            "clarify whether",
+        )
+    )
+
+
 def _misroute_redirect_category(not_applicable_reports: Sequence[ReflectionReport]) -> ReviewCategory | None:
     for report in not_applicable_reports:
         parsed = parse_misroute_redirect_category(report.rationale)
@@ -1211,9 +1231,15 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
         misrouted_candidates: Dict[str, List[Dict[str, str]]] = {}
         recommendation_reference_advisories: List[str] = []
         lifecycle: Dict[str, Dict[str, Any]] = {}
+        contract_proof_drops: Dict[str, List[str]] = {
+            "missing_contract_proof": [],
+            "weak_contract_proof": [],
+        }
 
         def drop(candidate: CandidateFinding, reason: str, details: Dict[str, Any] | None = None) -> None:
             dropped.append(candidate.candidate_id)
+            if reason in contract_proof_drops:
+                contract_proof_drops[reason].append(candidate.candidate_id)
             tier_meta = claim_tiering.get(candidate.candidate_id) or {}
             lifecycle[candidate.candidate_id] = {
                 "decision": "dropped",
@@ -1541,6 +1567,9 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
                             {"missing_fields": missing_contract_proof},
                         )
                         continue
+                    if _contract_proof_is_weak(candidate):
+                        drop(candidate, "weak_contract_proof")
+                        continue
                     category = redirect_category
                     feedback_type = _category_to_feedback(category)  # type: ignore[arg-type]
                     rev = revisions.get(candidate.candidate_id) or {}
@@ -1792,6 +1821,9 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
                     {"missing_fields": missing_contract_proof},
                 )
                 continue
+            if _contract_proof_is_weak(candidate):
+                drop(candidate, "weak_contract_proof")
+                continue
 
             promoted.append(
                 ReviewFinding(
@@ -1933,6 +1965,12 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
             "misrouted_candidate_ids": misrouted_candidates,
             "recommendation_reference_advisories": recommendation_reference_advisories,
             "candidate_lifecycle": lifecycle,
+            "contract_proof_drops": {
+                "missing_contract_proof_candidate_ids": contract_proof_drops["missing_contract_proof"],
+                "weak_contract_proof_candidate_ids": contract_proof_drops["weak_contract_proof"],
+                "missing_contract_proof_count": len(contract_proof_drops["missing_contract_proof"]),
+                "weak_contract_proof_count": len(contract_proof_drops["weak_contract_proof"]),
+            },
             "dropped_semantic_duplicate_finding_ids": dropped_semantic_finding_ids,
         }
         if semantic_duplicates:

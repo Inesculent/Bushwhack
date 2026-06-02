@@ -548,7 +548,7 @@ def surface_ids_for_task(task: ReviewTask, ledger: Sequence[ReviewSurface]) -> L
             if surface.file_path and surface.file_path in target_files
         ]
         blob = f"{task.id} {task.title} {task.description}".lower()
-        if len(file_ids) == 1 or task.specialty != "logic" or "structured extraction" in blob:
+        if len(file_ids) == 1 or task.specialty != "logic" or "focused contract" in blob:
             ids.extend(file_ids)
     return _dedupe(ids)
 

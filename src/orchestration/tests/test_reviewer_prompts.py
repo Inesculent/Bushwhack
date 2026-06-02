@@ -123,6 +123,12 @@ _BENCHMARK_SPECIFIC_TOKENS = (
     "StringCompare",
     "ComfyUI",
 )
+_ACTIVE_ISSUE_CLASS_TOKENS = (
+    "structured extraction",
+    "structured extraction and aggregation",
+    "match tuples",
+    "capture groups",
+)
 _NAMED_VULNERABILITY_TOKENS = (
     "ReDoS",
     "redos",
@@ -170,6 +176,19 @@ def test_active_reviewer_prompts_avoid_named_vulnerability_anchors() -> None:
     for prompt_path in prompt_paths:
         text = load_reviewer_prompt(prompt_path)
         for token in _BENCHMARK_SPECIFIC_TOKENS + _NAMED_VULNERABILITY_TOKENS:
+            assert token not in text
+
+
+def test_active_planning_prompts_do_not_prescribe_issue_class_tasks() -> None:
+    prompt_paths = [
+        "planner.md",
+        "mental_model/joint_plan_critic.md",
+        "mental_model/plan_revision.md",
+        "mental_model/mandate_synthesizer.md",
+    ]
+    for prompt_path in prompt_paths:
+        text = load_reviewer_prompt(prompt_path).lower()
+        for token in _ACTIVE_ISSUE_CLASS_TOKENS:
             assert token not in text
 
 

@@ -209,6 +209,8 @@ def test_review_check_compiler_records_checks_and_trace(monkeypatch) -> None:
 
     task_meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
     assert task_meta["compiled_count"] == 1
+    assert task_meta["contract_lens_selection"]["selected_keys"]
+    assert "scores" in task_meta["contract_lens_selection"]
     assert out["token_usage"] == 7
     assert any(record["node"] == "review_check_compiler" for record in out["llm_trace"])
 
@@ -2716,6 +2718,52 @@ def test_review_check_executor_synthesizes_missing_candidate_payload(monkeypatch
     assert "executor_candidate_payload_synthesized" in result.warnings
     meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
     assert meta["executor_candidate_payload_synthesized_check_ids"] == [check.check_id]
+    assert meta["executor_contract_proof_backfill_count"] == 0
+
+
+def test_review_check_executor_records_contract_proof_backfills(monkeypatch) -> None:
+    check = _check()
+    candidate = CandidateFinding(
+        candidate_id="review-logic:check:1:candidate",
+        patch_task_id="review-logic",
+        file_path="src/app.py",
+        line_start=1,
+        line_end=2,
+        content="The changed handler now returns None.",
+        claim_type="defect",
+        failure_mode="Caller receives None instead of the declared result.",
+        evidence_summary="Task evidence shows handle returns None.",
+        recommendation="Return the declared result on this path.",
+        suspected_category="logic",
+        reflection_specialties=["logic"],
+    )
+    output = ReviewCheckExecutorOutput(
+        results=[
+            ReviewCheckResult(
+                check_id=check.check_id,
+                patch_task_id="review-logic",
+                decision="candidate",
+                evidence_refs=["src/app.py:1"],
+                reportable_reason="The changed path returns None.",
+                candidate=candidate,
+            )
+        ]
+    )
+    monkeypatch.setattr(
+        "src.orchestration.nodes.application.review_checks.Models.worker",
+        lambda *_args, **_kwargs: _FakeLLM({"parsed": output, "raw": _Raw()}),
+    )
+
+    out = make_review_check_executor_node()(_state(review_checks=[check]))  # type: ignore[arg-type]
+
+    meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
+    assert meta["executor_contract_proof_backfill_count"] == 1
+    assert meta["executor_contract_proof_backfills"] == [
+        {
+            "check_id": check.check_id,
+            "fields": ["evidence_for_contract", "counterexample", "rejection_check"],
+        }
+    ]
 
 
 def test_review_check_executor_downgrades_missing_candidate_payload_without_evidence(monkeypatch) -> None:
@@ -2934,6 +2982,47 @@ def test_review_check_evidence_gate_requires_contract_proof_fields() -> None:
     assert gated.gate_reason == "missing_counterexample"
     gate = out["metadata"]["review_checks"]["by_task"]["review-logic"]["gate"]
     assert gate["reason_counts"] == {"missing_counterexample": 1}
+    assert gate["contract_proof"]["missing_candidate_ids"] == [candidate.candidate_id]
+    assert gate["contract_proof"]["missing_count"] == 1
+
+
+def test_review_check_evidence_gate_drops_self_doubting_contract_proof() -> None:
+    candidate = CandidateFinding(
+        candidate_id="review-logic:check:1:candidate",
+        patch_task_id="review-logic",
+        file_path="src/app.py",
+        line_start=1,
+        line_end=2,
+        content="The changed handler now returns None.",
+        claim_type="defect",
+        failure_mode="handle returns None instead of the declared result.",
+        evidence_summary="Task evidence shows handle returns None.",
+        evidence_for_contract="The declared return contract requires a result.",
+        counterexample="Calling handle on this path returns None, though this may be intentional.",
+        rejection_check="No caller guarantee is shown.",
+        recommendation="Return the declared result on this path.",
+        suspected_category="logic",
+        reflection_specialties=["logic"],
+    )
+    result = ReviewCheckResult(
+        check_id="review-logic:check:1",
+        patch_task_id="review-logic",
+        decision="candidate",
+        evidence_refs=["src/app.py:1"],
+        reportable_reason="The changed path returns None.",
+        candidate=candidate,
+    )
+
+    out = make_review_check_evidence_gate_node()(
+        _state(review_checks=[_check()], review_check_results=[result])
+    )  # type: ignore[arg-type]
+
+    gated = out["review_check_results"][0]
+    assert gated.gate_decision == "dropped"
+    assert gated.gate_reason == "weak_contract_proof"
+    gate = out["metadata"]["review_checks"]["by_task"]["review-logic"]["gate"]
+    assert gate["contract_proof"]["weak_candidate_ids"] == [candidate.candidate_id]
+    assert gate["contract_proof"]["weak_count"] == 1
 
 
 def test_check_mode_routing(monkeypatch) -> None:

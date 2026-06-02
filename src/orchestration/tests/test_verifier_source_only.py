@@ -133,6 +133,42 @@ def test_source_only_detects_shape_cardinality_first_element_data_loss() -> None
     assert attempt is not None
 
 
+def test_source_only_does_not_treat_generic_all_as_shape_contract() -> None:
+    state = {
+        "git_diff": "",
+        "metadata": {
+            "critique_pipeline": {
+                "by_task": {
+                    "t1": {
+                        "task_evidence": _task_evidence(
+                            {
+                                "pkg/mod.py": (
+                                    "def execute(items):\n"
+                                    "    return items[0]\n"
+                                )
+                            }
+                        )
+                    }
+                }
+            }
+        },
+    }
+    candidate = {
+        "candidate_id": "c1",
+        "patch_task_id": "t1",
+        "file_path": "pkg/mod.py",
+        "line_start": 1,
+        "failure_mode": "All modes should return consistently.",
+        "evidence_summary": "The mode contract is under review.",
+    }
+
+    verdict, rationale, attempt = source_only_verify_candidate(state, candidate)
+
+    assert verdict == ""
+    assert rationale == ""
+    assert attempt is None
+
+
 def test_source_only_detects_nested_item_projection_data_loss() -> None:
     state = {
         "git_diff": "",

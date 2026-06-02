@@ -216,6 +216,17 @@ def candidate_with_check_contract_proof(
     return candidate.model_copy(update=updates)
 
 
+def _missing_contract_proof_field_names(candidate: CandidateFinding) -> list[str]:
+    missing: list[str] = []
+    if not candidate.evidence_for_contract.strip():
+        missing.append("evidence_for_contract")
+    if not candidate.counterexample.strip():
+        missing.append("counterexample")
+    if not candidate.rejection_check.strip():
+        missing.append("rejection_check")
+    return missing
+
+
 def _candidate_payload_is_concrete(result: ReviewCheckResult) -> bool:
     if result.suppressing_evidence:
         return False
@@ -487,7 +498,18 @@ def normalize_executor_results(
                 candidate = None
         if candidate is not None:
             candidate = candidate_with_check_behavioral_metadata(candidate, check)
+            missing_contract_fields = _missing_contract_proof_field_names(candidate)
             candidate = candidate_with_check_contract_proof(candidate, check, result)
+            filled_contract_fields = [
+                field
+                for field in missing_contract_fields
+                if field not in _missing_contract_proof_field_names(candidate)
+            ]
+            if filled_contract_fields:
+                warnings.append(
+                    "executor_contract_proof_backfilled:"
+                    f"{check.check_id}:{','.join(filled_contract_fields)}"
+                )
             cid = candidate.candidate_id.strip() or f"{check.check_id}:candidate"
             patched = candidate.model_copy(
                 update={

@@ -205,9 +205,9 @@ _BRANCH_DOMINATED_SYMPTOMS = {"missing_return", "data_loss"}
 _NARROW_RECALL_TASK_MARKERS = (
     "branch exhaustiveness",
     "terminal else",
-    "structured extraction",
-    "structured result",
-    "type-tracing",
+    "single contract",
+    "focused contract",
+    "only this surface",
 )
 _BROAD_RECALL_TASK_MARKERS = (
     "diff-local",
@@ -265,8 +265,6 @@ def _task_text(task: ReviewTask) -> str:
 
 def _is_intentionally_narrow_recall_task(task: ReviewTask) -> bool:
     text = _task_text(task)
-    if "review-logic-structured-extraction" in text:
-        return True
     if not any(marker in text for marker in _NARROW_RECALL_TASK_MARKERS):
         return False
     if any(marker in text for marker in _BROAD_RECALL_TASK_MARKERS):

@@ -168,6 +168,37 @@ def _score_card(card: LensCard, blob: str) -> int:
     return sum(1 for signal in card.signals if signal.lower() in blob)
 
 
+def lens_card_selection_diagnostics(
+    *,
+    task: ReviewTask | None = None,
+    text: str = "",
+    obligations: Sequence[Mapping[str, object]] = (),
+    max_cards: int = 4,
+) -> dict[str, object]:
+    blob = _blob_for_selection(task=task, text=text, obligations=obligations)
+    scored = [
+        {
+            "key": card.key,
+            "score": _score_card(card, blob),
+            "matched_signals": [signal for signal in card.signals if signal.lower() in blob],
+        }
+        for card in LENS_CARDS
+    ]
+    selected = select_lens_cards(
+        task=task,
+        text=text,
+        obligations=obligations,
+        max_cards=max_cards,
+    )
+    return {
+        "selected_keys": [card.key for card in selected],
+        "max_cards": max(1, max_cards),
+        "obligation_count": len(obligations),
+        "scores": [row for row in scored if int(row["score"]) > 0],
+        "used_default": not any(int(row["score"]) > 0 for row in scored),
+    }
+
+
 def select_lens_cards(
     *,
     task: ReviewTask | None = None,
