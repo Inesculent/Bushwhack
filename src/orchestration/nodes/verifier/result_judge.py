@@ -188,6 +188,104 @@ def missing_modules_from_attempts(attempts: Sequence[VerifierAttemptRecord]) -> 
     return out
 
 
+def _unique_strings(items: Sequence[Any]) -> List[str]:
+    out: List[str] = []
+    seen: set[str] = set()
+    for item in items:
+        value = str(item or "").strip()
+        if value and value not in seen:
+            seen.add(value)
+            out.append(value)
+    return out
+
+
+def verifier_env_diagnostics_for_attempts(
+    attempts: Sequence[VerifierAttemptRecord],
+    *,
+    target_file_path: str = "",
+) -> Dict[str, Any]:
+    """Summarize environment/import facts observed while retrying verifier code."""
+    missing = list(missing_modules_from_attempts(attempts))
+    failed_probes: List[Dict[str, Any]] = []
+    seen_probes: set[tuple[str, str, str]] = set()
+    repeated_harness_error_count = 0
+    harness_summaries: List[str] = []
+
+    for record in attempts:
+        if attempt_was_harness_error(record):
+            repeated_harness_error_count += 1
+            harness_summaries.append(_summarize_attempt(record, target_file_path=target_file_path))
+        meta = record.env_metadata or {}
+        missing.extend(meta.get("missing_modules") or [])
+        for probe in meta.get("target_import_probes") or []:
+            if not isinstance(probe, dict):
+                continue
+            status = str(probe.get("status") or "").strip().lower()
+            if status in ("", "ok", "success", "passed"):
+                continue
+            file_path = str(probe.get("file_path") or "").strip()
+            module = str(probe.get("module") or "").strip()
+            error = str(probe.get("error") or probe.get("stderr") or probe.get("message") or "").strip()
+            key = (file_path, module, error[:160])
+            if key in seen_probes:
+                continue
+            seen_probes.add(key)
+            row: Dict[str, Any] = {"status": status}
+            if file_path:
+                row["file_path"] = file_path
+            if module:
+                row["module"] = module
+            if error:
+                row["error"] = error[:500]
+            failed_probes.append(row)
+
+    return {
+        "missing_modules": _unique_strings(missing),
+        "failed_target_import_probes": failed_probes[:5],
+        "repeated_harness_error_count": repeated_harness_error_count,
+        "harness_failure_summaries": harness_summaries[-4:],
+    }
+
+
+def _env_repair_hint_for_attempts(
+    attempts: Sequence[VerifierAttemptRecord],
+    *,
+    target_file_path: str = "",
+) -> str:
+    diagnostics = verifier_env_diagnostics_for_attempts(
+        attempts,
+        target_file_path=target_file_path,
+    )
+    lines: List[str] = []
+    missing = diagnostics["missing_modules"]
+    failed_probes = diagnostics["failed_target_import_probes"]
+    repeated_count = diagnostics["repeated_harness_error_count"]
+    if missing or failed_probes or repeated_count >= 2:
+        lines.append(
+            "Use the observed environment diagnostics before generating the next script; "
+            "repair setup/imports first and do not treat unresolved setup failures as product behavior."
+        )
+    if missing:
+        lines.append(
+            "Missing modules seen: "
+            + ", ".join(missing[:8])
+            + ". Stub or narrowly avoid only modules/attributes named by traceback or probes."
+        )
+    if failed_probes:
+        probe_bits = []
+        for probe in failed_probes[:3]:
+            target = probe.get("module") or probe.get("file_path") or "(unknown)"
+            error = probe.get("error")
+            probe_bits.append(f"{target}: {error}" if error else str(target))
+        lines.append("Failed target import probes: " + " | ".join(probe_bits))
+    if repeated_count >= 2:
+        lines.append(
+            "Repeated harness/setup failures: "
+            + "; ".join(diagnostics["harness_failure_summaries"][-3:])
+        )
+    return "\n".join(lines)
+
+
 def crash_is_harness_not_product(
     record: VerifierAttemptRecord,
     *,
@@ -440,6 +538,12 @@ def build_retry_feedback(
             "CRASHED was not tied to the cited target file; ensure traceback references "
             f"{target_file_path or 'the defect path'} after product code is invoked."
         )
+    env_hint = _env_repair_hint_for_attempts(
+        [*prior, record],
+        target_file_path=target_file_path,
+    )
+    if env_hint:
+        action_hint = f"{action_hint}\n{env_hint}" if action_hint else env_hint
 
     return template.format(
         exit_code=record.exit_code,

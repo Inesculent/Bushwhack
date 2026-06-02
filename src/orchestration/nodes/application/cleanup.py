@@ -1011,6 +1011,58 @@ def _render_semantic_equivalence_audit_prompt(pairs: Sequence[Mapping[str, Any]]
     )
 
 
+def _line_precision_score(finding: ReviewFinding) -> int:
+    if finding.line_start <= 0 or finding.line_end <= 0 or finding.line_end < finding.line_start:
+        return -1000
+    return -1 * (finding.line_end - finding.line_start)
+
+
+def _finding_content_precision_score(finding: ReviewFinding) -> int:
+    text = " ".join(
+        [
+            finding.content,
+            str(getattr(finding, "failure_mode", "") or ""),
+            str(getattr(finding, "evidence_summary", "") or ""),
+            finding.recommendation,
+        ]
+    ).lower()
+    score = 0
+    if finding.id.endswith(":source-only") or "source-only" in text or "source local" in text:
+        score -= 2
+    if re.match(r"^\s*class\s+\w+\s*(?:\([^)]*\))?\s*:?\s*$", finding.content):
+        score -= 2
+    if finding.content.strip().lower().startswith(("does ", "check ", "verify ")):
+        score -= 1
+    evidence_summary = str(getattr(finding, "evidence_summary", "") or "")
+    if len(evidence_summary.strip()) >= 40:
+        score += 1
+    if len(finding.content.strip()) >= 40:
+        score += 1
+    return score
+
+
+def _preferred_semantic_equivalence_keeper(
+    left: ReviewFinding,
+    right: ReviewFinding,
+    order: Mapping[str, int],
+) -> tuple[str, str]:
+    left_score = (
+        _finding_content_precision_score(left),
+        _line_precision_score(left),
+        len(str(getattr(left, "evidence_summary", "") or "").strip()),
+        -order[left.id],
+    )
+    right_score = (
+        _finding_content_precision_score(right),
+        _line_precision_score(right),
+        len(str(getattr(right, "evidence_summary", "") or "").strip()),
+        -order[right.id],
+    )
+    if right_score > left_score:
+        return right.id, left.id
+    return left.id, right.id
+
+
 def _apply_semantic_equivalence_audit(
     findings: Sequence[ReviewFinding],
     audit: SemanticEquivalenceAuditOutput,
@@ -1028,7 +1080,11 @@ def _apply_semantic_equivalence_audit(
             continue
         if left in dropped or right in dropped:
             continue
-        keeper, duplicate = (left, right) if order[left] <= order[right] else (right, left)
+        keeper, duplicate = _preferred_semantic_equivalence_keeper(
+            by_id[left],
+            by_id[right],
+            order,
+        )
         dropped.add(duplicate)
         duplicates.setdefault(keeper, []).append(duplicate)
     return [finding for finding in findings if finding.id not in dropped], duplicates

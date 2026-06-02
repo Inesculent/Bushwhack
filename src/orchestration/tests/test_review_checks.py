@@ -65,6 +65,19 @@ class _FakeLLM:
         return self.result
 
 
+class _SequencedLLM:
+    def __init__(self, actions: list[Any], prompts: list[str]) -> None:
+        self.actions = actions
+        self.prompts = prompts
+
+    def invoke(self, prompt: str) -> Any:
+        self.prompts.append(prompt)
+        action = self.actions.pop(0)
+        if isinstance(action, BaseException):
+            raise action
+        return {"parsed": action, "raw": _Raw()}
+
+
 def _task() -> ReviewTask:
     return ReviewTask(
         id="review-logic",
@@ -1800,6 +1813,54 @@ def test_review_check_executor_keeps_dimension_specific_no_finding(monkeypatch) 
     assert out["review_check_results"][0].decision == "no_finding"
 
 
+def test_review_check_executor_downgrades_neighboring_mode_suppression(monkeypatch) -> None:
+    check = _check(
+        behavioral_question="Does mode B preserve the selected structured slot?",
+        affected_invariant="mode-specific slot preservation",
+        required_evidence=["changed mode B path", "selected slot preservation evidence"],
+        suppress_criteria=["Mode B preserves the selected slot."],
+        report_criteria=["Mode B drops or reorders the selected slot."],
+    )
+    output = ReviewCheckExecutorOutput(
+        results=[
+            ReviewCheckResult(
+                check_id=check.check_id,
+                patch_task_id="review-logic",
+                decision="no_finding",
+                evidence_refs=["src/app.py:1"],
+                suppressing_evidence=["Mode A preserves the selected slot and returns the expected shape."],
+            )
+        ]
+    )
+    audit = SuppressionAuditOutput(
+        items=[
+            SuppressionAuditItem(
+                check_id=check.check_id,
+                verdict="insufficient",
+                rationale="The suppression cites a neighboring mode, not mode B.",
+                missing_evidence=["Mode B selected slot evidence"],
+            )
+        ]
+    )
+    fake = _FakeLLM([
+        {"parsed": output, "raw": _Raw()},
+        {"parsed": audit, "raw": _Raw()},
+    ])
+    monkeypatch.setattr(
+        "src.orchestration.nodes.application.review_checks.Models.worker",
+        lambda *_args, **_kwargs: fake,
+    )
+
+    out = make_review_check_executor_node()(_state(review_checks=[check]))  # type: ignore[arg-type]
+
+    result = out["review_check_results"][0]
+    assert result.decision == "unsupported"
+    assert "llm_suppression_audit_insufficient" in result.warnings
+    assert "neighboring branch, mode, path, or dimension is insufficient" in fake.prompts[1]
+    meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
+    assert meta["suppression_audits"][check.check_id]["verdict"] == "insufficient"
+
+
 def test_review_check_executor_downgrades_weak_no_finding_to_budget_exhausted(monkeypatch) -> None:
     check = _check(budget=1)
     request = FocusedContextRequest(
@@ -2185,6 +2246,165 @@ def test_review_check_executor_canonicalizes_duplicate_results(monkeypatch) -> N
     meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
     assert meta["executor_duplicate_result_check_ids"] == [check.check_id]
     assert meta["executor_result_count_before_canonicalization"] == 2
+
+
+def test_review_check_executor_retries_length_limit_batch_as_single_checks(monkeypatch) -> None:
+    class LengthFinishReasonError(Exception):
+        pass
+
+    checks = [_check(check_id=f"review-logic:check:{idx}") for idx in range(1, 3)]
+    prompts: list[str] = []
+    actions: list[Any] = [
+        LengthFinishReasonError("length limit was reached"),
+        ReviewCheckExecutorOutput(
+            results=[
+                ReviewCheckResult(
+                    check_id=checks[0].check_id,
+                    patch_task_id="review-logic",
+                    decision="unsupported",
+                    missing_evidence=["changed handle implementation"],
+                )
+            ]
+        ),
+        ReviewCheckExecutorOutput(
+            results=[
+                ReviewCheckResult(
+                    check_id=checks[1].check_id,
+                    patch_task_id="review-logic",
+                    decision="unsupported",
+                    missing_evidence=["declared return contract"],
+                )
+            ]
+        ),
+    ]
+
+    monkeypatch.setattr(
+        "src.orchestration.nodes.application.review_checks.Models.worker",
+        lambda *_args, **_kwargs: _SequencedLLM(actions, prompts),
+    )
+
+    out = make_review_check_executor_node()(_state(review_checks=checks))  # type: ignore[arg-type]
+
+    assert [result.check_id for result in out["review_check_results"]] == [check.check_id for check in checks]
+    assert len(prompts) == 3
+    assert "This retry contains exactly one input check" in prompts[1]
+    assert "This retry contains exactly one input check" in prompts[2]
+    meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
+    assert meta["executor_length_limit_batch_failures"] == [
+        {"batch_index": 1, "check_ids": [check.check_id for check in checks]}
+    ]
+    assert meta["executor_length_limit_retry_count"] == 2
+    assert meta["executor_length_limit_retry_success_count"] == 2
+    assert meta["executor_length_limit_retry_failed_check_ids"] == []
+    assert "executor_length_limit_batch_retry:1" in meta["executor_warnings"]
+
+
+def test_review_check_executor_length_limit_retry_can_stage_candidate(monkeypatch) -> None:
+    class LengthFinishReasonError(Exception):
+        pass
+
+    check = _check()
+    candidate = CandidateFinding(
+        candidate_id="review-logic:check:1:candidate",
+        patch_task_id="review-logic",
+        file_path="src/app.py",
+        line_start=1,
+        line_end=2,
+        content="The changed handler now returns None.",
+        claim_type="defect",
+        failure_mode="Caller receives None instead of the declared result.",
+        evidence_summary="Task evidence shows handle returns None.",
+        recommendation="Return the declared result on this path.",
+        suspected_category="logic",
+        reflection_specialties=["logic"],
+        behavioral_symptom="missing_return",
+        root_operation="contract",
+    )
+    prompts: list[str] = []
+    actions: list[Any] = [
+        LengthFinishReasonError("Could not parse response content as the length limit was reached"),
+        ReviewCheckExecutorOutput(
+            results=[
+                ReviewCheckResult(
+                    check_id=check.check_id,
+                    patch_task_id="review-logic",
+                    decision="candidate",
+                    evidence_refs=["src/app.py:1"],
+                    reportable_reason="The changed path returns None.",
+                    candidate=candidate,
+                )
+            ]
+        ),
+    ]
+    monkeypatch.setattr(
+        "src.orchestration.nodes.application.review_checks.Models.worker",
+        lambda *_args, **_kwargs: _SequencedLLM(actions, prompts),
+    )
+
+    out = make_review_check_executor_node()(_state(review_checks=[check]))  # type: ignore[arg-type]
+
+    result = out["review_check_results"][0]
+    assert result.decision == "candidate"
+    assert result.candidate is not None
+    assert result.candidate.candidate_id == candidate.candidate_id
+    meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
+    assert meta["executor_length_limit_retry_success_count"] == 1
+    assert meta["executor_candidate_ids"] == [candidate.candidate_id]
+
+
+def test_review_check_executor_length_limit_retry_failure_is_per_check(monkeypatch) -> None:
+    class LengthFinishReasonError(Exception):
+        pass
+
+    checks = [_check(check_id=f"review-logic:check:{idx}") for idx in range(1, 3)]
+    prompts: list[str] = []
+    actions: list[Any] = [
+        LengthFinishReasonError("length limit was reached"),
+        ReviewCheckExecutorOutput(
+            results=[
+                ReviewCheckResult(
+                    check_id=checks[0].check_id,
+                    patch_task_id="review-logic",
+                    decision="unsupported",
+                    missing_evidence=["changed handle implementation"],
+                )
+            ]
+        ),
+        LengthFinishReasonError("length limit was reached again"),
+    ]
+    monkeypatch.setattr(
+        "src.orchestration.nodes.application.review_checks.Models.worker",
+        lambda *_args, **_kwargs: _SequencedLLM(actions, prompts),
+    )
+
+    out = make_review_check_executor_node()(_state(review_checks=checks))  # type: ignore[arg-type]
+
+    results = {result.check_id: result for result in out["review_check_results"]}
+    assert results[checks[0].check_id].warnings == []
+    assert results[checks[1].check_id].decision == "unsupported"
+    assert "executor_length_limit_retry_failed" in results[checks[1].check_id].warnings
+    meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
+    assert meta["executor_length_limit_retry_count"] == 2
+    assert meta["executor_length_limit_retry_success_count"] == 1
+    assert meta["executor_length_limit_retry_failed_check_ids"] == [checks[1].check_id]
+
+
+def test_review_check_executor_non_length_failure_uses_existing_batch_fallback(monkeypatch) -> None:
+    checks = [_check(check_id=f"review-logic:check:{idx}") for idx in range(1, 3)]
+    prompts: list[str] = []
+    actions: list[Any] = [RuntimeError("service unavailable")]
+    monkeypatch.setattr(
+        "src.orchestration.nodes.application.review_checks.Models.worker",
+        lambda *_args, **_kwargs: _SequencedLLM(actions, prompts),
+    )
+
+    out = make_review_check_executor_node()(_state(review_checks=checks))  # type: ignore[arg-type]
+
+    assert all(result.decision == "unsupported" for result in out["review_check_results"])
+    assert all("review_check_executor_batch_failed:1" in result.warnings for result in out["review_check_results"])
+    meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
+    assert meta["executor_length_limit_retry_count"] == 0
+    assert any(warning.startswith("review_check_executor_batch_failed:1") for warning in meta["executor_warnings"])
 
 
 def test_review_check_executor_marks_missing_after_retry_without_candidate(monkeypatch) -> None:

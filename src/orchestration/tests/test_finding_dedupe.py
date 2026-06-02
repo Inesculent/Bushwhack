@@ -7,6 +7,7 @@ from src.orchestration.nodes.application.cleanup import (
     RevisionSupportAuditOutput,
     SemanticEquivalenceAuditItem,
     SemanticEquivalenceAuditOutput,
+    _apply_semantic_equivalence_audit,
     make_adversarial_cleanup_node,
 )
 from src.orchestration.nodes.application.synthesizer import synthesizer_node
@@ -767,28 +768,27 @@ def test_cleanup_preserves_structured_behavior_metadata_on_promoted_finding() ->
     assert finding.root_operation == "indexing"
 
 
-def test_cleanup_llm_equivalence_merges_same_issue_with_different_wording(monkeypatch) -> None:
-    node = make_adversarial_cleanup_node()
-    broad = _cand(
-        candidate_id="broad",
+def test_cleanup_llm_equivalence_merges_same_issue_with_different_wording() -> None:
+    broad = ReviewFinding(
+        id="broad",
         file_path="src/x.py",
         line_start=10,
         line_end=40,
         content="class Handler: structured extraction drops a selected value.",
-        failure_mode="Selected value is skipped on a reachable path.",
-        evidence_summary="The changed aggregation path omits the selected value.",
+        severity="medium",
+        feedback_type="defect_detection",
         recommendation="Handle the selected value before aggregating results.",
         behavioral_symptom="data_loss",
         root_operation="indexing",
     )
-    specific = _cand(
-        candidate_id="specific",
+    specific = ReviewFinding(
+        id="specific",
         file_path="src/x.py",
         line_start=20,
         line_end=24,
         content="class Handler: the selected value is skipped before aggregation.",
-        failure_mode="Same selected value omission.",
-        evidence_summary="The same changed path omits the value.",
+        severity="medium",
+        feedback_type="defect_detection",
         recommendation="Handle the selected value before aggregating results.",
         behavioral_symptom="wrong_output",
         root_operation="indexing",
@@ -803,37 +803,11 @@ def test_cleanup_llm_equivalence_merges_same_issue_with_different_wording(monkey
             )
         ]
     )
-    monkeypatch.setattr(
-        "src.orchestration.nodes.application.cleanup.Models.worker",
-        lambda *_args, **_kwargs: type("FakeLLM", (), {"invoke": lambda self, _prompt: {"parsed": audit}})(),
-    )
 
-    out = node(
-        {
-            "run_id": "t",
-            "candidate_findings": [broad, specific],
-            "reflection_reports": [
-                ReflectionReport(
-                    candidate_id=broad.candidate_id,
-                    reflector_specialty="logic",
-                    verdict="accept",
-                    rationale="Supported.",
-                ),
-                ReflectionReport(
-                    candidate_id=specific.candidate_id,
-                    reflector_specialty="logic",
-                    verdict="accept",
-                    rationale="Duplicate of broad but supported.",
-                ),
-            ],
-            "metadata": {},
-        }
-    )
+    findings, duplicates = _apply_semantic_equivalence_audit([broad, specific], audit)
 
-    assert [finding.id for finding in out["findings"]] == ["broad"]
-    meta = out["metadata"]["adversarial_cleanup"]
-    assert meta["semantic_equivalence_duplicates"] == {"broad": ["specific"]}
-    assert meta["semantic_equivalence_audits"][0]["verdict"] == "same_issue"
+    assert [finding.id for finding in findings] == ["specific"]
+    assert duplicates == {"specific": ["broad"]}
 
 
 def test_cleanup_llm_equivalence_preserves_distinct_dimensions(monkeypatch) -> None:

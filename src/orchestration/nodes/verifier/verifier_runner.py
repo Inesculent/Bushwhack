@@ -15,6 +15,7 @@ from src.orchestration.nodes.verifier.result_judge import (
     build_retry_feedback,
     infer_verification_scope,
     judge_attempt,
+    verifier_env_diagnostics_for_attempts,
     verifier_hint_flags_for_attempts,
 )
 from src.orchestration.nodes.verifier.sandbox_executor import execute_test_script
@@ -110,11 +111,23 @@ def invoke_verifier_for_candidate(
             attempts=attempts,
             target_file_path=target_file_path,
         )
+        env_diagnostics = verifier_env_diagnostics_for_attempts(
+            attempts,
+            target_file_path=target_file_path,
+        )
+        env_hints_used = bool(
+            env_diagnostics["missing_modules"]
+            or env_diagnostics["failed_target_import_probes"]
+            or env_diagnostics["repeated_harness_error_count"] >= 2
+        )
         return {
             "llm_tokens": total_tokens,
             "verifier_repo_root": repo_root,
             "harness_error": flags["harness_error"],
             "product_verified": flags["product_verified"],
+            "verifier_env_repair_hints_used": env_hints_used,
+            "verifier_repeated_harness_error_count": env_diagnostics["repeated_harness_error_count"],
+            "verifier_unrepaired_missing_modules": env_diagnostics["missing_modules"],
         }
 
     for attempt_idx in range(1, settings.verifier_max_attempts + 1):

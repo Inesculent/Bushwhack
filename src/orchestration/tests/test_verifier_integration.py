@@ -21,6 +21,7 @@ from src.orchestration.nodes.verifier.result_judge import (
     classify_attempt_failure,
     infer_verification_scope,
     judge_attempt,
+    verifier_env_diagnostics_for_attempts,
 )
 from src.orchestration.nodes.verifier.sandbox_executor import (
     _verifier_sandbox_image,
@@ -953,6 +954,61 @@ def test_build_retry_feedback_harness_error_action_hint() -> None:
     assert "syntax_error" in fb or "harness_error" in fb
 
 
+def test_retry_feedback_includes_environment_import_diagnostics() -> None:
+    prior = VerifierAttemptRecord(
+        attempt_number=1,
+        test_code="x",
+        exit_code=2,
+        stdout="STATUS: HARNESS_ERROR | Cannot import target",
+        stderr="ModuleNotFoundError: No module named 'missing_dep'",
+        env_metadata={
+            "missing_modules": ["heavy_dep"],
+            "target_import_probes": [
+                {
+                    "file_path": "pkg/mod.py",
+                    "module": "pkg.mod",
+                    "status": "failed",
+                    "error": "No module named 'heavy_dep'",
+                }
+            ],
+        },
+    )
+    last = VerifierAttemptRecord(
+        attempt_number=2,
+        test_code="x",
+        exit_code=2,
+        stdout="STATUS: HARNESS_ERROR | Cannot import target again",
+        stderr="",
+    )
+
+    fb = build_retry_feedback(last, prior_attempts=[prior], target_file_path="pkg/mod.py")
+
+    assert "Missing modules seen: missing_dep, heavy_dep" in fb
+    assert "Failed target import probes: pkg.mod" in fb
+    assert "Repeated harness/setup failures" in fb
+    assert "do not treat unresolved setup failures as product behavior" in fb
+
+
+def test_verifier_env_diagnostics_records_unrepaired_missing_modules() -> None:
+    attempt = VerifierAttemptRecord(
+        attempt_number=1,
+        test_code="x",
+        exit_code=2,
+        stdout="STATUS: HARNESS_ERROR | Cannot import target",
+        stderr="ModuleNotFoundError: No module named 'missing_dep'",
+        env_metadata={
+            "missing_modules": ["heavy_dep"],
+            "target_import_probes": [{"module": "pkg.mod", "status": "failed"}],
+        },
+    )
+
+    diagnostics = verifier_env_diagnostics_for_attempts([attempt], target_file_path="pkg/mod.py")
+
+    assert diagnostics["missing_modules"] == ["missing_dep", "heavy_dep"]
+    assert diagnostics["failed_target_import_probes"][0]["module"] == "pkg.mod"
+    assert diagnostics["repeated_harness_error_count"] == 1
+
+
 def test_invoke_verifier_runner_metadata_harness_flags() -> None:
     from src.orchestration.nodes.verifier.verifier_runner import invoke_verifier_for_candidate
 
@@ -989,6 +1045,49 @@ def test_invoke_verifier_runner_metadata_harness_flags() -> None:
         )
     assert report.metadata.get("harness_error") is True
     assert report.metadata.get("product_verified") is False
+
+
+def test_invoke_verifier_runner_records_env_repair_metadata() -> None:
+    from src.orchestration.nodes.verifier.verifier_runner import invoke_verifier_for_candidate
+
+    harness = VerifierAttemptRecord(
+        attempt_number=1,
+        test_code="x",
+        exit_code=2,
+        stdout="STATUS: HARNESS_ERROR | import failed",
+        stderr="ModuleNotFoundError: No module named 'missing_dep'",
+        env_metadata={
+            "missing_modules": ["heavy_dep"],
+            "target_import_probes": [{"module": "pkg.mod", "status": "failed"}],
+        },
+    )
+    with patch("src.orchestration.nodes.verifier.verifier_runner._sandbox_ok", return_value=True), \
+         patch("src.orchestration.nodes.verifier.verifier_runner.generate_test_script", return_value=("code", 0)), \
+         patch("src.orchestration.nodes.verifier.verifier_runner.execute_test_script", return_value=harness), \
+         patch("src.orchestration.nodes.verifier.verifier_runner.get_settings") as gs:
+        m = MagicMock()
+        m.verifier_enabled = True
+        m.verifier_skip_if_no_sandbox = True
+        m.verifier_max_attempts = 1
+        gs.return_value = m
+        report = invoke_verifier_for_candidate(
+            run_id="r1",
+            repo_path="/tmp/repo",
+            candidate={
+                "candidate_id": "c1",
+                "file_path": "pkg/mod.py",
+                "line_start": 1,
+                "line_end": 2,
+                "failure_mode": "crash",
+            },
+            focused_context_snippets="",
+            git_diff_excerpt="",
+            use_llm=False,
+        )
+
+    assert report.metadata["verifier_env_repair_hints_used"] is True
+    assert report.metadata["verifier_repeated_harness_error_count"] == 1
+    assert report.metadata["verifier_unrepaired_missing_modules"] == ["missing_dep", "heavy_dep"]
 
 
 def test_verifier_advisory_omits_test_code() -> None:
