@@ -31,6 +31,52 @@ _MIGRATION_MARKERS = (
     "call site",
     "callsite",
 )
+_DATA_SHAPE_MARKERS = {
+    "aggregate",
+    "aggregation",
+    "array",
+    "batch",
+    "batches",
+    "collection",
+    "complete",
+    "data",
+    "dict",
+    "each",
+    "element",
+    "elements",
+    "every",
+    "field",
+    "fields",
+    "flatten",
+    "full",
+    "group",
+    "grouped",
+    "groups",
+    "items",
+    "list",
+    "mapping",
+    "mappings",
+    "map",
+    "matches",
+    "mode",
+    "parse",
+    "record",
+    "records",
+    "row",
+    "rows",
+    "serialize",
+    "shape",
+    "slot",
+    "slots",
+    "structured",
+    "template",
+    "tuple",
+}
+
+
+def _has_data_shape_contract_signal(text: str) -> bool:
+    tokens = set(re.findall(r"[a-z][a-z0-9_]*", text.lower()))
+    return bool(tokens & _DATA_SHAPE_MARKERS)
 
 
 def normalize_repo_path(path: str) -> str:
@@ -602,19 +648,19 @@ def build_surface_invariants_from_ledger(
                 )
             )
         signal_blob = f"{surface.name} {surface.file_path} {risk}".lower()
-        if any(token in signal_blob for token in ("data", "shape", "tuple", "list", "dict", "tensor", "parse", "serialize")):
+        if _has_data_shape_contract_signal(signal_blob) or "tensor" in signal_blob:
             invariants.append(
                 SurfaceInvariant(
                     surface_id=surface.surface_id,
                     dimension="data shape consistency",
                     expected_behavior=(
-                        f"{surface.name} preserves structured values, element ordering, and expected "
-                        "container/tensor shapes across the changed path."
+                        f"{surface.name} preserves structured values, element ordering, relevant fields, "
+                        "cardinality/completeness, and expected container/tensor shapes across the changed path."
                     ),
                     risk_hypothesis=risk or "Changed structured data handling may alter observable results.",
                     required_evidence=[
                         *base_evidence,
-                        "producer and consumer expectations for structured values at this surface",
+                        "producer and consumer expectations for structured values, fields, and cardinality at this surface",
                     ],
                     out_of_scope="Do not invent shape requirements without local code or caller evidence.",
                 )

@@ -22,6 +22,8 @@ Prefer a small set of high-signal checks over broad coverage, but "small" does n
 
 When mental-model or KB material names a contract, convention, expected return shape, required/optional input rule, public behavior, or uncertainty, convert that material into required evidence, suppress criteria, or report criteria for the relevant check. Declared required inputs should suppress generic nullability checks unless the material says the input is optional/nullable or the changed code introduces absence handling.
 
+When mental-model material implies cardinality/completeness for collections, mappings, grouped records, templates, serialization, batches, or mode-driven outputs, fold that contract into the most relevant source-local data-shape/API/aggregation check for the same surface. Do not add a separate broad completeness check just to repeat the context.
+
 When the task or context indicates a migration, merge, removal, replacement, rename, or changed call site, include migration-invariant checks: compare old-path behavior against the new implementation, trace caller reliance on preconditions and arguments, and require evidence for state/cache/resource lifecycle ordering when relevant.
 
 Behavior-first: correctness, API, state, lifecycle, security, and performance checks take priority. Concrete maintainability/readability checks are allowed only when anchored to changed comments, docs, naming, dead code, or API ergonomics and must not crowd out behavioral checks.

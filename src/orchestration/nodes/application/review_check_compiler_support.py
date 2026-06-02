@@ -44,6 +44,35 @@ REVIEW_CHECK_LENSES = (
 
 MAX_CHECKS_PER_TASK = 12
 
+_COMPLETENESS_CONTRACT_TERMS = {
+    "all",
+    "batch",
+    "batches",
+    "cardinality",
+    "collection",
+    "complete",
+    "completeness",
+    "each",
+    "element",
+    "elements",
+    "every",
+    "field",
+    "fields",
+    "group",
+    "grouped",
+    "groups",
+    "item",
+    "items",
+    "mapping",
+    "mappings",
+    "record",
+    "records",
+    "row",
+    "rows",
+    "slot",
+    "slots",
+}
+
 
 def check_origin(
     check: ReviewCheck,
@@ -102,7 +131,16 @@ def dimension_to_lens(dimension: str) -> str:
         return "resource_lifecycle"
     if "migration" in dim or "caller-reliance" in dim or "api" in dim or "signature" in dim or "contract" in dim:
         return "api_compatibility"
-    if "structured" in dim or "index" in dim or "aggregation" in dim or "serialization" in dim:
+    if (
+        "structured" in dim
+        or "index" in dim
+        or "aggregation" in dim
+        or "serialization" in dim
+        or "cardinality" in dim
+        or "completeness" in dim
+        or "field" in dim
+        or "element" in dim
+    ):
         return "data_shape_consistency"
     if "concurrency" in dim or "ordering" in dim:
         return "concurrency_ordering"
@@ -362,6 +400,85 @@ def mental_model_contract_lines(slot: Mapping[str, Any]) -> List[str]:
         if len(lines) >= 8:
             break
     return lines
+
+
+def _has_completeness_contract_signal(text: str) -> bool:
+    tokens = set(meaningful_tokens(text))
+    return bool(tokens & _COMPLETENESS_CONTRACT_TERMS)
+
+
+def completeness_contract_lines(slot: Mapping[str, Any]) -> List[str]:
+    lines = [
+        line for line in mental_model_contract_lines(slot)
+        if _has_completeness_contract_signal(line)
+    ]
+    return lines[:3]
+
+
+def _check_accepts_completeness_material(check: ReviewCheck) -> bool:
+    blob = " ".join(
+        [
+            check.lens,
+            check.behavioral_question,
+            check.affected_invariant,
+            " ".join(check.required_evidence),
+            " ".join(check.report_criteria),
+        ]
+    )
+    if check.lens in {"data_shape_consistency", "api_compatibility"}:
+        return True
+    return _has_completeness_contract_signal(blob) or any(
+        marker in blob.lower()
+        for marker in ("aggregate", "aggregation", "join", "serialize", "template", "format")
+    )
+
+
+def enrich_checks_with_completeness_contracts(
+    checks: Iterable[ReviewCheck],
+    *,
+    slot: Mapping[str, Any],
+) -> List[ReviewCheck]:
+    material = completeness_contract_lines(slot)
+    if not material:
+        return list(checks)
+
+    enriched: List[ReviewCheck] = []
+    for check in checks:
+        matching_lines = [
+            line for line in material
+            if (
+                tokens_overlap(check.changed_code_anchor, line)
+                or tokens_overlap(check.affected_invariant, line)
+                or tokens_overlap(check.behavioral_question, line)
+                or (check.file_path and check.file_path in line)
+            )
+        ]
+        if not matching_lines or not _check_accepts_completeness_material(check):
+            enriched.append(check)
+            continue
+        line = matching_lines[0]
+        required = [
+            *check.required_evidence,
+            f"mental-model completeness/cardinality contract: {line}",
+        ]
+        suppress = [
+            *check.suppress_criteria,
+            "Concrete evidence shows the relevant elements, fields, paths, or cardinality are preserved or intentionally narrowed.",
+        ]
+        report = [
+            *check.report_criteria,
+            "Report if the changed behavior selects, skips, drops, replaces, or serializes only part of the relevant structured data where the contract requires preserving it.",
+        ]
+        enriched.append(
+            check.model_copy(
+                update={
+                    "required_evidence": list(dict.fromkeys(required)),
+                    "suppress_criteria": list(dict.fromkeys(suppress)),
+                    "report_criteria": list(dict.fromkeys(report)),
+                }
+            )
+        )
+    return enriched
 
 
 def relevance_context(task: ReviewTask, slot: Mapping[str, Any]) -> Dict[str, str]:

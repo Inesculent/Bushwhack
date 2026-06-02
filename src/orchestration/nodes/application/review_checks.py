@@ -318,8 +318,12 @@ def make_review_check_compiler_node(
                     "compiled_by_review_check_llm",
                 )
                 merged_origins = {**check_origins, **llm_origins}
-                checks = compiler_support.prioritize_compiled_checks(
+                checks = compiler_support.enrich_checks_with_completeness_contracts(
                     compiler_support.dedupe_checks([*llm_checks, *checks]),
+                    slot=slot,
+                )
+                checks = compiler_support.prioritize_compiled_checks(
+                    checks,
                     task=task,
                     slot=slot,
                 )
@@ -352,6 +356,7 @@ def make_review_check_compiler_node(
                 summary = "Deterministic fallback checks from task evidence obligations."
             warnings.append("review_check_compiler_fallback_used")
 
+        checks = compiler_support.enrich_checks_with_completeness_contracts(checks, slot=slot)
         checks, coverage_floor, check_origins = compiler_support.ensure_compiler_coverage_floor(
             state=state,
             task=task,

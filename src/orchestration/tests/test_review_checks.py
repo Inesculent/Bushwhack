@@ -29,7 +29,10 @@ from src.orchestration.nodes.application.review_checks import (
     make_review_check_validator_node,
     validate_review_check,
 )
-from src.orchestration.context.surface_ledger import build_migration_invariants_from_diff, surface_ids_for_task
+from src.orchestration.context.surface_ledger import (
+    build_migration_invariants_from_diff,
+    surface_ids_for_task,
+)
 from src.reviewer_agent.harness import aacr
 from src.reviewer_agent.harness.aacr import (
     _coverage_audit_for_pr,
@@ -456,6 +459,162 @@ def test_surface_invariant_checks_are_compiled_before_fallback(tmp_path) -> None
     assert compiled[0]["check_id"] == "review-logic:surface:1"
     assert compiled[0]["surface_ids"] == ["surface:handle"]
     assert compiled[0]["line_start"] == 7
+
+
+def test_review_check_compiler_carries_completeness_material_without_extra_check(monkeypatch) -> None:
+    output = ReviewCheckCompilerOutput(
+        summary="compiled",
+        checks=[
+            _check(
+                check_id="review-logic:check:structured",
+                lens="data_shape_consistency",
+                changed_code_anchor="emit_payload",
+                behavioral_question="Does emit_payload preserve structured output fields?",
+                affected_invariant="structured output preservation",
+                required_evidence=["changed emit_payload implementation"],
+                report_criteria=["A reachable path drops a structured output field."],
+            )
+        ],
+    )
+    monkeypatch.setattr(
+        "src.orchestration.nodes.application.review_checks.Models.worker",
+        lambda *_args, **_kwargs: _FakeLLM({"parsed": output, "raw": _Raw()}),
+    )
+    state = _state(
+        git_diff=(
+            "diff --git a/src/app.py b/src/app.py\n+++ b/src/app.py\n@@\n"
+            "+def emit_payload(records):\n+    return records\n"
+        ),
+        metadata={
+            "critique_pipeline": {
+                "by_task": {
+                    "review-logic": {
+                        "direct_context": "def emit_payload(records):\n    return records\n",
+                        "mental_model_excerpt": (
+                            "- emit_payload should preserve every field in each structured record."
+                        ),
+                        "coverage_obligations": [],
+                    }
+                }
+            }
+        },
+    )
+
+    out = make_review_check_compiler_node()(state)  # type: ignore[arg-type]
+
+    task_meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
+    compiled = task_meta["compiled_checks"]
+    assert task_meta["compiled_count"] == 1
+    assert compiled[0]["check_id"] == "review-logic:check:structured"
+    assert any(
+        item.startswith("mental-model completeness/cardinality contract:")
+        for item in compiled[0]["required_evidence"]
+    )
+    assert any("selects, skips, drops" in item for item in compiled[0]["report_criteria"])
+
+
+def test_review_check_compiler_does_not_add_completeness_material_without_signal(monkeypatch) -> None:
+    output = ReviewCheckCompilerOutput(
+        summary="compiled",
+        checks=[
+            _check(
+                check_id="review-logic:check:structured",
+                lens="data_shape_consistency",
+                changed_code_anchor="emit_payload",
+                behavioral_question="Does emit_payload preserve structured output fields?",
+                affected_invariant="structured output preservation",
+                required_evidence=["changed emit_payload implementation"],
+            )
+        ],
+    )
+    monkeypatch.setattr(
+        "src.orchestration.nodes.application.review_checks.Models.worker",
+        lambda *_args, **_kwargs: _FakeLLM({"parsed": output, "raw": _Raw()}),
+    )
+    state = _state(
+        git_diff=(
+            "diff --git a/src/app.py b/src/app.py\n+++ b/src/app.py\n@@\n"
+            "+def emit_payload(records):\n+    return records\n"
+        ),
+        metadata={
+            "critique_pipeline": {
+                "by_task": {
+                    "review-logic": {
+                        "direct_context": "def emit_payload(records):\n    return records\n",
+                        "mental_model_excerpt": "- emit_payload returns the documented value.",
+                        "coverage_obligations": [],
+                    }
+                }
+            }
+        },
+    )
+
+    out = make_review_check_compiler_node()(state)  # type: ignore[arg-type]
+
+    compiled = out["metadata"]["review_checks"]["by_task"]["review-logic"]["compiled_checks"]
+    assert not any(
+        item.startswith("mental-model completeness/cardinality contract:")
+        for item in compiled[0]["required_evidence"]
+    )
+
+
+def test_review_check_compiler_completeness_enrichment_does_not_expand_cap(monkeypatch) -> None:
+    focused = _check(
+        check_id="review-logic:check:structured",
+        lens="data_shape_consistency",
+        changed_code_anchor="emit_payload",
+        behavioral_question="Does emit_payload preserve structured output fields?",
+        affected_invariant="structured output preservation",
+        required_evidence=["changed emit_payload implementation"],
+    )
+    llm_checks = [
+        focused,
+        *[
+            _check(
+                check_id=f"review-logic:check:{idx}",
+                changed_code_anchor=f"helper_{idx}",
+                behavioral_question=f"Does helper_{idx} preserve its return contract?",
+            )
+            for idx in range(2, 13)
+        ],
+    ]
+    output = ReviewCheckCompilerOutput(summary="compiled", checks=llm_checks)
+    monkeypatch.setattr(
+        "src.orchestration.nodes.application.review_checks.Models.worker",
+        lambda *_args, **_kwargs: _FakeLLM({"parsed": output, "raw": _Raw()}),
+    )
+    state = _state(
+        git_diff=(
+            "diff --git a/src/app.py b/src/app.py\n+++ b/src/app.py\n@@\n"
+            "+def emit_payload(records):\n+    return records\n"
+        ),
+        metadata={
+            "critique_pipeline": {
+                "by_task": {
+                    "review-logic": {
+                        "direct_context": "def emit_payload(records):\n    return records\n",
+                        "mental_model_excerpt": (
+                            "- emit_payload should preserve every field in each structured record."
+                        ),
+                        "coverage_obligations": [],
+                    }
+                }
+            }
+        },
+    )
+
+    out = make_review_check_compiler_node()(state)  # type: ignore[arg-type]
+
+    task_meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
+    compiled = task_meta["compiled_checks"]
+    compiled_ids = [check["check_id"] for check in compiled]
+    focused_check = next(check for check in compiled if check["check_id"] == focused.check_id)
+    assert task_meta["compiled_count"] == 12
+    assert focused.check_id in compiled_ids
+    assert any(
+        item.startswith("mental-model completeness/cardinality contract:")
+        for item in focused_check["required_evidence"]
+    )
 
 
 def test_surface_ids_for_task_matches_spaced_camel_case_structured_extraction() -> None:

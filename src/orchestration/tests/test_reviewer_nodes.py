@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from src.domain.schemas import (
     CodeEntity,
     ReviewFinding,
@@ -668,6 +670,50 @@ def test_generic_surface_invariants_are_evidence_requirements_not_predicted_find
     assert {"changed-surface behavior", "api contract", "data shape consistency"} <= dimensions
     assert all("defect" not in invariant.risk_hypothesis.lower() for invariant in invariants)
     assert all(invariant.required_evidence for invariant in invariants)
+
+
+def test_mandate_prompt_names_repo_agnostic_completeness_contracts() -> None:
+    prompt = Path("src/orchestration/prompts/reviewer/mental_model/mandate_synthesizer.md").read_text()
+
+    assert "cardinality/completeness contract" in prompt
+    assert "collections, batches, grouped records, mappings" in prompt
+    assert "regex" not in prompt.lower()
+    assert "benchmark" not in prompt.lower()
+
+
+def test_surface_invariants_add_completeness_only_from_contract_signal() -> None:
+    plain = ReviewSurface(
+        surface_id="surface:handle",
+        name="handle",
+        kind="function",
+        file_path="pkg/app.py",
+        confidence=0.95,
+    )
+    structured = ReviewSurface(
+        surface_id="surface:emit",
+        name="emit_batch_summary",
+        kind="function",
+        file_path="pkg/app.py",
+        confidence=0.95,
+    )
+
+    plain_dimensions = {
+        invariant.dimension
+        for invariant in build_surface_invariants_from_ledger([plain], risk_hypotheses="")
+    }
+    structured_invariants = build_surface_invariants_from_ledger(
+        [structured],
+        risk_hypotheses="The changed path should preserve every field in batched records.",
+    )
+    structured_shape = [
+        invariant for invariant in structured_invariants
+        if invariant.dimension == "data shape consistency"
+    ]
+
+    assert "data shape consistency" not in plain_dimensions
+    assert structured_shape
+    assert "cardinality/completeness" in structured_shape[0].expected_behavior
+    assert "fields, and cardinality" in " ".join(structured_shape[0].required_evidence)
 
 
 def test_task_dedupe_collapses_same_surface_specialty_dimension() -> None:
