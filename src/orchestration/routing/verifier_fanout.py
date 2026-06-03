@@ -19,6 +19,7 @@ from src.orchestration.nodes.application.critique_revision import (
     _needs_revision_candidates,
 )
 from src.orchestration.context.task_evidence import task_evidence_slot_from_state
+from src.orchestration.nodes.verifier.source_only import source_only_verify_candidate
 from src.orchestration.routing.finding_dedupe import candidate_with_behavioral_metadata
 
 logger = logging.getLogger(__name__)
@@ -136,6 +137,119 @@ def _concrete_source_local_missing_test_ids(state: GraphState) -> set[str]:
     return out
 
 
+def _existing_verifier_report_ids(state: GraphState) -> set[str]:
+    out: set[str] = set()
+    for raw in state.get("verifier_reports", []) or []:
+        if isinstance(raw, VerifierReport):
+            out.add(raw.candidate_id)
+            continue
+        if isinstance(raw, dict):
+            candidate_id = str(raw.get("candidate_id") or "")
+            if candidate_id:
+                out.add(candidate_id)
+    return out
+
+
+def _source_only_candidate_ids(state: GraphState) -> set[str]:
+    return (
+        set(_needs_revision_candidates(state))
+        | set(_candidate_ids_needs_verification(state))
+        | _concrete_source_local_missing_test_ids(state)
+    )
+
+
+def _source_only_report_for_candidate(state: GraphState, candidate: CandidateFinding) -> VerifierReport | None:
+    verdict, rationale, attempt = source_only_verify_candidate(state, candidate.model_dump(mode="json"))
+    if verdict != "verified" or attempt is None:
+        return None
+    return VerifierReport(
+        run_id=str(state.get("run_id") or ""),
+        candidate_id=candidate.candidate_id,
+        verdict="verified",
+        verification_scope="concrete_behavior",
+        final_rationale=rationale,
+        updated_evidence_summary=f"Source-only verifier: {rationale}",
+        attempts=[attempt],
+        metadata={
+            "harness_error": False,
+            "product_verified": True,
+            "source_only_static": True,
+        },
+    )
+
+
+def collect_source_only_verifier_updates(state: GraphState) -> Dict[str, Any]:
+    """Run static verifier proofs that do not require sandbox runtime."""
+    settings = get_settings()
+    if not settings.verifier_enabled or not getattr(settings, "verifier_source_only_static_enabled", True):
+        return {}
+
+    need_ids = _source_only_candidate_ids(state) - _existing_verifier_report_ids(state)
+    if not need_ids:
+        return {}
+
+    reports: List[VerifierReport] = []
+    source_local_missing_test_ids = _concrete_source_local_missing_test_ids(state)
+    for raw in state.get("candidate_findings", []) or []:
+        cand = _coerce_candidate(raw)
+        if cand is None or cand.candidate_id not in need_ids:
+            continue
+        if not _claim_type_eligible(
+            cand,
+            settings,
+            source_local_missing_test=cand.candidate_id in source_local_missing_test_ids,
+        ):
+            continue
+        report = _source_only_report_for_candidate(state, cand)
+        if report is not None:
+            reports.append(report)
+    if not reports:
+        return {}
+
+    metadata = dict(state.get("metadata") or {})
+    hints = dict(metadata.get("verifier_hints") or {})
+    verifier_meta = dict(metadata.get("verifier") or {})
+    by_candidate = dict(verifier_meta.get("by_candidate") or {})
+    failure_summary = dict(verifier_meta.get("failure_summary_by_candidate") or {})
+    for report in reports:
+        hints[report.candidate_id] = {
+            "verdict": report.verdict,
+            "verification_scope": report.verification_scope,
+            "updated_evidence_summary": report.updated_evidence_summary,
+            "final_rationale": report.final_rationale,
+            "attempts": len(report.attempts),
+            "skipped_reason": report.skipped_reason,
+            "lint_advisory": _lint_advisory_from_report(report),
+            "harness_error": False,
+            "product_verified": True,
+            "confidence": "product_verified",
+            "failure_classes": [a.failure_class for a in report.attempts if a.failure_class],
+            "top_missing_modules": [],
+            "verifier_env_repair_hints_used": False,
+            "verifier_repeated_harness_error_count": 0,
+            "verifier_unrepaired_missing_modules": [],
+            "source_only_static": True,
+        }
+        by_candidate[report.candidate_id] = report.model_dump(mode="json")
+        failure_summary[report.candidate_id] = {
+            "verdict": report.verdict,
+            "attempt_count": len(report.attempts),
+            "failure_classes": [a.failure_class or "unknown" for a in report.attempts],
+            "product_verified": True,
+            "harness_error": False,
+            "source_only_static": True,
+        }
+    metadata["verifier_hints"] = hints
+    verifier_meta["by_candidate"] = by_candidate
+    verifier_meta["failure_summary_by_candidate"] = failure_summary
+    metadata["verifier"] = verifier_meta
+    return {
+        "verifier_reports": reports,
+        "metadata": metadata,
+        "node_history": ["source_only_verifier"],
+    }
+
+
 def collect_verifier_send_payloads(state: GraphState) -> List[Send]:
     """Build Send targets for verifier_subgraph (possibly empty)."""
     settings = get_settings()
@@ -151,6 +265,7 @@ def collect_verifier_send_payloads(state: GraphState) -> List[Send]:
 
     source_local_missing_test_ids = _concrete_source_local_missing_test_ids(state)
     need_ids = set(_needs_revision_candidates(state)) | source_local_missing_test_ids
+    need_ids -= _existing_verifier_report_ids(state)
     if not need_ids:
         return []
     if settings.verifier_require_focused_evidence and not _has_focused_evidence(state, sorted(need_ids)):

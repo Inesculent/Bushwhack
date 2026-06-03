@@ -18,6 +18,7 @@ Generic reasoning rules:
 - When a check asks about fall-through or exhaustive dispatch, visible returns in named branches do not prove that a terminal fallback exists. Suppression must address the terminal/fallback behavior named by the check.
 - For structured values, preserving the outer container or return type is not enough. Suppression must address the field, slot, index, element/cardinality, aggregation, or serialization semantics named by the check.
 - Treat each check dimension independently. Evidence that suppresses one dimension, such as return shape, branch coverage, indexing, aggregation, dispatch, or resource behavior, does not suppress another dimension unless it directly addresses that check's report criteria.
+- Treat `owned_contract_scope` as the check's ownership boundary. If the "Already Seen Claim Digests" section contains the same root contract, emit a candidate only when this check proves a materially different contract, counterexample family, or impact. Otherwise return `no_finding` or `unsupported` according to the evidence.
 
 Create a CandidateFinding only for `candidate`. Draft candidates are appropriate when the evidence supports a concrete violated behavior; downstream reflection and the deterministic evidence gate will prune unsupported drafts. The candidate must be evidence-backed, anchored to changed code, and actionable. Use `claim_type: defect` for source-supported wrong output, data loss, missing returns, contract mismatches, or crashes, even if the PR also lacks a regression test. Reserve `claim_type: missing_test` for cases where the code may be correct but a specific changed behavior lacks coverage. Do not emit uncertain, speculative, generic hardening, or missing-test claims unless the check specifically asks for test oracle strength and concrete changed behavior is untested.
 
@@ -27,6 +28,7 @@ Every candidate must also justify the claim from a changed contract:
 - `evidence_for_contract`: old behavior, name, type, call site, schema, test, doc, or surrounding code proving the behavior is contractual.
 - `counterexample`: concrete input, state, path, mode, record shape, lifecycle path, or interleaving that triggers the violation.
 - `rejection_check`: why this is not merely style, speculation, intentional narrowing, or impossible under caller guarantees.
+- `claim_digest`: compact root-claim marker for the violated contract, including file/symbol plus branch/mode/variant, contract dimension, and impact when known.
 
 If you cannot fill those fields from the check evidence, return `unsupported` and list the missing fact instead of creating a candidate.
 

@@ -5,21 +5,10 @@ from typing import Any, Dict, List
 
 from src.domain.schemas import ReviewFinding
 from src.domain.state import GraphState
-from src.orchestration.routing.finding_dedupe import (
-    dedupe_review_findings_by_signature,
-    ensure_unique_finding_ids,
-    is_resolution_only_finding,
-)
+from src.orchestration.routing.finding_dedupe import ensure_unique_finding_ids
 from src.orchestration.routing.review_obligations import recall_audit_for_final_findings
 
 trace_logger = logging.getLogger("research_pipeline.reviewer_trace")
-
-
-def _finding_passes_quality_gate(finding: ReviewFinding) -> bool:
-    return not is_resolution_only_finding(
-        finding.content,
-        finding.recommendation or "",
-    )
 
 
 def _trace_enabled(state: GraphState) -> bool:
@@ -83,11 +72,9 @@ def _canonicalize_duplicate_map(
 
 def synthesizer_node(state: GraphState) -> Dict[str, Any]:
     findings = state.get("findings", []) or []
-    dropped_resolution_ids: List[str] = []
-    passed_gate: List[ReviewFinding] = []
 
     severity_rank = {"high": 0, "medium": 1, "low": 2}
-    for finding in sorted(
+    sorted_findings = sorted(
         findings,
         key=lambda item: (
             severity_rank.get(item.severity, 99),
@@ -95,16 +82,8 @@ def synthesizer_node(state: GraphState) -> Dict[str, Any]:
             item.line_start,
             item.id,
         ),
-    ):
-        if not _finding_passes_quality_gate(finding):
-            dropped_resolution_ids.append(finding.id)
-            continue
-        passed_gate.append(finding)
-
-    passed_gate = ensure_unique_finding_ids(passed_gate)
-    deduped, duplicate_map = dedupe_review_findings_by_signature(passed_gate)
-    deduped = ensure_unique_finding_ids(deduped)
-    dropped_ids = [fid for ids in duplicate_map.values() for fid in ids]
+    )
+    final = ensure_unique_finding_ids(sorted_findings)
 
     reports = state.get("reviewer_worker_reports", []) or []
     reflection_reports = state.get("reflection_reports", []) or []
@@ -117,7 +96,15 @@ def synthesizer_node(state: GraphState) -> Dict[str, Any]:
         if isinstance(slot, dict) and isinstance(slot.get("coverage_evaluation"), dict):
             coverage_by_task[str(task_id)] = slot["coverage_evaluation"]
     cleanup_meta = metadata.get("adversarial_cleanup")
+    adjudicator_meta = metadata.get("review_adjudicator")
     lifecycle = cleanup_meta.get("candidate_lifecycle", {}) if isinstance(cleanup_meta, dict) else {}
+    adjudicator_lifecycle = (
+        adjudicator_meta.get("candidate_lifecycle", {})
+        if isinstance(adjudicator_meta, dict)
+        else {}
+    )
+    if adjudicator_lifecycle:
+        lifecycle = adjudicator_lifecycle
     cleanup_candidate_duplicates = (
         cleanup_meta.get("semantic_dedupe_duplicates", {}) if isinstance(cleanup_meta, dict) else {}
     )
@@ -126,17 +113,26 @@ def synthesizer_node(state: GraphState) -> Dict[str, Any]:
         if isinstance(cleanup_meta, dict)
         else {}
     )
+    cleanup_claim_cluster_duplicates = (
+        cleanup_meta.get("semantic_claim_cluster_duplicates", {})
+        if isinstance(cleanup_meta, dict)
+        else {}
+    )
+    adjudicator_merge_map = (
+        adjudicator_meta.get("merge_map", {}) if isinstance(adjudicator_meta, dict) else {}
+    )
     raw_combined_duplicate_map = _merge_duplicate_maps(
         cleanup_candidate_duplicates,
         cleanup_finding_duplicates,
-        duplicate_map,
+        cleanup_claim_cluster_duplicates,
+        adjudicator_merge_map,
     )
     promoted_candidate_ids = {
         str(candidate_id)
         for candidate_id, entry in lifecycle.items()
         if isinstance(entry, dict) and entry.get("decision") == "promoted"
     }
-    final_ids = {finding.id for finding in deduped}
+    final_ids = {finding.id for finding in final}
     combined_duplicate_map = _canonicalize_duplicate_map(raw_combined_duplicate_map, final_ids)
     equivalent_keeper = {
         str(dropped): str(keeper)
@@ -153,15 +149,15 @@ def synthesizer_node(state: GraphState) -> Dict[str, Any]:
         "worker_count": len(reports),
         "reflection_report_count": len(reflection_reports),
         "raw_finding_count": len(findings),
-        "final_finding_count": len(deduped),
-        "dropped_duplicate_ids": dropped_ids,
-        "semantic_dedupe_duplicates": duplicate_map,
-        "dropped_resolution_only_ids": dropped_resolution_ids,
+        "final_finding_count": len(final),
+        "dropped_duplicate_ids": [],
+        "semantic_dedupe_duplicates": {},
+        "dropped_resolution_only_ids": [],
         "lost_promoted_candidate_ids": lost_promoted_ids,
         "recall_audit": recall_audit_for_final_findings(
             obligations_by_task=coverage_by_task,
             candidates=candidates,
-            final_findings=deduped,
+            final_findings=final,
             duplicate_map=combined_duplicate_map,
         ),
         "worker_reports": [report.model_dump() for report in reports],
@@ -177,10 +173,10 @@ def synthesizer_node(state: GraphState) -> Dict[str, Any]:
             len(reports),
             len(reflection_reports),
             len(findings),
-            len(deduped),
-            dropped_ids,
+            len(final),
+            [],
         )
-        for finding in deduped:
+        for finding in final:
             trace_logger.info(
                 "TRACE final_finding run_id=%s id=%s severity=%s file=%s lines=%s-%s",
                 state.get("run_id", "unknown"),
@@ -192,7 +188,7 @@ def synthesizer_node(state: GraphState) -> Dict[str, Any]:
             )
 
     return {
-        "final_findings": deduped,
+        "final_findings": final,
         "metadata": metadata,
         "node_history": ["review_synthesizer"],
         "next_step": "finalize",

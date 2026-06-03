@@ -2,13 +2,20 @@
 
 from __future__ import annotations
 
+from src.config import get_settings
 from src.domain.schemas import ReflectionReport
 from src.domain.state import GraphState
 from src.orchestration.nodes.application.critique_revision import _needs_revision_candidates
 
 
+def final_adversarial_review_node() -> str:
+    if get_settings().reviewer_use_legacy_adversarial_cleanup:
+        return "adversarial_cleanup"
+    return "review_adjudicator"
+
+
 def route_focused_after_reflection(state: GraphState) -> str:
-    """Return next node name: ``focused_context``, ``post_reflection_evidence_pass``, or ``adversarial_cleanup``."""
+    """Return next node name after reflection evidence routing."""
     reports = state.get("reflection_reports", []) or []
     for raw in reports:
         report: ReflectionReport | None
@@ -38,4 +45,4 @@ def route_focused_after_reflection(state: GraphState) -> str:
             return "focused_context"
     if _needs_revision_candidates(state):
         return "post_reflection_evidence_pass"
-    return "adversarial_cleanup"
+    return final_adversarial_review_node()

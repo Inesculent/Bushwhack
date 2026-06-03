@@ -48,6 +48,11 @@ def test_old_artifacts_load_without_surface_fields() -> None:
     assert spec.surface_invariants == []
     assert task.surface_ids == []
     assert check.surface_ids == []
+    assert check.owned_contract_scope == ""
+    assert check.issue_family == ""
+    assert check.diff_signal_family == ""
+    assert check.diff_signal == ""
+    assert check.audit_only is False
 
 
 def test_old_artifacts_load_without_contract_proof_fields() -> None:
@@ -81,9 +86,12 @@ def test_old_artifacts_load_without_contract_proof_fields() -> None:
     assert result.evidence_for_contract == ""
     assert result.counterexample == ""
     assert result.rejection_check == ""
+    assert result.claim_digest == ""
     assert candidate.evidence_for_contract == ""
     assert candidate.counterexample == ""
     assert candidate.rejection_check == ""
+    assert candidate.claim_digest == ""
     assert finding.evidence_for_contract == ""
     assert finding.counterexample == ""
     assert finding.rejection_check == ""
+    assert finding.claim_digest == ""

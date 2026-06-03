@@ -13,6 +13,8 @@ from src.orchestration.routing.finding_dedupe import (
 )
 
 _CLASS_DEF_RE = re.compile(r"^class\s+([A-Za-z_][A-Za-z0-9_]*)\s*[:\(]", re.MULTILINE)
+_FUNC_DEF_RE = re.compile(r"^def\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(", re.MULTILINE)
+_QUALIFIED_METHOD_RE = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)\b")
 
 
 def class_line_range_in_file(file_text: str, class_name: str) -> Optional[Tuple[int, int]]:
@@ -70,6 +72,49 @@ def class_at_line(file_text: str, line: int) -> Optional[str]:
         if idx == line:
             return current
     return current
+
+
+def method_name_from_claim(*parts: str) -> Optional[str]:
+    blob = " ".join(part for part in parts if part)
+    match = _QUALIFIED_METHOD_RE.search(blob)
+    if match and match.group(1)[:1].isupper():
+        return match.group(2)
+    return None
+
+
+def function_line_range_in_scope(
+    file_text: str,
+    function_name: str,
+    *,
+    scope_start: int = 1,
+    scope_end: int | None = None,
+) -> Optional[Tuple[int, int]]:
+    if not file_text.strip() or not function_name:
+        return None
+    lines = file_text.splitlines()
+    end_limit = scope_end or len(lines)
+    start: Optional[int] = None
+    start_indent = 0
+    for idx in range(max(1, scope_start), min(len(lines), end_limit) + 1):
+        raw = lines[idx - 1]
+        match = _FUNC_DEF_RE.match(raw.strip())
+        if match and match.group(1) == function_name:
+            start = idx
+            start_indent = len(raw) - len(raw.lstrip(" "))
+            break
+    if start is None:
+        return None
+    end = end_limit
+    for idx in range(start + 1, min(len(lines), end_limit) + 1):
+        raw = lines[idx - 1]
+        stripped = raw.strip()
+        if not stripped:
+            continue
+        indent = len(raw) - len(raw.lstrip(" "))
+        if indent <= start_indent and (_FUNC_DEF_RE.match(stripped) or _CLASS_DEF_RE.match(stripped)):
+            end = idx - 1
+            break
+    return start, end
 
 
 def _ranges_overlap(a_start: int, a_end: int, b_start: int, b_end: int) -> bool:
@@ -145,8 +190,23 @@ def anchor_candidate_lines(
 
     if class_range is not None:
         c_start, c_end = class_range
+        method = method_name_from_claim(
+            candidate.content or "",
+            candidate.failure_mode or "",
+            candidate.evidence_summary or "",
+            candidate.recommendation or "",
+        )
+        method_range = (
+            function_line_range_in_scope(file_text, method, scope_start=c_start, scope_end=c_end)
+            if method
+            else None
+        )
         if _ranges_overlap(ls, le, c_start, c_end):
             updates: dict[str, object] = {}
+            if method_range is not None:
+                m_start, m_end = method_range
+                if not _ranges_overlap(ls, le, m_start, m_end) or (le - ls) > (m_end - m_start + 20):
+                    updates.update({"line_start": m_start, "line_end": m_end})
             if _candidate_range_misses_claimed_branch(file_text, candidate, c_start, c_end):
                 updates.update({"line_start": c_start, "line_end": c_end})
             if subject.lower() not in (candidate.content or "").lower():

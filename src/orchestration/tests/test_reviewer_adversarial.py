@@ -1050,6 +1050,49 @@ def test_adversarial_cleanup_promotes_needs_verification_with_runtime_verified()
     assert "verifier_advisory" in life
 
 
+def test_adversarial_cleanup_labels_unresolved_verification_gap() -> None:
+    node = make_adversarial_cleanup_node()
+    cand = CandidateFinding(
+        candidate_id="t1:nv-unresolved",
+        patch_task_id="t1",
+        file_path="src/nodes.py",
+        line_start=10,
+        line_end=20,
+        content="Changed operation may violate its local return contract.",
+        claim_type="defect",
+        failure_mode="The changed operation can return the wrong value.",
+        evidence_summary="The local branch needs executable confirmation.",
+        suspected_category="logic",
+        reflection_specialties=["logic"],
+        recommendation="Preserve the declared local return contract.",
+        evidence_for_contract="The changed operation declares a local return contract.",
+        counterexample="A concrete branch reaches the wrong value.",
+        rejection_check="No local evidence refutes the candidate; verification is unresolved.",
+    )
+    reports = [
+        ReflectionReport(
+            candidate_id=cand.candidate_id,
+            reflector_specialty="logic",
+            verdict="needs_verification",
+            rationale="Executable behavior is still unresolved.",
+        )
+    ]
+
+    out = node(
+        {
+            "run_id": "t",
+            "candidate_findings": [cand],
+            "reflection_reports": reports,
+            "focused_context_results": {},
+            "metadata": {},
+        }
+    )
+
+    life = out["metadata"]["adversarial_cleanup"]["candidate_lifecycle"][cand.candidate_id]
+    assert life["decision"] == "dropped"
+    assert life["reason"] == "needs_verification_without_supporting_revision"
+
+
 def test_adversarial_cleanup_product_verified_skips_incomplete_contradiction() -> None:
     node = make_adversarial_cleanup_node()
     cand = CandidateFinding(

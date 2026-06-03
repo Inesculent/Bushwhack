@@ -26,8 +26,14 @@ from src.orchestration.nodes.application.review_checks import (
     make_review_check_context_planner_node,
     make_review_check_evidence_gate_node,
     make_review_check_executor_node,
+    make_review_check_scout_node,
     make_review_check_validator_node,
+    should_run_review_check_scout,
     validate_review_check,
+)
+from src.orchestration.nodes.application.review_check_executor_support import (
+    no_finding_has_strong_suppression,
+    normalize_executor_results,
 )
 from src.orchestration.context.surface_ledger import (
     build_migration_invariants_from_diff,
@@ -154,6 +160,161 @@ def _state(**overrides: object) -> dict[str, Any]:
     }
     base.update(overrides)
     return base
+
+
+def test_same_claim_suppression_rejects_neighboring_property() -> None:
+    check = _check(
+        lens="data_shape_consistency",
+        changed_code_anchor="serialize_record",
+        owned_contract_scope="serialize_record aggregation preserves optional record fields",
+        issue_family="aggregation_cardinality",
+        affected_invariant="serialized aggregation preserves optional record fields",
+        report_criteria=[
+            "A reachable aggregation path drops optional record fields or joins non-string values."
+        ],
+        suppress_criteria=[
+            "Aggregation normalizes every optional record field before joining."
+        ],
+    )
+    result = ReviewCheckResult(
+        check_id=check.check_id,
+        patch_task_id=check.patch_task_id,
+        decision="no_finding",
+        evidence_refs=["src/app.py:3"],
+        reportable_reason="serialize_record handles an empty collection.",
+        suppressing_evidence=[
+            "serialize_record proves only that joining an empty collection returns an empty output."
+        ],
+    )
+
+    assert not no_finding_has_strong_suppression(result, check)
+
+
+def test_same_claim_suppression_accepts_direct_refutation() -> None:
+    check = _check(
+        lens="data_shape_consistency",
+        changed_code_anchor="serialize_record",
+        owned_contract_scope="serialize_record aggregation preserves optional record fields",
+        issue_family="aggregation_cardinality",
+        affected_invariant="serialized aggregation preserves optional record fields",
+        report_criteria=[
+            "A reachable aggregation path drops optional record fields or joins non-string values."
+        ],
+        suppress_criteria=[
+            "Aggregation normalizes every optional record field before joining."
+        ],
+    )
+    result = ReviewCheckResult(
+        check_id=check.check_id,
+        patch_task_id=check.patch_task_id,
+        decision="no_finding",
+        evidence_refs=["src/app.py:3"],
+        reportable_reason="serialize_record normalizes optional record fields.",
+        suppressing_evidence=[
+            "serialize_record converts optional record fields to strings before joining, so non-string values are not joined."
+        ],
+    )
+
+    assert no_finding_has_strong_suppression(result, check)
+
+
+def test_projection_evidence_does_not_suppress_preservation_check() -> None:
+    check = _check(
+        lens="data_shape_consistency",
+        changed_code_anchor="serialize_rows",
+        owned_contract_scope="serialize_rows preserves structured row cardinality",
+        issue_family="aggregation_cardinality",
+        affected_invariant="serialized output preserves every structured row field",
+        report_criteria=[
+            "A reachable aggregation path selects, skips, drops, or truncates part of each structured row."
+        ],
+        suppress_criteria=[
+            "Concrete evidence shows every structured row field is preserved or intentionally narrowed."
+        ],
+    )
+    result = ReviewCheckResult(
+        check_id=check.check_id,
+        patch_task_id=check.patch_task_id,
+        decision="no_finding",
+        evidence_refs=["src/app.py:9"],
+        reportable_reason="serialize_rows preserves structured data.",
+        suppressing_evidence=[
+            "serialize_rows handles structured rows by extracting row[0] from each row and joining all results."
+        ],
+    )
+
+    assert not no_finding_has_strong_suppression(result, check)
+
+
+def test_documented_projection_can_suppress_preservation_check() -> None:
+    check = _check(
+        lens="data_shape_consistency",
+        changed_code_anchor="serialize_rows",
+        owned_contract_scope="serialize_rows preserves structured row cardinality",
+        issue_family="aggregation_cardinality",
+        affected_invariant="serialized output preserves every structured row field unless narrowed by contract",
+        report_criteria=[
+            "A reachable aggregation path selects, skips, drops, or truncates part of each structured row."
+        ],
+        suppress_criteria=[
+            "Concrete evidence shows every structured row field is preserved or intentionally narrowed."
+        ],
+    )
+    result = ReviewCheckResult(
+        check_id=check.check_id,
+        patch_task_id=check.patch_task_id,
+        decision="no_finding",
+        evidence_refs=["src/app.py:9"],
+        reportable_reason="serialize_rows has a documented projection contract.",
+        suppressing_evidence=[
+            "serialize_rows extracts row[0], and the documented projection contract says only the first field is required."
+        ],
+    )
+
+    assert no_finding_has_strong_suppression(result, check)
+
+
+def test_neighboring_suppression_normalizes_to_unsupported() -> None:
+    check = _check(
+        lens="data_shape_consistency",
+        changed_code_anchor="serialize_record",
+        owned_contract_scope="serialize_record aggregation preserves optional record fields",
+        issue_family="aggregation_cardinality",
+        affected_invariant="serialized aggregation preserves optional record fields",
+        report_criteria=[
+            "A reachable aggregation path drops optional record fields or joins non-string values."
+        ],
+        suppress_criteria=[
+            "Aggregation normalizes every optional record field before joining."
+        ],
+    )
+    result = ReviewCheckResult(
+        check_id=check.check_id,
+        patch_task_id=check.patch_task_id,
+        decision="no_finding",
+        evidence_refs=["src/app.py:3"],
+        reportable_reason="serialize_record handles an empty collection.",
+        suppressing_evidence=[
+            "serialize_record proves only that joining an empty collection returns an empty output."
+        ],
+    )
+    state = _state()
+
+    normalized, warnings = normalize_executor_results(
+        state=state,
+        task=_task(),
+        slot=state["metadata"]["critique_pipeline"]["by_task"]["review-logic"],
+        checks=[check],
+        results=[result],
+        git_diff="",
+        check_budget_remaining=lambda _state, _check: True,
+        evidence_requirements_for_check=lambda item: list(item.required_evidence),
+        compiled_check_is_source_local=lambda _check: False,
+    )
+
+    assert normalized[0].decision == "unsupported"
+    assert normalized[0].missing_evidence
+    assert any("executor_weak_no_finding_downgraded" in item for item in warnings)
 
 
 def test_review_check_validator_rejects_vague_checks() -> None:
@@ -1924,10 +2085,10 @@ def test_review_check_executor_downgrades_dimension_thin_no_finding(monkeypatch)
 
     result = out["review_check_results"][0]
     assert result.decision == "unsupported"
-    assert "llm_suppression_audit_insufficient" in result.warnings
-    assert len(fake.prompts) == 2
+    assert "weak_no_finding_requires_more_evidence" in result.warnings
+    assert len(fake.prompts) == 1
     meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
-    assert meta["suppression_audits"][check.check_id]["verdict"] == "insufficient"
+    assert check.check_id not in meta["suppression_audits"]
 
 
 def test_review_check_executor_keeps_dimension_specific_no_finding(monkeypatch) -> None:
@@ -2764,6 +2925,14 @@ def test_review_check_executor_records_contract_proof_backfills(monkeypatch) -> 
             "fields": ["evidence_for_contract", "counterexample", "rejection_check"],
         }
     ]
+    result = out["review_check_results"][0]
+    assert result.claim_digest
+    assert result.candidate is not None
+    assert result.candidate.claim_digest == result.claim_digest
+    assert meta["executor_claim_digests"] == {
+        result.candidate.candidate_id: result.candidate.claim_digest
+    }
+    assert meta["executor_claim_digest_count"] == 1
 
 
 def test_review_check_executor_downgrades_missing_candidate_payload_without_evidence(monkeypatch) -> None:
@@ -2902,6 +3071,140 @@ def test_review_check_evidence_gate_promotes_only_supported_candidates_and_recor
         "speculative_or_uncertain_claim": 1,
     }
     assert out["task_status_by_id"] == {"review-logic": "completed"}
+
+
+def test_review_check_evidence_gate_drops_audit_only_check_candidates() -> None:
+    candidate = CandidateFinding(
+        candidate_id="review-logic:check:1:candidate",
+        patch_task_id="review-logic",
+        file_path="src/app.py",
+        line_start=1,
+        line_end=2,
+        content="The changed handler now returns None.",
+        claim_type="defect",
+        failure_mode="handle returns None instead of the declared result.",
+        evidence_summary="Task evidence shows handle returns None.",
+        evidence_for_contract="The check invariant and declared return contract require handle to return the result.",
+        counterexample="Calling handle on the changed path returns None.",
+        rejection_check="The task evidence does not show intentional narrowing or a caller guarantee.",
+        recommendation="Return the declared result on this path.",
+        suspected_category="logic",
+        reflection_specialties=["logic"],
+    )
+    out = make_review_check_evidence_gate_node()(
+        _state(
+            review_checks=[_check(audit_only=True)],
+            review_check_results=[
+                ReviewCheckResult(
+                    check_id="review-logic:check:1",
+                    patch_task_id="review-logic",
+                    decision="candidate",
+                    evidence_refs=["src/app.py:1"],
+                    reportable_reason="The changed path returns None.",
+                    candidate=candidate,
+                )
+            ],
+        )
+    )  # type: ignore[arg-type]
+
+    assert out["candidate_findings"] == []
+    result = out["review_check_results"][0]
+    assert result.gate_decision == "dropped"
+    assert result.gate_reason == "audit_only_check_not_promotable"
+
+
+def test_review_check_scout_emits_bounded_concrete_obligation_checks() -> None:
+    state = _state(
+        review_checks=[_check()],
+        review_check_results=[
+            ReviewCheckResult(
+                check_id="review-logic:check:1",
+                patch_task_id="review-logic",
+                decision="unsupported",
+            )
+        ],
+    )
+    task = _task()
+    state["metadata"]["review_checks"] = {
+        "by_task": {
+            task.id: {
+                "gate": {
+                    "promoted_count": 0,
+                    "unsupported_high_confidence_surface_ids": ["surface:1"],
+                },
+                "compiler_coverage_floor": {
+                    "uncovered_obligations": [
+                        {
+                            "file_path": "src/app.py",
+                            "surface": "handle",
+                            "dimension": "return contract completeness",
+                            "evidence": "changed handle implementation",
+                            "issue_family": "branch_return",
+                            "diff_signal": "+ return None",
+                            "line_start": 1,
+                            "line_end": 2,
+                        }
+                    ]
+                },
+            }
+        }
+    }
+
+    assert should_run_review_check_scout(state) is True  # type: ignore[arg-type]
+    out = make_review_check_scout_node()(state)  # type: ignore[arg-type]
+
+    checks = out["review_checks"]
+    assert len(checks) == 1
+    assert checks[0].check_id == "review-logic:scout:1"
+    assert checks[0].issue_family == "branch_return"
+    assert checks[0].allowed_retrieval == ["task_evidence"]
+    assert out["metadata"]["review_checks"]["by_task"]["review-logic"]["scout"]["status"] == "emitted"
+
+
+def test_review_check_scout_accepts_generic_contract_delta_obligations() -> None:
+    state = _state(
+        review_checks=[_check()],
+        review_check_results=[
+            ReviewCheckResult(
+                check_id="review-logic:check:1",
+                patch_task_id="review-logic",
+                decision="unsupported",
+            )
+        ],
+    )
+    task = _task()
+    state["metadata"]["review_checks"] = {
+        "by_task": {
+            task.id: {
+                "gate": {
+                    "promoted_count": 0,
+                    "unsupported_high_confidence_surface_ids": ["surface:1"],
+                },
+                "compiler_coverage_floor": {
+                    "uncovered_obligations": [
+                        {
+                            "file_path": "src/app.py",
+                            "surface": "handle",
+                            "dimension": "changed contract delta",
+                            "evidence": "changed handle implementation",
+                            "diff_signal_family": "contract_delta",
+                            "diff_signal": "+ handle now maps legacy values differently",
+                            "line_start": 1,
+                            "line_end": 2,
+                        }
+                    ]
+                },
+            }
+        }
+    }
+
+    assert should_run_review_check_scout(state) is True  # type: ignore[arg-type]
+    out = make_review_check_scout_node()(state)  # type: ignore[arg-type]
+
+    check = out["review_checks"][0]
+    assert check.issue_family == "contract_delta"
+    assert check.diff_signal_family == "contract_delta"
+    assert check.audit_only is False
 
 
 def test_review_check_evidence_gate_records_candidate_liveness_warning() -> None:
@@ -3217,6 +3520,11 @@ def test_coverage_audit_reports_stage_coverage_and_writes_json(tmp_path) -> None
     assert record["summary"]["positive_path_count"] == 2
     assert record["summary"]["compiled_path_count"] == 1
     assert record["summary"]["candidate_path_count"] == 1
+    paths = {item["path"]: item for item in record["paths"]}
+    assert paths["src/app.py"]["reason_state"] == "dropped_by_cleanup"
+    assert paths["src/app.py"]["last_stage"] == "candidate"
+    assert paths["src/missed.py"]["reason_state"] == "no_task"
+    assert paths["src/missed.py"]["last_stage"] == "none"
     assert payload["summary"]["positive_path_count"] == 2
 
 

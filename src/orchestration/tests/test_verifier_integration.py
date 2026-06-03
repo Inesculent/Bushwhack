@@ -27,7 +27,11 @@ from src.orchestration.nodes.verifier.sandbox_executor import (
     _verifier_sandbox_image,
     validate_test_code,
 )
-from src.orchestration.routing.verifier_fanout import collect_verifier_send_payloads, focused_context_text_for_candidate
+from src.orchestration.routing.verifier_fanout import (
+    collect_source_only_verifier_updates,
+    collect_verifier_send_payloads,
+    focused_context_text_for_candidate,
+)
 
 
 def _minimal_state(**kwargs: object) -> GraphState:
@@ -98,6 +102,66 @@ def test_collect_verifier_send_payloads_eligible() -> None:
     assert sends[0].node == "verifier_subgraph"
     assert sends[0].arg["verifier_candidate"]["candidate_id"] == cid
     assert sends[0].arg["token_usage"] == 0
+
+
+def test_source_only_verifier_updates_do_not_require_runtime_sandbox() -> None:
+    cid = "cand-source-only"
+    cand = CandidateFinding(
+        candidate_id=cid,
+        patch_task_id="t1",
+        file_path="pkg/mod.py",
+        line_start=1,
+        line_end=3,
+        content="local return contract",
+        claim_type="defect",
+        failure_mode="missing return can fall through to implicit None",
+        evidence_summary="execute has a branch without a terminal fallback.",
+        behavioral_symptom="missing_return",
+        root_operation="dispatch",
+        reflection_specialties=["logic"],
+        suspected_category="logic",
+    )
+    rep = ReflectionReport(
+        candidate_id=cid,
+        reflector_specialty="logic",
+        verdict="needs_verification",
+        rationale="source-local behavior needs verification",
+    )
+    state = _minimal_state(
+        candidate_findings=[cand],
+        reflection_reports=[rep],
+        metadata={
+            "critique_pipeline": {
+                "by_task": {
+                    "t1": {
+                        "task_evidence": {
+                            "file_contents": {
+                                "pkg/mod.py": "def execute(mode):\n    if mode == 'A':\n        return True\n"
+                            },
+                            "files_complete": {"pkg/mod.py": True},
+                        }
+                    }
+                }
+            }
+        },
+    )
+    with patch("src.orchestration.routing.verifier_fanout.get_settings") as gs:
+        m = MagicMock()
+        m.verifier_enabled = True
+        m.verifier_source_only_static_enabled = True
+        m.verifier_run_on_defect = True
+        m.verifier_run_on_security = False
+        m.verifier_run_on_performance = False
+        gs.return_value = m
+        with patch("src.orchestration.routing.verifier_fanout.sandbox_runtime_available", return_value=False):
+            update = collect_source_only_verifier_updates(state)
+
+    assert update["verifier_reports"][0].candidate_id == cid
+    hint = update["metadata"]["verifier_hints"][cid]
+    assert hint["verdict"] == "verified"
+    assert hint["product_verified"] is True
+    assert hint["harness_error"] is False
+    assert hint["source_only_static"] is True
 
 
 def test_collect_verifier_send_payloads_routes_concrete_missing_test_without_focused_context() -> None:
@@ -502,7 +566,7 @@ def test_route_focused_after_reflection_with_embedded_focus_request() -> None:
     assert route_focused_after_reflection(state) == "focused_context"
 
 
-def test_route_focused_after_reflection_cleanup_when_no_needs_revision() -> None:
+def test_route_focused_after_reflection_adjudicator_when_no_needs_revision() -> None:
     from src.orchestration.routing.adversarial_after_reflection import route_focused_after_reflection
 
     rep = ReflectionReport(
@@ -512,7 +576,7 @@ def test_route_focused_after_reflection_cleanup_when_no_needs_revision() -> None
         focused_request=None,
     )
     state = _minimal_state(reflection_reports=[rep])
-    assert route_focused_after_reflection(state) == "adversarial_cleanup"
+    assert route_focused_after_reflection(state) == "review_adjudicator"
 
 
 def test_route_focused_after_reflection_needs_verification_before_focused_context() -> None:

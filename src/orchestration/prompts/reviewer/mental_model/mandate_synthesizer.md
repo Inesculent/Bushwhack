@@ -36,7 +36,7 @@ Lens prompts:
 - Preserve intent, contracts, and precedent from Phase 0.
 - Balance PR description intent, repository mental model, and general review practices; do not anchor only on the PR description.
 - Do not claim a defect exists unless directly proven; phrase risks as balanced hypotheses.
-- When the PR intent or changed code names "all", "each", complete handling, grouped values, mappings, templates, or batched/structured outputs, express the cardinality/completeness contract generically so downstream checks can verify element and field preservation.
+- When the PR intent or changed code names "all", "each", complete handling, collections, batches, grouped records, mappings, templates, or batched/structured outputs, express the cardinality/completeness contract generically so downstream checks can verify element and field preservation.
 - Provide comprehensive output that avoids context explosion while ensuring high recall of potential issues.
 - In `behavioral_expectations` and `reviewer_guidance`, state that reviewers should **assume inputs satisfy declared schemas** (required parameters are present). Do **not** anchor the mandate on hunting missing None/null checks for required, non-optional inputs unless the contract or diff shows optional/nullable inputs.
 

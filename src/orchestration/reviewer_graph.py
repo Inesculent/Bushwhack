@@ -41,6 +41,7 @@ from src.infrastructure.structural_topology import (
 )
 from src.orchestration.context.review_context import LazyReviewContextProvider
 from src.orchestration.nodes.application.cleanup import make_adversarial_cleanup_node
+from src.orchestration.nodes.application.review_adjudicator import make_review_adjudicator_node
 from src.orchestration.nodes.application.critique_revision import (
     _needs_revision_candidates,
     critique_revision_digests_complete,
@@ -89,10 +90,14 @@ from src.orchestration.nodes.exploration.unverified_call_resolver import (
     make_unverified_call_resolver_node,
     route_after_unverified_call_resolver,
 )
-from src.orchestration.routing.adversarial_after_reflection import route_focused_after_reflection
+from src.orchestration.routing.adversarial_after_reflection import (
+    final_adversarial_review_node,
+    route_focused_after_reflection,
+)
 from src.orchestration.routing.send_payload import payload_for_send
 from src.orchestration.routing.verifier_fanout import (
     collect_verifier_send_payloads,
+    collect_source_only_verifier_updates,
     make_verifier_subgraph_node,
 )
 
@@ -146,6 +151,7 @@ def _make_post_reflection_evidence_pass_node():
         slot = dict(metadata.get(node_name) or {})
         slot["entered"] = True
         metadata[node_name] = slot
+        source_only_update = collect_source_only_verifier_updates({**state, "metadata": metadata})
         if metadata.get("review_trace_enabled"):
             trace_logger.info(
                 "TRACE %s run_id=%s needs_revision=%s",
@@ -153,6 +159,12 @@ def _make_post_reflection_evidence_pass_node():
                 state.get("run_id", "unknown"),
                 _needs_revision_candidates(state),
             )
+        if source_only_update:
+            source_history = list(source_only_update.get("node_history") or [])
+            return {
+                **source_only_update,
+                "node_history": [node_name, *source_history],
+            }
         return {"metadata": metadata, "node_history": [node_name]}
 
     return post_reflection_evidence_pass_node
@@ -200,7 +212,7 @@ def _route_after_critique_revision_digest(state: GraphState):
 
 
 def _route_critique_revision(state: GraphState):
-    """Fan out digest workers when revision work exists; otherwise skip to cleanup.
+    """Fan out digest workers when revision work exists; otherwise skip to final review.
 
     Invoked from ``post_verifier_gate`` (after all verifier branches join) or when no
   verifiers were scheduled. Must not be wired directly off each verifier branch — that
@@ -214,20 +226,20 @@ def _route_critique_revision(state: GraphState):
             trace_logger.info(
                 "TRACE dispatch_critique_revision run_id=%s route=%s",
                 state.get("run_id", "unknown"),
-                "adversarial_cleanup_no_candidates",
+                "final_review_no_candidates",
             )
-        return "adversarial_cleanup"
+        return final_adversarial_review_node()
     if not revision_inputs_ready(state, all_revision_ids):
         skipped = sorted(set(all_revision_ids) - set(candidate_ids))
         if metadata.get("review_trace_enabled"):
             trace_logger.info(
                 "TRACE dispatch_critique_revision run_id=%s route=%s ready=%s skipped=%s",
                 state.get("run_id", "unknown"),
-                "adversarial_cleanup_no_revision_inputs",
+                "final_review_no_revision_inputs",
                 candidate_ids,
                 skipped,
             )
-        return "adversarial_cleanup"
+        return final_adversarial_review_node()
     if metadata.get("review_trace_enabled") and len(candidate_ids) < len(all_revision_ids):
         trace_logger.info(
             "TRACE dispatch_critique_revision run_id=%s partial_ready ready=%s skipped=%s",
@@ -247,9 +259,9 @@ def _route_critique_revision(state: GraphState):
             trace_logger.info(
                 "TRACE dispatch_critique_revision run_id=%s route=%s",
                 state.get("run_id", "unknown"),
-                "adversarial_cleanup_no_shards",
+                "final_review_no_shards",
             )
-        return "adversarial_cleanup"
+        return final_adversarial_review_node()
     sends: List[Send] = []
     for shard in shards:
         payload = payload_for_send(state, critique_revision_shard=shard.model_dump(mode="json"))
@@ -609,6 +621,7 @@ def build_graph(
         builder.add_node("critique_revision_reduce", make_critique_revision_reduce_node())
         builder.add_node("post_verifier_gate", post_verifier_gate_node)
         builder.add_node("adversarial_cleanup", make_adversarial_cleanup_node())
+        builder.add_node("review_adjudicator", make_review_adjudicator_node())
         builder.add_node("verifier_subgraph", make_verifier_subgraph_node())
         builder.add_node("post_reflection_evidence_pass", _make_post_reflection_evidence_pass_node())
         builder.add_conditional_edges("review_planner", _route_after_planner)
@@ -621,6 +634,7 @@ def build_graph(
                 "focused_context": "focused_context",
                 "post_reflection_evidence_pass": "post_reflection_evidence_pass",
                 "adversarial_cleanup": "adversarial_cleanup",
+                "review_adjudicator": "review_adjudicator",
             },
         )
         builder.add_conditional_edges("focused_context", _route_after_focused_context)
@@ -630,8 +644,9 @@ def build_graph(
         # Always fan in to reduce; reduce waits until all digest shards are merged (operator.or_).
         # Routing digest -> END left the graph without cleanup when parallel shards finished out of order.
         builder.add_edge("critique_revision_digest", "critique_revision_reduce")
-        builder.add_edge("critique_revision_reduce", "adversarial_cleanup")
+        builder.add_edge("critique_revision_reduce", final_adversarial_review_node())
         builder.add_edge("adversarial_cleanup", "review_synthesizer")
+        builder.add_edge("review_adjudicator", "review_synthesizer")
 
     builder.add_conditional_edges(
         START,

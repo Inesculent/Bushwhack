@@ -321,21 +321,66 @@ def _add_obligation(
     dimension: str,
     evidence: str,
     files_complete: Mapping[str, bool],
+    issue_family: str = "",
+    diff_signal: str = "",
+    line_start: int | None = None,
+    line_end: int | None = None,
+    operation_markers: Sequence[str] = (),
 ) -> None:
     index = len(out) + 1
     norm_file = _norm_path(file_path)
-    out.append(
-        {
-            "obligation_id": f"{task_id}:{index:03d}",
-            "task_id": task_id,
-            "file_path": norm_file,
-            "surface": surface,
-            "dimension": dimension,
-            "status": "pending",
-            "evidence": evidence[:240],
-            "files_complete": bool(files_complete.get(norm_file, files_complete.get(file_path, False))),
-        }
-    )
+    family = issue_family.strip() or "contract_delta"
+    row = {
+        "obligation_id": f"{task_id}:{index:03d}",
+        "task_id": task_id,
+        "file_path": norm_file,
+        "surface": surface,
+        "dimension": dimension,
+        "status": "pending",
+        "evidence": evidence[:240],
+        "files_complete": bool(files_complete.get(norm_file, files_complete.get(file_path, False))),
+        "issue_family": family,
+        "diff_signal_family": family,
+        "diff_signal": diff_signal[:240],
+        "operation_markers": list(dict.fromkeys(str(item) for item in operation_markers if str(item).strip()))[:8],
+    }
+    if line_start and line_start > 0:
+        row["line_start"] = int(line_start)
+        row["line_end"] = int(line_end or line_start)
+    out.append(row)
+
+
+def _first_line_matching(body: str, *patterns: str) -> tuple[int, str]:
+    for index, raw in enumerate(body.splitlines(), start=1):
+        for pattern in patterns:
+            if re.search(pattern, raw, re.IGNORECASE):
+                return index, raw.strip()
+    return 1, ""
+
+
+def _operation_markers(body: str) -> list[str]:
+    markers: list[str] = []
+    lowered = body.lower()
+    for marker in (
+        "return",
+        "if",
+        "elif",
+        "else",
+        "try",
+        "except",
+        "for",
+        "while",
+        "join",
+        "import",
+        "raise",
+    ):
+        if marker in lowered:
+            markers.append(marker)
+    if any(marker in lowered for marker in ("findall", "finditer", "matchall", "captures", "groups()", "group(")):
+        markers.append("grouped_result")
+    if any(marker in lowered for marker in ("[0]", "[1]", ".at(", ".get(")):
+        markers.append("element_selection")
+    return markers[:8]
 
 
 def derive_review_obligations(
@@ -363,6 +408,7 @@ def derive_review_obligations(
         blob = body.lower()
 
         if "return_types" in blob or re.search(r"\bdef\s+\w+\([^)]*\):", body):
+            line_no, signal = _first_line_matching(body, r"return_types", r"\bdef\s+\w+\(")
             _add_obligation(
                 obligations,
                 task_id=task.id,
@@ -371,8 +417,13 @@ def derive_review_obligations(
                 dimension="contract completeness",
                 evidence="entry point declares or implies a return contract",
                 files_complete=files_complete,
+                issue_family="public_output",
+                diff_signal=signal or "entry point return contract",
+                line_start=line_no,
+                operation_markers=_operation_markers(body),
             )
         if "elif " in blob or re.search(r"\b(if|elif)\s+\w+\s*==", blob):
+            line_no, signal = _first_line_matching(body, r"\belif\b", r"\bif\s+\w+\s*==")
             _add_obligation(
                 obligations,
                 task_id=task.id,
@@ -381,8 +432,13 @@ def derive_review_obligations(
                 dimension="branch exhaustiveness",
                 evidence="conditional/discriminant branch chain present",
                 files_complete=files_complete,
+                issue_family="branch_return",
+                diff_signal=signal or "conditional branch chain present",
+                line_start=line_no,
+                operation_markers=_operation_markers(body),
             )
         if re.search(r"\[[0-9]+\]", body) or "index" in blob or "len(" in blob:
+            line_no, signal = _first_line_matching(body, r"\[[0-9]+\]", r"\bindex\b", r"\blen\s*\(")
             _add_obligation(
                 obligations,
                 task_id=task.id,
@@ -391,8 +447,13 @@ def derive_review_obligations(
                 dimension="boundary/index handling",
                 evidence="indexing, length checks, or explicit index parameter present",
                 files_complete=files_complete,
+                issue_family="index_bounds",
+                diff_signal=signal or "indexing or length check present",
+                line_start=line_no,
+                operation_markers=_operation_markers(body),
             )
         if any(marker in blob for marker in ("tuple", "row", "record", "findall", "groups()", "structured")):
+            line_no, signal = _first_line_matching(body, r"\btuple\b", r"\bfindall\s*\(", r"\.groups\s*\(", r"\[0\]")
             _add_obligation(
                 obligations,
                 task_id=task.id,
@@ -401,8 +462,13 @@ def derive_review_obligations(
                 dimension="structured data preservation",
                 evidence="structured or multi-slot result handling present",
                 files_complete=files_complete,
+                issue_family="aggregation_cardinality",
+                diff_signal=signal or "structured or multi-slot result handling present",
+                line_start=line_no,
+                operation_markers=_operation_markers(body),
             )
         if any(marker in blob for marker in (".join(", "json.", "serialize", "format(")):
+            line_no, signal = _first_line_matching(body, r"\.join\s*\(", r"json\.", r"serialize", r"\bformat\s*\(")
             _add_obligation(
                 obligations,
                 task_id=task.id,
@@ -411,8 +477,13 @@ def derive_review_obligations(
                 dimension="aggregation/serialization safety",
                 evidence="aggregation, formatting, serialization, or join path present",
                 files_complete=files_complete,
+                issue_family="aggregation_cardinality",
+                diff_signal=signal or "aggregation or serialization path present",
+                line_start=line_no,
+                operation_markers=_operation_markers(body),
             )
         if "try:" in blob or "except " in blob:
+            line_no, signal = _first_line_matching(body, r"\btry\s*:", r"\bexcept\b")
             _add_obligation(
                 obligations,
                 task_id=task.id,
@@ -421,10 +492,15 @@ def derive_review_obligations(
                 dimension="exception/control-flow scope",
                 evidence="try/except or exception scope present",
                 files_complete=files_complete,
+                issue_family="exception_scope",
+                diff_signal=signal or "try/except scope present",
+                line_start=line_no,
+                operation_markers=_operation_markers(body),
             )
         if any(marker in blob for marker in ("regex", "re.", "while ", "for ")) and any(
             marker in blob for marker in ("user", "pattern", "external", "unbounded", "loop")
         ):
+            line_no, signal = _first_line_matching(body, r"\bre\.", r"\bfor\b", r"\bwhile\b", r"pattern")
             _add_obligation(
                 obligations,
                 task_id=task.id,
@@ -433,6 +509,10 @@ def derive_review_obligations(
                 dimension="resource-amplification risk",
                 evidence="potentially amplifying operation with variable input present",
                 files_complete=files_complete,
+                issue_family="resource_hot_path",
+                diff_signal=signal or "variable-input resource operation present",
+                line_start=line_no,
+                operation_markers=_operation_markers(body),
             )
         _add_task_conditioned_obligations(
             obligations,

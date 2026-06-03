@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any, Callable, Iterable, List, Mapping
 
 from src.domain.schemas import CandidateFinding, ReviewCheck, ReviewCheckResult, ReviewTask
 from src.domain.state import GraphState
 from src.orchestration.nodes.application.critiquer import _normalize_candidates
 from src.orchestration.nodes.verifier.source_only import source_only_verify_candidate
+from src.orchestration.routing.claim_digest import claim_digest_for_result
 
 _INSUFFICIENT_EVIDENCE_MARKERS = (
     "insufficient evidence",
@@ -104,6 +106,56 @@ _AGGREGATION_PRESERVATION_MARKERS = (
     "entry",
     "entries",
 )
+_PRESERVATION_CLAIM_MARKERS = (
+    "preserve",
+    "preserved",
+    "preserves",
+    "all",
+    "each",
+    "every",
+    "cardinality",
+    "field",
+    "fields",
+    "slot",
+    "slots",
+    "group",
+    "groups",
+    "element",
+    "elements",
+    "structured",
+)
+_PROJECTION_OR_TRUNCATION_MARKERS = (
+    "[0]",
+    ".0",
+    "element 0",
+    "field 0",
+    "slot 0",
+    "group 0",
+    "first element",
+    "first field",
+    "first slot",
+    "first group",
+    "first item",
+    "only the first",
+    "keeps first",
+    "extracts first",
+    "single element",
+    "single field",
+    "single slot",
+    "m[0]",
+    "row[0]",
+    "item[0]",
+    "record[0]",
+)
+_INTENTIONAL_NARROWING_MARKERS = (
+    "intentional narrowing",
+    "intentionally narrowed",
+    "documented narrowing",
+    "documented projection",
+    "contract says only",
+    "contract requires only",
+    "only the first is required",
+)
 _FALLBACK_EXHAUSTIVENESS_MARKERS = (
     "fallback",
     "fallthrough",
@@ -124,9 +176,165 @@ _SCHEMA_SUPPRESSION_MARKERS = (
     "input_types",
 )
 
+_CLAIM_CATEGORY_MARKERS = {
+    **_DIMENSION_MARKERS,
+    "contract": (
+        "contract",
+        "invariant",
+        "declared",
+        "expected",
+        "return",
+        "type",
+        "shape",
+        "protocol",
+    ),
+    "exception": (
+        "exception",
+        "error",
+        "crash",
+        "raise",
+        "throws",
+        "uncaught",
+    ),
+    "resource": (
+        "resource",
+        "timeout",
+        "performance",
+        "unbounded",
+        "complexity",
+        "memory",
+        "cpu",
+    ),
+    "state": (
+        "state",
+        "cache",
+        "lifecycle",
+        "transition",
+        "mutation",
+        "side effect",
+    ),
+}
+
+_TOKEN_STOPWORDS = frozenset(
+    {
+        "about",
+        "after",
+        "before",
+        "changed",
+        "check",
+        "code",
+        "concrete",
+        "does",
+        "evidence",
+        "finding",
+        "handle",
+        "handles",
+        "implementation",
+        "path",
+        "proof",
+        "source",
+        "still",
+        "that",
+        "this",
+        "when",
+        "where",
+        "with",
+        "without",
+    }
+)
+
 
 def _has_any(text: str, markers: Iterable[str]) -> bool:
     return any(marker in text for marker in markers)
+
+
+def _claim_categories(text: str) -> set[str]:
+    lowered = text.lower()
+    return {
+        category
+        for category, markers in _CLAIM_CATEGORY_MARKERS.items()
+        if _has_any(lowered, markers)
+    }
+
+
+def _meaningful_tokens(text: str) -> set[str]:
+    tokens = set()
+    for token in re.findall(r"[a-zA-Z_][a-zA-Z0-9_]{3,}", text.lower()):
+        if token in {"returned", "returning", "returns"}:
+            token = "return"
+        elif token in {"fallthrough", "falls", "falling"}:
+            token = "fall"
+        if token not in _TOKEN_STOPWORDS:
+            tokens.add(token)
+    return tokens
+
+
+def _check_claim_text(check: ReviewCheck) -> str:
+    return " ".join(
+        [
+            check.owned_contract_scope,
+            check.issue_family,
+            check.diff_signal_family,
+            check.diff_signal,
+            check.changed_code_anchor,
+            check.behavioral_question,
+            check.affected_invariant,
+            " ".join(check.report_criteria),
+        ]
+    )
+
+
+def _suppression_text(result: ReviewCheckResult) -> str:
+    return " ".join([result.reportable_reason, *result.suppressing_evidence])
+
+
+def _suppression_contradicts_preservation_claim(result: ReviewCheckResult, check: ReviewCheck) -> bool:
+    check_text = _check_claim_text(check).lower()
+    suppression = _suppression_text(result).lower()
+    categories = _claim_categories(check_text)
+    if "aggregation" not in categories and "indexing" not in categories:
+        return False
+    if not _has_any(check_text, _PRESERVATION_CLAIM_MARKERS):
+        return False
+    if not _has_any(suppression, _PROJECTION_OR_TRUNCATION_MARKERS):
+        return False
+    if _has_any(suppression, _INTENTIONAL_NARROWING_MARKERS):
+        return False
+    return True
+
+
+def _suppression_addresses_same_claim(result: ReviewCheckResult, check: ReviewCheck) -> bool:
+    """Return true only when suppression speaks to the check's own behavioral claim."""
+    if _suppression_contradicts_preservation_claim(result, check):
+        return False
+    check_text = _check_claim_text(check)
+    suppression = _suppression_text(result)
+    check_categories = _claim_categories(check_text)
+    suppression_categories = _claim_categories(suppression)
+    if check_categories and suppression_categories and not (check_categories & suppression_categories):
+        return False
+
+    operation_tokens = _meaningful_tokens(
+        " ".join([check.changed_code_anchor, check.owned_contract_scope, check.diff_signal])
+    )
+    if not operation_tokens:
+        operation_tokens = _meaningful_tokens(check_text)
+    suppression_tokens = _meaningful_tokens(suppression)
+    generic_same_operation = _has_any(
+        suppression.lower(),
+        ("changed function", "changed operation", "changed path", "same function", "same operation", "same path"),
+    )
+    if operation_tokens and suppression_tokens and not (operation_tokens & suppression_tokens) and not generic_same_operation:
+        return False
+    if _has_any(suppression.lower(), _INTENTIONAL_NARROWING_MARKERS) and _has_any(
+        suppression.lower(), _PROJECTION_OR_TRUNCATION_MARKERS
+    ):
+        return True
+
+    report_tokens = _meaningful_tokens(" ".join(check.report_criteria) or check.affected_invariant)
+    if report_tokens and not (report_tokens & suppression_tokens):
+        return False
+    return True
 
 
 def file_contents_from_slot(slot: Mapping[str, Any]) -> Mapping[str, str] | None:
@@ -274,6 +482,7 @@ def _synthesize_candidate_from_result(
         recommendation=recommendation[:400],
         behavioral_symptom=symptom,  # type: ignore[arg-type]
         root_operation=operation,  # type: ignore[arg-type]
+        claim_digest=claim_digest_for_result(result, check),
         evidence_for_contract=_contract_evidence_from_check(check, result),
         counterexample=_counterexample_from_result(check, result),
         rejection_check=_rejection_check_from_result(check, result),
@@ -307,18 +516,13 @@ def missing_evidence_for_weak_no_finding(
 def no_finding_has_strong_suppression(result: ReviewCheckResult, check: ReviewCheck) -> bool:
     if not result.evidence_refs or not result.suppressing_evidence:
         return False
+    if check.audit_only:
+        return True
     blob = " ".join([result.reportable_reason, *result.suppressing_evidence]).lower()
     if any(marker in blob for marker in _INSUFFICIENT_EVIDENCE_MARKERS):
         return False
-    check_blob = " ".join(
-        [
-            check.behavioral_question,
-            check.affected_invariant,
-            " ".join(check.required_evidence),
-            " ".join(check.report_criteria),
-            " ".join(check.suppress_criteria),
-        ]
-    ).lower()
+    if not _suppression_addresses_same_claim(result, check):
+        return False
     if no_finding_needs_semantic_suppression_audit(result, check):
         return True
     check_path = check.file_path.strip().replace("\\", "/")
@@ -344,6 +548,25 @@ def no_finding_needs_semantic_suppression_audit(
             " ".join(check.suppress_criteria),
         ]
     ).lower()
+    if check.issue_family == "aggregation_cardinality":
+        preserves = _has_any(
+            blob,
+            (
+                "preserve",
+                "preserved",
+                "all fields",
+                "all elements",
+                "all groups",
+                "every field",
+                "every element",
+                "intentional narrowing",
+                "intentionally narrowed",
+                "documented narrowing",
+            ),
+        )
+        first_only = _has_any(blob, ("m[0]", "first element", "first field", "first group", "tuple case"))
+        if first_only and not preserves:
+            return True
     categories = {
         category
         for category, markers in _DIMENSION_MARKERS.items()
@@ -436,6 +659,15 @@ def source_only_backstop_candidate(
         recommendation="Fix the source-local behavior proven by static source evidence.",
         behavioral_symptom=symptom,  # type: ignore[arg-type]
         root_operation=operation,  # type: ignore[arg-type]
+        claim_digest=claim_digest_for_result(
+            ReviewCheckResult(
+                check_id=check.check_id,
+                patch_task_id=task.id,
+                decision="candidate",
+                reportable_reason=rationale[:500],
+            ),
+            check,
+        ),
         evidence_for_contract=check.affected_invariant or check.behavioral_question,
         counterexample=rationale[:500],
         rejection_check="Source-only verifier proved the changed source behavior; no suppressing evidence was found.",
@@ -466,6 +698,9 @@ def normalize_executor_results(
             continue
         check = by_check[raw.check_id]
         result = raw.model_copy(update={"patch_task_id": task.id})
+        digest = claim_digest_for_result(result, check)
+        if digest and not result.claim_digest.strip():
+            result = result.model_copy(update={"claim_digest": digest})
         candidate = result.candidate
         if result.decision == "candidate" and candidate is None:
             candidate = _synthesize_candidate_from_result(
@@ -500,6 +735,14 @@ def normalize_executor_results(
             candidate = candidate_with_check_behavioral_metadata(candidate, check)
             missing_contract_fields = _missing_contract_proof_field_names(candidate)
             candidate = candidate_with_check_contract_proof(candidate, check, result)
+            candidate_digest = claim_digest_for_result(
+                result.model_copy(update={"candidate": candidate}),
+                check,
+            )
+            if candidate_digest and not candidate.claim_digest.strip():
+                candidate = candidate.model_copy(update={"claim_digest": candidate_digest})
+            if candidate_digest and not result.claim_digest.strip():
+                result = result.model_copy(update={"claim_digest": candidate_digest})
             filled_contract_fields = [
                 field
                 for field in missing_contract_fields

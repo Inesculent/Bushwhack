@@ -23,8 +23,10 @@ from src.orchestration.nodes.application.review_checks import (
     make_review_check_context_planner_node,
     make_review_check_evidence_gate_node,
     make_review_check_executor_node,
+    make_review_check_scout_node,
     make_review_check_validator_node,
     should_continue_review_check_loop,
+    should_run_review_check_scout,
 )
 from src.orchestration.review_principles import REVIEW_PRINCIPLES_VERSION
 from src.orchestration.routing.review_obligations import derive_review_obligations
@@ -277,6 +279,12 @@ def _route_after_review_check_executor(state: GraphState) -> str:
     return "review_check_evidence_gate"
 
 
+def _route_after_review_check_evidence_gate(state: GraphState) -> str:
+    if should_run_review_check_scout(state):
+        return "review_check_scout"
+    return "end"
+
+
 def build_critique_review_subgraph(
     context_provider: LazyReviewContextProvider,
     github_provider: Any | None = None,
@@ -298,6 +306,7 @@ def build_critique_review_subgraph(
     )
     g.add_node("review_check_executor", make_review_check_executor_node())
     g.add_node("review_check_evidence_gate", make_review_check_evidence_gate_node())
+    g.add_node("review_check_scout", make_review_check_scout_node())
     g.add_node("general_critiquer", make_general_critiquer_node(context_provider, use_pipeline_cache=True))
     g.add_edge(START, "critique_context_probe")
     g.add_edge("critique_context_probe", "mental_model_context_enricher")
@@ -328,7 +337,15 @@ def build_critique_review_subgraph(
             "review_check_evidence_gate": "review_check_evidence_gate",
         },
     )
-    g.add_edge("review_check_evidence_gate", END)
+    g.add_conditional_edges(
+        "review_check_evidence_gate",
+        _route_after_review_check_evidence_gate,
+        {
+            "review_check_scout": "review_check_scout",
+            "end": END,
+        },
+    )
+    g.add_edge("review_check_scout", "review_check_executor")
     g.add_edge("general_critiquer", END)
     inner = g.compile()
 

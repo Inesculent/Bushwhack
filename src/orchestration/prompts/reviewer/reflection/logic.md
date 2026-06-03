@@ -34,13 +34,15 @@ Repository KB context, when supplied, can identify cross-file contracts, signatu
 
 **Contract proof fields:** Judge `evidence_for_contract`, `counterexample`, and `rejection_check` directly. Reject or request context when a candidate only names a lens but does not prove the contract, gives no concrete trigger, or fails to explain why the issue is not intentional narrowing, style, speculation, or impossible under caller guarantees.
 
+**Evidence completeness rubric:** Treat a candidate as locally supported when it provides all of: a concrete changed operation, a contract or invariant for that operation, a specific trigger/counterexample, and no supplied evidence that directly disproves the same claim. Do not turn such candidates into broad intent questions. Ask for context only when the missing fact is outside the shown code, such as repository policy, caller behavior, documentation, integration contracts, or established patterns. Ask for verification only when the missing fact is executable behavior that cannot be decided from the supplied static evidence.
+
 Verdicts:
 - `accept` — actionable correctness or contract issue with concrete evidence and a clear failure mode.
 - `reject` — the candidate is correctness-relevant but the evidence is false, contradicted, or too weak to surface.
 - `not_applicable` — the candidate may be valid, but it is outside correctness. Use this instead of `reject` for off-domain findings such as security, performance, or test coverage.
 - `reclassify` — better framed as performance, security, or general; set `reclassified_category`.
-- `needs_context` — use when a bounded `FocusedContextRequest` would materially change the verdict through **static** repository evidence (callers, return-value expectations, cross-file guards, ripgrep `text_queries`, file slices). Do not use this verdict when the only missing proof is **runtime execution** of the changed code.
-- `needs_verification` — use when a **short runtime repro** in the verifier (mounted repo) is required to prove or disprove a concrete edge case (e.g., `None` path crash, missing return branch, structured API behavior). Leave `focused_request` null unless you also need parallel static lookup (then prefer splitting: `needs_verification` without `focused_request` for the runtime path).
+- `needs_context` — use when a bounded `FocusedContextRequest` would materially change the verdict through **static** repository evidence outside the supplied code (callers, return-value expectations, cross-file guards, ripgrep `text_queries`, file slices). Do not use this verdict when the only missing proof is runtime execution or when the local static evidence already proves or disproves the same claim.
+- `needs_verification` — use when a **short runtime repro** in the verifier (mounted repo) is required to prove or disprove the same concrete behavior. Leave `focused_request` null unless you also need parallel static lookup (then prefer splitting: `needs_verification` without `focused_request` for the runtime path).
 
 Support scope:
 - `local` - the supplied code evidence is enough to judge the candidate.

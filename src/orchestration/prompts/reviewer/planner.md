@@ -6,6 +6,8 @@ Return a flat `tasks` array only. Do not create parent/container tasks and do no
 
 Tasks must be **mutually exclusive** in scope. Avoid overlapping coverage (do not restate the same check with different wording). If two tasks would inspect the same lines for the same risk, keep only one.
 
+Mutual exclusivity means primary ownership, not blindness. If a task may notice a severe issue outside its owned contract scope, phrase the task so the worker records it as a handoff/audit note unless no owning task covers it.
+
 Each task must declare `surface_ids` from **Surface ledger (JSON)**. Use those IDs as the scope boundary. Do not invent IDs. If a task is intentionally cross-surface, make that explicit in the title or description and include only the relevant surface IDs.
 
 Hard caps:
@@ -32,6 +34,8 @@ Use these **review topics as planning lenses**, not as a checklist that must pro
 Create a topic-specific task only when the diff, Repository KB, structural hints, or surface inventory points to a meaningful PR-local risk. Do not add broad topic-audit tasks just to mention every lens; task count caps and mutual-exclusion rules still win.
 
 Phrase tasks around contract justification: identify the changed surface, the evidence that makes a behavior contractual, the counterexample family that would prove a violation, and the impact category to check. Do not ask workers to remember concrete issue classes.
+
+When two nearby risks share a symbol, distinguish them by contract rather than domain label. For example, `src/tool.py::Parser.run::variant=batch::contract=cardinality::impact=data_loss` remains distinct from `src/tool.py::Parser.run::variant=empty::contract=dispatch::impact=missing_return`.
 
 ### Required baseline: diff-local general correctness
 

@@ -170,6 +170,20 @@ def _target_functions(tree: ast.AST, candidate: Dict[str, Any]) -> list[ast.Func
     line_start = int(candidate.get("line_start") or 0)
     blob = _candidate_blob(candidate)
     funcs: list[ast.FunctionDef | ast.AsyncFunctionDef] = []
+    class_funcs: list[ast.FunctionDef | ast.AsyncFunctionDef] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ClassDef):
+            continue
+        start, end = _node_span(node)
+        class_matches_line = bool(line_start and start <= line_start <= end)
+        class_matches_text = bool(
+            re.search(rf"(?<![A-Za-z0-9_]){re.escape(node.name.lower())}(?![A-Za-z0-9_])", blob)
+        )
+        if not class_matches_line and not class_matches_text:
+            continue
+        for item in node.body:
+            if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                class_funcs.append(item)
     for node in ast.walk(tree):
         if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
@@ -179,7 +193,7 @@ def _target_functions(tree: ast.AST, candidate: Dict[str, Any]) -> list[ast.Func
             continue
         if re.search(rf"(?<![A-Za-z0-9_]){re.escape(node.name.lower())}(?![A-Za-z0-9_])", blob):
             funcs.append(node)
-    return funcs
+    return list(dict.fromkeys([*funcs, *class_funcs]))
 
 
 def _stmt_guarantees_exit(stmt: ast.stmt) -> bool:
@@ -276,14 +290,16 @@ def source_only_verify_candidate(
     source, source_complete = _target_source_from_state(state, candidate)
     if not source.strip():
         return "", "", None
-    if not source_complete:
-        return "", "source-only abstained: task evidence for target file is incomplete", None
     fp = _norm(str(candidate.get("file_path") or ""))
     try:
         tree = ast.parse(source)
     except SyntaxError as exc:
+        if not source_complete:
+            return "", "source-only abstained: task evidence for target file is incomplete", None
         reason = f"{fp} has SyntaxError during source-only parse: {exc.msg}"
         return "verified", reason, _attempt(reason, failure_class="syntax_error")
+    if not source_complete and not _target_functions(tree, candidate):
+        return "", "source-only abstained: task evidence for target file is incomplete", None
 
     removed = _removed_import_names(str(state.get("git_diff") or ""), fp)
     if removed:

@@ -208,6 +208,8 @@ _NARROW_RECALL_TASK_MARKERS = (
     "single contract",
     "focused contract",
     "only this surface",
+    "structured result slots only",
+    "type-tracing structured result slots",
 )
 _BROAD_RECALL_TASK_MARKERS = (
     "diff-local",

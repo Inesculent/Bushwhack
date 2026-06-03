@@ -9,7 +9,7 @@ import subprocess
 import sys
 import time
 import uuid
-from collections import Counter
+from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -229,6 +229,14 @@ def _check_id_from_result(item: Any) -> str:
     return str(getattr(item, "check_id", "") or "")
 
 
+def _field_from_mapping_or_model(item: Any, field: str, default: Any = "") -> Any:
+    if item is None:
+        return default
+    if isinstance(item, dict):
+        return item.get(field, default)
+    return getattr(item, field, default)
+
+
 def _load_positive_samples_by_pr(path: Path) -> dict[str, list[dict[str, Any]]]:
     if not path.exists():
         return {}
@@ -370,9 +378,127 @@ def _coverage_audit_for_pr(
     labels: list[dict[str, Any]],
 ) -> dict[str, Any]:
     stage_paths = _paths_from_raw_stage(raw, final_findings)
+    metadata = raw.get("metadata", {}) if isinstance(raw.get("metadata"), dict) else {}
+    checks_by_id: dict[str, Any] = {}
+    path_obligation_families: dict[str, set[str]] = defaultdict(set)
+    for check in raw.get("review_checks", []) or []:
+        check_id = str(_field_from_mapping_or_model(check, "check_id") or "")
+        if check_id:
+            checks_by_id[check_id] = check
+        path = _path_from_mapping_or_model(check)
+        family = str(
+            _field_from_mapping_or_model(check, "diff_signal_family")
+            or _field_from_mapping_or_model(check, "issue_family")
+            or ""
+        ).strip()
+        if path and family:
+            path_obligation_families[path].add(family)
+    review_meta = metadata.get("review_checks", {}) if isinstance(metadata.get("review_checks"), dict) else {}
+    by_task = review_meta.get("by_task", {}) if isinstance(review_meta.get("by_task"), dict) else {}
+    if isinstance(by_task, dict):
+        for task_meta in by_task.values():
+            if not isinstance(task_meta, dict):
+                continue
+            floor = task_meta.get("compiler_coverage_floor", {})
+            obligations = floor.get("ranked_obligations", []) if isinstance(floor, dict) else []
+            for obligation in obligations if isinstance(obligations, list) else []:
+                if not isinstance(obligation, dict):
+                    continue
+                path = _normalize_repo_path(str(obligation.get("file_path") or ""))
+                family = str(obligation.get("diff_signal_family") or obligation.get("issue_family") or "").strip()
+                if path and family:
+                    path_obligation_families[path].add(family)
+    gate_dropped_paths: set[str] = set()
+    false_suppression_paths: set[str] = set()
+    for result in raw.get("review_check_results", []) or []:
+        check = checks_by_id.get(_check_id_from_result(result))
+        path = _path_from_mapping_or_model(_candidate_from_result(result)) or _path_from_mapping_or_model(check)
+        if not path:
+            continue
+        gate_decision = str(_field_from_mapping_or_model(result, "gate_decision") or "")
+        if gate_decision == "dropped":
+            gate_dropped_paths.add(path)
+        warnings = _field_from_mapping_or_model(result, "warnings", []) or []
+        if isinstance(warnings, list) and any("suppression_audit_insufficient" in str(item) for item in warnings):
+            false_suppression_paths.add(path)
+    cleanup_meta = metadata.get("adversarial_cleanup", {}) if isinstance(metadata.get("adversarial_cleanup"), dict) else {}
+    candidate_path_by_id: dict[str, str] = {}
+    for candidate in raw.get("candidate_findings", []) or []:
+        cid = str(_field_from_mapping_or_model(candidate, "candidate_id") or _field_from_mapping_or_model(candidate, "id") or "")
+        path = _path_from_mapping_or_model(candidate)
+        if cid and path:
+            candidate_path_by_id[cid] = path
+    for result in raw.get("review_check_results", []) or []:
+        candidate = _candidate_from_result(result)
+        cid = str(_field_from_mapping_or_model(candidate, "candidate_id") or _field_from_mapping_or_model(candidate, "id") or "")
+        path = _path_from_mapping_or_model(candidate)
+        if cid and path:
+            candidate_path_by_id.setdefault(cid, path)
+    merged_duplicate_paths: set[str] = set()
+    rejected_cluster_paths: set[str] = set()
+    duplicate_equivalents: dict[str, str] = {}
+    for key in ("claim_cluster_duplicates", "semantic_claim_cluster_duplicates"):
+        value = cleanup_meta.get(key, {})
+        if not isinstance(value, dict):
+            continue
+        for keeper, duplicates in value.items():
+            if not isinstance(duplicates, list):
+                continue
+            for duplicate in duplicates:
+                duplicate_id = str(duplicate)
+                duplicate_equivalents[duplicate_id] = str(keeper)
+                path = candidate_path_by_id.get(duplicate_id, "")
+                if path:
+                    merged_duplicate_paths.add(path)
+    for key in ("claim_cluster_rejections", "semantic_claim_cluster_rejected"):
+        value = cleanup_meta.get(key, {})
+        if isinstance(value, dict):
+            for rejected_id in value:
+                path = candidate_path_by_id.get(str(rejected_id), "")
+                if path:
+                    rejected_cluster_paths.add(path)
     path_counts = Counter(label["path"] for label in labels)
     records = []
     for path, count in sorted(path_counts.items()):
+        if path in stage_paths["final"]:
+            reason_state = "final"
+        elif path in merged_duplicate_paths:
+            reason_state = "merged_duplicate"
+        elif path in rejected_cluster_paths:
+            reason_state = "rejected_cluster_variant"
+        elif path in gate_dropped_paths:
+            reason_state = "dropped_by_gate"
+        elif path in false_suppression_paths:
+            reason_state = "false_suppression"
+        elif path in stage_paths["candidate"]:
+            reason_state = "dropped_by_cleanup"
+        elif path in stage_paths["executed"]:
+            reason_state = "no_executor_candidate"
+        elif path in stage_paths["focused_requested"] and path not in stage_paths["focused_result"]:
+            reason_state = "no_evidence"
+        elif path in stage_paths["compiled"] and path not in stage_paths["valid"]:
+            reason_state = "no_valid_check"
+        elif path in stage_paths["compiled"]:
+            reason_state = "no_executor_candidate"
+        else:
+            reason_state = "no_task"
+        last_stage = (
+            "final"
+            if path in stage_paths["final"]
+            else "candidate"
+            if path in stage_paths["candidate"]
+            else "executed"
+            if path in stage_paths["executed"]
+            else "focused_result"
+            if path in stage_paths["focused_result"]
+            else "focused_requested"
+            if path in stage_paths["focused_requested"]
+            else "valid"
+            if path in stage_paths["valid"]
+            else "compiled"
+            if path in stage_paths["compiled"]
+            else "none"
+        )
         records.append(
             {
                 "path": path,
@@ -384,6 +510,10 @@ def _coverage_audit_for_pr(
                 "executed": path in stage_paths["executed"],
                 "candidate": path in stage_paths["candidate"],
                 "final": path in stage_paths["final"],
+                "reason_state": reason_state,
+                "last_stage": last_stage,
+                "obligation_families": sorted(path_obligation_families.get(path, set())),
+                "duplicate_equivalents": duplicate_equivalents,
             }
         )
     summary = {

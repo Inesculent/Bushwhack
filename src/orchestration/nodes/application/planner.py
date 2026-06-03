@@ -235,7 +235,7 @@ def _multi_surface_correctness_suffix(state: GraphState) -> str:
     return (
         f" Audit every changed entry point in: {names}. For each: branch exhaustiveness on "
         "mode/discriminant inputs, consistent return on all paths, correct indexing into "
-        "structured results (e.g. regex tuples, capture groups), and safe aggregation before return."
+        "structured results, and safe aggregation before return."
     )
 
 
@@ -465,8 +465,8 @@ def _surface_focus_description(surfaces: List[str], *, focus: str) -> str:
     if focus == "structured":
         lead = surfaces[0] if len(surfaces) == 1 else names
         return (
-            f"Mandatory type-tracing on {lead} only: structured return shapes (tuple vs scalar, "
-            "row slots, parsed fields), correct index/slot selection, and join/format paths with no stray None. "
+            f"Mandatory type-tracing on {lead} only: structured return shapes, "
+            "record/field preservation, selected-value handling, and join/format paths with no stray None. "
             f"{_CLASS_SCOPE_ISOLATION_PHRASE.capitalize()} in the target file."
         )
     if focus == "branch":
@@ -697,9 +697,9 @@ def _structured_extraction_correctness_task(files: List[str]) -> ReviewTask:
         id="review-logic-structured-extraction",
         title="Structured extraction and aggregation",
         description=(
-            "Audit structured extraction and aggregation in changed entry points: correct index/slot "
-            "into tuples/lists/rows (not only the first element); truthiness on empty group-like "
-            "results vs full-match semantics; and join/format paths with no stray None unless allowed. "
+            "Audit structured extraction and aggregation in changed entry points: selected-value handling, "
+            "complete field/element preservation when the contract implies completeness, empty-result behavior, "
+            "and join/format paths with no stray None unless allowed. "
             f"{_CLASS_SCOPE_ISOLATION_PHRASE.capitalize()} in the target file."
         ),
         target_files=files,
@@ -723,22 +723,7 @@ def _ensure_structured_extraction_logic_task(
     tasks: List[ReviewTask],
     state: GraphState,
 ) -> List[ReviewTask]:
-    if not _diff_signals_structured_extraction(state):
-        return tasks
-    inventory = surface_inventory_from_state(state)
-    if any(_task_covers_structured_extraction(t, inventory) for t in tasks if t.specialty == "logic"):
-        return tasks
-    files = _target_files(state)
-    extra = _attach_task_surface_ids(_structured_extraction_correctness_task(files), state)
-    if _is_duplicate_task(extra, tasks):
-        return tasks
-    if len(tasks) >= _MAX_PLANNER_TASKS:
-        for index in range(len(tasks) - 1, -1, -1):
-            if tasks[index].specialty == "general":
-                trimmed = tasks[:index] + tasks[index + 1 :]
-                return trimmed + [extra]
-        return tasks[:-1] + [extra]
-    return tasks + [extra]
+    return tasks
 
 
 def _baseline_diff_local_correctness_task(files: List[str], state: GraphState) -> ReviewTask:

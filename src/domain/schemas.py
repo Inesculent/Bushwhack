@@ -212,6 +212,11 @@ class ReviewFinding(BaseModel):
     references: List[str] = Field(default_factory=list)
     behavioral_symptom: Optional[BehavioralSymptom] = None
     root_operation: Optional[RootOperation] = None
+    claim_digest: str = Field(
+        default="",
+        description="Compact root-claim marker used for semantic clustering and duplicate accounting.",
+        max_length=240,
+    )
     evidence_for_contract: str = Field(
         default="",
         description=(
@@ -290,6 +295,36 @@ class ReviewCheck(BaseModel):
         description="Changed function/class/line range the check is anchored to.",
         max_length=240,
     )
+    owned_contract_scope: str = Field(
+        default="",
+        description="Compact scope marker for the contract this check owns.",
+        max_length=240,
+    )
+    issue_family: str = Field(
+        default="",
+        description=(
+            "Compatibility alias for the diff-signal family this check tests, such as branch_return, "
+            "aggregation_cardinality, or contract_delta. This is routing/diagnostic metadata, not a closed issue taxonomy."
+        ),
+        max_length=80,
+    )
+    diff_signal_family: str = Field(
+        default="",
+        description=(
+            "Open-ended diff-signal bucket that suggested this check. Unknown concrete changed contracts should use "
+            "contract_delta rather than being dropped."
+        ),
+        max_length=80,
+    )
+    diff_signal: str = Field(
+        default="",
+        description="Short diff-local signal that caused this check to exist.",
+        max_length=240,
+    )
+    audit_only: bool = Field(
+        default=False,
+        description="True when a broad coverage check is diagnostic and cannot promote candidates.",
+    )
     behavioral_question: str = Field(
         default="",
         description="Concrete yes/no review question this check must answer.",
@@ -363,6 +398,11 @@ class ReviewCheckResult(BaseModel):
             "or impossible under caller guarantees."
         ),
         max_length=500,
+    )
+    claim_digest: str = Field(
+        default="",
+        description="Compact root-claim marker used for semantic clustering and duplicate accounting.",
+        max_length=240,
     )
     candidate: Optional["CandidateFinding"] = None
     gate_decision: ReviewCheckGateDecision = "pending"
@@ -438,6 +478,11 @@ class CandidateFinding(BaseModel):
     root_operation: Optional[RootOperation] = Field(
         default=None,
         description="Generic operation family where the defect arises.",
+    )
+    claim_digest: str = Field(
+        default="",
+        description="Compact root-claim marker used for semantic clustering and duplicate accounting.",
+        max_length=240,
     )
     evidence_for_contract: str = Field(
         default="",
@@ -563,6 +608,34 @@ class CritiqueRevisionOutput(BaseModel):
     """Post-focused-context revision for candidates that needed more evidence."""
 
     revisions: List[CritiqueRevisionItem] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
+
+
+ReviewAdjudicationDecision = Literal["promote", "drop", "merge"]
+
+
+class ReviewAdjudicationItem(BaseModel):
+    """Final LLM adjudication for one candidate claim."""
+
+    candidate_id: str
+    decision: ReviewAdjudicationDecision
+    merge_into: Optional[str] = Field(
+        default=None,
+        description="Candidate/finding id this item merges into when decision is merge.",
+    )
+    finding: Optional[ReviewFinding] = Field(
+        default=None,
+        description="Final review finding when decision is promote.",
+    )
+    rationale: str = Field(default="", max_length=1200)
+    evidence_refs: List[str] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
+
+
+class ReviewAdjudicationOutput(BaseModel):
+    """Structured output for final candidate adjudication."""
+
+    items: List[ReviewAdjudicationItem] = Field(default_factory=list)
     warnings: List[str] = Field(default_factory=list)
 
 

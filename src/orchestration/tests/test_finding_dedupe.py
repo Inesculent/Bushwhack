@@ -5,8 +5,12 @@ from __future__ import annotations
 from src.domain.schemas import CandidateFinding, ReflectionReport, ReviewFinding
 from src.orchestration.nodes.application.cleanup import (
     RevisionSupportAuditOutput,
+    SemanticClaimClusterDecision,
+    SemanticClaimDuplicateGroup,
+    SemanticClaimClusterOutput,
     SemanticEquivalenceAuditItem,
     SemanticEquivalenceAuditOutput,
+    _apply_semantic_claim_cluster_audit,
     _apply_semantic_equivalence_audit,
     make_adversarial_cleanup_node,
 )
@@ -872,7 +876,168 @@ def test_cleanup_llm_equivalence_merges_same_issue_with_different_wording() -> N
     assert duplicates == {"specific": ["broad"]}
 
 
-def test_cleanup_llm_equivalence_preserves_distinct_dimensions(monkeypatch) -> None:
+def test_cleanup_claim_cluster_merges_variants_and_rejects_incoherent() -> None:
+    keeper = ReviewFinding(
+        id="keeper",
+        file_path="src/x.py",
+        line_start=10,
+        line_end=20,
+        content="class Handler: batch mode drops a tuple field.",
+        severity="medium",
+        feedback_type="defect_detection",
+        recommendation="Preserve every tuple field.",
+        behavioral_symptom="data_loss",
+        root_operation="aggregation",
+        claim_digest="src/x.py::handler::variant=batch::contract=cardinality+preservation::impact=data_loss",
+    )
+    duplicate = keeper.model_copy(
+        update={
+            "id": "duplicate",
+            "content": "class Handler: batch mode keeps only one tuple slot.",
+            "behavioral_symptom": "data_loss",
+        }
+    )
+    incoherent = keeper.model_copy(
+        update={
+            "id": "incoherent",
+            "content": "class Handler: batch mode is maybe fine.",
+        }
+    )
+    distinct = keeper.model_copy(
+        update={
+            "id": "distinct",
+            "content": "class Handler: empty mode falls through.",
+            "behavioral_symptom": "missing_return",
+            "root_operation": "dispatch",
+            "claim_digest": "src/x.py::handler::variant=empty::contract=dispatch::impact=missing_return",
+        }
+    )
+    audit = SemanticClaimClusterOutput(
+        clusters=[
+            SemanticClaimClusterDecision(
+                cluster_id="cluster-1",
+                distinct_ids=["distinct"],
+                duplicate_groups=[
+                    SemanticClaimDuplicateGroup(
+                        keeper_id="keeper",
+                        absorbed_ids=["duplicate"],
+                        rejected_ids=["incoherent"],
+                        merged_contract="Batch mode should preserve tuple cardinality.",
+                        merged_counterexample="A two-field tuple loses the second field.",
+                        merged_impact="data loss",
+                        rationale="Duplicate is same root claim; incoherent variant contradicts itself.",
+                    )
+                ],
+                rationale="Duplicate is same root claim; incoherent variant contradicts itself.",
+            )
+        ]
+    )
+
+    findings, duplicates, duplicate_to_keeper, rejected = _apply_semantic_claim_cluster_audit(
+        [keeper, duplicate, incoherent, distinct],
+        audit,
+    )
+
+    assert {finding.id for finding in findings} == {"keeper", "distinct"}
+    assert duplicates == {"keeper": ["duplicate"]}
+    assert duplicate_to_keeper == {"duplicate": "keeper"}
+    assert rejected == {"incoherent": "Duplicate is same root claim; incoherent variant contradicts itself."}
+    kept = next(finding for finding in findings if finding.id == "keeper")
+    assert "tuple cardinality" in kept.evidence_for_contract
+
+
+def test_cleanup_claim_cluster_handles_multiple_duplicate_groups_independently() -> None:
+    first = ReviewFinding(
+        id="first",
+        file_path="src/x.py",
+        line_start=10,
+        line_end=20,
+        content="class Handler: batch mode drops a tuple field.",
+        severity="medium",
+        feedback_type="defect_detection",
+        recommendation="Preserve every tuple field.",
+        behavioral_symptom="data_loss",
+        root_operation="aggregation",
+        claim_digest="model-supplied-noise",
+    )
+    first_dup = first.model_copy(update={"id": "first-dup", "content": "class Handler: batch mode omits tuple slots."})
+    second = first.model_copy(
+        update={
+            "id": "second",
+            "content": "class Handler: empty mode falls through.",
+            "behavioral_symptom": "missing_return",
+            "root_operation": "dispatch",
+        }
+    )
+    second_dup = second.model_copy(update={"id": "second-dup", "content": "class Handler: empty mode has a missing return."})
+    audit = SemanticClaimClusterOutput(
+        clusters=[
+            SemanticClaimClusterDecision(
+                cluster_id="cluster-1",
+                duplicate_groups=[
+                    SemanticClaimDuplicateGroup(keeper_id="first", absorbed_ids=["first-dup"]),
+                    SemanticClaimDuplicateGroup(keeper_id="second", absorbed_ids=["second-dup"]),
+                ],
+            )
+        ]
+    )
+
+    findings, duplicates, duplicate_to_keeper, rejected = _apply_semantic_claim_cluster_audit(
+        [first, first_dup, second, second_dup],
+        audit,
+    )
+
+    assert {finding.id for finding in findings} == {"first", "second"}
+    assert duplicates == {"first": ["first-dup"], "second": ["second-dup"]}
+    assert duplicate_to_keeper == {"first-dup": "first", "second-dup": "second"}
+    assert rejected == {}
+    assert all("model-supplied-noise" not in finding.claim_digest for finding in findings)
+
+
+def test_cleanup_claim_cluster_refuses_incompatible_merge_suggestion() -> None:
+    data_loss = ReviewFinding(
+        id="data-loss",
+        file_path="src/x.py",
+        line_start=10,
+        line_end=20,
+        content="class Handler: batch mode drops a tuple field.",
+        severity="medium",
+        feedback_type="defect_detection",
+        recommendation="Preserve every tuple field.",
+        behavioral_symptom="data_loss",
+        root_operation="aggregation",
+    )
+    missing_return = data_loss.model_copy(
+        update={
+            "id": "missing-return",
+            "content": "class Handler: empty mode falls through.",
+            "behavioral_symptom": "missing_return",
+            "root_operation": "dispatch",
+        }
+    )
+    audit = SemanticClaimClusterOutput(
+        clusters=[
+            SemanticClaimClusterDecision(
+                cluster_id="cluster-1",
+                duplicate_groups=[
+                    SemanticClaimDuplicateGroup(keeper_id="data-loss", absorbed_ids=["missing-return"]),
+                ],
+            )
+        ]
+    )
+
+    findings, duplicates, duplicate_to_keeper, rejected = _apply_semantic_claim_cluster_audit(
+        [data_loss, missing_return],
+        audit,
+    )
+
+    assert {finding.id for finding in findings} == {"data-loss", "missing-return"}
+    assert duplicates == {}
+    assert duplicate_to_keeper == {}
+    assert rejected == {"missing-return": "claim_cluster_incompatible_merge"}
+
+
+def test_cleanup_claim_cluster_preserves_distinct_dimensions(monkeypatch) -> None:
     node = make_adversarial_cleanup_node()
     indexing = _cand(
         candidate_id="indexing",
@@ -898,12 +1063,11 @@ def test_cleanup_llm_equivalence_preserves_distinct_dimensions(monkeypatch) -> N
         behavioral_symptom="crash",
         root_operation="aggregation",
     )
-    audit = SemanticEquivalenceAuditOutput(
-        items=[
-            SemanticEquivalenceAuditItem(
-                finding_id="indexing",
-                equivalent_to="aggregation",
-                verdict="distinct",
+    audit = SemanticClaimClusterOutput(
+        clusters=[
+            SemanticClaimClusterDecision(
+                cluster_id="cluster-1",
+                distinct_ids=["aggregation"],
                 rationale="Same surface but different dimensions and fixes.",
             )
         ]
@@ -937,8 +1101,8 @@ def test_cleanup_llm_equivalence_preserves_distinct_dimensions(monkeypatch) -> N
 
     assert {finding.id for finding in out["findings"]} == {"indexing", "aggregation"}
     meta = out["metadata"]["adversarial_cleanup"]
-    assert "semantic_equivalence_duplicates" not in meta
-    assert meta["semantic_equivalence_audits"][0]["verdict"] == "distinct"
+    assert "semantic_claim_cluster_duplicates" not in meta
+    assert meta["semantic_claim_cluster_audits"][0]["distinct_ids"] == ["aggregation"]
 
 
 def test_cleanup_drops_scope_claim_contradicted_by_code_evidence() -> None:
@@ -1952,7 +2116,7 @@ def test_final_dedupe_merges_missing_return_root_variants() -> None:
     assert duplicates == {"fallback": ["branch"]}
 
 
-def test_synthesizer_drops_resolution_only() -> None:
+def test_synthesizer_preserves_adjudicated_resolution_like_finding() -> None:
     finding = ReviewFinding(
         id="x",
         file_path="f.py",
@@ -1964,11 +2128,11 @@ def test_synthesizer_drops_resolution_only() -> None:
         recommendation="No action needed",
     )
     out = synthesizer_node({"findings": [finding], "metadata": {}})
-    assert out["final_findings"] == []
-    assert "x" in out["metadata"]["review_synthesizer"]["dropped_resolution_only_ids"]
+    assert [item.id for item in out["final_findings"]] == ["x"]
+    assert out["metadata"]["review_synthesizer"]["dropped_resolution_only_ids"] == []
 
 
-def test_synthesizer_duplicate_map_uses_distinct_ids() -> None:
+def test_synthesizer_preserves_duplicate_findings_with_unique_ids() -> None:
     base = ReviewFinding(
         id="x",
         file_path="f.py",
@@ -1992,7 +2156,8 @@ def test_synthesizer_duplicate_map_uses_distinct_ids() -> None:
         }
     )
     dupes = out["metadata"]["review_synthesizer"]["semantic_dedupe_duplicates"]
-    assert dupes == {"x": ["x__2"]}
+    assert dupes == {}
+    assert [item.id for item in out["final_findings"]] == ["x", "x__2"]
     assert out["metadata"]["review_synthesizer"]["lost_promoted_candidate_ids"] == []
 
 

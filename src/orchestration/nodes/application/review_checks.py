@@ -54,6 +54,7 @@ from src.orchestration.nodes.application.review_check_source_scope import (
 )
 from src.orchestration.nodes.application.critiquer import _is_length_finish_error
 from src.orchestration.prompts.renderer import render_reviewer_prompt
+from src.orchestration.routing.claim_digest import claim_digest_for_candidate
 
 logger = logging.getLogger(__name__)
 trace_logger = logging.getLogger("research_pipeline.reviewer_trace")
@@ -118,6 +119,7 @@ _GENERIC_QUERY_PHRASES = (
     "confirm explicit bounds",
     "confirm unexpected behavior",
 )
+_BROAD_DIFF_SIGNAL_FAMILIES = {"", "broad_fallback", "surface_fallback", "file_fallback"}
 
 
 class SuppressionAuditItem(BaseModel):
@@ -942,6 +944,22 @@ def _focused_context_for_check(state: GraphState, check_id: str) -> str:
     return "\n\n".join(chunk for chunk in chunks if chunk.strip())
 
 
+def _seen_claim_digests_for_task(state: GraphState, task_id: str) -> List[Dict[str, str]]:
+    seen: Dict[str, str] = {}
+    for raw in state.get("candidate_findings", []) or []:
+        try:
+            candidate = raw if isinstance(raw, CandidateFinding) else CandidateFinding.model_validate(raw)
+        except Exception:
+            continue
+        if candidate.patch_task_id == task_id:
+            continue
+        digest = claim_digest_for_candidate(candidate)
+        if not digest:
+            continue
+        seen.setdefault(digest, candidate.candidate_id)
+    return [{"claim_digest": digest, "candidate_id": candidate_id} for digest, candidate_id in seen.items()][:24]
+
+
 def _render_executor_prompt(
     state: GraphState,
     task: ReviewTask,
@@ -964,6 +982,10 @@ def _render_executor_prompt(
         "Validated Checks JSON": _json_for_prompt(
             [check.model_dump(mode="json") for check in checks],
             max_chars=10000,
+        ),
+        "Already Seen Claim Digests": _json_for_prompt(
+            _seen_claim_digests_for_task(state, task.id),
+            max_chars=3000,
         ),
         "Repository Code Evidence": str(slot.get("direct_context") or "")[:16000],
         "Focused Evidence By Check": _json_for_prompt(focused, max_chars=10000),
@@ -1591,6 +1613,11 @@ def make_review_check_executor_node(
             for warning in warnings
             if warning.startswith("executor_source_only_no_finding_overridden:")
         ]
+        executor_claim_digests = {
+            result.candidate.candidate_id: result.candidate.claim_digest
+            for result in results
+            if result.candidate is not None and result.candidate.claim_digest.strip()
+        }
 
         metadata = _set_task_review_checks_meta(
             state,
@@ -1606,6 +1633,8 @@ def make_review_check_executor_node(
                     for result in results
                     if result.candidate is not None
                 ],
+                "executor_claim_digests": executor_claim_digests,
+                "executor_claim_digest_count": len(executor_claim_digests),
                 "executor_warnings": warnings,
                 "executor_batch_size": _EXECUTOR_BATCH_SIZE,
                 "executor_batch_count": len(_check_batches(checks)),
@@ -1710,10 +1739,22 @@ def _candidate_passes_gate(
     result: ReviewCheckResult,
     check: ReviewCheck,
 ) -> tuple[bool, str]:
+    if check.audit_only:
+        return False, "audit_only_check_not_promotable"
     if candidate.file_path.replace("\\", "/") != check.file_path.replace("\\", "/"):
         return False, "candidate_anchor_file_mismatch"
     if candidate.line_end < candidate.line_start or candidate.line_start < 1:
         return False, "invalid_candidate_line_range"
+    candidate_span = int(candidate.line_end or candidate.line_start) - int(candidate.line_start or 1) + 1
+    check_span = int(check.line_end or check.line_start) - int(check.line_start or 1) + 1
+    whole_function_claim = (candidate.root_operation in {"resource_use", "exception_scope"} and candidate_span <= 140)
+    has_narrow_evidence_ref = any(
+        ref.strip().replace("\\", "/").startswith(candidate.file_path.replace("\\", "/") + ":")
+        and re.search(r":\d+", ref)
+        for ref in result.evidence_refs
+    )
+    if candidate_span > 120 and not (whole_function_claim or has_narrow_evidence_ref or check_span > 120):
+        return False, "candidate_anchor_too_broad"
     if not check.affected_invariant.strip():
         return False, "missing_check_invariant"
     if not candidate.evidence_for_contract.strip():
@@ -1888,19 +1929,105 @@ def make_review_check_evidence_gate_node():
     return review_check_evidence_gate_node
 
 
-def make_review_check_scout_node():
-    """V1 escape hatch placeholder; disabled until routed by a separate flag."""
+def should_run_review_check_scout(state: GraphState) -> bool:
+    task = _task_from_state(state)
+    if task is None:
+        return False
+    metadata = state.get("metadata", {}) or {}
+    block = metadata.get("review_checks", {}) if isinstance(metadata, dict) else {}
+    by_task = block.get("by_task", {}) if isinstance(block, dict) else {}
+    slot = by_task.get(task.id, {}) if isinstance(by_task, dict) else {}
+    if not isinstance(slot, dict):
+        return False
+    scout = slot.get("scout") if isinstance(slot.get("scout"), dict) else {}
+    if scout.get("status") in {"emitted", "not_needed", "no_concrete_obligations"}:
+        return False
+    gate = slot.get("gate") if isinstance(slot.get("gate"), dict) else {}
+    if int(gate.get("promoted_count") or 0) > 0:
+        return False
+    unsupported = gate.get("unsupported_high_confidence_surface_ids")
+    if not isinstance(unsupported, list) or not unsupported:
+        return False
+    coverage_floor = slot.get("compiler_coverage_floor") if isinstance(slot.get("compiler_coverage_floor"), dict) else {}
+    obligations = coverage_floor.get("uncovered_obligations")
+    if not isinstance(obligations, list):
+        return False
+    return any(
+        isinstance(item, Mapping) and _obligation_is_concrete_contract_delta(item)
+        for item in obligations
+    )
 
+
+def _obligation_is_concrete_contract_delta(obligation: Mapping[str, Any]) -> bool:
+    family = str(obligation.get("diff_signal_family") or obligation.get("issue_family") or "").strip()
+    if family in _BROAD_DIFF_SIGNAL_FAMILIES:
+        return False
+    if family == "contract_delta":
+        return bool(
+            str(obligation.get("diff_signal") or "").strip()
+            or str(obligation.get("evidence") or "").strip()
+        )
+    return True
+
+
+def make_review_check_scout_node():
     node_name = "review_check_scout"
 
     def review_check_scout_node(state: GraphState) -> Dict[str, Any]:
         task = _task_from_state(state)
-        task_id = task.id if task is not None else "unknown"
+        if task is None:
+            return {"node_history": [f"{node_name}:skipped"]}
+        metadata = state.get("metadata", {}) or {}
+        block = metadata.get("review_checks", {}) if isinstance(metadata, dict) else {}
+        by_task = block.get("by_task", {}) if isinstance(block, dict) else {}
+        slot = by_task.get(task.id, {}) if isinstance(by_task, dict) else {}
+        slot = dict(slot) if isinstance(slot, dict) else {}
+        coverage_floor = slot.get("compiler_coverage_floor") if isinstance(slot.get("compiler_coverage_floor"), dict) else {}
+        raw_obligations = coverage_floor.get("uncovered_obligations")
+        obligations = [item for item in raw_obligations if isinstance(item, Mapping)] if isinstance(raw_obligations, list) else []
+        existing_ids = {check.check_id for check in _checks_for_task(state, task.id)}
+        concrete = [
+            item
+            for item in obligations
+            if _obligation_is_concrete_contract_delta(item)
+        ][:2]
+        checks: List[ReviewCheck] = []
+        for index, obligation in enumerate(concrete, start=1):
+            check = compiler_support.coverage_check_for_obligation(
+                state,
+                task,
+                obligation,
+                900 + index,
+            )
+            check_id = f"{task.id}:scout:{index}"
+            if check_id in existing_ids:
+                continue
+            checks.append(
+                check.model_copy(
+                    update={
+                        "check_id": check_id,
+                        "allowed_retrieval": ["task_evidence"],
+                        "budget": 1,
+                        "audit_only": False,
+                    }
+                )
+            )
+        status = "emitted" if checks else "no_concrete_obligations"
         metadata = _set_task_review_checks_meta(
             state,
-            task_id,
-            {"scout": {"status": "disabled_v1"}},
+            task.id,
+            {
+                "scout": {
+                    "status": status,
+                    "emitted_check_ids": [check.check_id for check in checks],
+                    "source": "unsupported_high_confidence_surface_gap",
+                }
+            },
         )
-        return {"metadata": metadata, "node_history": [f"{node_name}:skipped"]}
+        return {
+            "review_checks": checks,
+            "metadata": metadata,
+            "node_history": [node_name if checks else f"{node_name}:skipped"],
+        }
 
     return review_check_scout_node

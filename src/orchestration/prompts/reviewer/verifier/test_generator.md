@@ -49,7 +49,7 @@ When mock_heavy_deps is **disabled**, do not mock torch/PIL unless an import act
    - On import/setup/syntax failures in the verifier script or before product invoke: print `STATUS: HARNESS_ERROR | message` and `sys.exit(2)`.
    - **Never** call `sys.exit(0)` when imports fail or the repository is unavailable.
 
-   For wrong-result / data-loss claims, prefer small inline repros with **assertions** on outputs (e.g. `re.findall`, calling the changed function), not only try/except for crashes.
+   For wrong-result / data-loss claims, prefer small inline repros with **assertions** on outputs from the changed function or API, not only try/except for crashes.
 
 6. Add `{repo_root}` to `sys.path` before importing target modules. Do not rely on symlinking an empty workspace to another repository path.
 

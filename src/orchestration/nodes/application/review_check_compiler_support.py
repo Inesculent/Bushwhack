@@ -27,6 +27,7 @@ from src.orchestration.context.surface_ledger import (
     surface_ledger_from_state,
 )
 from src.orchestration.context.task_evidence import changed_lines_for_file
+from src.orchestration.routing.claim_digest import owned_contract_scope_for_check
 from src.orchestration.nodes.application.review_check_source_scope import (
     changed_task_files,
     compiled_check_is_source_local,
@@ -292,6 +293,11 @@ def surface_coverage_check(state: GraphState, task: ReviewTask, surface: ReviewS
         line_start=line_start,
         line_end=line_end,
         changed_code_anchor=surface.name,
+        owned_contract_scope=f"{surface.name}:audit_surface_coverage",
+        issue_family="surface_fallback",
+        diff_signal_family="surface_fallback",
+        diff_signal="broad surface coverage fallback",
+        audit_only=True,
         behavioral_question=f"Does the changed {surface.name} preserve its assigned surface behavior?",
         affected_invariant=(
             f"{surface.name} in {surface.file_path} preserves the behavior targeted by {task.title}."
@@ -328,6 +334,11 @@ def coverage_check_for_file(state: GraphState, task: ReviewTask, file_path: str,
         line_start=int(anchor_update.get("line_start") or 1),
         line_end=int(anchor_update.get("line_end") or anchor_update.get("line_start") or 1),
         changed_code_anchor=str(anchor_update.get("changed_code_anchor") or file_path),
+        owned_contract_scope=f"{file_path}:audit_file_coverage",
+        issue_family="file_fallback",
+        diff_signal_family="file_fallback",
+        diff_signal="broad file coverage fallback",
+        audit_only=True,
         behavioral_question=(
             f"Does the changed code in {file_path} preserve the task-specific behavior for {task.title}?"
         ),
@@ -360,6 +371,16 @@ def coverage_obligations(slot: Mapping[str, Any]) -> List[Dict[str, Any]]:
         row["file_path"] = file_path
         row["dimension"] = dimension
         row["surface"] = surface
+        family = str(raw.get("diff_signal_family") or raw.get("issue_family") or "").strip()
+        row["issue_family"] = family
+        row["diff_signal_family"] = family
+        row["diff_signal"] = str(raw.get("diff_signal") or "").strip()
+        row["operation_markers"] = [
+            str(item).strip() for item in raw.get("operation_markers", []) if str(item).strip()
+        ] if isinstance(raw.get("operation_markers"), list) else []
+        if raw.get("line_start"):
+            row["line_start"] = raw.get("line_start")
+            row["line_end"] = raw.get("line_end") or raw.get("line_start")
         obligations.append(row)
     return obligations
 
@@ -602,6 +623,14 @@ def coverage_check_for_obligation(
     surface = str(obligation.get("surface") or file_path or "changed code")
     dimension = str(obligation.get("dimension") or "task contract")
     evidence = str(obligation.get("evidence") or f"repository evidence for {dimension}")
+    signal_family = str(obligation.get("diff_signal_family") or obligation.get("issue_family") or "").strip()
+    issue_family = signal_family
+    diff_signal = str(obligation.get("diff_signal") or evidence).strip()
+    operation_markers = [
+        str(item).strip()
+        for item in obligation.get("operation_markers", [])
+        if str(item).strip()
+    ] if isinstance(obligation.get("operation_markers"), list) else []
     surface_ids = surface_ids_for_check_context(
         task=task,
         file_path=file_path,
@@ -611,34 +640,63 @@ def coverage_check_for_obligation(
     anchor_update = surface_anchor_update(surface_ids, state)
     file_path = str(anchor_update.get("file_path") or file_path)
     surface = str(anchor_update.get("changed_code_anchor") or surface)
+    line_start = int(
+        anchor_update.get("line_start")
+        or obligation.get("line_start")
+        or 1
+    )
+    line_end = int(
+        anchor_update.get("line_end")
+        or obligation.get("line_end")
+        or line_start
+    )
     contract_material = [
         f"mental model/KB contract hypothesis to verify: {item}"
         for item in obligation.get("mental_model_contract_material", [])
         if str(item).strip()
     ][:2]
+    cardinality = signal_family == "aggregation_cardinality" or "structured" in dimension.lower()
+    if cardinality:
+        question = (
+            f"Does the changed {surface} preserve each intended field, element, group, or nested value "
+            "for this aggregation/cardinality path?"
+        )
+        report = (
+            f"The changed {surface} selects, skips, drops, truncates, or serializes only part of the "
+            "intended structured value without an intentional narrowing contract."
+        )
+        suppress = (
+            f"Concrete evidence shows {surface} preserves the relevant fields/elements/groups, "
+            "or documents an intentional narrowing at the changed contract."
+        )
+    else:
+        question = f"Does the changed {surface} preserve {dimension}?"
+        report = f"The changed {surface} violates {dimension} on a concrete reachable path."
+        suppress = f"Concrete repository evidence shows {surface} preserves {dimension}."
     return ReviewCheck(
         check_id=f"{task.id}:coverage:{index}",
         patch_task_id=task.id,
         surface_ids=surface_ids,
         lens=dimension_to_lens(dimension),  # type: ignore[arg-type]
         file_path=file_path,
-        line_start=int(anchor_update.get("line_start") or 1),
-        line_end=int(anchor_update.get("line_end") or anchor_update.get("line_start") or 1),
+        line_start=max(1, line_start),
+        line_end=max(max(1, line_start), line_end),
         changed_code_anchor=surface,
-        behavioral_question=f"Does the changed {surface} preserve {dimension}?",
+        owned_contract_scope=f"{surface}:{issue_family or dimension}:{diff_signal}"[:240],
+        issue_family=issue_family,
+        diff_signal_family=signal_family,
+        diff_signal=diff_signal[:240],
+        behavioral_question=question,
         affected_invariant=dimension,
         required_evidence=[
             evidence,
+            *(operation_markers[:4] if operation_markers else []),
             *contract_material,
             f"changed behavior of {surface} in {file_path}",
             "caller, contract, framework, or repository-convention evidence if the local code is not enough",
         ],
-        suppress_criteria=[
-            f"Concrete repository evidence shows {surface} preserves {dimension}.",
-        ],
-        report_criteria=[
-            f"The changed {surface} violates {dimension} on a concrete reachable path.",
-        ],
+        suppress_criteria=[suppress],
+        report_criteria=[report],
         allowed_retrieval=["task_evidence", "focused_context"],
         budget=2,
     )
@@ -1446,6 +1504,8 @@ def prioritize_compiled_checks(
         cid = check.check_id
         meta = meta_by_id.get(cid)
         added = meta is not None
+        if check.audit_only:
+            return (9, 0, 1, 1)
         source_local = compiled_check_is_source_local(
             check,
             meta,
@@ -1567,6 +1627,10 @@ def normalize_compiled_checks(
                 }
             )
         )
+        if not normalized[-1].owned_contract_scope.strip():
+            normalized[-1] = normalized[-1].model_copy(
+                update={"owned_contract_scope": owned_contract_scope_for_check(normalized[-1])}
+            )
     return normalized
 
 

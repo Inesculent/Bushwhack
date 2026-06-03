@@ -966,7 +966,7 @@ def test_sanitize_batched_logic_strips_cross_surface_boilerplate() -> None:
     assert "do not review any other surface" in cleaned.lower()
 
 
-def test_finalize_emitted_tasks_injects_structured_logic_task() -> None:
+def test_finalize_emitted_tasks_does_not_inject_dedicated_structured_logic_task() -> None:
     diff = "diff --git a/pkg/h.py b/pkg/h.py\n+++ b/pkg/h.py\n+    return ','.join(re.findall(p, s))\n"
     state = {"git_diff": diff}
     tasks = [
@@ -980,10 +980,11 @@ def test_finalize_emitted_tasks_injects_structured_logic_task() -> None:
     ]
     out = finalize_emitted_tasks(tasks, state)
     logic = [t for t in out if t.specialty == "logic"]
-    assert any(_task_covers_structured_extraction(t) for t in logic)
+    assert len(logic) == 1
+    assert logic[0].id == "task-1"
 
 
-def test_broad_logic_structured_title_does_not_block_dedicated_task() -> None:
+def test_broad_logic_structured_title_is_not_promoted_to_dedicated_task() -> None:
     diff = "diff --git a/pkg/h.py b/pkg/h.py\n+++ b/pkg/h.py\n+    return ','.join(re.findall(p, s))\n"
     state = {"git_diff": diff}
     inventory = ["HandlerA", "HandlerB"]
@@ -1001,10 +1002,10 @@ def test_broad_logic_structured_title_does_not_block_dedicated_task() -> None:
         ),
     ]
     out = _ensure_structured_extraction_logic_task(tasks, state)
-    assert any(t.id == "review-logic-structured-extraction" for t in out)
+    assert out == tasks
 
 
-def test_ensure_structured_extraction_logic_task_injected_when_signals_present() -> None:
+def test_ensure_structured_extraction_logic_task_noops_when_signals_present() -> None:
     diff = "diff --git a/pkg/h.py b/pkg/h.py\n+++ b/pkg/h.py\n+    return ','.join(re.findall(p, s))\n"
     state = {"git_diff": diff}
     tasks = [
@@ -1025,8 +1026,8 @@ def test_ensure_structured_extraction_logic_task_injected_when_signals_present()
     ]
     out = _ensure_structured_extraction_logic_task(tasks, state)
     logic = [t for t in out if t.specialty == "logic"]
-    assert len(logic) == 2
-    assert any("structured" in f"{t.title} {t.description}".lower() for t in logic)
+    assert len(logic) == 1
+    assert out == tasks
 
 
 def test_ensure_diff_local_not_skipped_when_only_structured_scoped_task() -> None:
@@ -1246,7 +1247,7 @@ def test_specialist_worker_marks_task_complete_without_llm():
     assert result["reviewer_worker_reports"][0].explored_files == ["src/app.py"]
 
 
-def test_synthesizer_deduplicates_final_findings():
+def test_synthesizer_preserves_adjudicated_final_findings():
     finding = ReviewFinding(
         id="review-logic:1",
         file_path="src/app.py",
@@ -1268,6 +1269,6 @@ def test_synthesizer_deduplicates_final_findings():
         }
     )
 
-    assert len(result["final_findings"]) == 1
+    assert len(result["final_findings"]) == 2
     assert result["metadata"]["review_synthesizer"]["raw_finding_count"] == 2
-    assert result["metadata"]["review_synthesizer"]["final_finding_count"] == 1
+    assert result["metadata"]["review_synthesizer"]["final_finding_count"] == 2

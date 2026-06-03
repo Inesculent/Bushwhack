@@ -575,6 +575,37 @@ class Settings(BaseSettings):
 			"(e.g. logic timed out but general accepted — avoids losing findings to graph/LLM timeouts)."
 		),
 	)
+	reviewer_use_legacy_adversarial_cleanup: bool = Field(
+		default=False,
+		description=(
+			"When true, use the legacy deterministic adversarial_cleanup promotion/dedupe node. "
+			"Default false routes final candidate judgment through review_adjudicator."
+		),
+	)
+	reviewer_adjudicator_max_batch_chars: int = Field(
+		default=32_000,
+		ge=4_000,
+		le=200_000,
+		description="Approximate max characters of candidate evidence per review_adjudicator batch.",
+	)
+	reviewer_adjudicator_max_candidate_chars: int = Field(
+		default=10_000,
+		ge=1_000,
+		le=80_000,
+		description="Max rendered characters for one candidate evidence packet in review_adjudicator prompts.",
+	)
+	reviewer_adjudicator_focused_context_max_chars: int = Field(
+		default=2_400,
+		ge=200,
+		le=20_000,
+		description="Per focused-context blob character cap inside review_adjudicator evidence packets.",
+	)
+	reviewer_adjudicator_max_completion_tokens: int = Field(
+		default=16_384,
+		ge=512,
+		le=65_536,
+		description="Completion token cap for review_adjudicator structured-output calls.",
+	)
 	reviewer_critique_revision_max_shard_chars: int = Field(
 		default=16_000,
 		ge=2_000,

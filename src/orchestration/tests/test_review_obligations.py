@@ -187,6 +187,13 @@ def test_functional_and_contract_obligations_are_task_conditioned() -> None:
         "public/user contract",
         "maintainability contract",
     } <= dims
+    generic_rows = [
+        row
+        for row in derive_review_obligations(convention_task, evidence)
+        if row["dimension"] in {"repository convention contract", "public/user contract", "maintainability contract"}
+    ]
+    assert {row["diff_signal_family"] for row in generic_rows} == {"contract_delta"}
+    assert {row["issue_family"] for row in generic_rows} == {"contract_delta"}
     narrow_dims = _dimensions(derive_review_obligations(narrow_task, evidence))
     assert "repository convention contract" not in narrow_dims
     assert "public/user contract" not in narrow_dims

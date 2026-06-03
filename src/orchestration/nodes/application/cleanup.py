@@ -37,6 +37,14 @@ from src.orchestration.routing.finding_dedupe import (
     review_finding_semantic_key,
     revision_summary_conflicts_with_claim,
 )
+from src.orchestration.routing.claim_digest import (
+    claim_digest_field,
+    claim_digest_subject,
+    claim_digests_overlap,
+    duplicate_digest_map,
+    normalized_claim_digest_for_candidate,
+    normalized_claim_digest_for_finding,
+)
 from src.orchestration.routing.claim_tiering import (
     classify_candidates,
     classify_claim_tier,
@@ -72,6 +80,29 @@ class SemanticEquivalenceAuditItem(BaseModel):
 
 class SemanticEquivalenceAuditOutput(BaseModel):
     items: List[SemanticEquivalenceAuditItem] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
+
+
+class SemanticClaimDuplicateGroup(BaseModel):
+    keeper_id: str
+    absorbed_ids: List[str] = Field(default_factory=list)
+    rejected_ids: List[str] = Field(default_factory=list)
+    merged_contract: str = Field(default="", max_length=700)
+    merged_counterexample: str = Field(default="", max_length=700)
+    merged_impact: str = Field(default="", max_length=700)
+    rationale: str = Field(default="", max_length=700)
+
+
+class SemanticClaimClusterDecision(BaseModel):
+    cluster_id: str
+    duplicate_groups: List[SemanticClaimDuplicateGroup] = Field(default_factory=list)
+    distinct_ids: List[str] = Field(default_factory=list)
+    rejected_ids: List[str] = Field(default_factory=list)
+    rationale: str = Field(default="", max_length=700)
+
+
+class SemanticClaimClusterOutput(BaseModel):
+    clusters: List[SemanticClaimClusterDecision] = Field(default_factory=list)
     warnings: List[str] = Field(default_factory=list)
 
 
@@ -1090,6 +1121,203 @@ def _apply_semantic_equivalence_audit(
     return [finding for finding in findings if finding.id not in dropped], duplicates
 
 
+def _claim_subject_from_digest(digest: str) -> str:
+    return claim_digest_subject(digest)
+
+
+def _finding_claim_digest(finding: ReviewFinding) -> str:
+    return normalized_claim_digest_for_finding(finding)
+
+
+def _candidate_claim_digest(candidate: CandidateFinding) -> str:
+    return normalized_claim_digest_for_candidate(candidate)
+
+
+def _claim_family_from_digest(digest: str) -> str:
+    return claim_digest_field(digest, "contract")
+
+
+def _claim_impact_from_digest(digest: str) -> str:
+    return claim_digest_field(digest, "impact")
+
+
+def _merge_compatible_claims(left: ReviewFinding, right: ReviewFinding) -> bool:
+    left_digest = _finding_claim_digest(left)
+    right_digest = _finding_claim_digest(right)
+    if left.file_path != right.file_path:
+        return False
+    if _claim_subject_from_digest(left_digest) != _claim_subject_from_digest(right_digest):
+        return False
+    left_family = _claim_family_from_digest(left_digest)
+    right_family = _claim_family_from_digest(right_digest)
+    if left_family and right_family and left_family != right_family:
+        return False
+    left_impact = _claim_impact_from_digest(left_digest)
+    right_impact = _claim_impact_from_digest(right_digest)
+    if left_impact and right_impact and left_impact != right_impact:
+        return False
+    return claim_digests_overlap(left_digest, right_digest)
+
+
+def _clusterable_findings(left: ReviewFinding, right: ReviewFinding) -> bool:
+    if left.file_path != right.file_path:
+        return False
+    left_digest = _finding_claim_digest(left)
+    right_digest = _finding_claim_digest(right)
+    left_subject = _claim_subject_from_digest(left_digest)
+    right_subject = _claim_subject_from_digest(right_digest)
+    same_subject = bool(left_subject and left_subject == right_subject)
+    close_lines = _lines_overlap_or_close(left, right, distance=60)
+    return bool(same_subject and close_lines)
+
+
+def _semantic_claim_clusters(
+    findings: Sequence[ReviewFinding],
+    raw_by_cand: Mapping[str, Sequence[ReflectionReport]],
+) -> List[Dict[str, Any]]:
+    if len(findings) < 2:
+        return []
+    parent = {finding.id: finding.id for finding in findings}
+
+    def find(item: str) -> str:
+        while parent[item] != item:
+            parent[item] = parent[parent[item]]
+            item = parent[item]
+        return item
+
+    def union(left: str, right: str) -> None:
+        left_root = find(left)
+        right_root = find(right)
+        if left_root != right_root:
+            parent[right_root] = left_root
+
+    for left_index, left in enumerate(findings):
+        for right in findings[left_index + 1 :]:
+            if _clusterable_findings(left, right):
+                union(left.id, right.id)
+
+    grouped: Dict[str, List[ReviewFinding]] = {}
+    for finding in findings:
+        grouped.setdefault(find(finding.id), []).append(finding)
+
+    clusters: List[Dict[str, Any]] = []
+    for index, members in enumerate(grouped.values(), start=1):
+        if len(members) < 2:
+            continue
+        payload_members = []
+        for finding in members[:12]:
+            reports = list(raw_by_cand.get(finding.id, []))
+            payload_members.append(
+                {
+                    "id": finding.id,
+                    "claim_digest": _finding_claim_digest(finding),
+                    "finding": finding.model_dump(mode="json"),
+                    "reflection": [report.model_dump(mode="json") for report in reports[:2]],
+                }
+            )
+        clusters.append(
+            {
+                "cluster_id": f"cluster-{index}",
+                "selection_reason": "same file/symbol or nearby lines with overlapping claim digests",
+                "members": payload_members,
+            }
+        )
+        if len(clusters) >= 8:
+            break
+    return clusters
+
+
+def _render_semantic_claim_cluster_prompt(clusters: Sequence[Mapping[str, Any]]) -> str:
+    return (
+        "Reconcile possible duplicate final review findings by root contract claim.\n"
+        "For each cluster, return zero or more duplicate_groups. In each group, choose one keeper_id and list absorbed_ids for variants "
+        "that describe the same violated contract, counterexample family, and practical fix, and list distinct_ids "
+        "for nearby findings that cover a different contract, mode, data element, trigger, or impact. Put internally "
+        "contradictory or incoherent variants in rejected_ids rather than merging their text into the keeper.\n"
+        "Do not merge two findings merely because they share a file or method. Same symbol plus different contract "
+        "must remain distinct.\n\n"
+        "Synthetic distinction example: `src/tool.py::Parser.run::variant=batch::contract=cardinality::impact=data_loss` "
+        "is distinct from `src/tool.py::Parser.run::variant=empty::contract=dispatch::impact=missing_return`.\n\n"
+        f"Claim Clusters JSON:\n{json_for_cleanup_prompt(list(clusters), max_chars=24000)}"
+    )
+
+
+def _merge_short_text(base: str, extra: str) -> str:
+    base = (base or "").strip()
+    extra = (extra or "").strip()
+    if not extra:
+        return base
+    if not base:
+        return extra
+    if extra.lower() in base.lower():
+        return base
+    if base.lower() in extra.lower():
+        return extra
+    return f"{base}; also: {extra}"
+
+
+def _merge_finding_claim_text(
+    finding: ReviewFinding,
+    decision: SemanticClaimDuplicateGroup,
+) -> ReviewFinding:
+    updates: Dict[str, str] = {}
+    if decision.merged_contract.strip() and decision.merged_contract.strip() not in finding.evidence_for_contract:
+        updates["evidence_for_contract"] = _merge_short_text(
+            finding.evidence_for_contract,
+            decision.merged_contract,
+        )[:500]
+    if decision.merged_counterexample.strip() and decision.merged_counterexample.strip() not in finding.counterexample:
+        updates["counterexample"] = _merge_short_text(
+            finding.counterexample,
+            decision.merged_counterexample,
+        )[:500]
+    updates["claim_digest"] = _finding_claim_digest(finding)
+    if updates:
+        return finding.model_copy(update=updates)
+    return finding
+
+
+def _apply_semantic_claim_cluster_audit(
+    findings: Sequence[ReviewFinding],
+    audit: SemanticClaimClusterOutput,
+) -> tuple[List[ReviewFinding], Dict[str, List[str]], Dict[str, str], Dict[str, str]]:
+    by_id = {finding.id: finding for finding in findings}
+    duplicates: Dict[str, List[str]] = {}
+    rejected: Dict[str, str] = {}
+    merged: Dict[str, ReviewFinding] = {}
+    dropped: set[str] = set()
+    for item in audit.clusters:
+        for rejected_id in item.rejected_ids:
+            if rejected_id not in by_id or rejected_id in dropped:
+                continue
+            dropped.add(rejected_id)
+            rejected[rejected_id] = item.rationale or "claim_cluster_rejected"
+        for group in item.duplicate_groups:
+            keeper = group.keeper_id
+            if keeper not in by_id or keeper in dropped:
+                continue
+            for duplicate in group.absorbed_ids:
+                if duplicate not in by_id or duplicate == keeper or duplicate in dropped:
+                    continue
+                if not _merge_compatible_claims(by_id[keeper], by_id[duplicate]):
+                    rejected[duplicate] = "claim_cluster_incompatible_merge"
+                    continue
+                dropped.add(duplicate)
+                duplicates.setdefault(keeper, []).append(duplicate)
+            for rejected_id in group.rejected_ids:
+                if rejected_id not in by_id or rejected_id == keeper or rejected_id in dropped:
+                    continue
+                dropped.add(rejected_id)
+                rejected[rejected_id] = group.rationale or item.rationale or "claim_cluster_rejected"
+            merged[keeper] = _merge_finding_claim_text(by_id[keeper], group)
+    out = []
+    for finding in findings:
+        if finding.id in dropped:
+            continue
+        out.append(merged.get(finding.id, finding))
+    return out, duplicates, {item: keeper for keeper, ids in duplicates.items() for item in ids}, rejected
+
+
 def _verifier_concrete_behavior_verified(candidate_id: str, verifier_hints: Mapping[str, Any]) -> bool:
     hint = verifier_hints.get(candidate_id)
     if not isinstance(hint, dict):
@@ -1208,6 +1436,10 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
         candidates = [
             candidate_with_behavioral_metadata(candidate)
             for candidate in ensure_unique_candidate_ids(candidates)
+        ]
+        candidates = [
+            candidate.model_copy(update={"claim_digest": _candidate_claim_digest(candidate)})
+            for candidate in candidates
         ]
 
         git_diff = (state.get("git_diff", "") or "")[:50000]
@@ -1583,21 +1815,22 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
                     if _verifier_harness_error(candidate.candidate_id, verifier_hints):
                         runtime_note = "\n\n(runtime unverified: verifier harness error)"
                     promoted.append(
-                        ReviewFinding(
-                            id=candidate.candidate_id,
-                            file_path=candidate.file_path,
-                            line_start=candidate.line_start,
-                            line_end=candidate.line_end,
+                    ReviewFinding(
+                        id=candidate.candidate_id,
+                        file_path=candidate.file_path,
+                        line_start=candidate.line_start,
+                        line_end=candidate.line_end,
                             content=candidate.content + evidence_extra + runtime_note,
                             severity=candidate.severity,
                             feedback_type=feedback_type,  # type: ignore[arg-type]
                             recommendation=candidate.recommendation,
-                            references=[],
-                            behavioral_symptom=candidate.behavioral_symptom,
-                            root_operation=candidate.root_operation,
-                            evidence_for_contract=candidate.evidence_for_contract,
-                            counterexample=candidate.counterexample,
-                            rejection_check=candidate.rejection_check,
+                        references=[],
+                        behavioral_symptom=candidate.behavioral_symptom,
+                        root_operation=candidate.root_operation,
+                        claim_digest=_candidate_claim_digest(candidate),
+                        evidence_for_contract=candidate.evidence_for_contract,
+                        counterexample=candidate.counterexample,
+                        rejection_check=candidate.rejection_check,
                         )
                     )
                     lifecycle[candidate.candidate_id] = {
@@ -1750,6 +1983,11 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
 
             if needs_context or relevant_needs_verification:
                 verdict = str(rev.get("verdict", "")).lower()
+                unresolved_prefix = (
+                    "needs_verification"
+                    if relevant_needs_verification and not needs_context
+                    else "needs_context"
+                )
                 if verdict == "reject":
                     drop(candidate, "revision_reject")
                     continue
@@ -1782,7 +2020,7 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
                     and not verified_hint
                     and not _verifier_concrete_behavior_verified(candidate.candidate_id, verifier_hints)
                 ):
-                    drop(candidate, "needs_context_with_inconclusive_verifier")
+                    drop(candidate, f"{unresolved_prefix}_with_inconclusive_verifier")
                     continue
                 if (
                     verdict == "accept"
@@ -1792,7 +2030,7 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
                         or _verifier_concrete_behavior_verified(candidate.candidate_id, verifier_hints)
                     )
                 ):
-                    drop(candidate, "needs_context_without_concrete_followup")
+                    drop(candidate, f"{unresolved_prefix}_without_concrete_followup")
                     continue
                 if (
                     verdict != "accept"
@@ -1800,7 +2038,7 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
                     and not harness_error
                     and not (relevant_needs_verification and verified_hint)
                 ):
-                    drop(candidate, "needs_context_without_supporting_revision")
+                    drop(candidate, f"{unresolved_prefix}_without_supporting_revision")
                     continue
 
             feedback_type = _category_to_feedback(category)  # type: ignore[arg-type]
@@ -1838,6 +2076,7 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
                     references=[],
                     behavioral_symptom=candidate.behavioral_symptom,
                     root_operation=candidate.root_operation,
+                    claim_digest=_candidate_claim_digest(candidate),
                     evidence_for_contract=candidate.evidence_for_contract,
                     counterexample=candidate.counterexample,
                     rejection_check=candidate.rejection_check,
@@ -1909,43 +2148,89 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
             resource_filtered.append(finding)
         resource_filtered = ensure_unique_finding_ids(resource_filtered)
         promoted, finding_duplicates = dedupe_review_findings_by_signature(resource_filtered)
-        promoted = ensure_unique_finding_ids(promoted)
-        semantic_equivalence_audits: List[Dict[str, Any]] = []
-        semantic_equivalence_duplicates: Dict[str, List[str]] = {}
-        semantic_equivalence_warnings: List[str] = []
-        equivalence_pairs = _semantic_equivalence_pairs(promoted, raw_by_cand)
-        if equivalence_pairs:
+        promoted = ensure_unique_finding_ids(
+            [
+                finding.model_copy(update={"claim_digest": _finding_claim_digest(finding)})
+                for finding in promoted
+            ]
+        )
+        normalized_claim_digests = {
+            finding.id: _finding_claim_digest(finding)
+            for finding in promoted
+        }
+        claim_cluster_audits: List[Dict[str, Any]] = []
+        claim_cluster_duplicates: Dict[str, List[str]] = {}
+        claim_cluster_duplicate_to_keeper: Dict[str, str] = {}
+        claim_cluster_rejected: Dict[str, str] = {}
+        claim_cluster_warnings: List[str] = []
+        claim_cluster_inputs = _semantic_claim_clusters(promoted, raw_by_cand)
+        exact_claim_digest_duplicates = duplicate_digest_map(
+            [
+                {"id": finding.id, "claim_digest": _finding_claim_digest(finding)}
+                for finding in promoted
+            ]
+        )
+        if claim_cluster_inputs:
             try:
                 llm = Models.worker(
-                    SemanticEquivalenceAuditOutput,
+                    SemanticClaimClusterOutput,
                     model_key=selected_model,
-                    max_completion_tokens=1200,
+                    max_completion_tokens=1800,
                 )
                 traced = trace_llm_call(
                     llm,
-                    _render_semantic_equivalence_audit_prompt(equivalence_pairs),
+                    _render_semantic_claim_cluster_prompt(claim_cluster_inputs),
                     state=state,
-                    node_name="adversarial_cleanup_semantic_equivalence_audit",
+                    node_name="adversarial_cleanup_claim_cluster_reconciliation",
                     model_key=selected_model,
-                    schema_name="SemanticEquivalenceAuditOutput",
-                    input_summary={"pair_count": len(equivalence_pairs)},
+                    schema_name="SemanticClaimClusterOutput",
+                    input_summary={"cluster_count": len(claim_cluster_inputs)},
                 )
-                audit = parse_structured_output(traced.result, SemanticEquivalenceAuditOutput)
+                audit = parse_structured_output(traced.result, SemanticClaimClusterOutput)
                 llm_tokens += traced.tokens
                 llm_trace.extend(traced.trace_records)
-                semantic_equivalence_audits = [item.model_dump(mode="json") for item in audit.items]
-                semantic_equivalence_warnings.extend(audit.warnings)
-                promoted, semantic_equivalence_duplicates = _apply_semantic_equivalence_audit(promoted, audit)
+                claim_cluster_audits = [item.model_dump(mode="json") for item in audit.clusters]
+                claim_cluster_warnings.extend(audit.warnings)
+                (
+                    promoted,
+                    claim_cluster_duplicates,
+                    claim_cluster_duplicate_to_keeper,
+                    claim_cluster_rejected,
+                ) = _apply_semantic_claim_cluster_audit(promoted, audit)
             except Exception as exc:  # noqa: BLE001
                 llm_trace.extend(trace_from_exception(exc))
-                semantic_equivalence_warnings.append(
-                    f"semantic_equivalence_audit_failed:{exc.__class__.__name__}: {exc}"
+                claim_cluster_warnings.append(
+                    f"claim_cluster_reconciliation_failed:{exc.__class__.__name__}: {exc}"
                 )
+        for duplicate_id, keeper_id in claim_cluster_duplicate_to_keeper.items():
+            if duplicate_id in lifecycle:
+                lifecycle[duplicate_id] = {
+                    **lifecycle[duplicate_id],
+                    "decision": "merged_duplicate",
+                    "reason": "claim_cluster_absorbed",
+                    "equivalent_to": keeper_id,
+                }
+        kept_after_cluster = {finding.id for finding in promoted}
+        for rejected_id, rationale in claim_cluster_rejected.items():
+            if rejected_id in kept_after_cluster:
+                if rejected_id in lifecycle:
+                    lifecycle[rejected_id] = {
+                        **lifecycle[rejected_id],
+                        "claim_cluster_rejection": rationale,
+                    }
+                continue
+            if rejected_id in lifecycle:
+                lifecycle[rejected_id] = {
+                    **lifecycle[rejected_id],
+                    "decision": "dropped",
+                    "reason": "claim_cluster_rejected",
+                    "cluster_rationale": rationale,
+                }
         promoted = ensure_unique_finding_ids(promoted)
         dropped_semantic_finding_ids = [
             fid for ids in finding_duplicates.values() for fid in ids
         ] + [
-            fid for ids in semantic_equivalence_duplicates.values() for fid in ids
+            fid for ids in claim_cluster_duplicates.values() for fid in ids
         ] + dropped_resource_ids
 
         if _trace_enabled(state):
@@ -1971,18 +2256,27 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
                 "missing_contract_proof_count": len(contract_proof_drops["missing_contract_proof"]),
                 "weak_contract_proof_count": len(contract_proof_drops["weak_contract_proof"]),
             },
+            "claim_digest_duplicates": exact_claim_digest_duplicates,
+            "normalized_claim_digests": normalized_claim_digests,
             "dropped_semantic_duplicate_finding_ids": dropped_semantic_finding_ids,
         }
         if semantic_duplicates:
             cleanup_meta["semantic_dedupe_duplicates"] = semantic_duplicates
         if finding_duplicates:
             cleanup_meta["semantic_dedupe_finding_duplicates"] = finding_duplicates
-        if semantic_equivalence_audits:
-            cleanup_meta["semantic_equivalence_audits"] = semantic_equivalence_audits
-        if semantic_equivalence_duplicates:
-            cleanup_meta["semantic_equivalence_duplicates"] = semantic_equivalence_duplicates
-        if semantic_equivalence_warnings:
-            cleanup_meta["semantic_equivalence_warnings"] = semantic_equivalence_warnings
+        if claim_cluster_inputs:
+            cleanup_meta["semantic_claim_clusters"] = claim_cluster_inputs
+            cleanup_meta["claim_cluster_groups"] = claim_cluster_inputs
+        if claim_cluster_audits:
+            cleanup_meta["semantic_claim_cluster_audits"] = claim_cluster_audits
+        if claim_cluster_duplicates:
+            cleanup_meta["semantic_claim_cluster_duplicates"] = claim_cluster_duplicates
+            cleanup_meta["claim_cluster_duplicates"] = claim_cluster_duplicates
+        if claim_cluster_rejected:
+            cleanup_meta["semantic_claim_cluster_rejected"] = claim_cluster_rejected
+            cleanup_meta["claim_cluster_rejections"] = claim_cluster_rejected
+        if claim_cluster_warnings:
+            cleanup_meta["semantic_claim_cluster_warnings"] = claim_cluster_warnings
         if revision_support_audits:
             cleanup_meta["revision_support_audits"] = revision_support_audits
         metadata["adversarial_cleanup"] = cleanup_meta

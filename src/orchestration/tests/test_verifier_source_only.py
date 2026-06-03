@@ -206,6 +206,43 @@ def test_source_only_detects_nested_item_projection_data_loss() -> None:
     assert attempt is not None
 
 
+def test_source_only_detects_class_anchored_method_projection() -> None:
+    state = {
+        "git_diff": "",
+        "metadata": {
+            "critique_pipeline": {
+                "by_task": {
+                    "t1": {
+                        "task_evidence": _task_evidence(
+                            {
+                                "pkg/mod.py": (
+                                    "class Serializer:\n"
+                                    "    def execute(self, rows):\n"
+                                    "        return '\\n'.join([row[0] for row in rows])\n"
+                                )
+                            }
+                        )
+                    }
+                }
+            }
+        },
+    }
+    candidate = {
+        "candidate_id": "c1",
+        "patch_task_id": "t1",
+        "file_path": "pkg/mod.py",
+        "line_start": 1,
+        "failure_mode": "Serializer aggregation loses structured row fields.",
+        "evidence_summary": "Serializer should preserve row cardinality but keeps only one field.",
+    }
+
+    verdict, rationale, attempt = source_only_verify_candidate(state, candidate)
+
+    assert verdict == "verified"
+    assert "element 0" in rationale
+    assert attempt is not None
+
+
 def test_source_only_detects_optional_value_join_risk() -> None:
     state = {
         "git_diff": "",
@@ -276,7 +313,7 @@ def test_source_only_abstains_on_incomplete_task_evidence_parse_error() -> None:
     assert attempt is None
 
 
-def test_source_only_abstains_on_incomplete_task_evidence_missing_return() -> None:
+def test_source_only_uses_parseable_incomplete_target_evidence() -> None:
     state = {
         "git_diff": "",
         "metadata": {
@@ -308,6 +345,7 @@ def test_source_only_abstains_on_incomplete_task_evidence_missing_return() -> No
 
     verdict, rationale, attempt = source_only_verify_candidate(state, candidate)
 
-    assert verdict == ""
-    assert "incomplete" in rationale
-    assert attempt is None
+    assert verdict == "verified"
+    assert "fall through" in rationale
+    assert attempt is not None
+    assert attempt.sandbox_mode == "source_only_static"
