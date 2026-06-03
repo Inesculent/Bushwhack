@@ -582,6 +582,24 @@ class Settings(BaseSettings):
 			"Default false routes final candidate judgment through review_adjudicator."
 		),
 	)
+	reviewer_triage_max_batch_chars: int = Field(
+		default=28_000,
+		ge=4_000,
+		le=200_000,
+		description="Approximate max characters of candidate evidence per review_evidence_triage batch.",
+	)
+	reviewer_triage_max_candidate_chars: int = Field(
+		default=8_000,
+		ge=1_000,
+		le=80_000,
+		description="Max rendered characters for one candidate packet in review_evidence_triage prompts.",
+	)
+	reviewer_triage_max_completion_tokens: int = Field(
+		default=12_288,
+		ge=512,
+		le=65_536,
+		description="Completion token cap for review_evidence_triage structured-output calls.",
+	)
 	reviewer_adjudicator_max_batch_chars: int = Field(
 		default=32_000,
 		ge=4_000,

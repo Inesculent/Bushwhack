@@ -54,25 +54,7 @@ _STATUS_LINE = re.compile(
 
 def infer_verification_scope(candidate: Dict[str, Any]) -> VerificationScope:
     fm = str(candidate.get("failure_mode") or "").strip()
-    content = str(candidate.get("content") or "").lower()
-    blob = fm.lower() + " " + content
-    if len(fm) < 12:
-        return "abstract_or_unverifiable"
-    abstract_kw = (
-        "network",
-        "http",
-        "https",
-        "distributed",
-        "race",
-        "deadlock",
-        "gui",
-        "render",
-        "multiprocess",
-        "kubernetes",
-        "async",
-        "websocket",
-    )
-    if any(k in blob for k in abstract_kw):
+    if len(fm) < 12 and not str(candidate.get("content") or "").strip():
         return "abstract_or_unverifiable"
     return "concrete_behavior"
 

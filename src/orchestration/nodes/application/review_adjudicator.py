@@ -15,7 +15,9 @@ from src.domain.schemas import (
     ReviewAdjudicationItem,
     ReviewAdjudicationOutput,
     ReviewCheckResult,
+    ReviewEvidenceTriageItem,
     ReviewFinding,
+    SourceFact,
 )
 from src.domain.state import GraphState
 from src.domain.verifier_schemas import VerifierReport
@@ -93,6 +95,17 @@ def _coerce_verifier(raw: Any) -> VerifierReport | None:
     return None
 
 
+def _coerce_source_fact(raw: Any) -> SourceFact | None:
+    if isinstance(raw, SourceFact):
+        return raw
+    if isinstance(raw, dict):
+        try:
+            return SourceFact.model_validate(raw)
+        except Exception:
+            return None
+    return None
+
+
 def _coerce_digest(raw: Any) -> CritiqueRevisionDigest | None:
     if isinstance(raw, CritiqueRevisionDigest):
         return raw
@@ -160,6 +173,40 @@ def _verifier_by_candidate(state: GraphState) -> Dict[str, List[VerifierReport]]
         if report is not None:
             grouped.setdefault(report.candidate_id, []).append(report)
     return grouped
+
+
+def _source_facts_by_candidate(state: GraphState) -> Dict[str, List[SourceFact]]:
+    grouped: Dict[str, List[SourceFact]] = {}
+    for raw in state.get("source_facts", []) or []:
+        fact = _coerce_source_fact(raw)
+        if fact is not None:
+            grouped.setdefault(fact.candidate_id, []).append(fact)
+    metadata = state.get("metadata") if isinstance(state.get("metadata"), dict) else {}
+    verifier = metadata.get("verifier") if isinstance(metadata, dict) else {}
+    by_candidate = verifier.get("source_facts_by_candidate") if isinstance(verifier, dict) else {}
+    if isinstance(by_candidate, dict):
+        for cid, rows in by_candidate.items():
+            if not isinstance(rows, list):
+                continue
+            for raw in rows:
+                fact = _coerce_source_fact(raw)
+                if fact is not None:
+                    grouped.setdefault(str(cid), []).append(fact)
+    return grouped
+
+
+def _triage_by_candidate(state: GraphState) -> Dict[str, ReviewEvidenceTriageItem]:
+    metadata = state.get("metadata") if isinstance(state.get("metadata"), dict) else {}
+    triage = metadata.get("review_evidence_triage") if isinstance(metadata, dict) else {}
+    rows = triage.get("items") if isinstance(triage, dict) else []
+    out: Dict[str, ReviewEvidenceTriageItem] = {}
+    for raw in rows or []:
+        try:
+            item = raw if isinstance(raw, ReviewEvidenceTriageItem) else ReviewEvidenceTriageItem.model_validate(raw)
+        except Exception:
+            continue
+        out[item.candidate_id] = item
+    return out
 
 
 def _digests_by_candidate(state: GraphState) -> Dict[str, List[CritiqueRevisionDigest]]:
@@ -239,6 +286,8 @@ def build_review_adjudication_packets(
     reflections = _reflections_by_candidate(state)
     focused = _focused_by_candidate(state)
     verifier = _verifier_by_candidate(state)
+    source_facts = _source_facts_by_candidate(state)
+    triage = _triage_by_candidate(state)
     digests = _digests_by_candidate(state)
     revisions = _revision_rows_by_candidate(metadata)
     lifecycle = _prior_lifecycle_by_candidate(metadata)
@@ -266,6 +315,11 @@ def build_review_adjudication_packets(
                     _compact_verifier_report(item)
                     for item in verifier.get(cid, [])
                 ],
+                "source_facts": [
+                    item.model_dump(mode="json")
+                    for item in source_facts.get(cid, [])
+                ],
+                "triage": triage[cid].model_dump(mode="json") if cid in triage else None,
                 "verifier_hint": verifier_hints.get(cid) if isinstance(verifier_hints, Mapping) else None,
                 "critique_revision_digests": [
                     item.model_dump(mode="json")

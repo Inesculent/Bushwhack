@@ -43,11 +43,6 @@ _DIFF_LOCAL_CORRECTNESS_PHRASES = (
     "within the changed",
     "changed hunks",
 )
-_DEDICATED_STRUCTURED_TASK_MARKERS = (
-    "structured extraction and aggregation",
-    "structured extraction",
-    "review-logic-structured-extraction",
-)
 _MAX_PLANNER_TASKS = 10
 _CLASS_CHUNK_MIN_INVENTORY = 4
 _CLASS_CHUNK_DEFAULT_BATCH = 2
@@ -85,20 +80,6 @@ _TASK_SURFACE_NOISE = frozenset(
     }
 )
 _CLASS_INTRO_RE = re.compile(r"^\+\s*class\s+(\w+)", re.MULTILINE)
-_DIFF_SIGNAL_FINDALL = re.compile(r"\bfindall\s*\(", re.IGNORECASE)
-_DIFF_SIGNAL_GROUP = re.compile(r"\.group\s*\(|\.groups\s*\(", re.IGNORECASE)
-_DIFF_SIGNAL_FINDITER = re.compile(r"\bfinditer\s*\(", re.IGNORECASE)
-_DIFF_SIGNAL_JOIN = re.compile(r"\bjoin\s*\(", re.IGNORECASE)
-_STRUCTURED_REGION_MARKERS = (
-    _DIFF_SIGNAL_FINDALL,
-    _DIFF_SIGNAL_GROUP,
-    _DIFF_SIGNAL_FINDITER,
-    _DIFF_SIGNAL_JOIN,
-)
-_DIFF_SIGNAL_ELIF_DISCRIMINANT = re.compile(
-    r"^\+\s*elif\b.*\b(mode|op|action|kind)\b",
-    re.IGNORECASE | re.MULTILINE,
-)
 _DIFF_CONTEXT_TERMS = re.compile(
     r"\b(diff|hunk|excerpt|snippet|visible|shown|displayed|truncated|partial)\b",
     re.IGNORECASE,
@@ -233,9 +214,8 @@ def _multi_surface_correctness_suffix(state: GraphState) -> str:
     else:
         names = ", ".join(inventory)
     return (
-        f" Audit every changed entry point in: {names}. For each: branch exhaustiveness on "
-        "mode/discriminant inputs, consistent return on all paths, correct indexing into "
-        "structured results, and safe aggregation before return."
+        f" Audit every changed entry point in: {names}. Keep the review scoped to changed behavior, "
+        "local contracts, and directly visible interactions for each listed surface."
     )
 
 
@@ -254,35 +234,14 @@ def _diff_text_for_signals(state: GraphState) -> str:
 
 
 def _diff_signals_structured_extraction(state: GraphState) -> bool:
-    """True when diff/digest suggests structured extraction or multi-branch dispatch."""
-    blob = _diff_text_for_signals(state)
-    if not blob.strip():
-        return False
-    signals = (
-        _DIFF_SIGNAL_FINDALL.search(blob),
-        _DIFF_SIGNAL_GROUP.search(blob),
-        _DIFF_SIGNAL_FINDITER.search(blob),
-        _DIFF_SIGNAL_JOIN.search(blob),
-        len(_DIFF_SIGNAL_ELIF_DISCRIMINANT.findall(blob)) >= 2,
-    )
-    return any(signals)
+    return False
 
 
 def _task_covers_structured_extraction(
     task: ReviewTask,
     inventory: List[str] | None = None,
 ) -> bool:
-    """True only for a dedicated, surface-scoped structured-extraction task."""
-    if task.id == "review-logic-structured-extraction":
-        return True
-    if task.specialty != "logic" or not inventory:
-        return False
-    if not _is_surface_scoped_logic_task(task, inventory):
-        return False
-    blob = f"{task.title} {task.description}".lower()
-    if any(marker in blob for marker in _DEDICATED_STRUCTURED_TASK_MARKERS):
-        return True
-    return "type-tracing" in blob and "structured" in blob
+    return False
 
 
 def _surfaces_mentioned_in_text(text: str, inventory: List[str]) -> List[str]:
@@ -436,59 +395,17 @@ def _diff_region_for_class(blob: str, class_name: str) -> str:
     return blob[intro.start() : end]
 
 
-def _structured_focus_surfaces(inventory: List[str], state: GraphState) -> List[str]:
-    if not _diff_signals_structured_extraction(state):
-        return []
-    blob = _diff_text_for_signals(state)
-    focused: List[str] = []
-    for name in inventory:
-        region = _diff_region_for_class(blob, name)
-        if region and any(marker.search(region) for marker in _STRUCTURED_REGION_MARKERS):
-            focused.append(name)
-    return focused
-
-
-def _branch_focus_surfaces(inventory: List[str], state: GraphState) -> List[str]:
-    blob = _diff_text_for_signals(state)
-    if len(_DIFF_SIGNAL_ELIF_DISCRIMINANT.findall(blob)) < 2:
-        return []
-    focused: List[str] = []
-    for name in inventory:
-        region = _diff_region_for_class(blob, name)
-        if region and re.search(r"^\+\s*elif\b", region, re.MULTILINE | re.IGNORECASE):
-            focused.append(name)
-    return focused
-
-
 def _surface_focus_description(surfaces: List[str], *, focus: str) -> str:
     names = ", ".join(surfaces)
-    if focus == "structured":
-        lead = surfaces[0] if len(surfaces) == 1 else names
-        return (
-            f"Mandatory type-tracing on {lead} only: structured return shapes, "
-            "record/field preservation, selected-value handling, and join/format paths with no stray None. "
-            f"{_CLASS_SCOPE_ISOLATION_PHRASE.capitalize()} in the target file."
-        )
-    if focus == "branch":
-        lead = surfaces[0] if len(surfaces) == 1 else names
-        return (
-            f"Branch-exhaustiveness on {lead} only: every if/elif returns or raises; "
-            "require a terminal else for invalid discriminant values. "
-            f"{_CLASS_SCOPE_ISOLATION_PHRASE.capitalize()} in the target file."
-        )
     return (
-        f"Diff-local correctness for {names} only. Per surface: branch exhaustiveness, consistent returns, "
-        "correct indexing into structured results, safe aggregation before return. "
+        f"Diff-local correctness for {names} only. Review the changed behavior, local contracts, "
+        "and directly visible interactions for each assigned surface. "
         f"{_CLASS_SCOPE_ISOLATION_PHRASE.capitalize()} in the target file."
     )
 
 
 def _surface_focus_title(surfaces: List[str], *, focus: str) -> str:
     if len(surfaces) == 1:
-        if focus == "structured":
-            return f"{surfaces[0]} — structured extraction"
-        if focus == "branch":
-            return f"{surfaces[0]} — branch exhaustiveness"
         return f"Diff-local correctness: {surfaces[0]}"
     return f"Diff-local correctness: {', '.join(surfaces)}"
 
@@ -517,7 +434,7 @@ def _logic_surface_focus_task(
         description=description,
         target_files=files,
         specialty="logic",
-        review_dimension="data_shape_consistency" if focus == "structured" else "diff_local_correctness",
+        review_dimension="diff_local_correctness",
         depth=1,
     )
 
@@ -538,41 +455,23 @@ def _build_surface_focus_shards(
     if max_shards < 1 or not surfaces:
         return []
     files = _target_files(state)
-    structured = [s for s in _structured_focus_surfaces(surfaces, state) if s in surfaces]
-    branch = [s for s in _branch_focus_surfaces(surfaces, state) if s in surfaces]
-    remainder = [s for s in surfaces if s not in structured and s not in branch]
-
     planned: List[tuple[List[str], str]] = []
-    for name in structured:
-        planned.append(([name], "structured"))
-    for name in branch:
-        if name not in structured:
-            planned.append(([name], "branch"))
     batch_size = _CLASS_CHUNK_DEFAULT_BATCH
-    while batch_size <= len(remainder):
-        batches = _batch_surface_list(remainder, batch_size)
+    while batch_size <= len(surfaces):
+        batches = _batch_surface_list(surfaces, batch_size)
         if len(planned) + len(batches) <= max_shards:
             for batch in batches:
                 planned.append((batch, "default"))
             break
         batch_size += 1
     else:
-        if remainder and len(planned) < max_shards:
-            planned.append((remainder, "default"))
+        if surfaces and len(planned) < max_shards:
+            planned.append((surfaces, "default"))
 
     if len(planned) > max_shards:
         combined: List[tuple[List[str], str]] = []
-        default_batches = [p for p in planned if p[1] == "default"]
-        focused = [p for p in planned if p[1] != "default"]
-        if len(focused) >= max_shards:
-            planned = focused[:max_shards]
-        else:
-            slots = max_shards - len(focused)
-            merged = _batch_surface_list(
-                [s for batch, _ in default_batches for s in batch],
-                max(1, (len(remainder) + slots - 1) // slots),
-            )
-            planned = focused + [(batch, "default") for batch in merged[:slots]]
+        merged = _batch_surface_list(surfaces, max(1, (len(surfaces) + max_shards - 1) // max_shards))
+        planned = [(batch, "default") for batch in merged[:max_shards]]
 
     shards: List[ReviewTask] = []
     for index, (batch, focus) in enumerate(planned):
@@ -690,23 +589,6 @@ def _should_split_monolithic_logic_task(task: ReviewTask, inventory: List[str]) 
         return True
     mentioned = _surfaces_mentioned_in_text(task.description, inventory)
     return len(mentioned) >= _MULTI_SURFACE_SPLIT_MIN_MENTIONED
-
-
-def _structured_extraction_correctness_task(files: List[str]) -> ReviewTask:
-    return ReviewTask(
-        id="review-logic-structured-extraction",
-        title="Structured extraction and aggregation",
-        description=(
-            "Audit structured extraction and aggregation in changed entry points: selected-value handling, "
-            "complete field/element preservation when the contract implies completeness, empty-result behavior, "
-            "and join/format paths with no stray None unless allowed. "
-            f"{_CLASS_SCOPE_ISOLATION_PHRASE.capitalize()} in the target file."
-        ),
-        target_files=files,
-        specialty="logic",
-        review_dimension="data_shape_consistency",
-        depth=1,
-    )
 
 
 def _strip_mega_audit_suffix(description: str) -> str:
@@ -887,7 +769,7 @@ def _normalize_tasks(tasks: List[ReviewTask], state: GraphState) -> List[ReviewT
 
 
 _CROSS_SURFACE_AUDIT_RE = re.compile(
-    r"\s*Audit every changed entry point in:.*?(?:correct indexing into structured results.*?(?:safe aggregation before return\.?)?)?",
+    r"\s*Audit every changed entry point in:.*?(?:listed surface\.?)?",
     re.IGNORECASE | re.DOTALL,
 )
 
@@ -1084,19 +966,6 @@ def _review_dimension_for_task(task: ReviewTask) -> str:
     explicit = str(getattr(task, "review_dimension", "") or "").strip()
     if explicit and explicit != "general":
         return explicit
-    blob = f"{task.id} {task.title} {task.description}".lower()
-    if "structured extraction" in blob or "structured" in blob:
-        return "structured_extraction"
-    if "branch" in blob or "return path" in blob or "diff-local correctness" in blob:
-        return "diff_local_correctness"
-    if "migration" in blob or "caller-reliance" in blob or "call site" in blob:
-        return "migration_contract"
-    if "resource" in blob or "vram" in blob or "memory" in blob or "checkpoint" in blob:
-        return "resource_lifecycle"
-    if "security" in blob or "path traversal" in blob or "permission" in blob:
-        return "security_boundary"
-    if "api" in blob or "contract" in blob or "compatibility" in blob:
-        return "api_contract"
     return task.specialty
 
 

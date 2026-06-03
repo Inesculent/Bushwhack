@@ -22,7 +22,6 @@ from src.infrastructure.llm.token_usage import extract_total_tokens_from_llm_res
 from src.infrastructure.llm.trace import append_trace, trace_from_exception, trace_llm_call
 from src.orchestration.nodes.verifier.failure_class import (
     verifier_confidence_label,
-    verifier_refutation_applies,
 )
 from src.orchestration.context.context_packets import (
     build_critique_revision_shard_packet,
@@ -33,7 +32,6 @@ from src.orchestration.routing.reflection_consolidation import (
     candidate_has_local_defect_signature,
     consolidate_reflection_reports,
 )
-from src.orchestration.routing.claim_tiering import classify_claim_tier, review_kb_context_for_candidate
 
 logger = logging.getLogger(__name__)
 trace_logger = logging.getLogger("research_pipeline.reviewer_trace")
@@ -94,28 +92,7 @@ def _needs_revision_candidates(state: GraphState) -> List[str]:
         if report.verdict in ("needs_context", "needs_verification"):
             ids.add(report.candidate_id)
     ids.update(_reject_recheck_revision_candidates(state))
-    by_id = _all_candidates_by_id(state)
-    metadata = state.get("metadata") or {}
-    filtered: set[str] = set()
-    for cid in ids:
-        cand = by_id.get(cid)
-        if cand is None:
-            filtered.add(cid)
-            continue
-        tier = classify_claim_tier(
-            cand,
-            review_kb_context=review_kb_context_for_candidate(metadata, cand),
-        )
-        if tier == "speculative_guard":
-            continue
-        if (
-            tier == "direct_regression"
-            and not _focused_results_for_candidate(state, cid)
-            and not _has_verifier_report_for_candidate(state, cid)
-        ):
-            continue
-        filtered.add(cid)
-    return sorted(filtered)
+    return sorted(ids)
 
 
 def _candidate_ids_needs_verification(state: GraphState) -> Set[str]:
@@ -519,7 +496,6 @@ def _apply_verifier_policy_to_revisions(
         v_verdict = str(hint.get("verdict") or "").lower()
         scope = str(hint.get("verification_scope") or "")
         confidence = str(hint.get("confidence") or "")
-        verdict = str(row.get("verdict") or "").lower()
         summary = str(row.get("updated_evidence_summary") or "")
         cand = candidates_by_id.get(cid)
         cand_dict = cand.model_dump(mode="json") if cand is not None else {"failure_mode": ""}
@@ -533,45 +509,12 @@ def _apply_verifier_policy_to_revisions(
             )
         if harness:
             warnings.append(f"critique_revision_verifier_ignored:{cid}:harness")
-        elif (
-            v_verdict == "verified"
-            and scope == "concrete_behavior"
-            and confidence == "clean_product_signal"
-            and bool(hint.get("product_verified"))
-            and verdict != "accept"
-        ):
+        elif v_verdict in {"verified", "refuted"}:
             note = str(hint.get("updated_evidence_summary") or hint.get("final_rationale") or "")
-            row["verdict"] = "accept"
-            row["updated_evidence_summary"] = (
-                f"{summary} {note or 'Runtime verifier verified concrete_behavior claim.'}".strip()
-            )
-            warnings.append(f"critique_revision_verifier_verified:{cid}")
-        elif (
-            v_verdict == "refuted"
-            and scope == "concrete_behavior"
-            and confidence == "clean_product_signal"
-            and verdict == "accept"
-        ):
-            if verifier_refutation_applies(
-                cand_dict,
-                verifier_verdict=v_verdict,
-                verification_scope=scope,
-                harness_error=harness,
-            ):
-                row["verdict"] = "reject"
-                row["updated_evidence_summary"] = (
-                    f"{summary} Runtime verifier refuted concrete_behavior claim.".strip()
-                )
-                warnings.append(f"critique_revision_verifier_refuted:{cid}")
-            else:
-                note = "runtime inconclusive for wrong-output claim (exit 0 without STATUS: SAFE)"
-                if note not in summary:
-                    row["updated_evidence_summary"] = f"{summary} {note}".strip()
-                warnings.append(f"critique_revision_verifier_inconclusive_wrong_output:{cid}")
-        elif v_verdict == "refuted" and verdict == "accept":
-            if confidence == "static_claim_not_runtime_refutable":
-                warnings.append(f"critique_revision_verifier_inconclusive_wrong_output:{cid}")
-            warnings.append(f"critique_revision_verifier_ignored:{cid}:{confidence or 'advisory'}")
+            fallback = f"Runtime verifier reported {v_verdict}; treat as advisory evidence."
+            if note or fallback:
+                row["updated_evidence_summary"] = f"{summary} {note or fallback}".strip()
+            warnings.append(f"critique_revision_verifier_{v_verdict}_advisory:{cid}:{confidence or 'advisory'}")
         adjusted.append(row)
     return adjusted, warnings
 

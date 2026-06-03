@@ -611,6 +611,40 @@ class CritiqueRevisionOutput(BaseModel):
     warnings: List[str] = Field(default_factory=list)
 
 
+class SourceFact(BaseModel):
+    """Deterministic source fact extracted without deciding review-claim validity."""
+
+    candidate_id: str
+    fact_kind: str = Field(description="Stable structural fact kind, e.g. reachable_fallthrough.")
+    file_path: str = Field(description="Repository-relative file path using '/' separators.")
+    line_start: Optional[int] = Field(default=None, ge=1)
+    line_end: Optional[int] = Field(default=None, ge=1)
+    summary: str = Field(default="", max_length=700)
+    evidence: str = Field(default="", max_length=1000)
+
+
+class ReviewEvidenceTriageItem(BaseModel):
+    """LLM triage of a candidate before reflection/verifier routing."""
+
+    candidate_id: str
+    claim_summary: str = Field(default="", max_length=700)
+    claim_family: str = Field(default="other", max_length=120)
+    suggested_reflection_specialties: List[Literal["security", "performance", "logic", "general"]] = Field(
+        default_factory=list
+    )
+    source_fact_requests: List[str] = Field(default_factory=list, max_length=8)
+    runtime_verification_usefulness: Literal["useful", "advisory", "not_useful", "unclear"] = "unclear"
+    needed_context: List[str] = Field(default_factory=list, max_length=8)
+    rationale: str = Field(default="", max_length=1200)
+
+
+class ReviewEvidenceTriageOutput(BaseModel):
+    """Structured output for pre-adjudication evidence triage."""
+
+    items: List[ReviewEvidenceTriageItem] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
+
+
 ReviewAdjudicationDecision = Literal["promote", "drop", "merge"]
 
 

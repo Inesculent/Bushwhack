@@ -9,7 +9,7 @@ from langgraph.types import Send
 
 from src.config import get_settings
 from src.infrastructure.sandbox import sandbox_runtime_available
-from src.domain.schemas import CandidateFinding
+from src.domain.schemas import CandidateFinding, ReviewEvidenceTriageItem, SourceFact
 from src.domain.state import GraphState
 from src.domain.verifier_schemas import VerifierReport
 from src.orchestration.routing.send_payload import payload_for_send
@@ -19,8 +19,7 @@ from src.orchestration.nodes.application.critique_revision import (
     _needs_revision_candidates,
 )
 from src.orchestration.context.task_evidence import task_evidence_slot_from_state
-from src.orchestration.nodes.verifier.source_only import source_only_verify_candidate
-from src.orchestration.routing.finding_dedupe import candidate_with_behavioral_metadata
+from src.orchestration.nodes.verifier.source_only import extract_source_facts_for_candidate
 
 logger = logging.getLogger(__name__)
 
@@ -51,18 +50,6 @@ def _coerce_candidate(raw: object) -> CandidateFinding | None:
         except Exception:  # noqa: BLE001
             return None
     return None
-
-
-_CONCRETE_VERIFIER_SYMPTOMS = frozenset(
-    {
-        "wrong_output",
-        "data_loss",
-        "crash",
-        "missing_return",
-        "uncaught_exception",
-        "contract_mismatch",
-    }
-)
 
 
 def _claim_type_eligible(
@@ -129,11 +116,8 @@ def _concrete_source_local_missing_test_ids(state: GraphState) -> set[str]:
         cand = _coerce_candidate(raw)
         if cand is None or cand.claim_type != "missing_test" or cand.candidate_id not in supported_ids:
             continue
-        normalized = candidate_with_behavioral_metadata(cand)
-        if normalized.behavioral_symptom not in _CONCRETE_VERIFIER_SYMPTOMS:
-            continue
-        if _task_evidence_has_candidate_file(state, normalized):
-            out.add(normalized.candidate_id)
+        if _task_evidence_has_candidate_file(state, cand):
+            out.add(cand.candidate_id)
     return out
 
 
@@ -150,45 +134,77 @@ def _existing_verifier_report_ids(state: GraphState) -> set[str]:
     return out
 
 
+def _existing_source_fact_ids(state: GraphState) -> set[str]:
+    out: set[str] = set()
+    for raw in state.get("source_facts") or []:
+        fact = raw
+        if isinstance(raw, dict):
+            try:
+                fact = SourceFact.model_validate(raw)
+            except Exception:
+                continue
+        if isinstance(fact, SourceFact) and fact.candidate_id:
+            out.add(fact.candidate_id)
+    metadata = state.get("metadata") or {}
+    verifier_meta = metadata.get("verifier") if isinstance(metadata.get("verifier"), dict) else {}
+    by_candidate = verifier_meta.get("source_facts_by_candidate") if isinstance(verifier_meta, dict) else {}
+    if isinstance(by_candidate, dict):
+        out.update(str(candidate_id) for candidate_id in by_candidate if str(candidate_id))
+    return out
+
+
+def _triage_by_candidate(state: GraphState) -> dict[str, ReviewEvidenceTriageItem]:
+    metadata = state.get("metadata") or {}
+    triage = metadata.get("review_evidence_triage") if isinstance(metadata, dict) else {}
+    items = triage.get("items") if isinstance(triage, dict) else []
+    out: dict[str, ReviewEvidenceTriageItem] = {}
+    for raw in items or []:
+        item = raw
+        if isinstance(raw, dict):
+            try:
+                item = ReviewEvidenceTriageItem.model_validate(raw)
+            except Exception:
+                continue
+        if isinstance(item, ReviewEvidenceTriageItem) and item.candidate_id:
+            out[item.candidate_id] = item
+    return out
+
+
+def _triage_source_fact_requested_ids(state: GraphState) -> set[str]:
+    return {
+        candidate_id
+        for candidate_id, item in _triage_by_candidate(state).items()
+        if item.source_fact_requests
+    }
+
+
+def _runtime_verification_allowed(state: GraphState, candidate_id: str) -> bool:
+    item = _triage_by_candidate(state).get(candidate_id)
+    if item is None:
+        return True
+    return item.runtime_verification_usefulness != "not_useful"
+
+
 def _source_only_candidate_ids(state: GraphState) -> set[str]:
     return (
         set(_needs_revision_candidates(state))
         | set(_candidate_ids_needs_verification(state))
         | _concrete_source_local_missing_test_ids(state)
-    )
-
-
-def _source_only_report_for_candidate(state: GraphState, candidate: CandidateFinding) -> VerifierReport | None:
-    verdict, rationale, attempt = source_only_verify_candidate(state, candidate.model_dump(mode="json"))
-    if verdict != "verified" or attempt is None:
-        return None
-    return VerifierReport(
-        run_id=str(state.get("run_id") or ""),
-        candidate_id=candidate.candidate_id,
-        verdict="verified",
-        verification_scope="concrete_behavior",
-        final_rationale=rationale,
-        updated_evidence_summary=f"Source-only verifier: {rationale}",
-        attempts=[attempt],
-        metadata={
-            "harness_error": False,
-            "product_verified": True,
-            "source_only_static": True,
-        },
+        | _triage_source_fact_requested_ids(state)
     )
 
 
 def collect_source_only_verifier_updates(state: GraphState) -> Dict[str, Any]:
-    """Run static verifier proofs that do not require sandbox runtime."""
+    """Collect static source facts that do not require sandbox runtime."""
     settings = get_settings()
     if not settings.verifier_enabled or not getattr(settings, "verifier_source_only_static_enabled", True):
         return {}
 
-    need_ids = _source_only_candidate_ids(state) - _existing_verifier_report_ids(state)
+    need_ids = _source_only_candidate_ids(state) - _existing_verifier_report_ids(state) - _existing_source_fact_ids(state)
     if not need_ids:
         return {}
 
-    reports: List[VerifierReport] = []
+    facts = []
     source_local_missing_test_ids = _concrete_source_local_missing_test_ids(state)
     for raw in state.get("candidate_findings", []) or []:
         cand = _coerce_candidate(raw)
@@ -200,53 +216,22 @@ def collect_source_only_verifier_updates(state: GraphState) -> Dict[str, Any]:
             source_local_missing_test=cand.candidate_id in source_local_missing_test_ids,
         ):
             continue
-        report = _source_only_report_for_candidate(state, cand)
-        if report is not None:
-            reports.append(report)
-    if not reports:
+        facts.extend(extract_source_facts_for_candidate(state, cand.model_dump(mode="json")))
+    if not facts:
         return {}
 
     metadata = dict(state.get("metadata") or {})
-    hints = dict(metadata.get("verifier_hints") or {})
     verifier_meta = dict(metadata.get("verifier") or {})
-    by_candidate = dict(verifier_meta.get("by_candidate") or {})
-    failure_summary = dict(verifier_meta.get("failure_summary_by_candidate") or {})
-    for report in reports:
-        hints[report.candidate_id] = {
-            "verdict": report.verdict,
-            "verification_scope": report.verification_scope,
-            "updated_evidence_summary": report.updated_evidence_summary,
-            "final_rationale": report.final_rationale,
-            "attempts": len(report.attempts),
-            "skipped_reason": report.skipped_reason,
-            "lint_advisory": _lint_advisory_from_report(report),
-            "harness_error": False,
-            "product_verified": True,
-            "confidence": "product_verified",
-            "failure_classes": [a.failure_class for a in report.attempts if a.failure_class],
-            "top_missing_modules": [],
-            "verifier_env_repair_hints_used": False,
-            "verifier_repeated_harness_error_count": 0,
-            "verifier_unrepaired_missing_modules": [],
-            "source_only_static": True,
-        }
-        by_candidate[report.candidate_id] = report.model_dump(mode="json")
-        failure_summary[report.candidate_id] = {
-            "verdict": report.verdict,
-            "attempt_count": len(report.attempts),
-            "failure_classes": [a.failure_class or "unknown" for a in report.attempts],
-            "product_verified": True,
-            "harness_error": False,
-            "source_only_static": True,
-        }
-    metadata["verifier_hints"] = hints
-    verifier_meta["by_candidate"] = by_candidate
-    verifier_meta["failure_summary_by_candidate"] = failure_summary
+    by_candidate = dict(verifier_meta.get("source_facts_by_candidate") or {})
+    for fact in facts:
+        by_candidate.setdefault(fact.candidate_id, [])
+        by_candidate[fact.candidate_id].append(fact.model_dump(mode="json"))
+    verifier_meta["source_facts_by_candidate"] = by_candidate
     metadata["verifier"] = verifier_meta
     return {
-        "verifier_reports": reports,
+        "source_facts": facts,
         "metadata": metadata,
-        "node_history": ["source_only_verifier"],
+        "node_history": ["source_fact_extractor"],
     }
 
 
@@ -278,6 +263,8 @@ def collect_verifier_send_payloads(state: GraphState) -> List[Send]:
     for raw in state.get("candidate_findings", []) or []:
         cand = _coerce_candidate(raw)
         if cand is None or cand.candidate_id not in need_ids:
+            continue
+        if not _runtime_verification_allowed(state, cand.candidate_id):
             continue
         if not _claim_type_eligible(
             cand,

@@ -137,15 +137,6 @@ _COMPACT_OUTPUT_APPENDIX = (
     "Keep each content, evidence_summary, and failure_mode under 400 characters. "
     "Keep summary under 500 characters. No prose outside the schema fields."
 )
-_ORTHOGONAL_RECALL_APPENDIX = (
-    "\n\n## TARGETED RECALL PASS (bounded)\n"
-    "The primary pass appears sparse or dominated by branch/return/structured-result leads. "
-    "Return at most 2 non-duplicate leads from other task-relevant families, such as API/signature, "
-    "dependency/import, state/cache, protocol/output, concurrency/resource, security/input boundary, "
-    "user-facing behavior, or tests for changed behavior. Use claim_type='uncertain' with bounded "
-    "required_context and initial_focus_requests when static context must decide the lead. "
-    "Do not add generic validation, missing-test, missing-else, or guard suggestions."
-)
 def _is_length_finish_error(exc: Exception) -> bool:
     if "LengthFinish" in exc.__class__.__name__:
         return True
@@ -193,143 +184,8 @@ def _invoke_critiquer_llm(
     return traced.result, traced.tokens, traced.trace_records
 
 
-_BRANCH_DOMINATED_DIMENSIONS = {
-    "branch exhaustiveness",
-    "contract completeness",
-    "boundary/index handling",
-    "structured data preservation",
-    "aggregation/serialization safety",
-}
-_BRANCH_DOMINATED_ROOTS = {"dispatch", "indexing", "aggregation"}
-_BRANCH_DOMINATED_SYMPTOMS = {"missing_return", "data_loss"}
-_NARROW_RECALL_TASK_MARKERS = (
-    "branch exhaustiveness",
-    "terminal else",
-    "single contract",
-    "focused contract",
-    "only this surface",
-    "structured result slots only",
-    "type-tracing structured result slots",
-)
-_BROAD_RECALL_TASK_MARKERS = (
-    "diff-local",
-    "general correctness",
-    "functional",
-    "integration",
-    "security",
-    "performance",
-    "general review",
-    "api",
-    "state",
-    "resource",
-    "boundary",
-    "contract",
-)
-_NON_BRANCH_LEAD_MARKERS = (
-    "api",
-    "signature",
-    "call site",
-    "call-site",
-    "type mismatch",
-    "import",
-    "include",
-    "dependency",
-    "undefined",
-    "not defined",
-    "cache",
-    "state",
-    "lifecycle",
-    "protocol",
-    "output",
-    "format",
-    "header",
-    "status",
-    "thread",
-    "lock",
-    "mutex",
-    "race",
-    "async",
-    "auth",
-    "permission",
-    "sanitize",
-    "escape",
-    "injection",
-    "user-facing",
-    "tooltip",
-    "docs",
-    "test",
-)
-
-
-def _task_text(task: ReviewTask) -> str:
-    return f"{task.id} {task.title} {task.description}".lower()
-
-
-def _is_intentionally_narrow_recall_task(task: ReviewTask) -> bool:
-    text = _task_text(task)
-    if not any(marker in text for marker in _NARROW_RECALL_TASK_MARKERS):
-        return False
-    if any(marker in text for marker in _BROAD_RECALL_TASK_MARKERS):
-        return False
-    return True
-
-
-def _candidate_has_non_branch_lead(candidate: CandidateFinding) -> bool:
-    blob = " ".join(
-        [
-            candidate.content,
-            candidate.failure_mode,
-            candidate.evidence_summary,
-            candidate.recommendation or "",
-            " ".join(candidate.required_context),
-        ]
-    ).lower()
-    if candidate.claim_type in {"security_risk", "performance_regression", "missing_test"}:
-        return True
-    if any(marker in blob for marker in _NON_BRANCH_LEAD_MARKERS):
-        return True
-    symptom = (candidate.behavioral_symptom or "").strip().lower()
-    root = (candidate.root_operation or "").strip().lower()
-    if root or symptom:
-        return root not in _BRANCH_DOMINATED_ROOTS and symptom not in _BRANCH_DOMINATED_SYMPTOMS
-    return False
-
-
-def _audit_has_non_branch_dimension(response: CritiquerOutput) -> bool:
-    for row in response.audit_coverage:
-        for raw in row.dimensions:
-            dim = str(raw).strip().lower()
-            if dim and dim not in _BRANCH_DOMINATED_DIMENSIONS:
-                return True
-    return False
-
-
 def _needs_orthogonal_recall(task: ReviewTask, response: CritiquerOutput) -> bool:
-    if _is_intentionally_narrow_recall_task(task):
-        return False
-    if not response.candidates:
-        return not _audit_has_non_branch_dimension(response)
-    if any(_candidate_has_non_branch_lead(candidate) for candidate in response.candidates):
-        return False
-    if _audit_has_non_branch_dimension(response):
-        return False
-    return len(response.candidates) <= 2
-
-
-def _merge_recall_response(
-    primary: CritiquerOutput,
-    recall: CritiquerOutput,
-) -> CritiquerOutput:
-    return primary.model_copy(
-        update={
-            "summary": primary.summary,
-            "candidates": list(primary.candidates) + list(recall.candidates),
-            "audit_coverage": list(primary.audit_coverage) + list(recall.audit_coverage),
-            "initial_focus_requests": list(primary.initial_focus_requests)
-            + list(recall.initial_focus_requests),
-            "warnings": list(primary.warnings) + ["orthogonal_recall_pass_ran"] + list(recall.warnings),
-        }
-    )
+    return False
 
 
 def make_general_critiquer_node(
@@ -442,25 +298,6 @@ def make_general_critiquer_node(
                             raise parse_exc
                     else:
                         raise
-                if _needs_orthogonal_recall(task, response):
-                    try:
-                        recall_result, recall_tokens, call_trace = _invoke_critiquer_llm(
-                            state=state,
-                            task=task,
-                            pipeline_slot=pipeline_slot,
-                            model_key=selected_model,
-                            compact=True,
-                            appendix=_ORTHOGONAL_RECALL_APPENDIX,
-                        )
-                        llm_tokens += recall_tokens
-                        llm_trace.extend(call_trace)
-                        recall_response = parse_structured_output(recall_result, CritiquerOutput)
-                        response = _merge_recall_response(response, recall_response)
-                    except Exception as recall_exc:  # noqa: BLE001
-                        llm_trace.extend(trace_from_exception(recall_exc))
-                        warnings.append(
-                            f"orthogonal_recall_pass_failed:{recall_exc.__class__.__name__}: {recall_exc}"
-                        )
             except Exception as exc:  # noqa: BLE001
                 llm_trace.extend(trace_from_exception(exc))
                 if _is_length_finish_error(exc) or (

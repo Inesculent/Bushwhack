@@ -12,6 +12,7 @@ from src.domain.schemas import (
     FocusedContextRequest,
     ReflectionBatchOutput,
     ReflectionReport,
+    ReviewEvidenceTriageItem,
 )
 from src.domain.state import GraphState
 from src.infrastructure.llm.factory import Models
@@ -61,38 +62,26 @@ trace_logger = logging.getLogger("research_pipeline.reviewer_trace")
 REFLECTOR_SPECIALTIES = ("security", "logic", "performance", "general")
 REFLECTOR_SPECIALTY_SET = set(REFLECTOR_SPECIALTIES)
 
-_CONTRADICTION_MARKERS = (
-    "false positive",
-    "not a bug",
-    "no defect",
-    "no bug",
-    "not a defect",
-    "incorrect claim",
-    "claim is false",
-    "claim is incorrect",
-    "contradicted",
-    "no evidence",
-    "not supported",
-    "does not exist",
-    "no failure mode",
-)
-
-_SOFT_VETO_MARKERS = (
-    "defensible",
-    "acceptable",
-    "intentional",
-    "by design",
-    "might be intentional",
-    "could be intentional",
-)
-
-
 def _trace_enabled(state: GraphState) -> bool:
     metadata = state.get("metadata", {}) or {}
     return bool(metadata.get("review_trace_enabled"))
 
 
-def _candidate_reflectors(candidate: CandidateFinding) -> List[str]:
+def _triage_items_by_candidate(state: GraphState) -> Dict[str, ReviewEvidenceTriageItem]:
+    metadata = state.get("metadata", {}) or {}
+    triage = metadata.get("review_evidence_triage") if isinstance(metadata, dict) else {}
+    rows = triage.get("items") if isinstance(triage, dict) else []
+    out: Dict[str, ReviewEvidenceTriageItem] = {}
+    for raw in rows or []:
+        try:
+            item = raw if isinstance(raw, ReviewEvidenceTriageItem) else ReviewEvidenceTriageItem.model_validate(raw)
+        except Exception:
+            continue
+        out[item.candidate_id] = item
+    return out
+
+
+def _fallback_candidate_reflectors(candidate: CandidateFinding) -> List[str]:
     routed = [
         specialty
         for specialty in candidate.reflection_specialties
@@ -102,13 +91,41 @@ def _candidate_reflectors(candidate: CandidateFinding) -> List[str]:
         return sorted(set(routed), key=REFLECTOR_SPECIALTIES.index)
     if candidate.suspected_category in REFLECTOR_SPECIALTY_SET:
         return [candidate.suspected_category]
+    if candidate.claim_type == "security_risk":
+        return ["security"]
+    if candidate.claim_type == "performance_regression":
+        return ["performance"]
+    if candidate.claim_type == "missing_test":
+        return ["general"]
+    if candidate.claim_type == "defect":
+        return ["logic"]
     return ["general"]
 
 
-def _candidates_by_reflector(candidates: List[CandidateFinding]) -> Dict[str, List[CandidateFinding]]:
+def _candidate_reflectors(
+    candidate: CandidateFinding,
+    triage_by_candidate: Dict[str, ReviewEvidenceTriageItem],
+) -> List[str]:
+    triage = triage_by_candidate.get(candidate.candidate_id)
+    if triage is not None:
+        routed = [
+            specialty
+            for specialty in triage.suggested_reflection_specialties
+            if specialty in REFLECTOR_SPECIALTY_SET
+        ]
+        if routed:
+            return sorted(set(routed), key=REFLECTOR_SPECIALTIES.index)
+    return _fallback_candidate_reflectors(candidate)
+
+
+def _candidates_by_reflector(
+    candidates: List[CandidateFinding],
+    triage_by_candidate: Dict[str, ReviewEvidenceTriageItem] | None = None,
+) -> Dict[str, List[CandidateFinding]]:
+    triage_by_candidate = triage_by_candidate or {}
     grouped: Dict[str, List[CandidateFinding]] = {specialty: [] for specialty in REFLECTOR_SPECIALTIES}
     for candidate in candidates:
-        for specialty in _candidate_reflectors(candidate):
+        for specialty in _candidate_reflectors(candidate, triage_by_candidate):
             grouped[specialty].append(candidate)
     return grouped
 
@@ -164,43 +181,7 @@ def _normalize_focus_request(
 
 
 
-def _rationale_contradicts_accept(rationale: str) -> bool:
-    blob = (rationale or "").lower()
-    return any(marker in blob for marker in _CONTRADICTION_MARKERS)
-
-
-def _rationale_soft_veto_without_evidence(rationale: str) -> bool:
-    blob = (rationale or "").lower()
-    if not any(marker in blob for marker in _SOFT_VETO_MARKERS):
-        return False
-    return not any(marker in blob for marker in _CONTRADICTION_MARKERS)
-
-
 def _enforce_rationale_consistency(report: ReflectionReport) -> tuple[ReflectionReport, str | None]:
-    if report.verdict == "reject" and _rationale_soft_veto_without_evidence(report.rationale):
-        updated = report.model_copy(
-            update={
-                "verdict": "needs_verification",
-                "rationale": (
-                    f"[auto-corrected] Reject lacked concrete contradiction; needs verification. "
-                    f"{report.rationale}"
-                ),
-            }
-        )
-        return updated, "reflection_soft_veto_to_needs_verification"
-
-    if report.verdict != "accept":
-        return report, None
-    if not report.rationale:
-        return report, None
-    if _rationale_contradicts_accept(report.rationale):
-        updated = report.model_copy(
-            update={
-                "verdict": "reject",
-                "rationale": f"[auto-corrected] Rationale contradicts accept verdict. {report.rationale}",
-            }
-        )
-        return updated, "reflection_auto_reject:rationale_contradiction"
     return report, None
 
 
@@ -422,9 +403,10 @@ def make_adversarial_reflection_node(
                 len(candidates),
             )
 
+        triage_by_candidate = _triage_items_by_candidate(state)
         if use_llm:
             selected_model = model_key or resolved_settings.reviewer_worker_model_key
-            candidates_by_reflector = _candidates_by_reflector(candidates)
+            candidates_by_reflector = _candidates_by_reflector(candidates, triage_by_candidate)
             for specialty in REFLECTOR_SPECIALTIES:
                 specialty_candidates = candidates_by_reflector[specialty]
                 if not specialty_candidates:
@@ -486,7 +468,7 @@ def make_adversarial_reflection_node(
                 warnings.append(f"candidate_integrity_missing:{len(integrity_missing)}")
         routed_counts = {
             specialty: len(items)
-            for specialty, items in _candidates_by_reflector(candidates).items()
+            for specialty, items in _candidates_by_reflector(candidates, triage_by_candidate).items()
         }
         metadata["adversarial_reflection"] = {
             "report_count": len(all_reports),

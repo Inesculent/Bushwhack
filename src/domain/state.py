@@ -12,6 +12,7 @@ from .schemas import (
     PreflightSummary,
     ReflectionReport,
     RepositoryMap,
+    SourceFact,
     ReviewCheck,
     ReviewCheckResult,
     ReviewTask,
@@ -139,6 +140,7 @@ class GraphState(TypedDict, total=False):
     invalid_review_checks: Annotated[List[InvalidReviewCheck], operator.add]
     review_check_results: Annotated[List[ReviewCheckResult], operator.add]
     candidate_findings: Annotated[List[CandidateFinding], operator.add]
+    source_facts: Annotated[List[SourceFact], operator.add]
     reflection_reports: Annotated[List[ReflectionReport], operator.add]
     focused_context_requests: Annotated[List[FocusedContextRequest], operator.add]
     focused_context_results: Annotated[Dict[str, FocusedContextResult], operator.or_]

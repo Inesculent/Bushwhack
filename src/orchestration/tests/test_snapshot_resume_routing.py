@@ -148,8 +148,8 @@ def test_loaded_and_live_snapshot_pin_route_to_same_reviewer_path(monkeypatch: p
     try:
         loaded_state = {"run_id": "run1", "snapshot_source": "loaded", "metadata": {}}
         live_state = {"run_id": "run1", "snapshot_source": "explore", "metadata": {}}
-        assert route_after_snapshot_pin(loaded_state) == "adversarial_reflection"
-        assert route_after_snapshot_pin(live_state) == "adversarial_reflection"
+        assert route_after_snapshot_pin(loaded_state) == "review_evidence_triage"
+        assert route_after_snapshot_pin(live_state) == "review_evidence_triage"
     finally:
         monkeypatch.delenv("REVIEW_REVIEWER_LEGACY_PLANNER_MODE", raising=False)
         get_settings.cache_clear()
@@ -168,7 +168,7 @@ def test_actor_critic_plan_emit_dispatches_only_after_snapshot_pin(
         snapshot_branch = next(iter(graph.builder.branches["snapshot_pin"].values()))
 
         assert "plan_emit" not in graph.builder.branches
-        assert snapshot_branch.ends["adversarial_reflection"] == "adversarial_reflection"
+        assert snapshot_branch.ends["review_evidence_triage"] == "review_evidence_triage"
     finally:
         monkeypatch.delenv("REVIEW_REVIEWER_LEGACY_PLANNER_MODE", raising=False)
         monkeypatch.delenv("REVIEW_REVIEWER_USE_LEGACY_SPECIALIST_WORKERS", raising=False)

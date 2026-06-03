@@ -40,7 +40,7 @@ def test_dedupe_redos_candidates_same_file() -> None:
     assert out == ["1:task1_1"]
 
 
-def test_apply_verifier_policy_refuted_forces_reject() -> None:
+def test_apply_verifier_policy_refuted_stays_advisory() -> None:
     state: GraphState = {
         "candidate_findings": [
             CandidateFinding(
@@ -73,11 +73,12 @@ def test_apply_verifier_policy_refuted_forces_reject() -> None:
         [{"candidate_id": "c1", "verdict": "accept", "updated_evidence_summary": "still bad"}],
         state,
     )
-    assert rows[0]["verdict"] == "reject"
-    assert any("critique_revision_verifier_refuted" in w for w in warnings)
+    assert rows[0]["verdict"] == "accept"
+    assert "Runtime verifier reported refuted" in rows[0]["updated_evidence_summary"]
+    assert any("critique_revision_verifier_refuted_advisory" in w for w in warnings)
 
 
-def test_apply_verifier_policy_verified_forces_accept() -> None:
+def test_apply_verifier_policy_verified_stays_advisory() -> None:
     state: GraphState = {
         "candidate_findings": [
             CandidateFinding(
@@ -112,9 +113,9 @@ def test_apply_verifier_policy_verified_forces_accept() -> None:
         [{"candidate_id": "c1", "verdict": "reject", "updated_evidence_summary": "needs code"}],
         state,
     )
-    assert rows[0]["verdict"] == "accept"
+    assert rows[0]["verdict"] == "reject"
     assert "verified syntax error" in rows[0]["updated_evidence_summary"]
-    assert any("critique_revision_verifier_verified:c1" in w for w in warnings)
+    assert any("critique_revision_verifier_verified_advisory:c1" in w for w in warnings)
 
 
 def test_apply_verifier_policy_harness_is_ignored() -> None:
@@ -170,8 +171,9 @@ def test_apply_verifier_policy_refuted_wrong_output_does_not_force_reject() -> N
         state,
     )
     assert rows[0]["verdict"] == "accept"
-    assert rows[0]["updated_evidence_summary"] == "still bad"
-    assert any("critique_revision_verifier_inconclusive_wrong_output" in w for w in warnings)
+    assert rows[0]["updated_evidence_summary"].startswith("still bad")
+    assert "advisory evidence" in rows[0]["updated_evidence_summary"]
+    assert any("critique_revision_verifier_refuted_advisory" in w for w in warnings)
 
 
 def test_render_verifier_advisory_section_only_includes_clean_product_signal() -> None:

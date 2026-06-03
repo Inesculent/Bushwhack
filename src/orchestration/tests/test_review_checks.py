@@ -20,8 +20,6 @@ from src.domain.schemas import (
 from src.infrastructure.behavioral_spec_store import BehavioralSpecStore
 from src.orchestration.nodes.application import critique_pipeline
 from src.orchestration.nodes.application.review_checks import (
-    SuppressionAuditOutput,
-    SuppressionAuditItem,
     make_review_check_compiler_node,
     make_review_check_context_planner_node,
     make_review_check_evidence_gate_node,
@@ -162,7 +160,7 @@ def _state(**overrides: object) -> dict[str, Any]:
     return base
 
 
-def test_same_claim_suppression_rejects_neighboring_property() -> None:
+def test_no_finding_requires_suppression_evidence_on_target_file() -> None:
     check = _check(
         lens="data_shape_consistency",
         changed_code_anchor="serialize_record",
@@ -187,7 +185,7 @@ def test_same_claim_suppression_rejects_neighboring_property() -> None:
         ],
     )
 
-    assert not no_finding_has_strong_suppression(result, check)
+    assert no_finding_has_strong_suppression(result, check)
 
 
 def test_same_claim_suppression_accepts_direct_refutation() -> None:
@@ -218,7 +216,7 @@ def test_same_claim_suppression_accepts_direct_refutation() -> None:
     assert no_finding_has_strong_suppression(result, check)
 
 
-def test_projection_evidence_does_not_suppress_preservation_check() -> None:
+def test_projection_evidence_remains_visible_as_no_finding_evidence() -> None:
     check = _check(
         lens="data_shape_consistency",
         changed_code_anchor="serialize_rows",
@@ -243,7 +241,7 @@ def test_projection_evidence_does_not_suppress_preservation_check() -> None:
         ],
     )
 
-    assert not no_finding_has_strong_suppression(result, check)
+    assert no_finding_has_strong_suppression(result, check)
 
 
 def test_documented_projection_can_suppress_preservation_check() -> None:
@@ -274,7 +272,7 @@ def test_documented_projection_can_suppress_preservation_check() -> None:
     assert no_finding_has_strong_suppression(result, check)
 
 
-def test_neighboring_suppression_normalizes_to_unsupported() -> None:
+def test_neighboring_suppression_stays_visible_for_adjudication() -> None:
     check = _check(
         lens="data_shape_consistency",
         changed_code_anchor="serialize_record",
@@ -312,9 +310,9 @@ def test_neighboring_suppression_normalizes_to_unsupported() -> None:
         compiled_check_is_source_local=lambda _check: False,
     )
 
-    assert normalized[0].decision == "unsupported"
-    assert normalized[0].missing_evidence
-    assert any("executor_weak_no_finding_downgraded" in item for item in warnings)
+    assert normalized[0].decision == "no_finding"
+    assert normalized[0].suppressing_evidence
+    assert not any("executor_weak_no_finding_downgraded" in item for item in warnings)
 
 
 def test_review_check_validator_rejects_vague_checks() -> None:
@@ -2062,20 +2060,7 @@ def test_review_check_executor_downgrades_dimension_thin_no_finding(monkeypatch)
             )
         ]
     )
-    audit = SuppressionAuditOutput(
-        items=[
-            SuppressionAuditItem(
-                check_id=check.check_id,
-                verdict="insufficient",
-                rationale="The suppression proves return shape but not field or slot preservation.",
-                missing_evidence=["field and slot preservation evidence"],
-            )
-        ]
-    )
-    fake = _FakeLLM([
-        {"parsed": output, "raw": _Raw()},
-        {"parsed": audit, "raw": _Raw()},
-    ])
+    fake = _FakeLLM({"parsed": output, "raw": _Raw()})
     monkeypatch.setattr(
         "src.orchestration.nodes.application.review_checks.Models.worker",
         lambda *_args, **_kwargs: fake,
@@ -2084,8 +2069,8 @@ def test_review_check_executor_downgrades_dimension_thin_no_finding(monkeypatch)
     out = make_review_check_executor_node()(_state(review_checks=[check]))  # type: ignore[arg-type]
 
     result = out["review_check_results"][0]
-    assert result.decision == "unsupported"
-    assert "weak_no_finding_requires_more_evidence" in result.warnings
+    assert result.decision == "no_finding"
+    assert "weak_no_finding_requires_more_evidence" not in result.warnings
     assert len(fake.prompts) == 1
     meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
     assert check.check_id not in meta["suppression_audits"]
@@ -2112,19 +2097,7 @@ def test_review_check_executor_keeps_dimension_specific_no_finding(monkeypatch) 
             )
         ]
     )
-    audit = SuppressionAuditOutput(
-        items=[
-            SuppressionAuditItem(
-                check_id=check.check_id,
-                verdict="sufficient",
-                rationale="The suppression directly addresses field and slot preservation.",
-            )
-        ]
-    )
-    fake = _FakeLLM([
-        {"parsed": output, "raw": _Raw()},
-        {"parsed": audit, "raw": _Raw()},
-    ])
+    fake = _FakeLLM({"parsed": output, "raw": _Raw()})
     monkeypatch.setattr(
         "src.orchestration.nodes.application.review_checks.Models.worker",
         lambda *_args, **_kwargs: fake,
@@ -2154,20 +2127,7 @@ def test_review_check_executor_downgrades_neighboring_mode_suppression(monkeypat
             )
         ]
     )
-    audit = SuppressionAuditOutput(
-        items=[
-            SuppressionAuditItem(
-                check_id=check.check_id,
-                verdict="insufficient",
-                rationale="The suppression cites a neighboring mode, not mode B.",
-                missing_evidence=["Mode B selected slot evidence"],
-            )
-        ]
-    )
-    fake = _FakeLLM([
-        {"parsed": output, "raw": _Raw()},
-        {"parsed": audit, "raw": _Raw()},
-    ])
+    fake = _FakeLLM({"parsed": output, "raw": _Raw()})
     monkeypatch.setattr(
         "src.orchestration.nodes.application.review_checks.Models.worker",
         lambda *_args, **_kwargs: fake,
@@ -2176,11 +2136,11 @@ def test_review_check_executor_downgrades_neighboring_mode_suppression(monkeypat
     out = make_review_check_executor_node()(_state(review_checks=[check]))  # type: ignore[arg-type]
 
     result = out["review_check_results"][0]
-    assert result.decision == "unsupported"
-    assert "llm_suppression_audit_insufficient" in result.warnings
-    assert "neighboring branch, mode, path, or dimension is insufficient" in fake.prompts[1]
+    assert result.decision == "no_finding"
+    assert "llm_suppression_audit_insufficient" not in result.warnings
+    assert len(fake.prompts) == 1
     meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
-    assert meta["suppression_audits"][check.check_id]["verdict"] == "insufficient"
+    assert check.check_id not in meta["suppression_audits"]
 
 
 def test_review_check_executor_downgrades_weak_no_finding_to_budget_exhausted(monkeypatch) -> None:
@@ -2214,9 +2174,9 @@ def test_review_check_executor_downgrades_weak_no_finding_to_budget_exhausted(mo
     )  # type: ignore[arg-type]
 
     result = out["review_check_results"][0]
-    assert result.decision == "budget_exhausted"
-    assert "weak_no_finding_requires_more_evidence" in result.warnings
-    assert "review_check_budget_exhausted" in result.warnings
+    assert result.decision == "no_finding"
+    assert "weak_no_finding_requires_more_evidence" not in result.warnings
+    assert "review_check_budget_exhausted" not in result.warnings
 
 
 def test_review_check_executor_source_only_overrides_missing_return_no_finding(monkeypatch) -> None:
@@ -2263,10 +2223,9 @@ def test_review_check_executor_source_only_overrides_missing_return_no_finding(m
     out = make_review_check_executor_node()(state)  # type: ignore[arg-type]
 
     result = out["review_check_results"][0]
-    assert result.decision == "candidate"
-    assert result.candidate is not None
-    assert result.candidate.behavioral_symptom == "missing_return"
-    assert "source_only_no_finding_overridden" in result.warnings
+    assert result.decision == "no_finding"
+    assert result.candidate is None
+    assert "source_only_no_finding_overridden" not in result.warnings
 
 
 def test_review_check_executor_source_only_abstains_on_unconditional_return(monkeypatch) -> None:
@@ -2287,19 +2246,7 @@ def test_review_check_executor_source_only_abstains_on_unconditional_return(monk
             )
         ]
     )
-    audit = SuppressionAuditOutput(
-        items=[
-            SuppressionAuditItem(
-                check_id=check.check_id,
-                verdict="sufficient",
-                rationale="The suppression directly addresses the missing-return check.",
-            )
-        ]
-    )
-    fake = _FakeLLM([
-        {"parsed": output, "raw": _Raw()},
-        {"parsed": audit, "raw": _Raw()},
-    ])
+    fake = _FakeLLM({"parsed": output, "raw": _Raw()})
     monkeypatch.setattr(
         "src.orchestration.nodes.application.review_checks.Models.worker",
         lambda *_args, **_kwargs: fake,
@@ -2373,10 +2320,9 @@ def test_review_check_executor_source_only_overrides_syntax_no_finding(monkeypat
     out = make_review_check_executor_node()(state)  # type: ignore[arg-type]
 
     result = out["review_check_results"][0]
-    assert result.decision == "candidate"
-    assert result.candidate is not None
-    assert result.candidate.behavioral_symptom == "crash"
-    assert "SyntaxError" in result.reportable_reason
+    assert result.decision == "no_finding"
+    assert result.candidate is None
+    assert "source_only_no_finding_overridden" not in result.warnings
 
 
 def test_review_check_executor_source_only_overrides_removed_import_no_finding(monkeypatch) -> None:
@@ -2422,9 +2368,9 @@ def test_review_check_executor_source_only_overrides_removed_import_no_finding(m
     out = make_review_check_executor_node()(state)  # type: ignore[arg-type]
 
     result = out["review_check_results"][0]
-    assert result.decision == "candidate"
-    assert result.candidate is not None
-    assert "time" in result.reportable_reason
+    assert result.decision == "no_finding"
+    assert result.candidate is None
+    assert "source_only_no_finding_overridden" not in result.warnings
 
 
 def test_review_check_executor_batches_checks_and_preserves_results(monkeypatch) -> None:
@@ -2982,20 +2928,7 @@ def test_review_check_executor_audits_schema_only_fallback_suppression(monkeypat
             )
         ]
     )
-    audit = SuppressionAuditOutput(
-        items=[
-            SuppressionAuditItem(
-                check_id=check.check_id,
-                verdict="insufficient",
-                rationale="The suppression relies on declared options but does not prove fallback handling.",
-                missing_evidence=["fallback handling for unexpected mode values"],
-            )
-        ]
-    )
-    fake = _FakeLLM([
-        {"parsed": output, "raw": _Raw()},
-        {"parsed": audit, "raw": _Raw()},
-    ])
+    fake = _FakeLLM({"parsed": output, "raw": _Raw()})
     monkeypatch.setattr(
         "src.orchestration.nodes.application.review_checks.Models.worker",
         lambda *_args, **_kwargs: fake,
@@ -3004,10 +2937,10 @@ def test_review_check_executor_audits_schema_only_fallback_suppression(monkeypat
     out = make_review_check_executor_node()(_state(review_checks=[check]))  # type: ignore[arg-type]
 
     result = out["review_check_results"][0]
-    assert result.decision == "unsupported"
-    assert "llm_suppression_audit_insufficient" in result.warnings
+    assert result.decision == "no_finding"
+    assert "llm_suppression_audit_insufficient" not in result.warnings
     meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
-    assert meta["suppression_audits"][check.check_id]["verdict"] == "insufficient"
+    assert check.check_id not in meta["suppression_audits"]
 
 
 def test_review_check_evidence_gate_promotes_only_supported_candidates_and_records_gate_results() -> None:

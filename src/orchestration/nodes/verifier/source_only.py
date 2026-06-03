@@ -6,7 +6,8 @@ import ast
 import re
 from typing import Any, Dict, Iterable, Tuple
 
-from src.domain.verifier_schemas import VerificationStatus, VerifierAttemptRecord
+from src.domain.schemas import SourceFact
+from src.domain.verifier_schemas import VerifierAttemptRecord
 from src.orchestration.context.task_evidence import task_evidence_slot_from_state
 
 
@@ -97,62 +98,6 @@ def _used_names(tree: ast.AST) -> set[str]:
     }
 
 
-def _attempt(reason: str, *, failure_class: str = "wrong_output") -> VerifierAttemptRecord:
-    return VerifierAttemptRecord(
-        attempt_number=0,
-        test_code="# source-only verifier",
-        exit_code=1,
-        stdout=f"STATUS: MISMATCH | source-only static proof: {reason}",
-        stderr="",
-        status=VerificationStatus.COMPLETED,
-        sandbox_mode="source_only_static",
-        failure_class=failure_class,
-    )
-
-
-_MISSING_RETURN_MARKERS = (
-    "missing return",
-    "missing a return",
-    "no return",
-    "does not return",
-    "doesn't return",
-    "implicit none",
-    "falls through",
-    "fall through",
-)
-
-_SHAPE_CARDINALITY_MARKERS = (
-    "data loss",
-    "structured",
-    "field",
-    "fields",
-    "slot",
-    "slots",
-    "record",
-    "records",
-    "row",
-    "rows",
-    "element",
-    "elements",
-    "item",
-    "items",
-    "nested",
-    "cardinality",
-)
-_ABSENT_AGGREGATION_MARKERS = (
-    "absent",
-    "optional",
-    "none",
-    "null",
-    "non-string",
-    "non string",
-    "aggregation",
-    "join",
-    "format",
-    "serialize",
-)
-
-
 def _candidate_blob(candidate: Dict[str, Any]) -> str:
     return " ".join(
         str(candidate.get(key) or "")
@@ -221,21 +166,6 @@ def _source_segment(source: str, node: ast.AST) -> str:
     return "\n".join(lines[start - 1 : end])
 
 
-def _source_only_missing_return(
-    source: str,
-    tree: ast.AST,
-    candidate: Dict[str, Any],
-) -> tuple[str, VerifierAttemptRecord | None]:
-    blob = _candidate_blob(candidate)
-    if not any(marker in blob for marker in _MISSING_RETURN_MARKERS):
-        return "", None
-    for func in _target_functions(tree, candidate):
-        if not _block_guarantees_exit(func.body):
-            reason = f"{func.name} has a reachable path that can fall through without an explicit return"
-            return reason, _attempt(reason, failure_class="missing_return")
-    return "", None
-
-
 def _contains_zero_subscript(node: ast.AST) -> bool:
     if not isinstance(node, ast.Subscript):
         return False
@@ -258,65 +188,118 @@ def _returns_or_projects_first_slot(func: ast.FunctionDef | ast.AsyncFunctionDef
     return False
 
 
-def _source_only_shape_cardinality(
-    source: str,
-    tree: ast.AST,
+def _fact(
     candidate: Dict[str, Any],
-) -> tuple[str, VerifierAttemptRecord | None]:
-    blob = _candidate_blob(candidate)
-    if not any(marker in blob for marker in _SHAPE_CARDINALITY_MARKERS):
-        return "", None
-    for func in _target_functions(tree, candidate):
-        text = _source_segment(source, func).lower()
-        if _returns_or_projects_first_slot(func):
-            reason = f"{func.name} keeps only element 0 where the claim requires preserving structured fields or cardinality"
-            return reason, _attempt(reason)
-        if (
-            any(marker in blob for marker in _ABSENT_AGGREGATION_MARKERS)
-            and ".join(" in text
-            and "is not none" not in text
-            and " or \"\"" not in text
-        ):
-            reason = f"{func.name} joins or aggregates values without proving absent or non-string elements are normalized"
-            return reason, _attempt(reason)
-    return "", None
+    *,
+    kind: str,
+    file_path: str,
+    summary: str,
+    evidence: str = "",
+    line_start: int | None = None,
+    line_end: int | None = None,
+) -> SourceFact:
+    return SourceFact(
+        candidate_id=str(candidate.get("candidate_id") or ""),
+        fact_kind=kind,
+        file_path=file_path,
+        line_start=line_start,
+        line_end=line_end,
+        summary=summary,
+        evidence=evidence,
+    )
 
 
-def source_only_verify_candidate(
+def extract_source_facts_for_candidate(
     state: Dict[str, Any],
     candidate: Dict[str, Any],
-) -> Tuple[str, str, VerifierAttemptRecord | None]:
-    """Return (verdict, rationale, attempt) when static source evidence proves a claim."""
+) -> list[SourceFact]:
+    """Return deterministic source facts without deciding whether the candidate is valid."""
     source, source_complete = _target_source_from_state(state, candidate)
     if not source.strip():
-        return "", "", None
+        return []
     fp = _norm(str(candidate.get("file_path") or ""))
+    facts: list[SourceFact] = []
     try:
         tree = ast.parse(source)
     except SyntaxError as exc:
-        if not source_complete:
-            return "", "source-only abstained: task evidence for target file is incomplete", None
-        reason = f"{fp} has SyntaxError during source-only parse: {exc.msg}"
-        return "verified", reason, _attempt(reason, failure_class="syntax_error")
-    if not source_complete and not _target_functions(tree, candidate):
-        return "", "source-only abstained: task evidence for target file is incomplete", None
+        if source_complete:
+            facts.append(
+                _fact(
+                    candidate,
+                    kind="syntax_error",
+                    file_path=fp,
+                    line_start=exc.lineno,
+                    line_end=exc.lineno,
+                    summary=f"{fp} has SyntaxError during source parse: {exc.msg}",
+                    evidence=str(exc),
+                )
+            )
+        return facts
 
     removed = _removed_import_names(str(state.get("git_diff") or ""), fp)
     if removed:
         defined = _defined_names(tree)
         still_used = sorted((removed & _used_names(tree)) - defined)
         if still_used:
-            reason = (
-                f"{fp} removed import(s) still used by name: {', '.join(still_used[:8])}"
+            facts.append(
+                _fact(
+                    candidate,
+                    kind="removed_import_still_used",
+                    file_path=fp,
+                    summary=f"{fp} removed import(s) still used by name: {', '.join(still_used[:8])}",
+                    evidence=", ".join(still_used[:8]),
+                )
             )
-            return "verified", reason, _attempt(reason)
 
-    reason, attempt = _source_only_missing_return(source, tree, candidate)
-    if attempt is not None:
-        return "verified", reason, attempt
+    for func in _target_functions(tree, candidate):
+        start, end = _node_span(func)
+        segment = _source_segment(source, func)
+        if not _block_guarantees_exit(func.body):
+            facts.append(
+                _fact(
+                    candidate,
+                    kind="reachable_fallthrough",
+                    file_path=fp,
+                    line_start=start,
+                    line_end=end,
+                    summary=f"{func.name} has a reachable path without an explicit return or raise.",
+                    evidence=segment,
+                )
+            )
+        if _returns_or_projects_first_slot(func):
+            facts.append(
+                _fact(
+                    candidate,
+                    kind="first_slot_projection",
+                    file_path=fp,
+                    line_start=start,
+                    line_end=end,
+                    summary=f"{func.name} returns or constructs a value by selecting element 0.",
+                    evidence=segment,
+                )
+            )
+        lowered = segment.lower()
+        if ".join(" in lowered:
+            facts.append(
+                _fact(
+                    candidate,
+                    kind="join_aggregation",
+                    file_path=fp,
+                    line_start=start,
+                    line_end=end,
+                    summary=f"{func.name} aggregates values with join.",
+                    evidence=segment,
+                )
+            )
+    return facts
 
-    reason, attempt = _source_only_shape_cardinality(source, tree, candidate)
-    if attempt is not None:
-        return "verified", reason, attempt
 
+def source_only_verify_candidate(
+    state: Dict[str, Any],
+    candidate: Dict[str, Any],
+) -> Tuple[str, str, VerifierAttemptRecord | None]:
+    """Backward-compatible wrapper: source-only facts no longer prove claims."""
+    facts = extract_source_facts_for_candidate(state, candidate)
+    if facts:
+        return "", "; ".join(f.summary for f in facts[:3]), None
     return "", "", None

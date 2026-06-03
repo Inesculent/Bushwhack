@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import re
-from typing import Any, Dict, Iterable, List, Literal, Mapping, Sequence
+from typing import Any, Dict, Iterable, List, Mapping, Sequence
 
 from pydantic import BaseModel, Field
 
@@ -38,7 +38,6 @@ from src.orchestration.context.surface_ledger import (
 )
 from src.orchestration.nodes.application.review_check_executor_support import (
     missing_evidence_for_weak_no_finding as _support_missing_evidence_for_weak_no_finding,
-    no_finding_needs_semantic_suppression_audit,
     normalize_executor_results as _support_normalize_executor_results,
 )
 from src.orchestration.nodes.application import review_check_compiler_support as compiler_support
@@ -120,18 +119,6 @@ _GENERIC_QUERY_PHRASES = (
     "confirm unexpected behavior",
 )
 _BROAD_DIFF_SIGNAL_FAMILIES = {"", "broad_fallback", "surface_fallback", "file_fallback"}
-
-
-class SuppressionAuditItem(BaseModel):
-    check_id: str
-    verdict: Literal["sufficient", "insufficient", "unsupported"] = "unsupported"
-    rationale: str = Field(default="", max_length=500)
-    missing_evidence: List[str] = Field(default_factory=list)
-
-
-class SuppressionAuditOutput(BaseModel):
-    items: List[SuppressionAuditItem] = Field(default_factory=list)
-    warnings: List[str] = Field(default_factory=list)
 
 
 def _trace_enabled(state: GraphState) -> bool:
@@ -1006,103 +993,6 @@ def _check_batches(checks: Sequence[ReviewCheck]) -> List[List[ReviewCheck]]:
     return [list(checks[index : index + _EXECUTOR_BATCH_SIZE]) for index in range(0, len(checks), _EXECUTOR_BATCH_SIZE)]
 
 
-def _render_suppression_audit_prompt(
-    *,
-    task: ReviewTask,
-    checks_by_id: Mapping[str, ReviewCheck],
-    results: Sequence[ReviewCheckResult],
-) -> str:
-    payload = []
-    for result in results:
-        check = checks_by_id[result.check_id]
-        payload.append(
-            {
-                "check": check.model_dump(mode="json"),
-                "result": result.model_dump(mode="json"),
-            }
-        )
-    return (
-        "Audit these no_finding review-check results.\n"
-        "Decide whether each suppression directly answers the exact check dimension and report criteria.\n"
-        "Return sufficient only when the suppressing evidence addresses the named behavior, not merely a nearby "
-        "dimension such as outer return type, container shape, branch visibility, schema declaration, or generic "
-        "absence of proof.\n"
-        "For structured values, branch/mode/path-specific checks, or operation-specific checks, suppression must "
-        "address the exact field, slot, index, aggregation, dispatch branch, fallback, mode, path, or operation named "
-        "by that check. Evidence from a neighboring branch, mode, path, or dimension is insufficient unless the check "
-        "itself asks for cross-branch or cross-mode equivalence.\n"
-        "Return insufficient when the result should become unsupported because the suppression proves only a "
-        "neighboring dimension. Return unsupported when the evidence is too incomplete to decide.\n\n"
-        f"Task: {task.model_dump(mode='json')}\n\n"
-        f"Audit Items JSON:\n{_json_for_prompt(payload, max_chars=18000)}"
-    )
-
-
-def _check_has_concrete_suppression_contract(check: ReviewCheck) -> bool:
-    return bool(
-        any(str(item).strip() for item in check.report_criteria)
-        and any(str(item).strip() for item in check.suppress_criteria)
-    )
-
-
-def _check_file_in_changed_task_files(check: ReviewCheck, task_files: set[str]) -> bool:
-    normalized = check.file_path.strip().replace("\\", "/")
-    return bool(normalized and normalized in task_files)
-
-
-def _check_needs_exact_branch_dimension_audit(check: ReviewCheck) -> bool:
-    blob = " ".join(
-        [
-            check.behavioral_question,
-            check.affected_invariant,
-            " ".join(check.required_evidence),
-            " ".join(check.suppress_criteria),
-            " ".join(check.report_criteria),
-        ]
-    ).lower()
-    return any(
-        marker in blob
-        for marker in (
-            "branch",
-            "mode",
-            "path",
-            "variant",
-            "option",
-            "case",
-            "field",
-            "slot",
-            "index",
-            "aggregation",
-            "dispatch",
-            "fallback",
-            "operation",
-        )
-    )
-
-
-def _source_local_no_finding_should_be_audited(
-    *,
-    result: ReviewCheckResult,
-    check: ReviewCheck,
-    slot: Mapping[str, Any],
-    task_files: set[str],
-) -> bool:
-    if result.decision != "no_finding" or not result.evidence_refs or not result.suppressing_evidence:
-        return False
-    if no_finding_needs_semantic_suppression_audit(result, check):
-        return True
-    if _check_needs_exact_branch_dimension_audit(check):
-        return (
-            _check_file_in_changed_task_files(check, task_files)
-            and _compiled_check_is_source_local(check, None, slot, task_files)
-        )
-    return (
-        _check_has_concrete_suppression_contract(check)
-        and _check_file_in_changed_task_files(check, task_files)
-        and _compiled_check_is_source_local(check, None, slot, task_files)
-    )
-
-
 def _executor_result_rank(result: ReviewCheckResult) -> int:
     if result.decision == "candidate" and result.candidate is not None:
         return 50
@@ -1149,94 +1039,7 @@ def _audit_no_finding_suppressions(
     llm_trace: List[Dict[str, Any]],
     warnings: List[str],
 ) -> tuple[List[ReviewCheckResult], int, List[Dict[str, Any]], List[str], Dict[str, Dict[str, Any]]]:
-    checks_by_id = {check.check_id: check for check in checks}
-    slot = _pipeline_slot(state, task.id)
-    task_files = _changed_task_files(state, task)
-    targets = [
-        result for result in results
-        if result.check_id in checks_by_id
-        and _source_local_no_finding_should_be_audited(
-            result=result,
-            check=checks_by_id[result.check_id],
-            slot=slot,
-            task_files=task_files,
-        )
-    ]
-    if not targets:
-        return results, llm_tokens, llm_trace, warnings, {}
-    prompt = _render_suppression_audit_prompt(task=task, checks_by_id=checks_by_id, results=targets)
-    audit_by_id: Dict[str, SuppressionAuditItem] = {}
-    try:
-        llm = Models.worker(SuppressionAuditOutput, model_key=selected_model, max_completion_tokens=1600)
-        traced = trace_llm_call(
-            llm,
-            prompt,
-            state=state,
-            node_name="review_check_suppression_audit",
-            model_key=selected_model,
-            schema_name="SuppressionAuditOutput",
-            input_summary={"task_id": task.id, "check_ids": [result.check_id for result in targets]},
-        )
-        response = parse_structured_output(traced.result, SuppressionAuditOutput)
-        llm_tokens += traced.tokens
-        llm_trace.extend(traced.trace_records)
-        warnings.extend(response.warnings)
-        audit_by_id = {
-            item.check_id: item
-            for item in response.items
-            if item.check_id in checks_by_id
-        }
-    except Exception as exc:  # noqa: BLE001
-        llm_trace.extend(trace_from_exception(exc))
-        warnings.append(f"review_check_suppression_audit_failed:{exc.__class__.__name__}: {exc}")
-    audited: List[ReviewCheckResult] = []
-    target_ids = {result.check_id for result in targets}
-    audit_meta: Dict[str, Dict[str, Any]] = {}
-    for result in results:
-        if result.check_id not in target_ids:
-            audited.append(result)
-            continue
-        item = audit_by_id.get(result.check_id)
-        if item is not None and item.verdict == "sufficient":
-            audit_meta[result.check_id] = item.model_dump(mode="json")
-            audited.append(
-                result.model_copy(
-                    update={
-                        "warnings": list(result.warnings) + ["llm_suppression_audit_sufficient"],
-                    }
-                )
-            )
-            continue
-        check = checks_by_id[result.check_id]
-        missing = list(item.missing_evidence) if item is not None and item.missing_evidence else _missing_evidence_for_weak_no_finding(check)
-        warning = "llm_suppression_audit_insufficient"
-        if item is None:
-            warning = "llm_suppression_audit_missing_or_failed"
-        elif item.verdict == "unsupported":
-            warning = "llm_suppression_audit_unsupported"
-        audit_meta[result.check_id] = (
-            item.model_dump(mode="json")
-            if item is not None
-            else {
-                "check_id": result.check_id,
-                "verdict": "unsupported",
-                "rationale": "suppression audit missing or failed",
-                "missing_evidence": missing[:3],
-            }
-        )
-        audited.append(
-            result.model_copy(
-                update={
-                    "decision": "unsupported",
-                    "missing_evidence": missing[:3],
-                    "suppressing_evidence": [],
-                    "warnings": list(result.warnings) + [warning],
-                    "reportable_reason": (item.rationale if item is not None else result.reportable_reason)[:500],
-                }
-            )
-        )
-        warnings.append(f"{warning}:{result.check_id}")
-    return audited, llm_tokens, llm_trace, warnings, audit_meta
+    return results, llm_tokens, llm_trace, warnings, {}
 
 
 def make_review_check_executor_node(

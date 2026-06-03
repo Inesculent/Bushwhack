@@ -116,7 +116,7 @@ def test_amend_diff_narrowed_tasks_removes_generic_excerpt_limiting_scope() -> N
     assert "entry point" in lowered
 
 
-def test_diff_signals_structured_extraction_from_findall_and_join() -> None:
+def test_diff_signals_do_not_classify_structured_extraction_from_keywords() -> None:
     diff = "\n".join(
         [
             "diff --git a/pkg/h.py b/pkg/h.py",
@@ -125,7 +125,7 @@ def test_diff_signals_structured_extraction_from_findall_and_join() -> None:
             "+    return ','.join(rows)",
         ]
     )
-    assert _diff_signals_structured_extraction({"git_diff": diff}) is True
+    assert _diff_signals_structured_extraction({"git_diff": diff}) is False
 
 
 def test_mega_logic_checklist_does_not_block_structured_extraction_task() -> None:
@@ -206,10 +206,10 @@ def test_chunk_comfy_like_inventory_signal_tasks() -> None:
     assert len(logic) >= 4
     regex_tasks = [t for t in logic if "RegexExtract" in t.description]
     assert regex_tasks
-    assert any("type-tracing" in t.description.lower() for t in regex_tasks)
+    assert any("changed behavior" in t.description.lower() for t in regex_tasks)
     compare_tasks = [t for t in logic if "StringCompare" in t.description]
     assert compare_tasks
-    assert any("branch-exhaustiveness" in t.description.lower() for t in compare_tasks)
+    assert any("changed behavior" in t.description.lower() for t in compare_tasks)
 
 
 def test_finalize_emitted_tasks_preserves_surface_ids_for_many_single_file_surfaces() -> None:
@@ -754,7 +754,7 @@ def test_task_dedupe_collapses_same_surface_specialty_dimension() -> None:
             "key": {
                 "surface_id": "surface:handle",
                 "specialty": "logic",
-                "dimension": "diff_local_correctness",
+                    "dimension": "logic",
             },
             "kept_task_id": "logic-handle-fill",
             "dropped_task_id": "logic-handle",

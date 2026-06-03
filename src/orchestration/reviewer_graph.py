@@ -42,6 +42,7 @@ from src.infrastructure.structural_topology import (
 from src.orchestration.context.review_context import LazyReviewContextProvider
 from src.orchestration.nodes.application.cleanup import make_adversarial_cleanup_node
 from src.orchestration.nodes.application.review_adjudicator import make_review_adjudicator_node
+from src.orchestration.nodes.application.review_evidence_triage import make_review_evidence_triage_node
 from src.orchestration.nodes.application.critique_revision import (
     _needs_revision_candidates,
     critique_revision_digests_complete,
@@ -138,7 +139,7 @@ def _route_critique_tasks(state: GraphState):
             "TRACE dispatch_adversarial_reflection run_id=%s reason=no_pending_tasks",
             state.get("run_id", "unknown"),
         )
-    return sends or "adversarial_reflection"
+    return sends or "review_evidence_triage"
 
 
 def _make_post_reflection_evidence_pass_node():
@@ -608,6 +609,7 @@ def build_graph(
             github_provider=github_provider,
         )
         builder.add_node("critique_review_subgraph", critique_review_subgraph)
+        builder.add_node("review_evidence_triage", make_review_evidence_triage_node())
         builder.add_node("adversarial_reflection", make_adversarial_reflection_node())
         builder.add_node(
             "initial_focused_context",
@@ -626,7 +628,8 @@ def build_graph(
         builder.add_node("post_reflection_evidence_pass", _make_post_reflection_evidence_pass_node())
         builder.add_conditional_edges("review_planner", _route_after_planner)
         builder.add_edge("critique_review_subgraph", "initial_focused_context")
-        builder.add_edge("initial_focused_context", "adversarial_reflection")
+        builder.add_edge("initial_focused_context", "review_evidence_triage")
+        builder.add_edge("review_evidence_triage", "adversarial_reflection")
         builder.add_conditional_edges(
             "adversarial_reflection",
             route_focused_after_reflection,
@@ -747,7 +750,7 @@ def build_graph(
     if settings.reviewer_use_legacy_specialist_workers:
         snapshot_pin_routes["review_synthesizer"] = "review_synthesizer"
     else:
-        snapshot_pin_routes["adversarial_reflection"] = "adversarial_reflection"
+        snapshot_pin_routes["review_evidence_triage"] = "review_evidence_triage"
     builder.add_conditional_edges(
         "snapshot_pin",
         _route_after_snapshot_pin,

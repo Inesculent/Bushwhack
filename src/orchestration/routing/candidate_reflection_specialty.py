@@ -1,7 +1,4 @@
-"""Deterministic single-specialty routing for adversarial reflection (hardcap).
-
-Hierarchy when multiple domains appear: security > logic > performance > general.
-"""
+"""Conservative specialty fallback for candidates before LLM triage."""
 
 from __future__ import annotations
 
@@ -11,44 +8,8 @@ from src.domain.schemas import CandidateFinding
 
 ReflectorSpecialty = Literal["security", "logic", "performance", "general"]
 
-# Lower index = higher priority in tie-breaks.
 SPECIALTY_PRIORITY: tuple[ReflectorSpecialty, ...] = ("security", "logic", "performance", "general")
 _SPECIALTY_RANK = {s: i for i, s in enumerate(SPECIALTY_PRIORITY)}
-
-_SECURITY_HINTS = (
-    "redos",
-    "backtrack",
-    "catastrophic backtracking",
-    "injection",
-    "xss",
-    "csrf",
-    "ssrf",
-    "path traversal",
-    "command injection",
-    "eval(",
-    "exec(",
-    "pickle",
-    "deserialize",
-    "credential",
-    "password",
-    "secret ",
-    "token leak",
-    "auth",
-    "authorize",
-    "permission",
-    "tenant isolation",
-    "sql injection",
-)
-
-_PERFORMANCE_HINTS = (
-    "o(n^2)",
-    "o(n²)",
-    "quadratic",
-    "n+1",
-    "memory leak",
-    "unbounded loop",
-    "scalability",
-)
 
 
 def _highest_priority_specialty(tags: list[str]) -> ReflectorSpecialty | None:
@@ -67,26 +28,13 @@ def _infer_specialty_when_empty(candidate: CandidateFinding) -> ReflectorSpecial
         return "general"
     if candidate.suspected_category in _SPECIALTY_RANK:
         return candidate.suspected_category  # type: ignore[return-value]
-
-    blob = " ".join(
-        [
-            candidate.content,
-            candidate.failure_mode,
-            candidate.evidence_summary,
-        ]
-    ).lower()
-
-    if any(h in blob for h in _SECURITY_HINTS):
-        return "security"
-    if any(h in blob for h in _PERFORMANCE_HINTS):
-        return "performance"
     if candidate.claim_type == "defect":
         return "logic"
     return "general"
 
 
 def normalize_reflection_specialty_hardcap(candidate: CandidateFinding) -> ReflectorSpecialty:
-    """Return exactly one specialty using hierarchy tie-breaks."""
+    """Return exactly one fallback specialty without text-keyword claim inference."""
     raw = list(candidate.reflection_specialties)
     if len(raw) == 1 and raw[0] in _SPECIALTY_RANK:
         return raw[0]  # type: ignore[return-value]
@@ -98,43 +46,8 @@ def normalize_reflection_specialty_hardcap(candidate: CandidateFinding) -> Refle
 
 
 def correct_specialty_before_hardcap(candidate: CandidateFinding) -> tuple[CandidateFinding, str | None]:
-    """Align routing with claim_type and obvious domain signals before the hardcap."""
-    explicit = list(candidate.reflection_specialties)
-    blob = " ".join(
-        [
-            candidate.content,
-            candidate.failure_mode,
-            candidate.evidence_summary,
-        ]
-    ).lower()
-
-    if candidate.claim_type == "security_risk":
-        if explicit != ["security"]:
-            return (
-                candidate.model_copy(
-                    update={
-                        "reflection_specialties": ["security"],
-                        "suspected_category": "security",
-                    }
-                ),
-                "specialty_corrected:security_risk",
-            )
-        return candidate, None
-
-    if candidate.claim_type == "performance_regression":
-        if explicit != ["performance"]:
-            return (
-                candidate.model_copy(
-                    update={
-                        "reflection_specialties": ["performance"],
-                        "suspected_category": "performance",
-                    }
-                ),
-                "specialty_corrected:performance_regression",
-            )
-        return candidate, None
-
-    if explicit == ["performance"] and any(h in blob for h in _SECURITY_HINTS):
+    """Align only explicit claim_type categories; do not rewrite from text markers."""
+    if candidate.claim_type == "security_risk" and candidate.reflection_specialties != ["security"]:
         return (
             candidate.model_copy(
                 update={
@@ -142,14 +55,23 @@ def correct_specialty_before_hardcap(candidate: CandidateFinding) -> tuple[Candi
                     "suspected_category": "security",
                 }
             ),
-            "specialty_corrected:security_hints_over_performance_tag",
+            "specialty_corrected:security_risk",
         )
-
+    if candidate.claim_type == "performance_regression" and candidate.reflection_specialties != ["performance"]:
+        return (
+            candidate.model_copy(
+                update={
+                    "reflection_specialties": ["performance"],
+                    "suspected_category": "performance",
+                }
+            ),
+            "specialty_corrected:performance_regression",
+        )
     return candidate, None
 
 
 def with_single_reflection_specialty(candidate: CandidateFinding) -> CandidateFinding:
-    """Copy candidate with ``reflection_specialties`` set to a single canonical specialty."""
+    """Copy candidate with ``reflection_specialties`` set to a single fallback specialty."""
     corrected, _ = correct_specialty_before_hardcap(candidate)
     specialty = normalize_reflection_specialty_hardcap(corrected)
     return corrected.model_copy(update={"reflection_specialties": [specialty]})

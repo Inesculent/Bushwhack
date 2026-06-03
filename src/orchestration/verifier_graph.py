@@ -26,7 +26,6 @@ from src.orchestration.nodes.verifier.result_judge import (
     verifier_hint_flags_for_attempts,
 )
 from src.orchestration.nodes.verifier.sandbox_executor import execute_test_script
-from src.orchestration.nodes.verifier.source_only import source_only_verify_candidate
 from src.orchestration.nodes.verifier.test_generator import generate_test_script
 from src.orchestration.nodes.verifier.verifier_runner import _infer_verifier_repo_root, _sandbox_ok
 
@@ -71,24 +70,6 @@ def verifier_preflight_node(state: GraphState) -> Dict[str, Any]:
             "verifier_focused_context_text": fc,
             "node_history": ["verifier_preflight"],
         }
-
-    if settings.verifier_source_only_static_enabled:
-        static_verdict, static_rationale, static_attempt = source_only_verify_candidate(
-            state,
-            cand_dict,
-        )
-        if static_verdict and static_attempt is not None:
-            return {
-                "verifier_attempt_idx": 0,
-                "verifier_retry_feedback": "",
-                "verifier_scope": "concrete_behavior",
-                "verifier_repo_root": repo_root,
-                "verifier_attempts": [static_attempt],
-                "verifier_verdict": static_verdict,
-                "verifier_last_rationale": static_rationale,
-                "verifier_focused_context_text": fc,
-                "node_history": ["verifier_preflight", "verifier_source_only_static"],
-            }
 
     return {
         "verifier_attempt_idx": 0,

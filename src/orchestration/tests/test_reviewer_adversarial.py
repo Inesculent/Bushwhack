@@ -77,10 +77,10 @@ def _recall_candidate(
     )
 
 
-def test_broad_branch_only_critiquer_response_triggers_orthogonal_recall() -> None:
+def test_broad_branch_only_critiquer_response_does_not_trigger_marker_recall() -> None:
     response = CritiquerOutput(candidates=[_recall_candidate()])
 
-    assert _needs_orthogonal_recall(_recall_task(), response) is True
+    assert _needs_orthogonal_recall(_recall_task(), response) is False
 
 
 def test_narrow_branch_or_structured_task_does_not_trigger_orthogonal_recall() -> None:
@@ -114,7 +114,7 @@ def test_broad_diverse_critiquer_response_does_not_trigger_orthogonal_recall() -
     assert _needs_orthogonal_recall(_recall_task(), response) is False
 
 
-def test_sparse_response_with_weak_audit_triggers_orthogonal_recall() -> None:
+def test_sparse_response_with_weak_audit_does_not_trigger_marker_recall() -> None:
     weak = CritiquerOutput(
         audit_coverage=[
             AuditCoverageRecord(
@@ -134,7 +134,7 @@ def test_sparse_response_with_weak_audit_triggers_orthogonal_recall() -> None:
         ]
     )
 
-    assert _needs_orthogonal_recall(_recall_task(), weak) is True
+    assert _needs_orthogonal_recall(_recall_task(), weak) is False
     assert _needs_orthogonal_recall(_recall_task(), diverse) is False
 
 

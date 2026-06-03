@@ -156,12 +156,10 @@ def test_source_only_verifier_updates_do_not_require_runtime_sandbox() -> None:
         with patch("src.orchestration.routing.verifier_fanout.sandbox_runtime_available", return_value=False):
             update = collect_source_only_verifier_updates(state)
 
-    assert update["verifier_reports"][0].candidate_id == cid
-    hint = update["metadata"]["verifier_hints"][cid]
-    assert hint["verdict"] == "verified"
-    assert hint["product_verified"] is True
-    assert hint["harness_error"] is False
-    assert hint["source_only_static"] is True
+    assert update["source_facts"][0].candidate_id == cid
+    assert update["source_facts"][0].fact_kind == "reachable_fallthrough"
+    by_candidate = update["metadata"]["verifier"]["source_facts_by_candidate"]
+    assert by_candidate[cid][0]["fact_kind"] == "reachable_fallthrough"
 
 
 def test_collect_verifier_send_payloads_routes_concrete_missing_test_without_focused_context() -> None:
@@ -256,7 +254,19 @@ def test_collect_verifier_send_payloads_keeps_generic_missing_test_out() -> None
                         }
                     }
                 }
-            }
+            },
+            "review_evidence_triage": {
+                "items": [
+                    {
+                        "candidate_id": cid,
+                        "claim_summary": "coverage-only request",
+                        "claim_family": "missing_test",
+                        "suggested_reflection_specialties": ["logic"],
+                        "runtime_verification_usefulness": "not_useful",
+                        "rationale": "No runtime behavior claim is being tested.",
+                    }
+                ]
+            },
         },
     )
     with patch("src.orchestration.routing.verifier_fanout.get_settings") as gs:
@@ -454,7 +464,7 @@ def test_start_verifier_sandbox_uses_exec_workspace_when_enabled(tmp_path) -> No
 
 def test_infer_scope_abstract() -> None:
     d = {"failure_mode": "x", "content": "uses network calls"}
-    assert infer_verification_scope(d) == "abstract_or_unverifiable"
+    assert infer_verification_scope(d) == "concrete_behavior"
 
 
 def test_collect_verifier_send_payloads_no_focused_when_required() -> None:

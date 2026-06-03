@@ -51,7 +51,7 @@ def test_infer_from_claim_type_security_risk() -> None:
     assert normalize_reflection_specialty_hardcap(c) == "security"
 
 
-def test_infer_security_from_text_hints() -> None:
+def test_text_hints_do_not_override_declared_claim_shape() -> None:
     c = _base_candidate(
         reflection_specialties=[],
         claim_type="defect",
@@ -60,7 +60,7 @@ def test_infer_security_from_text_hints() -> None:
         failure_mode="ReDoS from attacker-controlled regex",
         evidence_summary="",
     )
-    assert normalize_reflection_specialty_hardcap(c) == "security"
+    assert normalize_reflection_specialty_hardcap(c) == "logic"
 
 
 def test_normalize_candidates_collapses_to_single_entry() -> None:
