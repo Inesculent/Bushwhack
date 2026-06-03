@@ -166,6 +166,20 @@ def _focused_by_candidate(state: GraphState) -> Dict[str, List[FocusedContextRes
     return grouped
 
 
+def _focused_diagnostics_by_candidate(state: GraphState) -> Dict[str, List[Mapping[str, Any]]]:
+    metadata = state.get("metadata") if isinstance(state.get("metadata"), dict) else {}
+    focused = metadata.get("focused_context") if isinstance(metadata, dict) else {}
+    rows = focused.get("diagnostics") if isinstance(focused, dict) else []
+    grouped: Dict[str, List[Mapping[str, Any]]] = {}
+    for row in rows or []:
+        if not isinstance(row, Mapping):
+            continue
+        cid = str(row.get("candidate_id") or "")
+        if cid:
+            grouped.setdefault(cid, []).append(row)
+    return grouped
+
+
 def _verifier_by_candidate(state: GraphState) -> Dict[str, List[VerifierReport]]:
     grouped: Dict[str, List[VerifierReport]] = {}
     for raw in state.get("verifier_reports", []) or []:
@@ -285,6 +299,7 @@ def build_review_adjudication_packets(
     checks = _check_results_by_candidate(state)
     reflections = _reflections_by_candidate(state)
     focused = _focused_by_candidate(state)
+    focused_diagnostics = _focused_diagnostics_by_candidate(state)
     verifier = _verifier_by_candidate(state)
     source_facts = _source_facts_by_candidate(state)
     triage = _triage_by_candidate(state)
@@ -311,6 +326,7 @@ def build_review_adjudication_packets(
                     _compact_focused_result(item, max_chars=max_focused_chars)
                     for item in focused.get(cid, [])
                 ],
+                "focused_context_diagnostics": list(focused_diagnostics.get(cid, [])),
                 "verifier_reports": [
                     _compact_verifier_report(item)
                     for item in verifier.get(cid, [])

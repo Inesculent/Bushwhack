@@ -954,6 +954,7 @@ def _render_executor_prompt(
     slot: Mapping[str, Any],
     *,
     compact_retry: bool = False,
+    appendix: str = "",
 ) -> str:
     focused = {
         check.check_id: _focused_context_for_check(state, check.check_id)
@@ -982,6 +983,8 @@ def _render_executor_prompt(
     prompt = render_reviewer_prompt("review_check_executor.md", sections)
     if compact_retry:
         prompt = f"{prompt}{_EXECUTOR_COMPACT_RETRY_APPENDIX}"
+    if appendix:
+        prompt = f"{prompt}{appendix}"
     return prompt
 
 
@@ -1026,6 +1029,106 @@ def _canonicalize_executor_results(
             best[check_id] = (rank, index, result)
     duplicates = [check_id for check_id, count in counts.items() if count > 1]
     return [best[check_id][2] for check_id in order], duplicates
+
+
+def _executor_continuation_targets(
+    checks: Sequence[ReviewCheck],
+    results: Sequence[ReviewCheckResult],
+) -> List[ReviewCheck]:
+    checks_by_id = {check.check_id: check for check in checks}
+    candidate_files: set[str] = set()
+    candidate_surfaces: set[str] = set()
+    for result in results:
+        if result.decision != "candidate" or result.candidate is None:
+            continue
+        check = checks_by_id.get(result.check_id)
+        candidate_files.add(result.candidate.file_path.replace("\\", "/"))
+        if check is not None:
+            candidate_files.add(check.file_path.replace("\\", "/"))
+            candidate_surfaces.update(check.surface_ids)
+    if not candidate_files and not candidate_surfaces:
+        return []
+    targets: List[ReviewCheck] = []
+    for result in results:
+        if result.decision not in {"no_finding", "unsupported"}:
+            continue
+        check = checks_by_id.get(result.check_id)
+        if check is None:
+            continue
+        same_file = check.file_path.replace("\\", "/") in candidate_files
+        same_surface = bool(candidate_surfaces.intersection(check.surface_ids))
+        if same_file or same_surface:
+            targets.append(check)
+    return targets
+
+
+def _executor_result_summary(result: ReviewCheckResult) -> Dict[str, Any]:
+    candidate = result.candidate
+    return {
+        "check_id": result.check_id,
+        "decision": result.decision,
+        "candidate": (
+            {
+                "candidate_id": candidate.candidate_id,
+                "file_path": candidate.file_path,
+                "line_start": candidate.line_start,
+                "line_end": candidate.line_end,
+                "content": candidate.content[:300],
+                "failure_mode": candidate.failure_mode[:240],
+            }
+            if candidate is not None
+            else None
+        ),
+        "reportable_reason": result.reportable_reason[:400],
+        "missing_evidence": list(result.missing_evidence[:4]),
+    }
+
+
+def _executor_continuation_appendix(
+    *,
+    batch_results: Sequence[ReviewCheckResult],
+    target_checks: Sequence[ReviewCheck],
+) -> str:
+    target_ids = [check.check_id for check in target_checks]
+    candidate_summaries = [
+        _executor_result_summary(result)
+        for result in batch_results
+        if result.decision == "candidate" and result.candidate is not None
+    ][:6]
+    return (
+        "\n\n## SAME-BATCH CONTINUATION (required)\n"
+        "The same batch already produced the candidate results below. Do not repeat or rephrase them.\n"
+        "Reconsider only the listed target check_ids from this same batch for distinct reachable failures "
+        "that may have been overshadowed. Return exactly one ReviewCheckResult for each target check_id. "
+        "Do not return any check_id outside this list and do not invent new checks.\n\n"
+        f"Target check_ids: {json.dumps(target_ids, ensure_ascii=False)}\n"
+        "Existing candidate results:\n"
+        f"{json.dumps(candidate_summaries, indent=2, ensure_ascii=False)}"
+    )
+
+
+def _merge_executor_continuation_results(
+    batch_results: Sequence[ReviewCheckResult],
+    continuation_results: Sequence[ReviewCheckResult],
+    target_ids: set[str],
+) -> tuple[List[ReviewCheckResult], List[str]]:
+    merged: List[ReviewCheckResult] = list(batch_results)
+    index_by_check = {result.check_id: index for index, result in enumerate(merged)}
+    revised: List[str] = []
+    for result in continuation_results:
+        if result.check_id not in target_ids:
+            continue
+        old_index = index_by_check.get(result.check_id)
+        if old_index is None:
+            merged.append(result)
+            index_by_check[result.check_id] = len(merged) - 1
+            revised.append(result.check_id)
+            continue
+        old = merged[old_index]
+        if old.model_dump(mode="json") != result.model_dump(mode="json"):
+            merged[old_index] = result
+            revised.append(result.check_id)
+    return merged, revised
 
 
 def _audit_no_finding_suppressions(
@@ -1078,6 +1181,9 @@ def make_review_check_executor_node(
         length_limit_retry_count = 0
         length_limit_retry_success_count = 0
         length_limit_retry_failed_check_ids: List[str] = []
+        executor_continuation_count = 0
+        executor_continuation_revised_check_ids: List[str] = []
+        executor_continuation_failed_batches: List[int] = []
 
         if use_llm:
             selected_model = model_key or resolved.reviewer_worker_model_key
@@ -1316,6 +1422,88 @@ def make_review_check_executor_node(
                     result_count_before_canonicalization += len(batch_results)
                     batch_results, batch_duplicate_ids = _canonicalize_executor_results(batch_results)
                     duplicate_result_check_ids.extend(batch_duplicate_ids)
+                    continuation_targets = _executor_continuation_targets(batch, batch_results)
+                    if continuation_targets:
+                        executor_continuation_count += 1
+                        try:
+                            continuation_llm = Models.worker(
+                                ReviewCheckExecutorOutput,
+                                model_key=selected_model,
+                                max_completion_tokens=resolved.reviewer_critiquer_max_completion_tokens,
+                            )
+                            continuation_prompt = _render_executor_prompt(
+                                state,
+                                task,
+                                continuation_targets,
+                                slot,
+                                appendix=_executor_continuation_appendix(
+                                    batch_results=batch_results,
+                                    target_checks=continuation_targets,
+                                ),
+                            )
+                            continuation_traced = trace_llm_call(
+                                continuation_llm,
+                                continuation_prompt,
+                                state=state,
+                                node_name=node_name,
+                                model_key=selected_model,
+                                schema_name="ReviewCheckExecutorOutput",
+                                request_label="same_batch_continuation",
+                                input_summary={
+                                    "task_id": task.id,
+                                    "batch": batch_index,
+                                    "target_check_ids": [
+                                        check.check_id for check in continuation_targets
+                                    ],
+                                },
+                            )
+                            continuation_response = parse_structured_output(
+                                continuation_traced.result,
+                                ReviewCheckExecutorOutput,
+                            )
+                            llm_tokens += continuation_traced.tokens
+                            llm_trace.extend(continuation_traced.trace_records)
+                            continuation_results, continuation_warnings = _support_normalize_executor_results(
+                                state=state,
+                                task=task,
+                                slot=slot,
+                                checks=continuation_targets,
+                                results=continuation_response.results,
+                                git_diff=state.get("git_diff", "") or "",
+                                check_budget_remaining=_check_budget_remaining,
+                                evidence_requirements_for_check=_evidence_requirements_for_check,
+                                compiled_check_is_source_local=lambda check: _compiled_check_is_source_local(
+                                    check,
+                                    None,
+                                    slot,
+                                    changed_task_files,
+                                ),
+                                include_missing_results=False,
+                            )
+                            target_ids = {check.check_id for check in continuation_targets}
+                            batch_results, revised_ids = _merge_executor_continuation_results(
+                                batch_results,
+                                continuation_results,
+                                target_ids,
+                            )
+                            executor_continuation_revised_check_ids.extend(revised_ids)
+                            result_count_before_canonicalization += len(continuation_results)
+                            warnings.extend(continuation_response.warnings)
+                            warnings.extend(continuation_warnings)
+                            if revised_ids:
+                                warnings.append(
+                                    "executor_same_batch_continuation_revised:"
+                                    + ",".join(sorted(set(revised_ids)))
+                                )
+                        except Exception as continuation_exc:  # noqa: BLE001
+                            llm_trace.extend(trace_from_exception(continuation_exc))
+                            executor_continuation_failed_batches.append(batch_index)
+                            warnings.append(
+                                "executor_same_batch_continuation_failed:"
+                                f"{batch_index}:{continuation_exc.__class__.__name__}: {continuation_exc}"
+                            )
+                        batch_results, continuation_duplicate_ids = _canonicalize_executor_results(batch_results)
+                        duplicate_result_check_ids.extend(continuation_duplicate_ids)
                     (
                         batch_results,
                         llm_tokens,
@@ -1461,6 +1649,11 @@ def make_review_check_executor_node(
                 "executor_length_limit_retry_failed_check_ids": list(
                     dict.fromkeys(length_limit_retry_failed_check_ids)
                 ),
+                "executor_same_batch_continuation_count": executor_continuation_count,
+                "executor_same_batch_continuation_revised_check_ids": list(
+                    dict.fromkeys(executor_continuation_revised_check_ids)
+                ),
+                "executor_same_batch_continuation_failed_batches": executor_continuation_failed_batches,
                 "suppression_audits": suppression_audits,
             },
         )

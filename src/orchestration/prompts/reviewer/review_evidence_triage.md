@@ -4,7 +4,7 @@ You route evidence gathering for review candidates. Do not decide final promotio
 
 For every candidate id in the input, emit exactly one `ReviewEvidenceTriageItem`.
 
-Use the candidate packet and diff evidence to summarize the claim and decide what evidence lanes are useful:
+Use the compact candidate packet and originating check summaries to summarize the claim and decide what evidence lanes are useful:
 
 - `claim_summary`: concise neutral restatement of the candidate's behavioral claim.
 - `claim_family`: open-ended short label for the claim type.

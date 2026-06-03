@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any, Dict, List
 
@@ -137,6 +138,61 @@ _COMPACT_OUTPUT_APPENDIX = (
     "Keep each content, evidence_summary, and failure_mode under 400 characters. "
     "Keep summary under 500 characters. No prose outside the schema fields."
 )
+
+
+def _candidate_continuation_summaries(candidates: List[CandidateFinding]) -> List[Dict[str, Any]]:
+    return [
+        {
+            "candidate_id": candidate.candidate_id,
+            "file_path": candidate.file_path,
+            "line_start": candidate.line_start,
+            "line_end": candidate.line_end,
+            "claim_type": candidate.claim_type,
+            "content": candidate.content[:300],
+            "failure_mode": candidate.failure_mode[:240],
+        }
+        for candidate in candidates[:12]
+    ]
+
+
+def _negative_continuation_appendix(candidates: List[CandidateFinding]) -> str:
+    return (
+        "\n\n## SAME-CHECKER CONTINUATION (required)\n"
+        "You already found the candidate claims below. Do not repeat, rename, or rephrase them.\n"
+        "Look once more within the same assigned task scope for distinct reachable failures that may have been "
+        "overshadowed by those louder claims. Return at most 2 new candidates. If there are no distinct claims, "
+        "return an empty candidates list.\n\n"
+        "Already found candidates:\n"
+        f"{json.dumps(_candidate_continuation_summaries(candidates), indent=2, ensure_ascii=False)}"
+    )
+
+
+def _candidate_identity(candidate: CandidateFinding) -> tuple[str, str, str]:
+    return (
+        candidate.file_path.replace("\\", "/"),
+        candidate.content.strip().lower(),
+        candidate.failure_mode.strip().lower(),
+    )
+
+
+def _append_distinct_candidates(
+    existing: List[CandidateFinding],
+    additions: List[CandidateFinding],
+) -> tuple[List[CandidateFinding], List[str], List[str]]:
+    existing_ids = {candidate.candidate_id for candidate in existing}
+    existing_signatures = {_candidate_identity(candidate) for candidate in existing}
+    kept: List[CandidateFinding] = []
+    dropped: List[str] = []
+    for candidate in additions:
+        if candidate.candidate_id in existing_ids or _candidate_identity(candidate) in existing_signatures:
+            dropped.append(candidate.candidate_id)
+            continue
+        kept.append(candidate)
+        existing_ids.add(candidate.candidate_id)
+        existing_signatures.add(_candidate_identity(candidate))
+    return existing + kept, [candidate.candidate_id for candidate in kept], dropped
+
+
 def _is_length_finish_error(exc: Exception) -> bool:
     if "LengthFinish" in exc.__class__.__name__:
         return True
@@ -272,6 +328,8 @@ def make_general_critiquer_node(
         summary = ""
         initial_requests: List[FocusedContextRequest] = []
         audit_coverage: List[dict[str, Any]] = []
+        continuation_candidate_ids: List[str] = []
+        continuation_duplicate_candidate_ids: List[str] = []
         if use_llm:
             selected_model = model_key or getattr(get_settings(), "reviewer_worker_model_key", None)
             invoke_result: Any = None
@@ -381,6 +439,55 @@ def make_general_critiquer_node(
                     list(response.initial_focus_requests) + auto_focus_requests(task, candidates),
                 )
 
+        if use_llm and candidates:
+            try:
+                continuation_result, continuation_tokens, continuation_trace = _invoke_critiquer_llm(
+                    state=state,
+                    task=task,
+                    pipeline_slot=pipeline_slot,
+                    model_key=selected_model,
+                    compact=False,
+                    appendix=_negative_continuation_appendix(candidates),
+                )
+                llm_tokens += continuation_tokens
+                llm_trace.extend(continuation_trace)
+                continuation_response = parse_structured_output(continuation_result, CritiquerOutput)
+                continuation_candidates = _normalize_candidates(
+                    task=task,
+                    candidates=list(continuation_response.candidates[:2]),
+                    pipeline_slot=pipeline_slot,
+                    git_diff=state.get("git_diff", "") or "",
+                )
+                candidates, continuation_candidate_ids, continuation_duplicate_candidate_ids = _append_distinct_candidates(
+                    candidates,
+                    continuation_candidates,
+                )
+                warnings.extend(continuation_response.warnings)
+                if continuation_response.initial_focus_requests and continuation_candidate_ids:
+                    new_candidates = [
+                        candidate for candidate in candidates if candidate.candidate_id in continuation_candidate_ids
+                    ]
+                    initial_requests.extend(
+                        _normalize_focus_requests(
+                            state,
+                            task,
+                            new_candidates,
+                            list(continuation_response.initial_focus_requests)
+                            + auto_focus_requests(task, new_candidates),
+                        )
+                    )
+                warnings.append(
+                    f"critiquer_negative_continuation_candidates:{len(continuation_candidate_ids)}"
+                )
+                for cid in continuation_duplicate_candidate_ids:
+                    warnings.append(f"critiquer_negative_continuation_duplicate_dropped:{cid}")
+            except Exception as continuation_exc:  # noqa: BLE001
+                llm_trace.extend(trace_from_exception(continuation_exc))
+                warnings.append(
+                    "critiquer_negative_continuation_failed:"
+                    f"{continuation_exc.__class__.__name__}: {continuation_exc}"
+                )
+
         if _trace_enabled(state):
             trace_logger.info(
                 "TRACE critiquer_done run_id=%s task_id=%s candidates=%s",
@@ -425,6 +532,15 @@ def make_general_critiquer_node(
                 "audit_coverage": audit_coverage,
                 "coverage_obligations": coverage_eval,
             }
+            if continuation_candidate_ids:
+                task_meta["continuation_source_by_candidate"] = {
+                    cid: "same_checker_negative_prompt"
+                    for cid in continuation_candidate_ids
+                }
+            if continuation_duplicate_candidate_ids:
+                task_meta["continuation_duplicate_candidate_ids"] = list(
+                    continuation_duplicate_candidate_ids
+                )
             anchor_warn = pipeline_slot.get("line_anchor_warnings")
             if isinstance(anchor_warn, list) and anchor_warn:
                 task_meta["line_anchor_warnings"] = list(anchor_warn)

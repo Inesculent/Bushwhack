@@ -522,6 +522,7 @@ def _coverage_audit_for_pr(
         "compiled_path_count": sum(1 for item in records if item["compiled"]),
         "valid_path_count": sum(1 for item in records if item["valid"]),
         "focused_requested_path_count": sum(1 for item in records if item["focused_requested"]),
+        "focused_effective_path_count": sum(1 for item in records if item["focused_result"]),
         "focused_result_path_count": sum(1 for item in records if item["focused_result"]),
         "executed_path_count": sum(1 for item in records if item["executed"]),
         "candidate_path_count": sum(1 for item in records if item["candidate"]),
@@ -537,6 +538,9 @@ def _write_coverage_audit(path: Path, records: List[dict[str, Any]]) -> dict[str
         "positive_path_count": sum(item["summary"]["positive_path_count"] for item in records),
         "compiled_path_count": sum(item["summary"]["compiled_path_count"] for item in records),
         "valid_path_count": sum(item["summary"]["valid_path_count"] for item in records),
+        "focused_requested_path_count": sum(item["summary"].get("focused_requested_path_count", 0) for item in records),
+        "focused_effective_path_count": sum(item["summary"].get("focused_effective_path_count", 0) for item in records),
+        "focused_result_path_count": sum(item["summary"].get("focused_result_path_count", 0) for item in records),
         "candidate_path_count": sum(item["summary"]["candidate_path_count"] for item in records),
         "final_path_count": sum(item["summary"]["final_path_count"] for item in records),
     }

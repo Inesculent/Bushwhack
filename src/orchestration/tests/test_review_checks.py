@@ -2563,6 +2563,147 @@ def test_review_check_executor_canonicalizes_duplicate_results(monkeypatch) -> N
     assert meta["executor_result_count_before_canonicalization"] == 2
 
 
+def test_review_check_executor_same_batch_continuation_revises_target(monkeypatch) -> None:
+    check1 = _check(check_id="review-logic:check:1")
+    check2 = _check(
+        check_id="review-logic:check:2",
+        behavioral_question="Does the adjacent changed branch preserve its output contract?",
+    )
+    first_candidate = CandidateFinding(
+        candidate_id="review-logic:c1",
+        patch_task_id="review-logic",
+        file_path="src/app.py",
+        line_start=1,
+        line_end=2,
+        content="first issue",
+        claim_type="defect",
+        failure_mode="first failure",
+        evidence_summary="local evidence",
+        suspected_category="logic",
+        reflection_specialties=["logic"],
+    )
+    second_candidate = CandidateFinding(
+        candidate_id="review-logic:c2",
+        patch_task_id="review-logic",
+        file_path="src/app.py",
+        line_start=2,
+        line_end=3,
+        content="second issue",
+        claim_type="defect",
+        failure_mode="second failure",
+        evidence_summary="local evidence",
+        suspected_category="logic",
+        reflection_specialties=["logic"],
+    )
+    fake = _FakeLLM(
+        [
+            {"parsed": ReviewCheckExecutorOutput(
+                results=[
+                    ReviewCheckResult(
+                        check_id=check1.check_id,
+                        patch_task_id="review-logic",
+                        decision="candidate",
+                        evidence_refs=["src/app.py:1"],
+                        reportable_reason="first issue is reportable",
+                        candidate=first_candidate,
+                    ),
+                    ReviewCheckResult(
+                        check_id=check2.check_id,
+                        patch_task_id="review-logic",
+                        decision="no_finding",
+                        suppressing_evidence=["looked at nearby branch"],
+                    ),
+                ]
+            ), "raw": _Raw()},
+            {"parsed": ReviewCheckExecutorOutput(
+                results=[
+                    ReviewCheckResult(
+                        check_id=check2.check_id,
+                        patch_task_id="review-logic",
+                        decision="candidate",
+                        evidence_refs=["src/app.py:2"],
+                        reportable_reason="second issue is distinct",
+                        candidate=second_candidate,
+                    )
+                ]
+            ), "raw": _Raw()},
+        ]
+    )
+    monkeypatch.setattr(
+        "src.orchestration.nodes.application.review_checks.Models.worker",
+        lambda *_args, **_kwargs: fake,
+    )
+
+    out = make_review_check_executor_node()(_state(review_checks=[check1, check2]))  # type: ignore[arg-type]
+
+    decisions = {result.check_id: result.decision for result in out["review_check_results"]}
+    assert decisions == {check1.check_id: "candidate", check2.check_id: "candidate"}
+    meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
+    assert meta["executor_same_batch_continuation_count"] == 1
+    assert meta["executor_same_batch_continuation_revised_check_ids"] == [check2.check_id]
+    assert "SAME-BATCH CONTINUATION" in fake.prompts[1]
+
+
+def test_review_check_executor_same_batch_continuation_rejects_out_of_batch_ids(monkeypatch) -> None:
+    check1 = _check(check_id="review-logic:check:1")
+    check2 = _check(check_id="review-logic:check:2")
+    candidate = CandidateFinding(
+        candidate_id="review-logic:c1",
+        patch_task_id="review-logic",
+        file_path="src/app.py",
+        line_start=1,
+        line_end=2,
+        content="first issue",
+        claim_type="defect",
+        failure_mode="first failure",
+        evidence_summary="local evidence",
+        suspected_category="logic",
+        reflection_specialties=["logic"],
+    )
+    fake = _FakeLLM(
+        [
+            {"parsed": ReviewCheckExecutorOutput(
+                results=[
+                    ReviewCheckResult(
+                        check_id=check1.check_id,
+                        patch_task_id="review-logic",
+                        decision="candidate",
+                        evidence_refs=["src/app.py:1"],
+                        reportable_reason="first issue is reportable",
+                        candidate=candidate,
+                    ),
+                    ReviewCheckResult(
+                        check_id=check2.check_id,
+                        patch_task_id="review-logic",
+                        decision="unsupported",
+                    ),
+                ]
+            ), "raw": _Raw()},
+            {"parsed": ReviewCheckExecutorOutput(
+                results=[
+                    ReviewCheckResult(
+                        check_id="review-logic:check:outside",
+                        patch_task_id="review-logic",
+                        decision="candidate",
+                        candidate=candidate,
+                    )
+                ]
+            ), "raw": _Raw()},
+        ]
+    )
+    monkeypatch.setattr(
+        "src.orchestration.nodes.application.review_checks.Models.worker",
+        lambda *_args, **_kwargs: fake,
+    )
+
+    out = make_review_check_executor_node()(_state(review_checks=[check1, check2]))  # type: ignore[arg-type]
+
+    decisions = {result.check_id: result.decision for result in out["review_check_results"]}
+    assert decisions[check2.check_id] == "unsupported"
+    meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
+    assert meta["executor_same_batch_continuation_revised_check_ids"] == []
+
+
 def test_review_check_executor_retries_length_limit_batch_as_single_checks(monkeypatch) -> None:
     class LengthFinishReasonError(Exception):
         pass
