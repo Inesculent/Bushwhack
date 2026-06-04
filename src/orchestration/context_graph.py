@@ -17,6 +17,7 @@ from src.infrastructure.redis_checkpoint import (
     assert_redis_checkpoint_writable,
     redis_checkpoint_saver,
 )
+from src.infrastructure.llm.langsmith import configure_langsmith_environment
 from src.orchestration.nodes.exploration.explorer import explorer_node
 from src.orchestration.nodes.exploration.community_semantic_agent import make_community_semantic_agent_node
 from src.orchestration.nodes.exploration.phase2_routing import semantic_phase2_should_run
@@ -44,6 +45,7 @@ def _route_after_structural_context(state: GraphState) -> str:
 
 def build_graph(checkpointer: Any = None):
     settings = get_settings()
+    configure_langsmith_environment(settings)
     preflight_service = build_preflight_service()
     ast_parser: IASTParser | None = None
 

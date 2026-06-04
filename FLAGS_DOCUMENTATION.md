@@ -292,6 +292,19 @@ python -m src.reviewer_agent.main --remote ...
 | `REVIEW_OPENAI_API_KEY` or `OPENAI_API_KEY` | string | OpenAI API key for hosted OpenAI model access. |
 | `REVIEW_ANTHROPIC_API_KEY` or `ANTHROPIC_API_KEY` | string | Anthropic API key for Claude model access. |
 
+#### LangSmith Tracing
+
+These settings are mirrored to the `LANGSMITH_*` / `LANGCHAIN_CALLBACKS_BACKGROUND` environment variables that LangChain and LangGraph read at runtime.
+
+| Variable | Type | Default | Description |
+|----------|------|---------|-------------|
+| `REVIEW_LANGSMITH_TRACING` or `LANGSMITH_TRACING` | boolean | `false` | Enable LangSmith tracing for LangGraph spans and LangChain model calls. |
+| `REVIEW_LANGSMITH_API_KEY` or `LANGSMITH_API_KEY` | string | _(unset)_ | LangSmith API key. Required when tracing is enabled. |
+| `REVIEW_LANGSMITH_PROJECT` or `LANGSMITH_PROJECT` | string | `bushwhack` | LangSmith project name. |
+| `REVIEW_LANGSMITH_ENDPOINT` or `LANGSMITH_ENDPOINT` | string | _(unset)_ | Optional regional or self-hosted LangSmith API endpoint. |
+| `REVIEW_LANGSMITH_WORKSPACE_ID` or `LANGSMITH_WORKSPACE_ID` | string | _(unset)_ | Optional workspace ID for API keys with multiple workspaces. |
+| `REVIEW_LANGSMITH_CALLBACKS_BACKGROUND` or `LANGCHAIN_CALLBACKS_BACKGROUND` | boolean | _(unset)_ | Optional callback background mode for trace flushing. |
+
 #### Local LLM Configuration (Ollama/LM Studio/vLLM)
 
 **Hotswap default model:** edit `src/infrastructure/llm/defaults.py` (`DEFAULT_LOCAL_MODEL_KEY` and `DEFAULT_LOCAL_MODEL_PATH`). That registers the vLLM model id and sets defaults for all `REVIEW_*_MODEL_KEY` settings unless overridden in `.env`.

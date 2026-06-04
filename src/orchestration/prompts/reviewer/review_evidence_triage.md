@@ -17,3 +17,9 @@ Use the compact candidate packet and originating check summaries to summarize th
 Do not use keyword matching as the reason. Explain the relationship between the candidate claim, changed operation, and evidence needed.
 
 Do not invent new findings. This node only routes existing candidates.
+
+Output budget:
+- Return only schema JSON; no prose outside fields.
+- Keep each `claim_summary` under 80 words, `claim_family` under 6 words, and `rationale` under 60 words.
+- Keep `source_fact_requests` and `needed_context` to the smallest evidence lanes that would materially change routing.
+- Do not quote long candidate text, check JSON, or code snippets.

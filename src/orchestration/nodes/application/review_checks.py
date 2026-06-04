@@ -104,6 +104,11 @@ _AFFECTED_PATH_MARKERS = (
 )
 _GENERIC_QUERY_TOKENS = {"changed", "code", "behavior", "repository", "evidence", "context"}
 _EXECUTOR_BATCH_SIZE = 3
+_EXECUTOR_CODE_EVIDENCE_CHARS = 16000
+_EXECUTOR_FOCUSED_EVIDENCE_CHARS = 10000
+_EXECUTOR_COMPACT_CODE_EVIDENCE_CHARS = 4000
+_EXECUTOR_COMPACT_FOCUSED_EVIDENCE_CHARS = 3000
+_EXECUTOR_COMPACT_CONTEXT_CHARS = 1500
 _EXECUTOR_COMPACT_RETRY_APPENDIX = (
     "\n\n## OUTPUT BUDGET (retry - required)\n"
     "Your previous response exceeded the length limit. This retry contains exactly one input check. "
@@ -960,6 +965,16 @@ def _render_executor_prompt(
         check.check_id: _focused_context_for_check(state, check.check_id)
         for check in checks
     }
+    code_limit = _EXECUTOR_COMPACT_CODE_EVIDENCE_CHARS if compact_retry else _EXECUTOR_CODE_EVIDENCE_CHARS
+    focused_limit = (
+        _EXECUTOR_COMPACT_FOCUSED_EVIDENCE_CHARS if compact_retry else _EXECUTOR_FOCUSED_EVIDENCE_CHARS
+    )
+    context_limit = _EXECUTOR_COMPACT_CONTEXT_CHARS if compact_retry else None
+    mental_model_excerpt = str(slot.get("mental_model_excerpt") or "")
+    review_kb_excerpt = str(slot.get("review_kb_excerpt") or "")
+    if context_limit is not None:
+        mental_model_excerpt = mental_model_excerpt[:context_limit]
+        review_kb_excerpt = review_kb_excerpt[:context_limit]
     sections = {
         "Assigned Task": (
             f"Task ID: {task.id}\n"
@@ -975,10 +990,10 @@ def _render_executor_prompt(
             _seen_claim_digests_for_task(state, task.id),
             max_chars=3000,
         ),
-        "Repository Code Evidence": str(slot.get("direct_context") or "")[:16000],
-        "Focused Evidence By Check": _json_for_prompt(focused, max_chars=10000),
-        "Mental Model Excerpt": str(slot.get("mental_model_excerpt") or ""),
-        "Review KB Context": str(slot.get("review_kb_excerpt") or ""),
+        "Repository Code Evidence": str(slot.get("direct_context") or "")[:code_limit],
+        "Focused Evidence By Check": _json_for_prompt(focused, max_chars=focused_limit),
+        "Mental Model Excerpt": mental_model_excerpt,
+        "Review KB Context": review_kb_excerpt,
     }
     prompt = render_reviewer_prompt("review_check_executor.md", sections)
     if compact_retry:

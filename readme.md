@@ -100,6 +100,7 @@ Useful settings to get started:
 - `REVIEW_REDIS_ENABLED=true`
 - `REVIEW_LOCAL_LLM_BASE_URL=http://localhost:8000/v1`
 - `REVIEW_GITHUB_PERSONAL_ACCESS_TOKEN=...` (for dataset enrichment)
+- `REVIEW_LANGSMITH_TRACING=true` and `REVIEW_LANGSMITH_API_KEY=...` to send LangGraph/LangChain traces to LangSmith.
 
 ## 2.1) Run Redis For LangGraph Checkpointing (Optional)
 
@@ -152,6 +153,8 @@ Useful flags:
 - `--basic-graph` to skip critique/reflection nodes.
 - `--trace` to emit review-trace logs, including bounded LLM I/O summaries and per-call token usage.
 - `--limit 10` for smoke runs.
+
+LangSmith tracing is separate from `--trace`: set `REVIEW_LANGSMITH_TRACING=true`, `REVIEW_LANGSMITH_API_KEY`, and optionally `REVIEW_LANGSMITH_PROJECT` in `.env`. Local OpenAI-compatible models are still created with `langchain-openai`; the factory adds LangSmith metadata so local model IDs show clearly in traces.
 
 ## 5) Run the Solo Agent (Dataset Harness)
 

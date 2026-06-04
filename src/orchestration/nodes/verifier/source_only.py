@@ -10,9 +10,20 @@ from src.domain.schemas import SourceFact
 from src.domain.verifier_schemas import VerifierAttemptRecord
 from src.orchestration.context.task_evidence import task_evidence_slot_from_state
 
+_SOURCE_FACT_SUMMARY_LIMIT = 700
+_SOURCE_FACT_EVIDENCE_LIMIT = 1000
+
 
 def _norm(path: str) -> str:
     return (path or "").replace("\\", "/").lstrip("/")
+
+
+def _clamp_text(value: str, limit: int) -> str:
+    text = str(value or "")
+    if len(text) <= limit:
+        return text
+    suffix = "\n... [truncated]"
+    return text[: max(0, limit - len(suffix))].rstrip() + suffix
 
 
 def _target_source_from_state(state: Dict[str, Any], candidate: Dict[str, Any]) -> tuple[str, bool]:
@@ -204,8 +215,8 @@ def _fact(
         file_path=file_path,
         line_start=line_start,
         line_end=line_end,
-        summary=summary,
-        evidence=evidence,
+        summary=_clamp_text(summary, _SOURCE_FACT_SUMMARY_LIMIT),
+        evidence=_clamp_text(evidence, _SOURCE_FACT_EVIDENCE_LIMIT),
     )
 
 

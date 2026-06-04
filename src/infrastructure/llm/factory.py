@@ -9,6 +9,10 @@ from typing import Any, Literal, Optional, Type
 
 from src.config import Settings, get_settings
 from src.infrastructure.llm.defaults import DEFAULT_LOCAL_MODEL_KEY, DEFAULT_LOCAL_MODEL_PATH
+from src.infrastructure.llm.langsmith import (
+    configure_langsmith_environment,
+    langsmith_model_metadata,
+)
 
 
 
@@ -98,10 +102,12 @@ class Models:
     @staticmethod
     def get(model_key: str, max_completion_tokens: int | None = None):
         config = _get_model_config(model_key)
+        settings = get_settings()
+        configure_langsmith_environment(settings)
         llm_class = _get_llm_class(config.provider)
         llm_kwargs = _build_llm_kwargs(
             config,
-            settings=get_settings(),
+            settings=settings,
             max_completion_tokens=max_completion_tokens,
         )
         return llm_class(**llm_kwargs)
@@ -206,7 +212,10 @@ def _build_llm_kwargs(
     settings: Settings,
     max_completion_tokens: int | None = None,
 ) -> dict[str, Any]:
-    kwargs: dict[str, Any] = {"model": config.model_name}
+    kwargs: dict[str, Any] = {
+        "model": config.model_name,
+        "metadata": langsmith_model_metadata(config.model_name, config.provider),
+    }
     if max_completion_tokens is not None:
         kwargs["max_completion_tokens"] = max_completion_tokens
     if settings.llm_temperature is not None:

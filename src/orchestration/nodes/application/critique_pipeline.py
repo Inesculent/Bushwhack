@@ -285,6 +285,21 @@ def _route_after_review_check_evidence_gate(state: GraphState) -> str:
     return "end"
 
 
+def _route_after_review_check_scout(state: GraphState) -> str:
+    task_id = state.get("current_task_id")
+    if not task_id:
+        return "end"
+    metadata = state.get("metadata", {}) or {}
+    block = metadata.get("review_checks", {}) if isinstance(metadata, dict) else {}
+    by_task = block.get("by_task", {}) if isinstance(block, dict) else {}
+    slot = by_task.get(task_id, {}) if isinstance(by_task, dict) else {}
+    scout = slot.get("scout") if isinstance(slot, dict) and isinstance(slot.get("scout"), dict) else {}
+    emitted = scout.get("emitted_check_ids")
+    if scout.get("status") == "emitted" and isinstance(emitted, list) and emitted:
+        return "review_check_executor"
+    return "end"
+
+
 def build_critique_review_subgraph(
     context_provider: LazyReviewContextProvider,
     github_provider: Any | None = None,
@@ -345,7 +360,14 @@ def build_critique_review_subgraph(
             "end": END,
         },
     )
-    g.add_edge("review_check_scout", "review_check_executor")
+    g.add_conditional_edges(
+        "review_check_scout",
+        _route_after_review_check_scout,
+        {
+            "review_check_executor": "review_check_executor",
+            "end": END,
+        },
+    )
     g.add_edge("general_critiquer", END)
     inner = g.compile()
 

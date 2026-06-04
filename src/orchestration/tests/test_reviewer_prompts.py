@@ -8,6 +8,8 @@ def test_reviewer_prompt_files_exist_for_all_roles():
         "synthesizer.md",
         "critiquer.md",
         "cleanup.md",
+        "review_check_executor.md",
+        "review_evidence_triage.md",
         "critique_revision.md",
         "critique_revision_digest.md",
         "reflection/security.md",
@@ -201,6 +203,16 @@ def test_planning_prompts_gate_general_practice_as_questions() -> None:
     assert "General practice is a source of questions only" in compiler
     assert "contract, trigger, operation, and impact" in compiler
     assert "not itself proof that the narrowed value is the intended contract" in executor
+
+
+def test_high_volume_structured_prompts_include_output_budget() -> None:
+    executor = load_reviewer_prompt("review_check_executor.md")
+    triage = load_reviewer_prompt("review_evidence_triage.md")
+
+    for text in (executor, triage):
+        assert "Output budget" in text
+        assert "Return only schema JSON" in text
+        assert "Do not quote long" in text or "Do not repeat long" in text
 
 
 def test_active_planning_prompts_do_not_prescribe_issue_class_tasks() -> None:

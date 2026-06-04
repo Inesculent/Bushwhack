@@ -86,6 +86,17 @@ def test_source_only_extracts_fallthrough_projection_and_join_facts() -> None:
     assert "join_aggregation" in kinds
 
 
+def test_source_only_fact_evidence_is_schema_safe_for_large_functions() -> None:
+    body = "\n".join(f"    value_{idx} = {idx}" for idx in range(220))
+    state = _state({"pkg/mod.py": f"def execute(mode):\n{body}\n"})
+
+    facts = extract_source_facts_for_candidate(state, _candidate())
+
+    assert {fact.fact_kind for fact in facts} == {"reachable_fallthrough"}
+    assert len(facts[0].evidence) <= 1000
+    assert facts[0].evidence.endswith("[truncated]")
+
+
 def test_source_only_facts_are_not_verifier_verdicts() -> None:
     state = _state({"pkg/mod.py": "def execute(items):\n    return items[0]\n"})
 

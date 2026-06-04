@@ -8,6 +8,7 @@ from langgraph.graph import END, START, StateGraph
 
 from src.config import get_settings
 from src.domain.state import GraphState
+from src.infrastructure.llm.langsmith import configure_langsmith_environment
 from src.orchestration.context.mandate_loop_context import explorer_mode
 from src.orchestration.context.review_context import LazyReviewContextProvider
 from src.orchestration.nodes.mandate_explorer_node import make_mandate_explorer_node
@@ -54,6 +55,7 @@ def _explorer_route(state: GraphState) -> str:
 
 def build_mandate_explorer_graph(context_provider: LazyReviewContextProvider):
     """Compile explorer: repeated agent steps until finish or budget."""
+    configure_langsmith_environment(get_settings())
     builder = StateGraph(GraphState)
     step_node = make_mandate_explorer_node(context_provider)
     builder.add_node("mandate_explorer_step", step_node)

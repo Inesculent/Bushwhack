@@ -2511,6 +2511,28 @@ def test_review_check_executor_compact_retries_missing_result_length_limit(monke
     assert "executor_length_limit_missing_retry:1" in meta["executor_warnings"]
 
 
+def test_review_check_executor_compact_retry_uses_smaller_context() -> None:
+    from src.orchestration.nodes.application.review_checks import _render_executor_prompt
+
+    task = _task()
+    check = _check()
+    slot = {
+        "direct_context": "x" * 12000,
+        "mental_model_excerpt": "m" * 6000,
+        "review_kb_excerpt": "k" * 6000,
+        "task_evidence": {"file_contents": {"src/app.py": "def handle():\n    return None\n"}},
+    }
+    state = _state()
+
+    full = _render_executor_prompt(state, task, [check], slot)
+    compact = _render_executor_prompt(state, task, [check], slot, compact_retry=True)
+
+    assert "This retry contains exactly one input check" in compact
+    assert len(compact) < len(full)
+    assert "x" * 5000 in full
+    assert "x" * 5000 not in compact
+
+
 def test_review_check_executor_canonicalizes_duplicate_results(monkeypatch) -> None:
     check = _check()
     candidate = CandidateFinding(
@@ -3424,6 +3446,40 @@ def test_check_mode_routing(monkeypatch) -> None:
         lambda: Settings(reviewer_check_mode="enforced"),
     )
     assert critique_pipeline._route_after_review_check_validator({}) == "review_check_context_planner"
+
+
+def test_review_check_scout_routes_to_executor_only_when_new_checks_emitted() -> None:
+    state = _state()
+    task = _task()
+    state["metadata"]["review_checks"] = {
+        "by_task": {
+            task.id: {
+                "scout": {
+                    "status": "emitted",
+                    "emitted_check_ids": ["review-logic:scout:1"],
+                }
+            }
+        }
+    }
+
+    assert critique_pipeline._route_after_review_check_scout(state) == "review_check_executor"
+
+
+def test_review_check_scout_routes_to_end_when_no_new_checks_emitted() -> None:
+    state = _state()
+    task = _task()
+    state["metadata"]["review_checks"] = {
+        "by_task": {
+            task.id: {
+                "scout": {
+                    "status": "no_concrete_obligations",
+                    "emitted_check_ids": [],
+                }
+            }
+        }
+    }
+
+    assert critique_pipeline._route_after_review_check_scout(state) == "end"
 
 
 def test_review_check_artifacts_include_raw_and_manifest_metrics(tmp_path) -> None:

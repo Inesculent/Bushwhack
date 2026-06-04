@@ -32,4 +32,10 @@ Every candidate must also justify the claim from a changed contract:
 
 If you cannot fill those fields from the check evidence, return `unsupported` and list the missing fact instead of creating a candidate.
 
+Output budget:
+- Return only schema JSON; no prose outside fields.
+- Keep `reportable_reason`, `failure_mode`, `evidence_summary`, `recommendation`, `evidence_for_contract`, `counterexample`, and `rejection_check` concise.
+- For `unsupported`, include only the specific missing facts needed by the check.
+- Do not repeat long code snippets or full check text in output fields.
+
 Return structured output matching the ReviewCheckExecutorOutput schema.

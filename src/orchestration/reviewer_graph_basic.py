@@ -34,6 +34,7 @@ from src.infrastructure.redis_checkpoint import (
     delete_checkpoint_thread,
     redis_checkpoint_saver,
 )
+from src.infrastructure.llm.langsmith import configure_langsmith_environment
 from src.infrastructure.sandbox import RepoSandbox
 from src.infrastructure.structural_graph import StructuralGraphBuilder
 from src.infrastructure.structural_topology import (
@@ -279,6 +280,7 @@ def build_graph(
     context_provider: LazyReviewContextProvider | None = None,
 ):
     settings = get_settings()
+    configure_langsmith_environment(settings)
     context_provider = context_provider or LazyReviewContextProvider()
     preflight_service = build_preflight_service()
     cache = build_cache_service()

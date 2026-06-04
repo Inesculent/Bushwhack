@@ -35,10 +35,6 @@ Declared schemas and happy-path examples do **not** prove that changed behavior 
 - Work amplification: did expensive work move into a hot path, loop, retry, render, or large-input path?
 - Diagnostic honesty: do user-facing or maintainer-facing messages accurately describe behavior?
 
-Branch and return bugs remain valid when evidenced, but they are one correctness family among several. When auditing `if`/`elif` chains, distinguish **per-branch returns** (each branch must be checked in evidence) from **missing fall-through `else`**. Do not claim a branch lacks a `return` that is already shown in file evidence.
-
-**Important:** Changed behavior contract rules do **not** permit findings that only add None/null guards on **required, non-optional** upstream parameters. The upstream declared-input rule still applies to parameter presence and type at the entry boundary.
-
 ## Output quality
 
 Every candidate/finding must justify a claim from a changed contract:

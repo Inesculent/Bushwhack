@@ -16,6 +16,7 @@ from langgraph.graph import END, START, StateGraph
 from src.config import get_settings
 from src.domain.state import GraphState
 from src.domain.verifier_schemas import VerifierReport
+from src.infrastructure.llm.langsmith import configure_langsmith_environment
 from src.orchestration.nodes.verifier.result_judge import (
     build_retry_feedback,
     classify_attempt_failure,
@@ -348,6 +349,7 @@ def verifier_routing(state: GraphState) -> str:
 
 def build_verifier_graph():
     """Compile the multi-node verifier subgraph."""
+    configure_langsmith_environment(get_settings())
     builder = StateGraph(GraphState)
 
     builder.add_node("verifier_preflight", verifier_preflight_node)

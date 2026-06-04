@@ -271,6 +271,39 @@ class Settings(BaseSettings):
 		validation_alias=AliasChoices("REVIEW_OPENAI_API_KEY", "OPENAI_API_KEY"),
 		description="OpenAI API key for hosted OpenAI model access.",
 	)
+	langsmith_tracing: bool = Field(
+		default=False,
+		validation_alias=AliasChoices("REVIEW_LANGSMITH_TRACING", "LANGSMITH_TRACING"),
+		description="Enable LangSmith tracing for LangChain and LangGraph runs.",
+	)
+	langsmith_api_key: Optional[str] = Field(
+		default=None,
+		validation_alias=AliasChoices("REVIEW_LANGSMITH_API_KEY", "LANGSMITH_API_KEY"),
+		description="LangSmith API key used when langsmith_tracing is enabled.",
+	)
+	langsmith_project: str = Field(
+		default="bushwhack",
+		validation_alias=AliasChoices("REVIEW_LANGSMITH_PROJECT", "LANGSMITH_PROJECT"),
+		description="LangSmith project name for traces.",
+	)
+	langsmith_endpoint: Optional[str] = Field(
+		default=None,
+		validation_alias=AliasChoices("REVIEW_LANGSMITH_ENDPOINT", "LANGSMITH_ENDPOINT"),
+		description="Optional LangSmith API endpoint for regional or self-hosted installations.",
+	)
+	langsmith_workspace_id: Optional[str] = Field(
+		default=None,
+		validation_alias=AliasChoices("REVIEW_LANGSMITH_WORKSPACE_ID", "LANGSMITH_WORKSPACE_ID"),
+		description="Optional LangSmith workspace ID when an API key has access to multiple workspaces.",
+	)
+	langsmith_callbacks_background: Optional[bool] = Field(
+		default=None,
+		validation_alias=AliasChoices(
+			"REVIEW_LANGSMITH_CALLBACKS_BACKGROUND",
+			"LANGCHAIN_CALLBACKS_BACKGROUND",
+		),
+		description="Optional LangChain callback background mode for trace flushing.",
+	)
 	anthropic_api_key: Optional[str] = Field(
 		default=None,
 		validation_alias=AliasChoices("REVIEW_ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY"),
