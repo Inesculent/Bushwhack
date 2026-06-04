@@ -3,6 +3,7 @@
 from src.domain.schemas import (
     BehavioralEvidenceRef,
     BehavioralSpec,
+    ContractQuestion,
     CandidateFinding,
     ReviewCheck,
     ReviewCheckResult,
@@ -17,6 +18,7 @@ def test_behavioral_spec_defaults() -> None:
     assert s.evidence_refs == []
     assert s.surfaces == []
     assert s.surface_invariants == []
+    assert s.contract_questions == []
 
 
 def test_behavioral_evidence_ref() -> None:
@@ -46,6 +48,7 @@ def test_old_artifacts_load_without_surface_fields() -> None:
 
     assert spec.surfaces == []
     assert spec.surface_invariants == []
+    assert spec.contract_questions == []
     assert task.surface_ids == []
     assert check.surface_ids == []
     assert check.owned_contract_scope == ""
@@ -53,6 +56,29 @@ def test_old_artifacts_load_without_surface_fields() -> None:
     assert check.diff_signal_family == ""
     assert check.diff_signal == ""
     assert check.audit_only is False
+
+
+def test_contract_question_round_trips() -> None:
+    question = ContractQuestion(
+        question_id="q1",
+        owner="Handle.execute",
+        surface_id="surface:handle-execute",
+        dimension="return_output_totality",
+        expected_behavior="execute returns the declared output for every owned path.",
+        contract_evidence="RETURN_TYPES declares one output.",
+        trigger_variant="unexpected mode value",
+        operation="dispatch",
+        breach_question="Can a reachable dispatch branch exit without the declared output?",
+        direct_suppressor="Concrete caller/runtime evidence proves the variant cannot occur.",
+        required_evidence=["declared output shape", "changed dispatch implementation"],
+        source_confidence=0.8,
+    )
+    spec = BehavioralSpec(intent_summary="x", contract_questions=[question])
+
+    loaded = BehavioralSpec.model_validate(spec.model_dump())
+
+    assert loaded.contract_questions[0].owner == "Handle.execute"
+    assert loaded.contract_questions[0].dimension == "return_output_totality"
 
 
 def test_old_artifacts_load_without_contract_proof_fields() -> None:
@@ -88,6 +114,8 @@ def test_old_artifacts_load_without_contract_proof_fields() -> None:
     assert result.counterexample == ""
     assert result.rejection_check == ""
     assert result.claim_digest == ""
+    assert result.answer_scope == ""
+    assert result.suppression_basis == ""
     assert candidate.evidence_for_contract == ""
     assert candidate.expected_behavior == ""
     assert candidate.counterexample == ""

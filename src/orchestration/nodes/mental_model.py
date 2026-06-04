@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import hashlib
 import subprocess
 from pathlib import Path
 from typing import Any, Dict, List
@@ -10,7 +11,7 @@ from typing import Any, Dict, List
 from pydantic import BaseModel, Field
 
 from src.config import Settings, get_settings
-from src.domain.schemas import BehavioralEvidenceRef, BehavioralSpec
+from src.domain.schemas import BehavioralEvidenceRef, BehavioralSpec, ContractQuestion, SurfaceInvariant
 from src.domain.state import GraphState
 from src.infrastructure.behavioral_spec_store import BehavioralSpecStore
 from src.infrastructure.llm.factory import Models
@@ -27,6 +28,7 @@ from src.orchestration.context.surface_ledger import (
     changed_file_integrity_diagnostics,
     build_migration_invariants_from_diff,
     build_surface_invariants_from_ledger,
+    surface_by_id,
     surface_inventory_names,
     surface_ledger_from_state,
 )
@@ -136,6 +138,95 @@ class MandateSynthesizerOutput(BaseModel):
         description="Remind reviewers to stay structural and unbiased.",
     )
     uncertainties: str = Field(default="", description="Known unknowns.")
+    contract_questions: List[ContractQuestion] = Field(default_factory=list)
+
+
+def _contract_question_id(question: ContractQuestion) -> str:
+    payload = "|".join(
+        [
+            question.owner.strip().lower(),
+            question.surface_id.strip().lower(),
+            question.dimension,
+            question.expected_behavior.strip().lower(),
+            question.trigger_variant.strip().lower(),
+            question.operation.strip().lower(),
+        ]
+    )
+    digest = hashlib.sha1(payload.encode("utf-8")).hexdigest()[:12]
+    return f"cq:{digest}"
+
+
+def _normalize_contract_questions(
+    questions: List[ContractQuestion],
+    *,
+    surfaces: List[Any],
+) -> List[ContractQuestion]:
+    if not questions:
+        return []
+    by_id = surface_by_id(surfaces)
+    by_name = {surface.name.strip().lower(): surface for surface in surfaces if surface.name.strip()}
+    normalized: List[ContractQuestion] = []
+    seen: set[tuple[str, str, str, str, str]] = set()
+    per_owner: dict[str, int] = {}
+    for raw in questions:
+        surface_id = raw.surface_id.strip()
+        owner = raw.owner.strip()
+        if surface_id not in by_id and owner:
+            surface = by_name.get(owner.lower())
+            if surface is not None:
+                surface_id = surface.surface_id
+        if not owner and surface_id in by_id:
+            owner = by_id[surface_id].name
+        if not owner or not surface_id or surface_id not in by_id:
+            continue
+        if not raw.expected_behavior.strip() or not raw.breach_question.strip():
+            continue
+        key = (
+            owner.lower(),
+            raw.dimension,
+            raw.expected_behavior.strip().lower(),
+            raw.trigger_variant.strip().lower(),
+            raw.operation.strip().lower(),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        per_owner[owner] = per_owner.get(owner, 0) + 1
+        if per_owner[owner] > 4:
+            continue
+        required = [item for item in raw.required_evidence if str(item).strip()]
+        if not required:
+            required = [
+                item
+                for item in (raw.contract_evidence.strip(), raw.operation.strip(), raw.direct_suppressor.strip())
+                if item
+            ]
+        question = raw.model_copy(
+            update={
+                "question_id": raw.question_id.strip() or _contract_question_id(raw),
+                "owner": owner[:240],
+                "surface_id": surface_id,
+                "required_evidence": required[:5],
+            }
+        )
+        normalized.append(question)
+        if len(normalized) >= 40:
+            break
+    return normalized
+
+
+def _filter_invariants_with_contract_questions(
+    invariants: List[SurfaceInvariant],
+    questions: List[ContractQuestion],
+) -> List[SurfaceInvariant]:
+    covered_surface_ids = {question.surface_id for question in questions if question.surface_id}
+    if not covered_surface_ids:
+        return invariants
+    return [
+        invariant
+        for invariant in invariants
+        if invariant.surface_id not in covered_surface_ids
+    ]
 
 
 def make_intent_extractor_node(settings: Settings | None = None, *, use_llm: bool = True):
@@ -224,6 +315,7 @@ def make_mandate_synthesizer_node(settings: Settings | None = None, *, use_llm: 
         llm_trace: List[Dict[str, Any]] = []
         expectations = ""
         risks = ""
+        contract_questions: List[ContractQuestion] = []
         guidance = (
             f"{DECLARED_INPUT_CONTRACT_GUIDANCE} "
             "Treat the behavioral mandate as directional context only. "
@@ -259,6 +351,7 @@ def make_mandate_synthesizer_node(settings: Settings | None = None, *, use_llm: 
                 if out.reviewer_guidance.strip():
                     guidance = f"{out.reviewer_guidance.strip()} {DECLARED_INPUT_CONTRACT_GUIDANCE}"
                 uncertainties = out.uncertainties.strip()
+                contract_questions = list(out.contract_questions or [])
             except Exception as exc:  # noqa: BLE001
                 llm_trace.extend(trace_from_exception(exc))
                 warnings.append(f"{node_name}_llm_fallback:{exc.__class__.__name__}")
@@ -299,6 +392,14 @@ def make_mandate_synthesizer_node(settings: Settings | None = None, *, use_llm: 
             ),
             risk_hypotheses=risks,
         )
+        contract_questions = _normalize_contract_questions(
+            contract_questions,
+            surfaces=surface_ledger,
+        )
+        surface_invariants = _filter_invariants_with_contract_questions(
+            [*base_invariants, *migration_invariants],
+            contract_questions,
+        )
 
         spec = BehavioralSpec(
             intent_summary=str(intent.get("intent_summary", "")),
@@ -313,7 +414,8 @@ def make_mandate_synthesizer_node(settings: Settings | None = None, *, use_llm: 
             reviewer_guidance=guidance,
             evidence_refs=evidence_refs,
             surfaces=surface_ledger,
-            surface_invariants=[*base_invariants, *migration_invariants],
+            surface_invariants=surface_invariants,
+            contract_questions=contract_questions,
             confidence=0.55 if warnings else 0.7,
             uncertainties=uncertainties or "LLM synthesis may be incomplete; verify against code.",
         )

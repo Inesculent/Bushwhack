@@ -134,6 +134,13 @@ def synthesizer_node(state: GraphState) -> Dict[str, Any]:
     }
     final_ids = {finding.id for finding in final}
     combined_duplicate_map = _canonicalize_duplicate_map(raw_combined_duplicate_map, final_ids)
+    dropped_duplicate_ids = sorted(
+        {
+            dropped
+            for dropped_ids in combined_duplicate_map.values()
+            for dropped in dropped_ids
+        }
+    )
     equivalent_keeper = {
         str(dropped): str(keeper)
         for keeper, ids in combined_duplicate_map.items()
@@ -150,8 +157,8 @@ def synthesizer_node(state: GraphState) -> Dict[str, Any]:
         "reflection_report_count": len(reflection_reports),
         "raw_finding_count": len(findings),
         "final_finding_count": len(final),
-        "dropped_duplicate_ids": [],
-        "semantic_dedupe_duplicates": {},
+        "dropped_duplicate_ids": dropped_duplicate_ids,
+        "semantic_dedupe_duplicates": combined_duplicate_map,
         "dropped_resolution_only_ids": [],
         "lost_promoted_candidate_ids": lost_promoted_ids,
         "recall_audit": recall_audit_for_final_findings(
@@ -174,7 +181,7 @@ def synthesizer_node(state: GraphState) -> Dict[str, Any]:
             len(reflection_reports),
             len(findings),
             len(final),
-            [],
+            dropped_duplicate_ids,
         )
         for finding in final:
             trace_logger.info(

@@ -14,13 +14,17 @@ A review check is a narrow, temporary contract that can be executed against repo
 
 Compile checks from changed contracts, not memorized issue classes. For each check, make the contract evidence testable: old behavior, name, type, call site, schema, test, doc, or surrounding code must be part of `required_evidence` when the contract is not obvious from the changed code itself.
 
+When contract questions are provided by the mental model, prefer them over broad mandate prose. Treat each contract question as one owned review obligation. Preserve its expected behavior, trigger/variant, operation, breach question, and direct suppressor instead of broadening it into "review the surface."
+
 Use the selected contract lens cards only when their relevance signals are present in the assigned task, changed code, Review KB, or mental model. A lens card is a question source, not a checklist.
 
-Each check should own one contract claim: the surface, branch/mode/variant, contract dimension, counterexample family, and impact family it is responsible for testing. Populate `owned_contract_scope` with a compact marker for that ownership. Nearby checks may share a file or symbol, but they should not own the same contract claim unless one is intentionally narrower and materially different.
+Each check should own one contract claim: the expected behavior, trigger/input path, breach question, and impact it is responsible for testing. Populate `owned_contract_scope` with a compact marker for that ownership. Nearby checks may share a file or symbol, but they should not own the same contract claim unless one is intentionally narrower and materially different.
 
 Populate `expected_behavior` for every check. It must state what the changed code is intended or contracted to do for this check. Do not use `expected_behavior` for the fix recommendation, and do not merely repeat a generic issue class.
 
 If a potential issue belongs to a different owned contract scope, create a separate check only when the assigned task owns that scope. Otherwise leave it for the owning task instead of restating the same issue from this angle.
+
+If one check would ask multiple contract questions, split it. Examples of distinct generic obligations include variant handling vs output totality, outer container existence vs nested data preservation, and error catching vs whether produced values remain serializable.
 
 The changed code anchor must be on a changed file and should name a changed function, class, line range, or behavior visible in the supplied diff/context.
 
@@ -30,13 +34,7 @@ Use three inputs together: PR intent, repository-specific contracts from the men
 
 Prefer a small set of high-signal checks over broad coverage, but "small" does not mean skipping changed entry points. Use the ranked obligations as relevance hints, not as proof or as a mandatory ordering. Choose checks based on the changed code plus mental-model/KB contracts.
 
-When mental-model or KB material names a contract, convention, expected return shape, required/optional input rule, public behavior, or uncertainty, convert that material into required evidence, suppress criteria, or report criteria for the relevant check. Declared required inputs should suppress generic nullability checks unless the material says the input is optional/nullable or the changed code introduces absence handling.
-
-When mental-model material implies cardinality/completeness for collections, mappings, grouped records, templates, serialization, batches, or mode-driven outputs, fold that contract into the most relevant source-local data-shape/API/aggregation check for the same surface. Do not add a separate broad completeness check just to repeat the context.
-
-When the task or context indicates a migration, merge, removal, replacement, rename, or changed call site, include migration-invariant checks: compare old-path behavior against the new implementation, trace caller reliance on preconditions and arguments, and require evidence for state/cache/resource lifecycle ordering when relevant.
-
-Behavior-first: correctness, API, state, lifecycle, security, and performance checks take priority. Concrete maintainability/readability checks are allowed only when anchored to changed comments, docs, naming, dead code, or API ergonomics and must not crowd out behavioral checks.
+When mental-model or KB material names a contract, convention, expected return shape, required/optional input rule, public behavior, or uncertainty, convert that material into required evidence, suppress criteria, or report criteria for the relevant check. Do not ask the executor to rediscover that broad context.
 
 Reject generic checklist thinking: do not emit checks like "look for security bugs", "review edge cases", or "check error handling".
 

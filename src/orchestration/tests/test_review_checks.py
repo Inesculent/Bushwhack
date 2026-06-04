@@ -8,6 +8,7 @@ from src.config import Settings
 from src.domain.schemas import (
     BehavioralSpec,
     CandidateFinding,
+    ContractQuestion,
     FocusedContextRequest,
     ReviewCheck,
     ReviewCheckCompilerOutput,
@@ -316,6 +317,51 @@ def test_neighboring_suppression_stays_visible_for_adjudication() -> None:
     assert not any("executor_weak_no_finding_downgraded" in item for item in warnings)
 
 
+def test_executor_exact_question_mismatch_becomes_unsupported() -> None:
+    check = _check(
+        lens="data_shape_consistency",
+        changed_code_anchor="serialize_record",
+        owned_contract_scope="serialize_record aggregation preserves optional record fields",
+        issue_family="aggregation_cardinality",
+        affected_invariant="serialized aggregation preserves optional record fields",
+        report_criteria=[
+            "A reachable aggregation path drops optional record fields or joins non-string values."
+        ],
+        suppress_criteria=[
+            "Aggregation normalizes every optional record field before joining."
+        ],
+    )
+    result = ReviewCheckResult(
+        check_id=check.check_id,
+        patch_task_id=check.patch_task_id,
+        decision="no_finding",
+        evidence_refs=["src/app.py:3"],
+        reportable_reason="serialize_record handles an empty collection.",
+        suppressing_evidence=[
+            "serialize_record proves only that joining an empty collection returns an empty output."
+        ],
+        answer_scope="neighboring invariant",
+        suppression_basis="This answers empty collection behavior, not optional field serialization.",
+    )
+    state = _state()
+
+    normalized, warnings = normalize_executor_results(
+        state=state,
+        task=_task(),
+        slot=state["metadata"]["critique_pipeline"]["by_task"]["review-logic"],
+        checks=[check],
+        results=[result],
+        git_diff="",
+        check_budget_remaining=lambda _state, _check: True,
+        evidence_requirements_for_check=lambda item: list(item.required_evidence),
+        compiled_check_is_source_local=lambda _check: False,
+    )
+
+    assert normalized[0].decision == "unsupported"
+    assert "exact_question_mismatch:neighboring_answer_scope" in normalized[0].warnings
+    assert any("executor_exact_question_mismatch" in item for item in warnings)
+
+
 def test_review_check_validator_rejects_vague_checks() -> None:
     vague = _check(behavioral_question="Look for security bugs")
     assert "vague_behavioral_question" in validate_review_check(vague)
@@ -349,13 +395,11 @@ def test_review_check_executor_prompt_frames_result_completeness_as_accounting(m
     make_review_check_executor_node()(_state(review_checks=[_check()]))  # type: ignore[arg-type]
 
     prompt = fake.prompts[0]
-    assert "bookkeeping requirement" in prompt
-    assert "not a requirement to find an issue" in prompt
-    assert "Declared schemas, enums, or UI choices" in prompt
-    assert "terminal fallback" in prompt
-    assert "structured values" in prompt
-    assert "Treat each check dimension independently" in prompt
-    assert "directly addresses that check's report criteria" in prompt
+    assert "compact contract packet" in prompt
+    assert "It is acceptable to omit an undecidable check" in prompt
+    assert "Check Contract Packets" in prompt
+    assert "Validated Checks JSON" not in prompt
+    assert "directly addresses the check's report criteria" in prompt
 
 
 def test_review_check_compiler_records_checks_and_trace(monkeypatch) -> None:
@@ -622,6 +666,78 @@ def test_surface_invariant_checks_are_compiled_before_fallback(tmp_path) -> None
     assert compiled[0]["surface_ids"] == ["surface:handle"]
     assert compiled[0]["line_start"] == 7
     assert compiled[0]["expected_behavior"] == "handle returns the declared result."
+
+
+def test_contract_questions_compile_before_surface_invariants(tmp_path) -> None:
+    settings = Settings(snapshot_base_path=str(tmp_path))
+    surface = ReviewSurface(
+        surface_id="surface:handle-execute",
+        name="Handle.execute",
+        kind="method",
+        file_path="src/app.py",
+        line_start=7,
+        line_end=12,
+        confidence=0.95,
+    )
+    spec = BehavioralSpec(
+        intent_summary="change handle",
+        surfaces=[surface],
+        contract_questions=[
+            ContractQuestion(
+                question_id="q1",
+                owner="Handle.execute",
+                surface_id=surface.surface_id,
+                dimension="return_output_totality",
+                expected_behavior="Handle.execute returns the declared output for every owned path.",
+                contract_evidence="RETURN_TYPES declares one output.",
+                trigger_variant="unrecognized dispatch variant",
+                operation="dispatch",
+                breach_question="Can a reachable dispatch variant exit without the declared output?",
+                direct_suppressor="Concrete runtime or caller evidence proves the variant cannot occur.",
+                required_evidence=["declared output shape", "changed dispatch implementation"],
+                source_confidence=0.8,
+            )
+        ],
+        surface_invariants=[
+            SurfaceInvariant(
+                surface_id=surface.surface_id,
+                dimension="changed-surface behavior",
+                expected_behavior="Handle.execute preserves broad behavior.",
+                required_evidence=["changed implementation"],
+            )
+        ],
+    )
+    ref, _ = BehavioralSpecStore(settings).write("r1", spec)
+    task = _task().model_copy(
+        update={
+            "surface_ids": [surface.surface_id],
+            "target_files": ["src/app.py"],
+        }
+    )
+    state = _state(
+        behavioral_spec_ref=ref,
+        task_registry={task.id: task},
+        metadata={
+            **_state()["metadata"],
+            "mental_model": {"surface_ledger": [surface.model_dump(mode="json")]},
+            "critique_pipeline": {
+                "by_task": {
+                    "review-logic": {
+                        "direct_context": "class Handle:\n    def execute(self, mode):\n        return (True,)\n",
+                        "coverage_obligations": [],
+                    }
+                }
+            },
+        },
+    )
+
+    out = make_review_check_compiler_node(use_llm=False, settings=settings)(state)  # type: ignore[arg-type]
+
+    compiled = out["metadata"]["review_checks"]["by_task"]["review-logic"]["compiled_checks"]
+    assert compiled[0]["check_id"] == "review-logic:contract-question:1"
+    assert compiled[0]["changed_code_anchor"] == "Handle.execute"
+    assert compiled[0]["expected_behavior"] == "Handle.execute returns the declared output for every owned path."
+    assert not any(check["check_id"].startswith("review-logic:surface:") for check in compiled)
 
 
 def test_review_check_compiler_carries_completeness_material_without_extra_check(monkeypatch) -> None:
@@ -1010,6 +1126,34 @@ def test_migration_invariants_capture_vllm_style_caller_reliance() -> None:
     assert "old-path" in evidence
     assert "required arguments/state inputs" in evidence
     assert "caller reliance" in evidence
+
+
+def test_migration_invariants_not_emitted_for_pure_addition() -> None:
+    surface = ReviewSurface(
+        surface_id="surface:new",
+        name="NewNode.execute",
+        kind="method",
+        file_path="src/nodes.py",
+        line_start=10,
+        line_end=20,
+        confidence=0.95,
+    )
+    diff = (
+        "diff --git a/src/nodes.py b/src/nodes.py\n"
+        "+++ b/src/nodes.py\n"
+        "@@ -0,0 +1,5 @@\n"
+        "+class NewNode:\n"
+        "+    def execute(self):\n"
+        "+        return (True,)\n"
+    )
+
+    invariants = build_migration_invariants_from_diff(
+        [surface],
+        diff,
+        intent_summary="Add a new node.",
+    )
+
+    assert invariants == []
 
 
 def test_review_check_compiler_adds_migration_floor_check() -> None:
@@ -2418,7 +2562,7 @@ def test_review_check_executor_batches_checks_and_preserves_results(monkeypatch)
     assert meta["executor_batch_count"] == 2
 
 
-def test_review_check_executor_retries_missing_batch_results(monkeypatch) -> None:
+def test_review_check_executor_records_omitted_batch_results(monkeypatch) -> None:
     checks = [_check(check_id=f"review-logic:check:{idx}") for idx in range(1, 4)]
     outputs = [
         ReviewCheckExecutorOutput(
@@ -2431,18 +2575,7 @@ def test_review_check_executor_retries_missing_batch_results(monkeypatch) -> Non
                     suppressing_evidence=["changed path keeps the contract"],
                 )
             ]
-        ),
-        ReviewCheckExecutorOutput(
-            results=[
-                ReviewCheckResult(
-                    check_id=check.check_id,
-                    patch_task_id="review-logic",
-                    decision="unsupported",
-                    missing_evidence=["changed handle implementation"],
-                )
-                for check in checks[1:]
-            ]
-        ),
+        )
     ]
 
     def fake_worker(*_args: object, **_kwargs: object) -> _FakeLLM:
@@ -2458,18 +2591,14 @@ def test_review_check_executor_retries_missing_batch_results(monkeypatch) -> Non
     assert all(result.candidate is None for result in out["review_check_results"])
     meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
     assert meta["executor_missing_result_check_ids"] == [checks[1].check_id, checks[2].check_id]
-    assert meta["executor_retry_count"] == 2
-    assert meta["executor_retry_success_count"] == 2
-    assert not any(
-        "executor_missing_result_after_retry" in result.warnings
-        for result in out["review_check_results"]
-    )
+    assert meta["executor_retry_count"] == 0
+    assert meta["executor_retry_success_count"] == 0
+    omitted = {result.check_id: result for result in out["review_check_results"]}
+    assert "executor_omitted_result_recorded_unsupported" in omitted[checks[1].check_id].warnings
+    assert omitted[checks[1].check_id].missing_evidence
 
 
-def test_review_check_executor_compact_retries_missing_result_length_limit(monkeypatch) -> None:
-    class LengthFinishReasonError(Exception):
-        pass
-
+def test_review_check_executor_records_missing_result_without_retry(monkeypatch) -> None:
     checks = [_check(check_id=f"review-logic:check:{idx}") for idx in range(1, 3)]
     prompts: list[str] = []
     actions: list[Any] = [
@@ -2483,17 +2612,6 @@ def test_review_check_executor_compact_retries_missing_result_length_limit(monke
                 )
             ]
         ),
-        LengthFinishReasonError("Could not parse response content as the length limit was reached"),
-        ReviewCheckExecutorOutput(
-            results=[
-                ReviewCheckResult(
-                    check_id=checks[1].check_id,
-                    patch_task_id="review-logic",
-                    decision="unsupported",
-                    missing_evidence=["declared return contract"],
-                )
-            ]
-        ),
     ]
     monkeypatch.setattr(
         "src.orchestration.nodes.application.review_checks.Models.worker",
@@ -2503,14 +2621,11 @@ def test_review_check_executor_compact_retries_missing_result_length_limit(monke
     out = make_review_check_executor_node()(_state(review_checks=checks))  # type: ignore[arg-type]
 
     assert [result.check_id for result in out["review_check_results"]] == [check.check_id for check in checks]
-    assert len(prompts) == 3
-    assert "This retry contains exactly one input check" in prompts[2]
+    assert len(prompts) == 1
     meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
-    assert meta["executor_retry_count"] == 1
-    assert meta["executor_retry_success_count"] == 1
-    assert meta["executor_length_limit_retry_count"] == 1
-    assert meta["executor_length_limit_retry_success_count"] == 1
-    assert "executor_length_limit_missing_retry:1" in meta["executor_warnings"]
+    assert meta["executor_missing_result_check_ids"] == [checks[1].check_id]
+    assert meta["executor_retry_count"] == 0
+    assert meta["executor_length_limit_retry_count"] == 0
 
 
 def test_review_check_executor_compact_retry_uses_smaller_context() -> None:
@@ -2887,7 +3002,7 @@ def test_review_check_executor_non_length_failure_uses_existing_batch_fallback(m
     assert any(warning.startswith("review_check_executor_batch_failed:1") for warning in meta["executor_warnings"])
 
 
-def test_review_check_executor_marks_missing_after_retry_without_candidate(monkeypatch) -> None:
+def test_review_check_executor_marks_omitted_result_without_retry(monkeypatch) -> None:
     checks = [_check(check_id=f"review-logic:check:{idx}") for idx in range(1, 3)]
     outputs = [
         ReviewCheckExecutorOutput(
@@ -2900,7 +3015,6 @@ def test_review_check_executor_marks_missing_after_retry_without_candidate(monke
                 )
             ]
         ),
-        ReviewCheckExecutorOutput(results=[]),
     ]
 
     def fake_worker(*_args: object, **_kwargs: object) -> _FakeLLM:
@@ -2913,9 +3027,9 @@ def test_review_check_executor_marks_missing_after_retry_without_candidate(monke
     results = {result.check_id: result for result in out["review_check_results"]}
     assert results[checks[1].check_id].decision == "unsupported"
     assert results[checks[1].check_id].candidate is None
-    assert "executor_missing_result_after_retry" in results[checks[1].check_id].warnings
+    assert "executor_omitted_result_recorded_unsupported" in results[checks[1].check_id].warnings
     meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
-    assert meta["executor_retry_count"] == 1
+    assert meta["executor_retry_count"] == 0
     assert meta["executor_retry_success_count"] == 0
 
 

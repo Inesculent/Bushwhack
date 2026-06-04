@@ -249,6 +249,7 @@ def build_surface_ledger_from_diff(
     records: dict[tuple[str, str, str], ReviewSurface] = {}
     current_file = ""
     new_line: int | None = None
+    current_added_class: str | None = None
     first_hunk_line_by_file: dict[str, int] = {}
     changed_lines_by_file: dict[str, set[int]] = {}
 
@@ -256,6 +257,7 @@ def build_surface_ledger_from_diff(
         if raw.startswith("diff --git "):
             parts = raw.split()
             current_file = ""
+            current_added_class = None
             if len(parts) >= 4 and parts[3].startswith("b/"):
                 current_file = normalize_repo_path(parts[3].removeprefix("b/"))
             new_line = None
@@ -275,6 +277,13 @@ def build_surface_ledger_from_diff(
             if class_match or def_match:
                 kind = "class" if class_match else "function"
                 name = (class_match or def_match).group(1)  # type: ignore[union-attr]
+                if class_match:
+                    current_added_class = name
+                elif raw.startswith("+def ") or raw.startswith("+async def "):
+                    current_added_class = None
+                elif current_added_class:
+                    kind = "method"
+                    name = f"{current_added_class}.{name}"
                 key = (current_file, kind, name)
                 records.setdefault(
                     key,
@@ -297,6 +306,13 @@ def build_surface_ledger_from_diff(
             if class_match or def_match:
                 kind = "class" if class_match else "function"
                 name = (class_match or def_match).group(1)  # type: ignore[union-attr]
+                if class_match:
+                    current_added_class = name
+                elif raw.startswith("+def ") or raw.startswith("+async def "):
+                    current_added_class = None
+                elif current_added_class:
+                    kind = "method"
+                    name = f"{current_added_class}.{name}"
                 key = (current_file, kind, name)
                 records.setdefault(
                     key,

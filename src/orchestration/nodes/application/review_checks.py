@@ -272,18 +272,38 @@ def make_review_check_compiler_node(
         llm_tokens = 0
         llm_trace: List[Dict[str, Any]] = []
         summary = ""
-        checks: List[ReviewCheck] = compiler_support.checks_from_surface_invariants(
+        checks: List[ReviewCheck] = compiler_support.checks_from_contract_questions(
             state,
             task,
             settings=resolved,
         )
+        covered_by_questions = {
+            sid
+            for check in checks
+            for sid in check.surface_ids
+        }
         check_origins = compiler_support.origins_for_checks(
             checks,
+            "contract_question",
+            "derived_from_behavioral_contract_question",
+        )
+        if checks:
+            warnings.append(f"contract_question_checks_added:{len(checks)}")
+        invariant_checks: List[ReviewCheck] = compiler_support.checks_from_surface_invariants(
+            state,
+            task,
+            settings=resolved,
+            exclude_surface_ids=covered_by_questions,
+        )
+        invariant_origins = compiler_support.origins_for_checks(
+            invariant_checks,
             "surface_invariant",
             "derived_from_behavioral_surface_invariant",
         )
-        if checks:
-            warnings.append(f"surface_invariant_checks_added:{len(checks)}")
+        checks = [*checks, *invariant_checks]
+        check_origins = {**check_origins, **invariant_origins}
+        if invariant_checks:
+            warnings.append(f"surface_invariant_checks_added:{len(invariant_checks)}")
 
         if use_llm:
             selected_model = model_key or resolved.reviewer_worker_model_key
@@ -952,6 +972,28 @@ def _seen_claim_digests_for_task(state: GraphState, task_id: str) -> List[Dict[s
     return [{"claim_digest": digest, "candidate_id": candidate_id} for digest, candidate_id in seen.items()][:24]
 
 
+def _contract_packet_for_check(check: ReviewCheck) -> Dict[str, Any]:
+    """Compact, non-judgmental check packet for the executor LLM."""
+    return {
+        "check_id": check.check_id,
+        "file_path": check.file_path,
+        "line_start": check.line_start,
+        "line_end": check.line_end,
+        "surface_ids": list(check.surface_ids),
+        "lens": check.lens,
+        "changed_code_anchor": check.changed_code_anchor,
+        "owned_contract_scope": check.owned_contract_scope,
+        "expected_behavior": check.expected_behavior,
+        "behavioral_question": check.behavioral_question,
+        "affected_invariant": check.affected_invariant,
+        "required_evidence": list(check.required_evidence[:5]),
+        "suppress_criteria": list(check.suppress_criteria[:4]),
+        "report_criteria": list(check.report_criteria[:4]),
+        "allowed_retrieval": list(check.allowed_retrieval[:4]),
+        "budget": check.budget,
+    }
+
+
 def _render_executor_prompt(
     state: GraphState,
     task: ReviewTask,
@@ -969,22 +1011,21 @@ def _render_executor_prompt(
     focused_limit = (
         _EXECUTOR_COMPACT_FOCUSED_EVIDENCE_CHARS if compact_retry else _EXECUTOR_FOCUSED_EVIDENCE_CHARS
     )
-    context_limit = _EXECUTOR_COMPACT_CONTEXT_CHARS if compact_retry else None
+    context_limit = _EXECUTOR_COMPACT_CONTEXT_CHARS
     mental_model_excerpt = str(slot.get("mental_model_excerpt") or "")
     review_kb_excerpt = str(slot.get("review_kb_excerpt") or "")
-    if context_limit is not None:
-        mental_model_excerpt = mental_model_excerpt[:context_limit]
-        review_kb_excerpt = review_kb_excerpt[:context_limit]
+    mental_model_excerpt = mental_model_excerpt[:context_limit]
+    review_kb_excerpt = review_kb_excerpt[:context_limit]
     sections = {
         "Assigned Task": (
             f"Task ID: {task.id}\n"
             f"Title: {task.title}\n"
-            f"Description: {task.description}\n"
+            f"Description: {task.description[:1000]}\n"
             f"Target files: {task.target_files}"
         ),
-        "Validated Checks JSON": _json_for_prompt(
-            [check.model_dump(mode="json") for check in checks],
-            max_chars=10000,
+        "Check Contract Packets": _json_for_prompt(
+            [_contract_packet_for_check(check) for check in checks],
+            max_chars=7000,
         ),
         "Already Seen Claim Digests": _json_for_prompt(
             _seen_claim_digests_for_task(state, task.id),
@@ -1064,6 +1105,7 @@ def _executor_continuation_targets(
     if not candidate_files and not candidate_surfaces:
         return []
     targets: List[ReviewCheck] = []
+    seen_scopes: set[str] = set()
     for result in results:
         if result.decision not in {"no_finding", "unsupported"}:
             continue
@@ -1073,7 +1115,13 @@ def _executor_continuation_targets(
         same_file = check.file_path.replace("\\", "/") in candidate_files
         same_surface = bool(candidate_surfaces.intersection(check.surface_ids))
         if same_file or same_surface:
+            scope = check.owned_contract_scope.strip() or check.check_id
+            if scope in seen_scopes:
+                continue
+            seen_scopes.add(scope)
             targets.append(check)
+        if len(targets) >= 2:
+            break
     return targets
 
 
@@ -1344,96 +1392,22 @@ def make_review_check_executor_node(
                             slot,
                             changed_task_files,
                         ),
-                        include_missing_results=False,
+                        include_missing_results=True,
+                        missing_result_warning="executor_omitted_result_recorded_unsupported",
                     )
-                    present = {result.check_id for result in batch_results}
-                    missing_checks = [check for check in batch if check.check_id not in present]
+                    batch_check_ids = {check.check_id for check in batch}
+                    response_ids = {
+                        result.check_id
+                        for result in response.results
+                        if result.check_id in batch_check_ids
+                    }
+                    missing_checks = [check for check in batch if check.check_id not in response_ids]
                     if missing_checks:
                         missing_result_check_ids.extend(check.check_id for check in missing_checks)
-                        executor_retry_count += len(missing_checks)
-                        warnings.extend(f"executor_missing_result:{check.check_id}" for check in missing_checks)
-                        try:
-                            retry_llm = Models.worker(
-                                ReviewCheckExecutorOutput,
-                                model_key=selected_model,
-                                max_completion_tokens=resolved.reviewer_critiquer_max_completion_tokens,
-                            )
-                            retry_prompt = _render_executor_prompt(state, task, missing_checks, slot)
-                            retry_traced = trace_llm_call(
-                                retry_llm,
-                                retry_prompt,
-                                state=state,
-                                node_name=node_name,
-                                model_key=selected_model,
-                                schema_name="ReviewCheckExecutorOutput",
-                                input_summary={
-                                    "task_id": task.id,
-                                    "batch": batch_index,
-                                    "retry_missing_check_ids": [c.check_id for c in missing_checks],
-                                },
-                            )
-                            retry_response = parse_structured_output(retry_traced.result, ReviewCheckExecutorOutput)
-                            llm_tokens += retry_traced.tokens
-                            llm_trace.extend(retry_traced.trace_records)
-                            retry_results, retry_warnings = _support_normalize_executor_results(
-                                state=state,
-                                task=task,
-                                slot=slot,
-                                checks=missing_checks,
-                                results=retry_response.results,
-                                git_diff=state.get("git_diff", "") or "",
-                                check_budget_remaining=_check_budget_remaining,
-                                evidence_requirements_for_check=_evidence_requirements_for_check,
-                                compiled_check_is_source_local=lambda check: _compiled_check_is_source_local(
-                                    check,
-                                    None,
-                                    slot,
-                                    changed_task_files,
-                                ),
-                                include_missing_results=False,
-                            )
-                            retry_present = {result.check_id for result in retry_results}
-                            executor_retry_success_count += len(retry_present)
-                            batch_results.extend(retry_results)
-                            warnings.extend(retry_response.warnings)
-                            warnings.extend(retry_warnings)
-                            still_missing = [
-                                check for check in missing_checks if check.check_id not in retry_present
-                            ]
-                        except Exception as retry_exc:  # noqa: BLE001
-                            llm_trace.extend(trace_from_exception(retry_exc))
-                            if _is_length_finish_error(retry_exc):
-                                warnings.append(f"executor_length_limit_missing_retry:{batch_index}")
-                                still_missing = []
-                                for check in missing_checks:
-                                    compact_results, compact_success = _run_compact_length_retry(
-                                        check=check,
-                                        batch_index=batch_index,
-                                    )
-                                    batch_results.extend(compact_results)
-                                    if compact_success:
-                                        executor_retry_success_count += 1
-                            else:
-                                warnings.append(
-                                    f"{node_name}_retry_failed:{batch_index}:{retry_exc.__class__.__name__}: {retry_exc}"
-                                )
-                                logger.warning(
-                                    "%s retry failed for task_id=%s batch=%s: %s",
-                                    node_name,
-                                    task.id,
-                                    batch_index,
-                                    retry_exc,
-                                )
-                                still_missing = missing_checks
-                        for check in still_missing:
-                            batch_results.append(
-                                ReviewCheckResult(
-                                    check_id=check.check_id,
-                                    patch_task_id=task.id,
-                                    decision="unsupported",
-                                    warnings=["executor_missing_result_after_retry"],
-                                )
-                            )
+                        warnings.extend(
+                            f"executor_omitted_result_recorded_unsupported:{check.check_id}"
+                            for check in missing_checks
+                        )
                     result_count_before_canonicalization += len(batch_results)
                     batch_results, batch_duplicate_ids = _canonicalize_executor_results(batch_results)
                     duplicate_result_check_ids.extend(batch_duplicate_ids)

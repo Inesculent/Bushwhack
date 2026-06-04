@@ -41,7 +41,7 @@ def test_global_prompt_declared_input_contracts() -> None:
     assert "Contract delta: what promise changed?" in text
     assert "Shape/cardinality: are all intended items" in text
     assert "Ownership/lifecycle: is every acquired resource released" in text
-    assert "Branch and return bugs remain valid" in text
+    assert "Mode/variant completeness" in text
     assert "## In-function contracts" not in text
 
 
@@ -202,7 +202,8 @@ def test_planning_prompts_gate_general_practice_as_questions() -> None:
     assert "not by itself a task-worthy defect hypothesis" in planner
     assert "General practice is a source of questions only" in compiler
     assert "contract, trigger, operation, and impact" in compiler
-    assert "not itself proof that the narrowed value is the intended contract" in executor
+    assert "compact contract packet" in executor
+    assert "It is acceptable to omit an undecidable check" in executor
 
 
 def test_high_volume_structured_prompts_include_output_budget() -> None:

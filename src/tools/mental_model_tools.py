@@ -46,9 +46,21 @@ def _extract_relevant_excerpt(text: str, query: str, max_chars: int) -> str:
 
 
 def _summarize_spec_for_query(spec: BehavioralSpec, query: str, max_chars: int) -> str:
+    question_lines = []
+    for question in spec.contract_questions[:12]:
+        parts = [
+            question.owner,
+            question.dimension,
+            question.expected_behavior,
+            question.breach_question,
+        ]
+        line = " | ".join(part.strip() for part in parts if part and part.strip())
+        if line:
+            question_lines.append(line[:500])
     sections = [
         ("intent", spec.intent_summary),
         ("behavior", spec.behavioral_expectations),
+        ("contract_questions", "\n".join(question_lines)),
         ("contracts", spec.contract_boundaries),
         ("history", spec.historical_precedents),
         ("risks", spec.risk_hypotheses),

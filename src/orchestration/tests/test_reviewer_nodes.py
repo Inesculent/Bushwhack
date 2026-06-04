@@ -672,6 +672,34 @@ def test_generic_surface_invariants_are_evidence_requirements_not_predicted_find
     assert all(invariant.required_evidence for invariant in invariants)
 
 
+def test_surface_ledger_preserves_class_method_owners() -> None:
+    diff = (
+        "diff --git a/pkg/nodes.py b/pkg/nodes.py\n"
+        "+++ b/pkg/nodes.py\n"
+        "@@ -1,0 +1,12 @@\n"
+        "+class FirstNode:\n"
+        "+    @classmethod\n"
+        "+    def INPUT_TYPES(cls):\n"
+        "+        return {}\n"
+        "+    def execute(self):\n"
+        "+        return (1,)\n"
+        "+class SecondNode:\n"
+        "+    @classmethod\n"
+        "+    def INPUT_TYPES(cls):\n"
+        "+        return {}\n"
+        "+    def execute(self):\n"
+        "+        return (2,)\n"
+    )
+
+    ledger = build_surface_ledger_from_diff(diff)
+    names = {surface.name for surface in ledger}
+
+    assert "FirstNode.INPUT_TYPES" in names
+    assert "FirstNode.execute" in names
+    assert "SecondNode.INPUT_TYPES" in names
+    assert "SecondNode.execute" in names
+
+
 def test_mandate_prompt_names_repo_agnostic_completeness_contracts() -> None:
     prompt = Path("src/orchestration/prompts/reviewer/mental_model/mandate_synthesizer.md").read_text()
 

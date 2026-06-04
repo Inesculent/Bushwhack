@@ -202,6 +202,12 @@ def build_bootstrap_digest(
     if surfaces:
         parts.append(f"Surfaces: {_truncate_digest_field(surfaces, 300)}")
     parts.append(f"Contracts: {_truncate_digest_field(spec.contract_boundaries, 600)}")
+    if spec.contract_questions:
+        question_digest = "; ".join(
+            f"{q.owner}:{q.dimension}:{q.breach_question}"
+            for q in spec.contract_questions[:5]
+        )
+        parts.append(f"Questions: {_truncate_digest_field(question_digest, 450)}")
     parts.append(f"Risks: {_truncate_digest_field(spec.risk_hypotheses, 450)}")
     for ref in spec.evidence_refs[:6]:
         parts.append(f"File: {ref.ref}")

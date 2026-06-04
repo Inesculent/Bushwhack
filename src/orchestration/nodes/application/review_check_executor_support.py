@@ -206,6 +206,50 @@ def no_finding_has_strong_suppression(result: ReviewCheckResult, check: ReviewCh
     return any(check_path in ref or ref.startswith("focused_context:") for ref in refs)
 
 
+def _answer_scope_is_neighboring(result: ReviewCheckResult) -> bool:
+    scope = result.answer_scope.strip().lower()
+    if not scope:
+        return False
+    exact_markers = ("exact", "assigned", "same contract", "direct")
+    if any(marker in scope for marker in exact_markers):
+        return False
+    neighboring_markers = (
+        "neighbor",
+        "nearby",
+        "adjacent",
+        "different",
+        "broader",
+        "broad",
+        "off-scope",
+        "off scope",
+        "wrong question",
+        "operation-only",
+        "operation only",
+    )
+    return any(marker in scope for marker in neighboring_markers)
+
+
+def _suppression_basis_is_operation_only(result: ReviewCheckResult) -> bool:
+    basis = " ".join(
+        [
+            result.suppression_basis,
+            " ".join(result.suppressing_evidence),
+        ]
+    ).strip().lower()
+    if not basis:
+        return False
+    markers = (
+        "only repeats",
+        "merely repeats",
+        "operation exists",
+        "same operation",
+        "risky operation",
+        "operation-only",
+        "operation only",
+    )
+    return any(marker in basis for marker in markers)
+
+
 def normalize_executor_results(
     *,
     state: GraphState,
@@ -309,6 +353,29 @@ def normalize_executor_results(
             else:
                 warnings.append(f"executor_candidate_dropped_by_normalizer:{cid}")
                 result = result.model_copy(update={"candidate": None, "decision": "unsupported"})
+        if result.decision in {"no_finding", "suppressed"} and (
+            _answer_scope_is_neighboring(result) or _suppression_basis_is_operation_only(result)
+        ):
+            reason = (
+                "neighboring_answer_scope"
+                if _answer_scope_is_neighboring(result)
+                else "operation_only_suppression"
+            )
+            warnings.append(f"executor_exact_question_mismatch:{check.check_id}:{reason}")
+            next_decision = "unsupported" if check_budget_remaining(state, check) else "budget_exhausted"
+            next_warnings = [f"exact_question_mismatch:{reason}"]
+            if next_decision == "budget_exhausted":
+                next_warnings.append("review_check_budget_exhausted")
+            result = result.model_copy(
+                update={
+                    "decision": next_decision,
+                    "missing_evidence": missing_evidence_for_weak_no_finding(
+                        check,
+                        evidence_requirements_for_check,
+                    ),
+                    "warnings": list(result.warnings) + next_warnings,
+                }
+            )
         if result.decision == "no_finding" and not no_finding_has_strong_suppression(result, check):
             warnings.append(f"executor_weak_no_finding_downgraded:{check.check_id}")
             next_decision = "unsupported" if check_budget_remaining(state, check) else "budget_exhausted"
@@ -347,6 +414,10 @@ def normalize_executor_results(
                         check_id=check.check_id,
                         patch_task_id=task.id,
                         decision="unsupported",
+                        missing_evidence=missing_evidence_for_weak_no_finding(
+                            check,
+                            evidence_requirements_for_check,
+                        ),
                         warnings=[missing_result_warning],
                     )
                 )

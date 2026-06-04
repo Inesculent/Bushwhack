@@ -138,6 +138,36 @@ class SurfaceInvariant(BaseModel):
     out_of_scope: str = ""
 
 
+ContractQuestionDimension = Literal[
+    "variant_completeness",
+    "return_output_totality",
+    "data_preservation_cardinality",
+    "serialization_type_closure",
+    "error_boundary",
+    "lifecycle_state_ordering",
+    "integration_compatibility",
+    "resource_work_amplification",
+    "other",
+]
+
+
+class ContractQuestion(BaseModel):
+    """Narrow reviewer question derived from a changed contract."""
+
+    question_id: str = Field(default="", max_length=160)
+    owner: str = Field(default="", description="Most specific changed owner, e.g. Class.method.", max_length=240)
+    surface_id: str = ""
+    dimension: ContractQuestionDimension = "other"
+    expected_behavior: str = Field(default="", max_length=500)
+    contract_evidence: str = Field(default="", max_length=500)
+    trigger_variant: str = Field(default="", max_length=300)
+    operation: str = Field(default="", max_length=240)
+    breach_question: str = Field(default="", max_length=500)
+    direct_suppressor: str = Field(default="", max_length=500)
+    required_evidence: List[str] = Field(default_factory=list)
+    source_confidence: float = Field(default=0.5, ge=0.0, le=1.0)
+
+
 class BehavioralSpec(BaseModel):
     """
     Heuristic behavioral mandate for pull-request review.
@@ -168,6 +198,7 @@ class BehavioralSpec(BaseModel):
     evidence_refs: List[BehavioralEvidenceRef] = Field(default_factory=list)
     surfaces: List[ReviewSurface] = Field(default_factory=list)
     surface_invariants: List[SurfaceInvariant] = Field(default_factory=list)
+    contract_questions: List[ContractQuestion] = Field(default_factory=list)
     confidence: float = Field(default=0.5, ge=0.0, le=1.0)
     uncertainties: str = Field(default="", description="Known gaps in understanding.")
 
@@ -418,6 +449,16 @@ class ReviewCheckResult(BaseModel):
         default="",
         description="Compact root-claim marker used for semantic clustering and duplicate accounting.",
         max_length=240,
+    )
+    answer_scope: str = Field(
+        default="",
+        description="Whether the result answers the exact check question or only a neighboring invariant.",
+        max_length=240,
+    )
+    suppression_basis: str = Field(
+        default="",
+        description="For no_finding/suppressed decisions, the concrete fact that directly satisfies suppress criteria.",
+        max_length=500,
     )
     candidate: Optional["CandidateFinding"] = None
     gate_decision: ReviewCheckGateDecision = "pending"

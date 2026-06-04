@@ -300,8 +300,22 @@ def spec_risks_excerpt_for_prompt(
         return "(no behavioral spec yet)"
     try:
         spec = BehavioralSpecStore(settings).read(ref)
+        questions = "\n".join(
+            " | ".join(
+                part
+                for part in (
+                    question.owner,
+                    question.dimension,
+                    question.expected_behavior,
+                    question.breach_question,
+                )
+                if part
+            )[:500]
+            for question in spec.contract_questions[:12]
+        )
         parts = [
             f"Risk hypotheses (non-defects): {spec.risk_hypotheses[:1200]}",
+            f"Contract questions: {questions[:1200]}",
             f"Uncertainties: {spec.uncertainties[:800]}",
         ]
         text = "\n".join(p.strip() for p in parts if p.strip())

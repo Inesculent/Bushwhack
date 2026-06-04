@@ -6,8 +6,8 @@ import json
 import re
 from typing import Any, Dict, Iterable, List, Mapping, Sequence
 
-from src.config import Settings
-from src.domain.schemas import BehavioralSpec, ReviewCheck, ReviewSurface, ReviewTask
+from src.config import Settings, get_settings
+from src.domain.schemas import BehavioralSpec, ContractQuestion, ReviewCheck, ReviewSurface, ReviewTask
 from src.domain.state import GraphState
 from src.infrastructure.behavioral_spec_store import BehavioralSpecStore
 from src.orchestration.context.contract_vocabulary import (
@@ -53,6 +53,19 @@ REVIEW_CHECK_LENSES = (
 )
 
 MAX_CHECKS_PER_TASK = 12
+
+
+QUESTION_DIMENSION_TO_LENS = {
+    "variant_completeness": "state_transition",
+    "return_output_totality": "api_compatibility",
+    "data_preservation_cardinality": "data_shape_consistency",
+    "serialization_type_closure": "data_shape_consistency",
+    "error_boundary": "error_propagation",
+    "lifecycle_state_ordering": "state_transition",
+    "integration_compatibility": "api_compatibility",
+    "resource_work_amplification": "resource_lifecycle",
+    "other": "other",
+}
 
 
 def check_origin(
@@ -1186,6 +1199,7 @@ def mandatory_omitted_file_checks(
 def _origin_reason(origin_kind: str) -> str:
     return {
         "llm_compiled": "compiled_by_review_check_llm",
+        "contract_question": "derived_from_behavioral_contract_question",
         "surface_invariant": "derived_from_behavioral_surface_invariant",
         "deterministic_fallback": "deterministic_fallback_from_task_evidence",
         "coverage_obligation": "added_for_uncovered_coverage_obligation",
@@ -1443,11 +1457,105 @@ def behavioral_spec_from_state(state: GraphState, settings: Settings) -> Behavio
         return None
 
 
+def _check_from_contract_question(
+    *,
+    task: ReviewTask,
+    question: ContractQuestion,
+    surface: ReviewSurface,
+    index: int,
+) -> ReviewCheck:
+    line_start = surface.line_start or 1
+    line_end = surface.line_end or line_start
+    required = [item for item in question.required_evidence if str(item).strip()]
+    if question.contract_evidence.strip():
+        required.insert(0, question.contract_evidence.strip())
+    if question.trigger_variant.strip():
+        required.append(f"trigger/variant to inspect: {question.trigger_variant.strip()}")
+    required.append(f"changed behavior of {question.owner or surface.name}")
+    suppress = question.direct_suppressor.strip() or (
+        "Concrete evidence answers this exact contract question and proves the alleged breach cannot occur."
+    )
+    report = question.breach_question.strip() or (
+        "The changed code violates the expected behavior on a reachable path."
+    )
+    owned_parts = [
+        question.owner or surface.name,
+        question.dimension,
+        question.trigger_variant,
+        question.operation,
+    ]
+    return ReviewCheck(
+        check_id=f"{task.id}:contract-question:{index}",
+        patch_task_id=task.id,
+        surface_ids=[surface.surface_id],
+        lens=QUESTION_DIMENSION_TO_LENS.get(question.dimension, "other"),  # type: ignore[arg-type]
+        file_path=surface.file_path,
+        line_start=line_start,
+        line_end=line_end,
+        changed_code_anchor=question.owner or surface.name,
+        owned_contract_scope=":".join(part.strip() for part in owned_parts if part.strip())[:240],
+        issue_family=question.dimension,
+        diff_signal_family="contract_question",
+        diff_signal=(question.breach_question or question.expected_behavior)[:240],
+        behavioral_question=report[:400],
+        affected_invariant=question.breach_question[:400] or question.expected_behavior[:400],
+        expected_behavior=question.expected_behavior[:500],
+        required_evidence=list(dict.fromkeys(required))[:6],
+        suppress_criteria=[suppress],
+        report_criteria=[report],
+        allowed_retrieval=["task_evidence", "focused_context"],
+        budget=2,
+    )
+
+
+def checks_from_contract_questions(
+    state: GraphState,
+    task: ReviewTask,
+    *,
+    settings: Settings,
+) -> List[ReviewCheck]:
+    spec = behavioral_spec_from_state(state, settings)
+    if spec is None or not spec.contract_questions:
+        return []
+    ledger = spec.surfaces or surface_ledger_from_state(state)
+    by_id = surface_by_id(ledger)
+    task_surface_ids = set(surface_ids_for_task(task, ledger))
+    checks: List[ReviewCheck] = []
+    seen: set[tuple[str, str, str, str]] = set()
+    for question in spec.contract_questions:
+        if question.surface_id not in task_surface_ids:
+            continue
+        surface = by_id.get(question.surface_id)
+        if surface is None:
+            continue
+        key = (
+            question.owner.strip().lower(),
+            question.dimension,
+            question.expected_behavior.strip().lower(),
+            question.trigger_variant.strip().lower(),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        checks.append(
+            _check_from_contract_question(
+                task=task,
+                question=question,
+                surface=surface,
+                index=len(checks) + 1,
+            )
+        )
+        if len(checks) >= MAX_CHECKS_PER_TASK:
+            break
+    return checks
+
+
 def checks_from_surface_invariants(
     state: GraphState,
     task: ReviewTask,
     *,
     settings: Settings,
+    exclude_surface_ids: Iterable[str] = (),
 ) -> List[ReviewCheck]:
     spec = behavioral_spec_from_state(state, settings)
     if spec is None or not spec.surface_invariants:
@@ -1455,8 +1563,11 @@ def checks_from_surface_invariants(
     ledger = spec.surfaces or surface_ledger_from_state(state)
     by_id = surface_by_id(ledger)
     task_surface_ids = surface_ids_for_task(task, ledger)
+    excluded = set(exclude_surface_ids)
     checks: List[ReviewCheck] = []
     for invariant in spec.surface_invariants:
+        if invariant.surface_id in excluded:
+            continue
         if invariant.surface_id not in task_surface_ids:
             continue
         surface = by_id.get(invariant.surface_id)
@@ -1663,6 +1774,15 @@ def render_compiler_prompt(state: GraphState, task: ReviewTask, slot: Mapping[st
     ranked_obligations = ranked_coverage_obligations(task, slot)
     ledger = surface_ledger_from_state(state)
     task_surface_ids = surface_ids_for_task(task, ledger) if ledger else task.surface_ids
+    spec = behavioral_spec_from_state(state, get_settings())
+    contract_questions = []
+    if spec is not None and spec.contract_questions:
+        task_surface_id_set = set(task_surface_ids)
+        contract_questions = [
+            question.model_dump(mode="json")
+            for question in spec.contract_questions
+            if question.surface_id in task_surface_id_set
+        ][:12]
     te = slot.get("task_evidence") if isinstance(slot.get("task_evidence"), dict) else {}
     omitted_prompt_files = te.get("omitted_prompt_files") if isinstance(te.get("omitted_prompt_files"), list) else []
     primary_files = te.get("primary_files") if isinstance(te.get("primary_files"), list) else []
@@ -1676,7 +1796,7 @@ def render_compiler_prompt(state: GraphState, task: ReviewTask, slot: Mapping[st
             f"Surface IDs: {task_surface_ids}"
         ),
         "Surface Ledger": compact_surface_ledger_json(ledger, max_records=40) if ledger else "[]",
-        "Repository Code Evidence": str(slot.get("direct_context") or "")[:16000],
+        "Repository Code Evidence": str(slot.get("direct_context") or "")[:12000],
         "Prompt File Scope": json_for_prompt(
             {
                 "primary_files": primary_files,
@@ -1685,8 +1805,9 @@ def render_compiler_prompt(state: GraphState, task: ReviewTask, slot: Mapping[st
             },
             max_chars=2000,
         ),
-        "Mental Model Excerpt": str(slot.get("mental_model_excerpt") or ""),
-        "Review KB Context": str(slot.get("review_kb_excerpt") or ""),
+        "Mental Model Excerpt": str(slot.get("mental_model_excerpt") or "")[:4000],
+        "Mental Model Contract Questions": json_for_prompt(contract_questions, max_chars=6000),
+        "Review KB Context": str(slot.get("review_kb_excerpt") or "")[:4000],
         "Mental Model Contract Material": "\n".join(
             f"- {line}" for line in mental_model_contract_lines(slot)
         ),
@@ -1701,7 +1822,7 @@ def render_compiler_prompt(state: GraphState, task: ReviewTask, slot: Mapping[st
                 max_cards=4,
             )
         ),
-        "Ranked Coverage Obligations": json_for_prompt(ranked_obligations, max_chars=9000),
+        "Ranked Coverage Obligations": json_for_prompt(ranked_obligations, max_chars=5000),
         "Available Lenses": ", ".join(REVIEW_CHECK_LENSES),
     }
     return render_reviewer_prompt("review_check_compiler.md", sections)

@@ -4,15 +4,16 @@ You act as a lead architect. Fuse the Phase 0 notes into a `BehavioralSpec` that
 
 ## Mission
 
-Produce a broad and informative specification:
+Produce a compact and informative specification:
 - behavioral invariants the change must preserve or intentionally alter;
 - contract-sensitive expectations reviewers can verify against code;
+- narrow contract questions a human reviewer would ask for each changed owner;
 - a well-rounded set of risk hypotheses covering technologies, algorithms, data flow, and integration points;
 - reviewer guidance that keeps the review focused and unbiased.
 
 ## Risk Hypothesis Protocol
 
-Hypotheses are potential vectors to investigate, **not asserted bugs**. 
+Hypotheses are potential vectors to investigate, **not asserted bugs**.
 Allow for expressive, feature-rich hypotheses while avoiding endless reasoning loops. Ensure broad coverage rather than hyperfixating on a single component.
 
 Lens prompts:
@@ -26,6 +27,25 @@ Lens prompts:
 - Integration surface: do callers, implementations, build variants, environments, persisted configs, and dependencies still fit?
 - Work amplification: did expensive work move into a hot path, loop, retry, render, or large-input path?
 - Diagnostic honesty: do user-facing or maintainer-facing messages accurately describe behavior?
+
+## Contract Question Protocol
+
+Build reviewer cognition, not a checklist. For each important changed owner, first identify the contract, then ask the narrow question the implementation must answer.
+
+Use `contract_questions` for questions that have a concrete owner and contract evidence. Each question must be narrow enough that a neighboring invariant cannot suppress it. Decompose broad expectations when they contain multiple obligations: variant handling is separate from output totality; collection existence is separate from nested data preservation; error catching is separate from safe serialization of produced values.
+
+Use generic dimensions only:
+- variant_completeness
+- return_output_totality
+- data_preservation_cardinality
+- serialization_type_closure
+- error_boundary
+- lifecycle_state_ordering
+- integration_compatibility
+- resource_work_amplification
+- other
+
+Do not copy the same contract question across every surface. Attach each question to the most specific changed owner that can answer it, such as a class method, handler, entry point, serializer, dispatcher, or registration surface.
 
 ## Guidelines
 
@@ -49,3 +69,4 @@ Return structured fields only, matching `MandateSynthesizerOutput`:
 - `risk_hypotheses`: well-rounded hypotheses for reviewers to investigate.
 - `reviewer_guidance`: balanced review focus.
 - `uncertainties`: known unknowns and weak inferences.
+- `contract_questions`: compact owner-specific contract questions for downstream check compilation.

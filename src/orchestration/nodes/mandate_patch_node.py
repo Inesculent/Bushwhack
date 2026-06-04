@@ -8,7 +8,7 @@ from typing import Any, Dict, List
 from pydantic import BaseModel, Field
 
 from src.config import Settings, get_settings
-from src.domain.schemas import BehavioralEvidenceRef, BehavioralSpec, ReviewSurface, SurfaceInvariant
+from src.domain.schemas import BehavioralEvidenceRef, BehavioralSpec, ContractQuestion, ReviewSurface, SurfaceInvariant
 from src.domain.state import GraphState
 from src.infrastructure.behavioral_spec_store import BehavioralSpecStore
 from src.infrastructure.llm.factory import Models
@@ -67,6 +67,14 @@ def _apply_patch_to_spec(
             refs.append(BehavioralEvidenceRef(kind="file", ref=fp, note="Changed in this PR"))
             seen.add(fp)
     merged_surfaces = surfaces or (prior.surfaces if prior else [])
+    contract_questions: List[ContractQuestion] = list(prior.contract_questions if prior else [])
+    covered_surface_ids = {question.surface_id for question in contract_questions if question.surface_id}
+    if covered_surface_ids:
+        surface_invariants = [
+            invariant
+            for invariant in surface_invariants
+            if invariant.surface_id not in covered_surface_ids
+        ]
     merged_invariants = _merge_surface_invariants(
         [*(prior.surface_invariants if prior else []), *surface_invariants]
     )
@@ -84,6 +92,7 @@ def _apply_patch_to_spec(
         evidence_refs=refs,
         surfaces=merged_surfaces,
         surface_invariants=merged_invariants,
+        contract_questions=contract_questions,
         confidence=0.65 if prior else 0.55,
         uncertainties=patch.uncertainties.strip()
         or (prior.uncertainties if prior else "Verify against repository evidence."),

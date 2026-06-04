@@ -12,12 +12,14 @@ from src.domain.schemas import (
     ReflectionReport,
     ReviewAdjudicationItem,
     ReviewAdjudicationOutput,
+    ReviewCheck,
     ReviewCheckResult,
     ReviewFinding,
 )
 from src.domain.verifier_schemas import VerifierReport
 from src.orchestration.nodes.application.review_adjudicator import (
     _normalize_adjudication_items,
+    _render_reduce_prompt,
     build_review_adjudication_packets,
     plan_adjudication_batches,
 )
@@ -80,11 +82,28 @@ def test_adjudication_packet_includes_available_evidence() -> None:
         reportable_reason="same claim evidence",
         candidate=candidate,
     )
+    check = ReviewCheck(
+        check_id="check-1",
+        patch_task_id="task",
+        file_path="pkg/mod.py",
+        line_start=10,
+        line_end=12,
+        changed_code_anchor="changed",
+        owned_contract_scope="pkg/mod.py:changed:return-complete-value",
+        behavioral_question="Does the changed operation return the complete expected value?",
+        affected_invariant="complete return value",
+        expected_behavior="The changed operation returns the complete expected value.",
+        required_evidence=["changed return path"],
+        suppress_criteria=["all returned values are complete"],
+        report_criteria=["a path returns an incomplete value"],
+        allowed_retrieval=["task_evidence"],
+    )
     state = {
         "run_id": "r",
         "repo_path": "/repo",
         "git_diff": "diff --git a/pkg/mod.py b/pkg/mod.py",
         "candidate_findings": [candidate],
+        "review_checks": [check],
         "review_check_results": [check_result],
         "reflection_reports": [
             ReflectionReport(
@@ -143,6 +162,11 @@ def test_adjudication_packet_includes_available_evidence() -> None:
     assert packet["candidate"]["candidate_id"] == "c1"
     assert packet["candidate"]["expected_behavior"] == "The changed operation returns the complete expected value."
     assert packet["originating_checks"][0]["check_id"] == "check-1"
+    assert (
+        packet["originating_checks"][0]["originating_check"]["owned_contract_scope"]
+        == "pkg/mod.py:changed:return-complete-value"
+    )
+    assert "complete expected value" in packet["originating_checks"][0]["originating_check"]["behavioral_question"]
     assert packet["reflection_reports"][0]["verdict"] == "accept"
     assert packet["focused_context"][0]["file_snippets"]
     assert packet["verifier_reports"][0]["verdict"] == "verified"
@@ -351,6 +375,31 @@ def test_adjudication_batches_do_not_drop_candidates() -> None:
     ]
     assert seen == ["c0", "c1", "c2", "c3", "c4"]
     assert len(batches) > 1
+
+
+def test_adjudication_reduce_prompt_includes_candidate_comparison_roster() -> None:
+    candidates = {
+        "c1": _candidate("c1").model_copy(update={"claim_digest": "same-root"}),
+        "c2": _candidate("c2").model_copy(update={"claim_digest": "same-root"}),
+    }
+
+    prompt = _render_reduce_prompt(
+        {"git_diff": "diff --git a/pkg/mod.py b/pkg/mod.py"},
+        ["c1", "c2"],
+        [
+            {
+                "items": [
+                    {"candidate_id": "c1", "decision": "promote", "rationale": "batch one"},
+                    {"candidate_id": "c2", "decision": "promote", "rationale": "batch two"},
+                ]
+            }
+        ],
+        candidates,
+    )
+
+    assert "candidate_comparison_roster" in prompt
+    assert "same-root" in prompt
+    assert "c1" in prompt and "c2" in prompt
 
 
 def test_post_reflection_default_routes_to_review_adjudicator(monkeypatch: pytest.MonkeyPatch) -> None:

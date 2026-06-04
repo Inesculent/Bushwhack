@@ -14,6 +14,7 @@ from src.domain.schemas import (
     ReflectionReport,
     ReviewAdjudicationItem,
     ReviewAdjudicationOutput,
+    ReviewCheck,
     ReviewCheckResult,
     ReviewEvidenceTriageItem,
     ReviewFinding,
@@ -57,6 +58,17 @@ def _coerce_check_result(raw: Any) -> ReviewCheckResult | None:
     if isinstance(raw, dict):
         try:
             return ReviewCheckResult.model_validate(raw)
+        except Exception:
+            return None
+    return None
+
+
+def _coerce_check(raw: Any) -> ReviewCheck | None:
+    if isinstance(raw, ReviewCheck):
+        return raw
+    if isinstance(raw, dict):
+        try:
+            return ReviewCheck.model_validate(raw)
         except Exception:
             return None
     return None
@@ -146,6 +158,15 @@ def _check_results_by_candidate(state: GraphState) -> Dict[str, List[ReviewCheck
         if result.candidate is not None:
             grouped.setdefault(result.candidate.candidate_id, []).append(result)
     return grouped
+
+
+def _checks_by_id(state: GraphState) -> Dict[str, ReviewCheck]:
+    out: Dict[str, ReviewCheck] = {}
+    for raw in state.get("review_checks", []) or []:
+        check = _coerce_check(raw)
+        if check is not None:
+            out[check.check_id] = check
+    return out
 
 
 def _reflections_by_candidate(state: GraphState) -> Dict[str, List[ReflectionReport]]:
@@ -271,21 +292,119 @@ def _compact_focused_result(result: FocusedContextResult, *, max_chars: int) -> 
 
 
 def _compact_verifier_report(report: VerifierReport) -> Dict[str, Any]:
-    payload = report.model_dump(mode="json")
-    attempts = payload.get("attempts") or []
-    payload["attempts"] = [
-        {
-            "attempt_number": item.get("attempt_number"),
-            "exit_code": item.get("exit_code"),
-            "timeout": item.get("timeout"),
-            "failure_class": item.get("failure_class"),
-            "stdout": _truncate(str(item.get("stdout") or ""), 800),
-            "stderr": _truncate(str(item.get("stderr") or ""), 800),
+    return {
+        "run_id": report.run_id,
+        "candidate_id": report.candidate_id,
+        "verdict": report.verdict,
+        "verification_scope": report.verification_scope,
+        "final_rationale": _truncate(report.final_rationale, 700),
+        "updated_evidence_summary": _truncate(report.updated_evidence_summary, 500),
+        "skipped_reason": _truncate(report.skipped_reason, 300),
+        "attempts": [
+            {
+                "attempt_number": item.attempt_number,
+                "exit_code": item.exit_code,
+                "timeout": item.timeout,
+                "failure_class": item.failure_class,
+                "stdout": _truncate(item.stdout, 500),
+                "stderr": _truncate(item.stderr, 500),
+            }
+            for item in report.attempts[:3]
+        ],
+    }
+
+
+def _compact_candidate(candidate: CandidateFinding) -> Dict[str, Any]:
+    return {
+        "candidate_id": candidate.candidate_id,
+        "patch_task_id": candidate.patch_task_id,
+        "file_path": candidate.file_path,
+        "line_start": candidate.line_start,
+        "line_end": candidate.line_end,
+        "content": _truncate(candidate.content, 600),
+        "claim_type": candidate.claim_type,
+        "failure_mode": _truncate(candidate.failure_mode, 400),
+        "evidence_summary": _truncate(candidate.evidence_summary, 400),
+        "recommendation": _truncate(candidate.recommendation or "", 400),
+        "severity": candidate.severity,
+        "feedback_type": candidate.feedback_type,
+        "expected_behavior": _truncate(candidate.expected_behavior, 500),
+        "evidence_for_contract": _truncate(candidate.evidence_for_contract, 500),
+        "counterexample": _truncate(candidate.counterexample, 500),
+        "rejection_check": _truncate(candidate.rejection_check, 500),
+        "behavioral_symptom": candidate.behavioral_symptom,
+        "root_operation": candidate.root_operation,
+        "claim_digest": candidate.claim_digest,
+        "suspected_category": candidate.suspected_category,
+        "reflection_specialties": list(candidate.reflection_specialties),
+        "required_context": list(candidate.required_context[:6]),
+    }
+
+
+def _compact_check_result(result: ReviewCheckResult, check: ReviewCheck | None = None) -> Dict[str, Any]:
+    payload = {
+        "check_id": result.check_id,
+        "decision": result.decision,
+        "evidence_refs": list(result.evidence_refs[:6]),
+        "suppressing_evidence": [_truncate(item, 300) for item in result.suppressing_evidence[:4]],
+        "missing_evidence": [_truncate(item, 240) for item in result.missing_evidence[:4]],
+        "reportable_reason": _truncate(result.reportable_reason, 500),
+        "expected_behavior": _truncate(result.expected_behavior, 500),
+        "evidence_for_contract": _truncate(result.evidence_for_contract, 500),
+        "counterexample": _truncate(result.counterexample, 500),
+        "rejection_check": _truncate(result.rejection_check, 500),
+        "claim_digest": result.claim_digest,
+        "gate_decision": result.gate_decision,
+        "gate_reason": result.gate_reason,
+        "warnings": list(result.warnings[:6]),
+    }
+    if check is not None:
+        payload["originating_check"] = {
+            "owned_contract_scope": check.owned_contract_scope,
+            "behavioral_question": _truncate(check.behavioral_question, 400),
+            "affected_invariant": _truncate(check.affected_invariant, 400),
+            "expected_behavior": _truncate(check.expected_behavior, 500),
+            "required_evidence": [_truncate(item, 180) for item in check.required_evidence[:4]],
+            "suppress_criteria": [_truncate(item, 180) for item in check.suppress_criteria[:4]],
+            "report_criteria": [_truncate(item, 180) for item in check.report_criteria[:4]],
         }
-        for item in attempts
-        if isinstance(item, dict)
-    ]
     return payload
+
+
+def _compact_reflection(report: ReflectionReport) -> Dict[str, Any]:
+    return {
+        "candidate_id": report.candidate_id,
+        "reflector_specialty": report.reflector_specialty,
+        "verdict": report.verdict,
+        "rationale": _truncate(report.rationale, 500),
+        "support_scope": report.support_scope,
+        "reclassified_category": report.reclassified_category,
+    }
+
+
+def _compact_source_fact(fact: SourceFact) -> Dict[str, Any]:
+    return {
+        "candidate_id": fact.candidate_id,
+        "fact_kind": fact.fact_kind,
+        "file_path": fact.file_path,
+        "line_start": fact.line_start,
+        "line_end": fact.line_end,
+        "summary": _truncate(fact.summary, 500),
+        "evidence": _truncate(fact.evidence, 700),
+    }
+
+
+def _compact_triage(item: ReviewEvidenceTriageItem) -> Dict[str, Any]:
+    return {
+        "candidate_id": item.candidate_id,
+        "claim_summary": _truncate(item.claim_summary, 500),
+        "claim_family": item.claim_family,
+        "suggested_reflection_specialties": list(item.suggested_reflection_specialties),
+        "source_fact_requests": [_truncate(row, 180) for row in item.source_fact_requests[:4]],
+        "runtime_verification_usefulness": item.runtime_verification_usefulness,
+        "needed_context": [_truncate(row, 240) for row in item.needed_context[:4]],
+        "rationale": _truncate(item.rationale, 360),
+    }
 
 
 def build_review_adjudication_packets(
@@ -297,6 +416,7 @@ def build_review_adjudication_packets(
     metadata = dict(state.get("metadata", {}) or {})
     candidates = sorted(_candidate_map(state).values(), key=_candidate_sort_key)
     checks = _check_results_by_candidate(state)
+    checks_by_id = _checks_by_id(state)
     reflections = _reflections_by_candidate(state)
     focused = _focused_by_candidate(state)
     focused_diagnostics = _focused_diagnostics_by_candidate(state)
@@ -313,13 +433,13 @@ def build_review_adjudication_packets(
         cid = candidate.candidate_id
         packets.append(
             {
-                "candidate": candidate.model_dump(mode="json"),
+                "candidate": _compact_candidate(candidate),
                 "originating_checks": [
-                    item.model_dump(mode="json", exclude={"candidate"})
+                    _compact_check_result(item, checks_by_id.get(item.check_id))
                     for item in checks.get(cid, [])
                 ],
                 "reflection_reports": [
-                    item.model_dump(mode="json")
+                    _compact_reflection(item)
                     for item in reflections.get(cid, [])
                 ],
                 "focused_context": [
@@ -332,10 +452,10 @@ def build_review_adjudication_packets(
                     for item in verifier.get(cid, [])
                 ],
                 "source_facts": [
-                    item.model_dump(mode="json")
+                    _compact_source_fact(item)
                     for item in source_facts.get(cid, [])
                 ],
-                "triage": triage[cid].model_dump(mode="json") if cid in triage else None,
+                "triage": _compact_triage(triage[cid]) if cid in triage else None,
                 "verifier_hint": verifier_hints.get(cid) if isinstance(verifier_hints, Mapping) else None,
                 "critique_revision_digests": [
                     item.model_dump(mode="json")
@@ -404,6 +524,24 @@ def _candidate_ids_from_packets(packets: Iterable[Mapping[str, Any]]) -> List[st
     return ids
 
 
+def _candidate_comparison_roster(candidates: Mapping[str, CandidateFinding]) -> List[Dict[str, Any]]:
+    return [
+        {
+            "candidate_id": candidate.candidate_id,
+            "file_path": candidate.file_path,
+            "line_start": candidate.line_start,
+            "line_end": candidate.line_end,
+            "expected_behavior": _truncate(candidate.expected_behavior, 300),
+            "failure_mode": _truncate(candidate.failure_mode, 260),
+            "counterexample": _truncate(candidate.counterexample, 260),
+            "behavioral_symptom": candidate.behavioral_symptom,
+            "root_operation": candidate.root_operation,
+            "claim_digest": candidate.claim_digest,
+        }
+        for candidate in sorted(candidates.values(), key=_candidate_sort_key)
+    ]
+
+
 def _render_packets(packets: Sequence[Mapping[str, Any]], *, max_candidate_chars: int) -> str:
     sections: List[str] = []
     for packet in packets:
@@ -442,9 +580,11 @@ def _render_reduce_prompt(
     state: GraphState,
     candidate_ids: Sequence[str],
     batch_outputs: Sequence[Mapping[str, Any]],
+    candidates: Mapping[str, CandidateFinding],
 ) -> str:
     payload = {
         "candidate_ids": list(candidate_ids),
+        "candidate_comparison_roster": _candidate_comparison_roster(candidates),
         "batch_outputs": list(batch_outputs),
     }
     return render_reviewer_prompt(
@@ -725,6 +865,7 @@ def make_review_adjudicator_node(
                     state,
                     sorted(candidates),
                     intermediate,
+                    candidates,
                 )
                 reduced, reduce_warnings, tokens, trace = _invoke_adjudicator(
                     state=state,

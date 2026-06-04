@@ -7,12 +7,13 @@ from pathlib import Path
 import pytest
 
 from src.config import Settings
-from src.domain.schemas import BehavioralSpec, ExplorationSnapshot, StructuralTopologySummary
+from src.domain.schemas import BehavioralSpec, ContractQuestion, ExplorationSnapshot, ReviewSurface, StructuralTopologySummary
 from src.domain.state import GraphState
 from src.infrastructure.behavioral_spec_store import BehavioralSpecStore
 from src.orchestration.prompts.ledger_formatter import format_exploration_ledger_for_prompt
 from src.orchestration.routing.send_payload import payload_for_send
 from src.tools.mental_model_tools import query_mental_model
+from src.orchestration.nodes.mental_model import _normalize_contract_questions
 
 
 def test_behavioral_spec_store_roundtrip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -81,6 +82,35 @@ def test_query_mental_model_dedupe(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     state2 = {**state, "exploration_ledger": list(r1["exploration_ledger"])}
     r2 = query_mental_model(state=state2, query="What is intent?", caller="t1")
     assert r2["skipped"] and r2["skip_reason"] == "dedupe_cache_hit"
+
+
+def test_contract_question_normalization_dedupes_by_owner_dimension_trigger() -> None:
+    surface = ReviewSurface(
+        surface_id="surface:handle",
+        name="Handle.execute",
+        kind="method",
+        file_path="src/app.py",
+        line_start=1,
+        line_end=5,
+        confidence=0.95,
+    )
+    question = ContractQuestion(
+        owner="Handle.execute",
+        surface_id=surface.surface_id,
+        dimension="return_output_totality",
+        expected_behavior="Handle.execute returns its declared output.",
+        contract_evidence="Declared return shape.",
+        trigger_variant="fallback branch",
+        operation="dispatch",
+        breach_question="Can the fallback branch exit without the declared output?",
+        direct_suppressor="Caller evidence proves the fallback branch cannot occur.",
+    )
+
+    normalized = _normalize_contract_questions([question, question], surfaces=[surface])
+
+    assert len(normalized) == 1
+    assert normalized[0].question_id.startswith("cq:")
+    assert normalized[0].required_evidence
 
 
 def test_reviewer_graph_compiles_legacy_planner_mode(monkeypatch: pytest.MonkeyPatch) -> None:
