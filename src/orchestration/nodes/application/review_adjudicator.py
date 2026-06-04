@@ -535,6 +535,43 @@ def _normalize_adjudication_items(
     items = list(output.items) if output is not None else []
     candidate_ids = set(candidates.keys())
 
+    def _record_promote(
+        *,
+        cid: str,
+        candidate: CandidateFinding,
+        finding: ReviewFinding | None,
+        rationale: str,
+        evidence_refs: Sequence[str] = (),
+        item_warnings: Sequence[str] = (),
+    ) -> None:
+        resolved = finding or _fallback_finding(candidate)
+        if changed_files and resolve_repo_file_path(resolved.file_path, changed_files) is None:
+            warnings.append(f"adjudication_promote_outside_changed_files:{cid}:{resolved.file_path}")
+            lifecycle[cid] = {
+                "decision": "dropped",
+                "reason": "promoted_path_not_changed",
+                "rationale": rationale,
+            }
+            return
+        if resolved.line_end < resolved.line_start:
+            warnings.append(f"adjudication_invalid_line_range:{cid}")
+            lifecycle[cid] = {
+                "decision": "dropped",
+                "reason": "invalid_line_range",
+                "rationale": rationale,
+            }
+            return
+        resolved = resolved.model_copy(update={"id": cid})
+        promoted.append(resolved)
+        lifecycle[cid] = {
+            "decision": "promoted",
+            "reason": "adjudicator_promote",
+            "finding_id": cid,
+            "rationale": rationale,
+            "evidence_refs": list(evidence_refs),
+            "warnings": list(item_warnings),
+        }
+
     for item in items:
         cid = item.candidate_id
         if cid not in candidate_ids:
@@ -549,7 +586,7 @@ def _normalize_adjudication_items(
         if item.decision == "drop":
             lifecycle[cid] = {
                 "decision": "dropped",
-                "reason": "adjudicator_drop",
+                "reason": "adjudicator_drop_obvious",
                 "rationale": item.rationale,
                 "evidence_refs": list(item.evidence_refs),
                 "warnings": list(item.warnings),
@@ -579,41 +616,24 @@ def _normalize_adjudication_items(
             }
             continue
 
-        finding = item.finding or _fallback_finding(candidate)
-        if changed_files and resolve_repo_file_path(finding.file_path, changed_files) is None:
-            warnings.append(f"adjudication_promote_outside_changed_files:{cid}:{finding.file_path}")
-            lifecycle[cid] = {
-                "decision": "dropped",
-                "reason": "promoted_path_not_changed",
-                "rationale": item.rationale,
-            }
-            continue
-        if finding.line_end < finding.line_start:
-            warnings.append(f"adjudication_invalid_line_range:{cid}")
-            lifecycle[cid] = {
-                "decision": "dropped",
-                "reason": "invalid_line_range",
-                "rationale": item.rationale,
-            }
-            continue
-        finding = finding.model_copy(update={"id": cid})
-        promoted.append(finding)
-        lifecycle[cid] = {
-            "decision": "promoted",
-            "reason": "adjudicator_promote",
-            "finding_id": cid,
-            "rationale": item.rationale,
-            "evidence_refs": list(item.evidence_refs),
-            "warnings": list(item.warnings),
-        }
+        _record_promote(
+            cid=cid,
+            candidate=candidate,
+            finding=item.finding,
+            rationale=item.rationale,
+            evidence_refs=item.evidence_refs,
+            item_warnings=item.warnings,
+        )
 
     for cid in sorted(candidate_ids - seen):
-        lifecycle[cid] = {
-            "decision": "dropped",
-            "reason": "adjudicator_missing_decision",
-            "rationale": "No adjudication item was returned for this candidate.",
-        }
-        warnings.append(f"adjudication_missing_candidate:{cid}")
+        warnings.append(f"adjudication_missing_candidate_promoted_fallback:{cid}")
+        _record_promote(
+            cid=cid,
+            candidate=candidates[cid],
+            finding=None,
+            rationale="No adjudication item was returned for this candidate; preserved via fallback finding.",
+            item_warnings=["adjudication_missing_candidate_promoted_fallback"],
+        )
 
     return ensure_unique_finding_ids(promoted), lifecycle, merge_map, warnings
 

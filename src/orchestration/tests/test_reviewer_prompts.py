@@ -79,7 +79,7 @@ def test_critiquer_prompt_uses_evidence_gated_broad_dimensions() -> None:
 def test_logic_reflection_prompt_cuts_down_broad_uncertain_leads() -> None:
     text = load_reviewer_prompt("reflection/logic.md")
     assert "Changed behavior contracts" in text
-    assert "Branch/fall-through is one correctness family" in text
+    assert "Control-flow is one correctness family" in text
     assert "Cut down lead noise" in text
     assert "promising `uncertain` leads" in text
     assert "reject` generic speculation" in text
@@ -177,6 +177,30 @@ def test_active_reviewer_prompts_avoid_named_vulnerability_anchors() -> None:
         text = load_reviewer_prompt(prompt_path)
         for token in _BENCHMARK_SPECIFIC_TOKENS + _NAMED_VULNERABILITY_TOKENS:
             assert token not in text
+
+
+def test_active_reviewer_prompts_avoid_framework_specific_schema_anchors() -> None:
+    prompt_paths = [
+        "critiquer.md",
+        "reflection/logic.md",
+        "critique_revision.md",
+    ]
+    for prompt_path in prompt_paths:
+        text = load_reviewer_prompt(prompt_path)
+        assert "COMBO" not in text
+        assert "INPUT_TYPES" not in text
+
+
+def test_planning_prompts_gate_general_practice_as_questions() -> None:
+    planner = load_reviewer_prompt("planner.md")
+    compiler = load_reviewer_prompt("review_check_compiler.md")
+    executor = load_reviewer_prompt("review_check_executor.md")
+
+    assert "General practice may suggest questions" in planner
+    assert "not by itself a task-worthy defect hypothesis" in planner
+    assert "General practice is a source of questions only" in compiler
+    assert "contract, trigger, operation, and impact" in compiler
+    assert "not itself proof that the narrowed value is the intended contract" in executor
 
 
 def test_active_planning_prompts_do_not_prescribe_issue_class_tasks() -> None:

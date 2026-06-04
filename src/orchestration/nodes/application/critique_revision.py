@@ -28,6 +28,8 @@ from src.orchestration.context.context_packets import (
     packet_to_prompt_sections,
 )
 from src.orchestration.prompts.renderer import render_reviewer_prompt
+from src.orchestration.routing.claim_digest import claim_digest_for_candidate
+from src.orchestration.routing.finding_dedupe import candidate_signature_key
 from src.orchestration.routing.reflection_consolidation import (
     candidate_has_local_defect_signature,
     consolidate_reflection_reports,
@@ -425,27 +427,36 @@ def _all_candidates_by_id(state: GraphState) -> Dict[str, CandidateFinding]:
     return out
 
 
-def _dedupe_revision_candidate_ids(state: GraphState, candidate_ids: List[str]) -> List[str]:
-    """Drop duplicate ReDoS/security siblings on the same file (keep first by id)."""
+def _dedupe_revision_candidate_ids_with_duplicates(
+    state: GraphState,
+    candidate_ids: List[str],
+) -> tuple[List[str], Dict[str, List[str]]]:
+    """Drop exact same-claim revision duplicates while preserving distinct same-file issues."""
     by_id = _all_candidates_by_id(state)
-    by_file_redos: Dict[str, str] = {}
+    git_diff = state.get("git_diff", "") or ""
+    seen: Dict[tuple[str, str, str, str, str, str], str] = {}
+    duplicates: Dict[str, List[str]] = {}
     out: List[str] = []
     for cid in candidate_ids:
         cand = by_id.get(cid)
         if cand is None:
             out.append(cid)
             continue
-        blob = f"{cand.content} {cand.failure_mode}".lower()
-        is_redos = cand.claim_type == "security_risk" and (
-            "redos" in blob or "backtrack" in blob or "catastrophic" in blob
+        key = (
+            *candidate_signature_key(cand, git_diff=git_diff),
+            claim_digest_for_candidate(cand).lower(),
         )
-        if is_redos:
-            key = cand.file_path.strip().lower()
-            if key in by_file_redos:
-                continue
-            by_file_redos[key] = cid
+        if key in seen:
+            duplicates.setdefault(seen[key], []).append(cid)
+            continue
+        seen[key] = cid
         out.append(cid)
-    return out
+    return out, duplicates
+
+
+def _dedupe_revision_candidate_ids(state: GraphState, candidate_ids: List[str]) -> List[str]:
+    ids, _ = _dedupe_revision_candidate_ids_with_duplicates(state, candidate_ids)
+    return ids
 
 
 def _apply_digest_contradict_policy(
@@ -804,7 +815,7 @@ def make_critique_revision_reduce_node(model_key: str | None = None, use_llm: bo
                 )
             return {"node_history": [f"{node_name}:barrier_incomplete"]}
 
-        candidate_ids = _dedupe_revision_candidate_ids(
+        candidate_ids, revision_duplicate_map = _dedupe_revision_candidate_ids_with_duplicates(
             state, _needs_revision_candidates(state)
         )
         digests_map = dict(state.get("critique_revision_digests") or {})
@@ -838,6 +849,9 @@ def make_critique_revision_reduce_node(model_key: str | None = None, use_llm: bo
         llm_tokens = 0
         llm_trace: List[Dict[str, Any]] = []
         failed_batches = 0
+        for kept, dropped_ids in revision_duplicate_map.items():
+            for dropped in dropped_ids:
+                warnings.append(f"critique_revision_duplicate_candidate:{dropped}:kept={kept}")
 
         for batch_index, batch_ids in enumerate(batches):
             rows, batch_warnings, batch_tokens, batch_trace, batch_failed = _invoke_reduce_batch(
@@ -891,6 +905,10 @@ def make_critique_revision_reduce_node(model_key: str | None = None, use_llm: bo
             "digest_count": len(digests),
             "digest_shard_ids": sorted(digests.keys()),
             "missing_digest_shards": missing_shards,
+            "dedupe_duplicate_map": revision_duplicate_map,
+            "dedupe_duplicate_candidate_ids": [
+                cid for ids in revision_duplicate_map.values() for cid in ids
+            ],
             "reduce_batch_size": batch_size,
             "reduce_batch_count": len(batches),
             "reduce_failed_batches": failed_batches,

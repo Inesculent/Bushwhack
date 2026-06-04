@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from src.config import get_settings
@@ -51,6 +53,19 @@ def _finding(candidate_id: str = "c1") -> ReviewFinding:
         severity="medium",
         feedback_type="defect_detection",
         recommendation="preserve the expected value",
+    )
+
+
+def _normalize(
+    output: ReviewAdjudicationOutput | None,
+    candidates: dict[str, CandidateFinding],
+    *,
+    changed_files: set[str] | None = None,
+) -> tuple[list[ReviewFinding], dict[str, object], dict[str, list[str]], list[str]]:
+    return _normalize_adjudication_items(
+        output=output,
+        candidates=candidates,
+        changed_files=changed_files or {"pkg/mod.py"},
     )
 
 
@@ -157,18 +172,51 @@ def test_adjudication_validation_records_one_lifecycle_per_candidate() -> None:
         ]
     )
 
-    findings, lifecycle, merge_map, warnings = _normalize_adjudication_items(
-        output=output,
-        candidates=candidates,
-        changed_files={"pkg/mod.py"},
-    )
+    findings, lifecycle, merge_map, warnings = _normalize(output, candidates)
 
-    assert [finding.id for finding in findings] == ["c1"]
+    assert [finding.id for finding in findings] == ["c1", "c3"]
     assert lifecycle["c1"]["decision"] == "promoted"
     assert lifecycle["c2"]["decision"] == "merged"
-    assert lifecycle["c3"]["reason"] == "adjudicator_missing_decision"
+    assert lifecycle["c3"]["reason"] == "adjudicator_promote"
     assert merge_map == {"c1": ["c2"]}
-    assert "adjudication_missing_candidate:c3" in warnings
+    assert "adjudication_missing_candidate_promoted_fallback:c3" in warnings
+
+
+def test_adjudication_none_output_promotes_fallback_findings() -> None:
+    candidates = {
+        "c1": _candidate("c1"),
+        "c2": _candidate("c2"),
+    }
+
+    findings, lifecycle, merge_map, warnings = _normalize(None, candidates)
+
+    assert [finding.id for finding in findings] == ["c1", "c2"]
+    assert lifecycle["c1"]["decision"] == "promoted"
+    assert lifecycle["c2"]["decision"] == "promoted"
+    assert merge_map == {}
+    assert "adjudication_missing_candidate_promoted_fallback:c1" in warnings
+    assert "adjudication_missing_candidate_promoted_fallback:c2" in warnings
+
+
+def test_adjudication_explicit_drop_records_obvious_drop_reason() -> None:
+    candidates = {"c1": _candidate("c1")}
+    output = ReviewAdjudicationOutput(
+        items=[
+            ReviewAdjudicationItem(
+                candidate_id="c1",
+                decision="drop",
+                rationale="Packet is positive-only and has no actionable negative claim.",
+            )
+        ]
+    )
+
+    findings, lifecycle, merge_map, warnings = _normalize(output, candidates)
+
+    assert findings == []
+    assert merge_map == {}
+    assert warnings == []
+    assert lifecycle["c1"]["decision"] == "dropped"
+    assert lifecycle["c1"]["reason"] == "adjudicator_drop_obvious"
 
 
 def test_adjudication_validation_rejects_invalid_merge_target() -> None:
@@ -184,16 +232,101 @@ def test_adjudication_validation_rejects_invalid_merge_target() -> None:
         ]
     )
 
-    findings, lifecycle, merge_map, warnings = _normalize_adjudication_items(
-        output=output,
-        candidates=candidates,
-        changed_files={"pkg/mod.py"},
-    )
+    findings, lifecycle, merge_map, warnings = _normalize(output, candidates)
 
     assert findings == []
     assert merge_map == {}
     assert lifecycle["c1"]["reason"] == "invalid_merge_target"
     assert "adjudication_invalid_merge:c1->missing" in warnings
+
+
+def test_adjudication_promote_outside_changed_files_still_drops() -> None:
+    candidates = {"c1": _candidate("c1")}
+    output = ReviewAdjudicationOutput(
+        items=[
+            ReviewAdjudicationItem(
+                candidate_id="c1",
+                decision="promote",
+                finding=_finding("c1").model_copy(update={"file_path": "pkg/other.py"}),
+                rationale="supported",
+            )
+        ]
+    )
+
+    findings, lifecycle, _merge_map, warnings = _normalize(output, candidates)
+
+    assert findings == []
+    assert lifecycle["c1"]["reason"] == "promoted_path_not_changed"
+    assert "adjudication_promote_outside_changed_files:c1:pkg/other.py" in warnings
+
+
+def test_adjudication_invalid_promoted_line_range_still_drops() -> None:
+    candidates = {"c1": _candidate("c1")}
+    output = ReviewAdjudicationOutput(
+        items=[
+            ReviewAdjudicationItem(
+                candidate_id="c1",
+                decision="promote",
+                finding=_finding("c1").model_copy(update={"line_start": 20, "line_end": 10}),
+                rationale="supported",
+            )
+        ]
+    )
+
+    findings, lifecycle, _merge_map, warnings = _normalize(output, candidates)
+
+    assert findings == []
+    assert lifecycle["c1"]["reason"] == "invalid_line_range"
+    assert "adjudication_invalid_line_range:c1" in warnings
+
+
+def test_adjudication_preserves_combo_uncertainty_when_decision_missing() -> None:
+    candidate = _candidate("c1").model_copy(
+        update={
+            "content": "StringCompare can implicitly return None for an unexpected COMBO mode.",
+            "failure_mode": "implicit None return",
+            "evidence_summary": "Local source shows no terminal fallback return.",
+            "evidence_for_contract": "RETURN_TYPES declares IO.BOOLEAN for execute.",
+            "counterexample": "mode='Unexpected' reaches function end and returns None.",
+            "rejection_check": "No packet evidence proves COMBO validation before direct execute calls.",
+        }
+    )
+
+    findings, lifecycle, _merge_map, warnings = _normalize(None, {"c1": candidate})
+
+    assert [finding.id for finding in findings] == ["c1"]
+    assert "implicitly return None" in findings[0].content
+    assert lifecycle["c1"]["decision"] == "promoted"
+    assert "adjudication_missing_candidate_promoted_fallback:c1" in warnings
+
+
+def test_adjudication_preserves_findall_tuple_data_loss_candidate() -> None:
+    candidate = _candidate("c1").model_copy(
+        update={
+            "content": "All Matches extracts only m[0] from findall tuples, dropping other captured groups.",
+            "failure_mode": "captured group data loss",
+            "evidence_summary": "re.findall returns tuples for multiple capturing groups.",
+            "evidence_for_contract": "All Matches should preserve all matched group data unless narrowed.",
+            "counterexample": "pattern='(a)(b)' returns [('a', 'b')] but output keeps only 'a'.",
+            "rejection_check": "The packet contains no proof that only the first group is intended.",
+        }
+    )
+
+    findings, lifecycle, _merge_map, warnings = _normalize(None, {"c1": candidate})
+
+    assert [finding.id for finding in findings] == ["c1"]
+    assert "dropping other captured groups" in findings[0].content
+    assert lifecycle["c1"]["decision"] == "promoted"
+    assert "adjudication_missing_candidate_promoted_fallback:c1" in warnings
+
+
+def test_review_adjudicator_prompt_is_preservation_biased() -> None:
+    prompt = Path("src/orchestration/prompts/reviewer/review_adjudicator.md").read_text()
+
+    assert "You are not a verifier" in prompt
+    assert "Default to `promote`" in prompt
+    assert "framework, enum, schema, caller, or runtime might prevent the trigger" in prompt
+    assert "Merge only true duplicates with the same contract, operation, trigger, and impact" in prompt
 
 
 def test_adjudication_batches_do_not_drop_candidates() -> None:

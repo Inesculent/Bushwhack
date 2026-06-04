@@ -10,7 +10,9 @@ Optional **runtime verifier** JSON may appear. Apply these rules when verifier d
 
 You may **overturn** an earlier reflector `reject` when digests contradict the reject rationale (e.g. incorrect stdlib story, or "not in diff" when file evidence shows the handler). **Partial refutation:** if a stated IndexError/crash was disproved but digests still show wrong output, empty string, or data loss → `accept` with an updated `updated_evidence_summary` describing the corrected failure mode.
 
-**In-function contracts vs declared inputs:** Do **not** reject missing `else`/return, wrong structured-return slots, index-boundary mismatches, or absent values breaking aggregations solely because INPUT_TYPES uses COMBO/enums or documents allowed values. Schema restriction does not replace branch exhaustiveness inside the handler. When digest bullets confirm such a defect in file evidence, prefer `accept` unless digests explicitly disprove the failure mode.
+**Local contracts vs upstream guarantees:** Do **not** reject a concrete changed-operation defect solely because an upstream schema, caller, enum, UI, framework, or convention might prevent the trigger. Reject on an upstream guarantee only when the supplied digests or verifier advisory directly prove that the same trigger cannot reach the changed operation or that the claimed impact is false. When digests support a local behavioral contract failure, prefer `accept` unless the supplied evidence explicitly disproves that failure.
+
+**Corrected failure mode:** If new context disproves one subtype of a candidate but still supports a concrete behavioral defect in the same changed operation, keep the issue and correct `updated_evidence_summary` instead of rejecting the candidate outright.
 
 For **each** candidate, decide post-context:
 - `verdict` = `accept` if the issue remains well supported, or `reject` if new context disproves or weakens it beyond surfacing.

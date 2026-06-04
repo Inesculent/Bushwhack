@@ -16,7 +16,7 @@ Do not use `no_finding` just because proof is absent. Use `no_finding` only when
 Generic reasoning rules:
 - Declared schemas, enums, or UI choices do not by themselves suppress in-function return, dispatch, indexing, aggregation, or contract checks unless the check explicitly names schema enforcement as suppressing evidence.
 - When a check asks about fall-through or exhaustive dispatch, visible returns in named branches do not prove that a terminal fallback exists. Suppression must address the terminal/fallback behavior named by the check.
-- For structured values, preserving the outer container or return type is not enough. Suppression must address the field, slot, index, element/cardinality, aggregation, or serialization semantics named by the check.
+- For structured values, preserving the outer container or return type is not enough. Suppression must address the field, slot, index, element/cardinality, aggregation, or serialization semantics named by the check. Code that selects or narrows to one value is not itself proof that the narrowed value is the intended contract.
 - Treat each check dimension independently. Evidence that suppresses one dimension, such as return shape, branch coverage, indexing, aggregation, dispatch, or resource behavior, does not suppress another dimension unless it directly addresses that check's report criteria.
 - Treat `owned_contract_scope` as the check's ownership boundary. If the "Already Seen Claim Digests" section contains the same root contract, emit a candidate only when this check proves a materially different contract, counterexample family, or impact. Otherwise return `no_finding` or `unsupported` according to the evidence.
 

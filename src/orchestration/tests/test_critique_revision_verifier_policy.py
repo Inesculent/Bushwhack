@@ -1,4 +1,4 @@
-"""Tests for critique-revision verifier policy and ReDoS dedupe."""
+"""Tests for critique-revision verifier policy and generic dedupe."""
 
 from __future__ import annotations
 
@@ -8,11 +8,24 @@ from src.domain.verifier_schemas import VerifierAttemptRecord, VerifierReport
 from src.orchestration.nodes.application.critique_revision import (
     _apply_verifier_policy_to_revisions,
     _dedupe_revision_candidate_ids,
+    _dedupe_revision_candidate_ids_with_duplicates,
     _render_verifier_advisory_section,
 )
 
 
-def _cand(cid: str, *, claim_type: str = "security_risk", content: str = "ReDoS risk") -> CandidateFinding:
+def _cand(
+    cid: str,
+    *,
+    claim_type: str = "defect",
+    content: str = "Handler drops one row",
+    failure_mode: str = "Data loss in changed aggregation",
+    evidence_summary: str = "The changed loop skips one row.",
+    recommendation: str = "Preserve every row.",
+    behavioral_symptom: str = "data_loss",
+    root_operation: str = "aggregation",
+    reflection_specialties: list[str] | None = None,
+    suspected_category: str = "logic",
+) -> CandidateFinding:
     return CandidateFinding(
         candidate_id=cid,
         patch_task_id="1",
@@ -21,23 +34,82 @@ def _cand(cid: str, *, claim_type: str = "security_risk", content: str = "ReDoS 
         line_end=2,
         content=content,
         claim_type=claim_type,  # type: ignore[arg-type]
-        failure_mode="catastrophic backtracking on user regex",
-        evidence_summary="uses re.search without timeout",
-        recommendation="add timeout",
-        reflection_specialties=["security"],
-        suspected_category="security",
+        failure_mode=failure_mode,
+        evidence_summary=evidence_summary,
+        recommendation=recommendation,
+        reflection_specialties=reflection_specialties or ["logic"],
+        suspected_category=suspected_category,
+        behavioral_symptom=behavioral_symptom,
+        root_operation=root_operation,
     )
 
 
-def test_dedupe_redos_candidates_same_file() -> None:
+def test_dedupe_revision_candidates_by_generic_claim_signature() -> None:
     state: GraphState = {
         "candidate_findings": [
             _cand("1:task1_1"),
-            _cand("1:task1_2", content="another ReDoS on RegexExtract"),
+            _cand("1:task1_2"),
         ],
     }
     out = _dedupe_revision_candidate_ids(state, ["1:task1_1", "1:task1_2"])
     assert out == ["1:task1_1"]
+    _, duplicates = _dedupe_revision_candidate_ids_with_duplicates(
+        state,
+        ["1:task1_1", "1:task1_2"],
+    )
+    assert duplicates == {"1:task1_1": ["1:task1_2"]}
+
+
+def test_dedupe_revision_preserves_distinct_same_file_claims() -> None:
+    state: GraphState = {
+        "candidate_findings": [
+            _cand("data-loss"),
+            _cand(
+                "missing-return",
+                content="Handler can fall through without returning.",
+                failure_mode="Implicit None from changed dispatch path.",
+                evidence_summary="No fallback branch returns a value.",
+                recommendation="Return a valid value on every path.",
+                behavioral_symptom="missing_return",
+                root_operation="dispatch",
+            ),
+        ],
+    }
+    out = _dedupe_revision_candidate_ids(state, ["data-loss", "missing-return"])
+    assert out == ["data-loss", "missing-return"]
+
+
+def test_dedupe_revision_preserves_distinct_security_same_file_claims() -> None:
+    state: GraphState = {
+        "candidate_findings": [
+            _cand(
+                "path-risk",
+                claim_type="security_risk",
+                content="Handler joins an untrusted relative path.",
+                failure_mode="Path traversal can escape the allowed directory.",
+                evidence_summary="The changed path join accepts '../'.",
+                recommendation="Normalize and validate the resolved path.",
+                behavioral_symptom="contract_mismatch",
+                root_operation="resource_use",
+                reflection_specialties=["security"],
+                suspected_category="security",
+            ),
+            _cand(
+                "token-risk",
+                claim_type="security_risk",
+                content="Handler logs a sensitive token on failure.",
+                failure_mode="Sensitive value exposure in diagnostics.",
+                evidence_summary="The changed error branch formats the token into logs.",
+                recommendation="Redact the token before logging.",
+                behavioral_symptom="contract_mismatch",
+                root_operation="serialization",
+                reflection_specialties=["security"],
+                suspected_category="security",
+            ),
+        ],
+    }
+    out = _dedupe_revision_candidate_ids(state, ["path-risk", "token-risk"])
+    assert out == ["path-risk", "token-risk"]
 
 
 def test_apply_verifier_policy_refuted_stays_advisory() -> None:

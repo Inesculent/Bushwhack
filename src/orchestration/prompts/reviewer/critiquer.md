@@ -29,11 +29,11 @@ Rules:
 - **Contract-lens pass:** Before writing candidates for a broad task, select only the lenses supported by changed code and context. Treat lens cards as questions that help infer contracts, counterexamples, and rejection checks, not as issue classes to remember.
 - **Proven findings vs drill-down leads:** Use `defect`, `security_risk`, `performance_regression`, or `missing_test` for locally supported issues. Use `uncertain` only for a concrete failure hypothesis with low-to-medium confidence, bounded `required_context`, and an `initial_focus_request` when static repository context can decide it.
 - **Diversity before depth on broad tasks:** Do not stop after a branch/return/structured-result candidate if other task-relevant families have visible evidence. Keep narrow branch-specific or structured-specific tasks narrow.
-- **High-signal review dimensions:** Follow the assigned task. Functional correctness includes changed branch order, return contracts, slot/index handling, null/panic paths, exact output/protocol fidelity, removed imports/includes still used, overwritten state/cache, concurrency/shared-state hazards, resource growth, security/input-boundary failures, and explicit API or repository-convention regressions.
+- **High-signal review dimensions:** Follow the assigned task. Functional correctness includes changed control flow, return contracts, selected/skipped values, boundary handling, exact output/protocol fidelity, removed imports/includes still used, overwritten state/cache, concurrency/shared-state hazards, resource growth, security/input-boundary failures, and explicit API or repository-convention regressions.
 - **Evidence-gated scope:** Do not turn the broad dimension list into a generic audit. Cover dimensions that are both relevant to the task and visible in the diff, code evidence, Review KB, or focused context. If a task is narrow, stay narrow.
 - **Audit coverage:** Populate `audit_coverage` with non-promotable records for the surfaces you reviewed and the abstract dimensions considered. Use the task-relevant dimension names when possible (for example, `api/signature compatibility`, `dependency/import availability`, `nullability/panic safety`, `state/cache lifecycle`, `protocol/output fidelity`, `concurrency/shared-state safety`, `security/input boundary`, `repository convention contract`, `public/user contract`, or `maintainability contract`). Do not put defects in `audit_coverage`; use `candidates` for actionable findings.
 - **Declared inputs:** Follow the global **Declared input contracts** rule. Do **not** emit None/null/absent-input defects for parameters that are required and non-optional in the framework's declared input schema unless the diff shows optional/nullable typing or handling that implies such values can arrive. Do not use `required_context` solely to ask whether upstream "might pass None."
-- Prefer accuracy over volume: emit **at most one** candidate per distinct issue (same file + class/method + **same root failure**). Different failure modes in the same method (return contract vs indexing vs aggregation) are **not** duplicates. Do **not** re-emit the same missing-`else`/return hypothesis with different line ranges.
+- Prefer accuracy over volume: emit **at most one** candidate per distinct issue (same file + class/method + **same root failure**). Different failure modes in the same method are **not** duplicates when their trigger, operation, contract, or impact differs. Do **not** re-emit the same control-flow hypothesis with different line ranges.
 - For each candidate, set `behavioral_symptom` and `root_operation` with generic labels. Use symptoms such as `wrong_output`, `data_loss`, `crash`, `missing_return`, `uncaught_exception`, `unbounded_work`, or `contract_mismatch`; use operations such as `dispatch`, `indexing`, `aggregation`, `exception_scope`, `resource_use`, `serialization`, or `contract`.
 - For each candidate, set `claim_digest` as a compact root-claim marker: file/symbol plus the branch/mode/variant, contract dimension, and impact when known. Use it to avoid re-reporting the same root contract in different words.
 - For each candidate, populate `evidence_for_contract`, `counterexample`, and `rejection_check`. These fields must be specific and short: prove the contract exists, give the triggering input/state/path, and self-check that the claim is not style, speculation, intentional narrowing, or impossible under caller guarantees.
@@ -52,22 +52,15 @@ Rules:
 - Use `required_context` for facts that must be checked before promotion (callers, authorization checks, escaping, existing service contracts, tests, config limits, or exact source/AST evidence behind a KB hint).
 - Use `suspected_category` to hint security / logic / performance / general / other (aligned with your single `reflection_specialties` choice).
 - **Contract before issue class:** Do not prompt yourself to remember concrete issue families. First infer what the changed surface promises from old behavior, names, types, callers, schemas, tests, docs, or surrounding code; then test whether the changed path violates that promise for a concrete counterexample.
-- For each **`elif` chain** on a discriminant (`mode`, `op`, `kind`, ...), use the branch audit below before any missing-return candidate. This is one correctness family, not the default focus for unrelated broad tasks.
+- For each changed conditional/dispatch chain, use the branch audit below before any control-flow candidate. This is one correctness family, not the default focus for unrelated broad tasks.
 
 ### Branch Audit (When Branch-Specific)
 
-Before claiming a **named branch** lacks a `return`, read `code_evidence` and record one line in `evidence_summary` per branch you can see:
+Before claiming a branch-specific control-flow defect, read `code_evidence` and record one line in `evidence_summary` per relevant branch you can see:
 
 `[SAFE] <branch-label>: <what it returns or raises>` or `[DEFECT] <branch-label>: <concrete bug>`
 
-Example for three discriminant branches plus fall-through:
-
-- `[SAFE] case A: returns <value>`
-- `[SAFE] case B: returns <value>`
-- `[SAFE] case C: returns <value>` - do **not** tell the author to add a `return` on case C if it is already present
-- `[DEFECT] fall-through: no terminal else; implicit None (or wrong type) for unexpected discriminant`
-
-**Do not conflate issues:** a missing **terminal `else`** is not the same as a missing `return` on an `elif` that already returns. Never recommend adding a `return` on a branch you marked `[SAFE]`. Emit at most one candidate per handler for fall-through/`else` gaps unless a `[DEFECT]` branch has a different root cause.
+**Do not conflate issues:** a terminal uncovered path is not the same as a bug inside a named branch that already exits correctly. Never recommend changing a branch you marked `[SAFE]`. Emit at most one candidate per handler for the same uncovered path unless another `[DEFECT]` branch has a different root cause.
 
 ### Contract Claim Discipline
 
@@ -81,7 +74,7 @@ For every candidate, make the four-part claim explicit through the existing fiel
 Do not emit a candidate if you cannot fill these fields with concrete source-backed information. Use `uncertain` only for a bounded drill-down lead with a concrete counterexample and a focused request that can decide the missing contract evidence.
 
 - **Routing:** Prefer `claim_type: defect` with `reflection_specialties: [logic]` for wrong output/data loss; reserve `security_risk` for attacker-driven harm. Do not let a single broad risk claim crowd out other contract-backed findings on the same handlers.
-- Follow global **changed behavior contracts**: branch/return and implicit `None` issues are defects only when contract evidence and a reachable counterexample support them.
+- Follow global **changed behavior contracts**: control-flow and return-contract issues are defects only when contract evidence and a reachable counterexample support them.
 - `line_start` and `line_end` must fall within the changed region when possible.
 - `candidate_id` must be unique within this task; include the task id as a prefix.
 - `initial_focus_requests`: create bounded requests whenever a plausible high-impact claim depends on context not already shown. This is required for claims about missing authorization, injection, unsafe deletion, caller contracts, or performance behavior outside the changed function. Do not request arbitrary shell commands.

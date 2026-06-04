@@ -19,7 +19,7 @@ Use only these specialties: security, logic, performance, general.
 
 Prefer one focused task per specialty unless the diff clearly contains independent risk clusters that need separate review. Keep target files limited to the changed files or directly implicated context files.
 
-Use three inputs together: (1) PR description intent, (2) what the repository actually does from KB/structural hints/mental model, and (3) general code-review practice. Do not overfit to any one source. Use Repository KB summaries, when present, to identify directly related subsystems, contracts, and dependency boundaries. Use the PR diff/review overlay for task anchoring. Do not create broad repository-wide tasks unless KB evidence shows the changed surface depends on that subsystem or contract.
+Use three inputs together: (1) PR description intent, (2) what the repository actually does from KB/structural hints/mental model, and (3) general code-review practice. General practice may suggest questions, but it is not by itself a task-worthy defect hypothesis. Do not overfit to any one source. Use Repository KB summaries, when present, to identify directly related subsystems, contracts, and dependency boundaries. Use the PR diff/review overlay for task anchoring. Do not create broad repository-wide tasks unless KB evidence shows the changed surface depends on that subsystem or contract.
 
 Balance the plan across **security, correctness (logic), performance, and general** (APIs, tests, integration). Do **not** let every task read as “security and defensive programming only”; surface non-security defects (wrong outputs, missing branches, type/None handling, API mismatches) and maintainability issues with equal weight when the diff supports them.
 
@@ -34,6 +34,8 @@ Use these **review topics as planning lenses**, not as a checklist that must pro
 Create a topic-specific task only when the diff, Repository KB, structural hints, or surface inventory points to a meaningful PR-local risk. Do not add broad topic-audit tasks just to mention every lens; task count caps and mutual-exclusion rules still win.
 
 Phrase tasks around contract justification: identify the changed surface, the evidence that makes a behavior contractual, the counterexample family that would prove a violation, and the impact category to check. Do not ask workers to remember concrete issue classes.
+
+Do not phrase tasks as generic hardening or optimization advice. A security/performance/resource task must name the changed boundary or hot path, the operation whose behavior changed, the concrete trigger family, and the impact to verify. Otherwise keep the concern as audit coverage, not a worker task.
 
 When two nearby risks share a symbol, distinguish them by contract rather than domain label. For example, `src/tool.py::Parser.run::variant=batch::contract=cardinality::impact=data_loss` remains distinct from `src/tool.py::Parser.run::variant=empty::contract=dispatch::impact=missing_return`.
 
