@@ -13,6 +13,8 @@ def test_settings_accept_review_langsmith_env(monkeypatch) -> None:
     monkeypatch.setenv("REVIEW_LANGSMITH_API_KEY", "lsv2-test")
     monkeypatch.setenv("REVIEW_LANGSMITH_PROJECT", "trace-project")
     monkeypatch.setenv("REVIEW_LANGSMITH_WORKSPACE_ID", "workspace-id")
+    monkeypatch.setenv("REVIEW_LANGSMITH_HIDE_INPUTS", "true")
+    monkeypatch.setenv("REVIEW_LANGSMITH_HIDE_OUTPUTS", "false")
 
     settings = Settings(_env_file=None)
 
@@ -20,12 +22,16 @@ def test_settings_accept_review_langsmith_env(monkeypatch) -> None:
     assert settings.langsmith_api_key == "lsv2-test"
     assert settings.langsmith_project == "trace-project"
     assert settings.langsmith_workspace_id == "workspace-id"
+    assert settings.langsmith_hide_inputs is True
+    assert settings.langsmith_hide_outputs is False
 
 
 def test_configure_langsmith_environment_sets_langchain_vars(monkeypatch) -> None:
     monkeypatch.delenv("LANGSMITH_TRACING", raising=False)
     monkeypatch.delenv("LANGSMITH_API_KEY", raising=False)
     monkeypatch.delenv("LANGSMITH_PROJECT", raising=False)
+    monkeypatch.delenv("LANGSMITH_HIDE_INPUTS", raising=False)
+    monkeypatch.delenv("LANGSMITH_HIDE_OUTPUTS", raising=False)
     monkeypatch.delenv("LANGCHAIN_CALLBACKS_BACKGROUND", raising=False)
     settings = Settings(
         _env_file=None,
@@ -40,6 +46,8 @@ def test_configure_langsmith_environment_sets_langchain_vars(monkeypatch) -> Non
     assert os.environ["LANGSMITH_TRACING"] == "true"
     assert os.environ["LANGSMITH_API_KEY"] == "lsv2-test"
     assert os.environ["LANGSMITH_PROJECT"] == "trace-project"
+    assert os.environ["LANGSMITH_HIDE_INPUTS"] == "false"
+    assert os.environ["LANGSMITH_HIDE_OUTPUTS"] == "true"
     assert os.environ["LANGCHAIN_CALLBACKS_BACKGROUND"] == "false"
 
 

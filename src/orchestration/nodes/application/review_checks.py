@@ -1709,6 +1709,36 @@ def _candidate_speculative(candidate: CandidateFinding, result: ReviewCheckResul
     return any(marker in blob for marker in _SPECULATIVE_MARKERS)
 
 
+def _expected_behavior_is_generic_best_practice(candidate: CandidateFinding) -> bool:
+    expected = candidate.expected_behavior.strip().lower()
+    if not expected:
+        return False
+    advisory_markers = (
+        "best practice",
+        "nice to have",
+        "consider adding",
+        "could add",
+        "should add",
+        "recommended to add",
+        "would be safer",
+        "would improve",
+    )
+    if not any(marker in expected for marker in advisory_markers):
+        return False
+    contract_markers = (
+        "preserve",
+        "return",
+        "must",
+        "contract",
+        "declared",
+        "expected",
+        "intended",
+        "required",
+        "guarantee",
+    )
+    return not any(marker in expected for marker in contract_markers)
+
+
 def _candidate_names_affected_path(
     candidate: CandidateFinding,
     result: ReviewCheckResult,
@@ -1768,6 +1798,10 @@ def _candidate_passes_gate(
         return False, "candidate_anchor_too_broad"
     if not check.affected_invariant.strip():
         return False, "missing_check_invariant"
+    if not candidate.expected_behavior.strip():
+        return False, "missing_expected_behavior"
+    if _expected_behavior_is_generic_best_practice(candidate):
+        return False, "generic_expected_behavior_not_contract"
     if not candidate.evidence_for_contract.strip():
         return False, "missing_contract_evidence"
     if not candidate.counterexample.strip():
@@ -1860,6 +1894,7 @@ def make_review_check_evidence_gate_node():
             else:
                 dropped += 1
                 if reason in {
+                    "missing_expected_behavior",
                     "missing_contract_evidence",
                     "missing_counterexample",
                     "missing_rejection_check",

@@ -512,6 +512,7 @@ def _fallback_finding(candidate: CandidateFinding) -> ReviewFinding:
         severity=candidate.severity,
         feedback_type=_feedback_type_for_candidate(candidate),  # type: ignore[arg-type]
         recommendation=candidate.recommendation,
+        expected_behavior=candidate.expected_behavior,
         behavioral_symptom=candidate.behavioral_symptom,
         root_operation=candidate.root_operation,
         claim_digest=candidate.claim_digest,

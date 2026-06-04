@@ -304,6 +304,16 @@ class Settings(BaseSettings):
 		),
 		description="Optional LangChain callback background mode for trace flushing.",
 	)
+	langsmith_hide_inputs: bool = Field(
+		default=False,
+		validation_alias=AliasChoices("REVIEW_LANGSMITH_HIDE_INPUTS", "LANGSMITH_HIDE_INPUTS"),
+		description="Hide LangSmith run inputs before upload.",
+	)
+	langsmith_hide_outputs: bool = Field(
+		default=True,
+		validation_alias=AliasChoices("REVIEW_LANGSMITH_HIDE_OUTPUTS", "LANGSMITH_HIDE_OUTPUTS"),
+		description="Hide LangSmith run outputs before upload to avoid oversized LangGraph state payloads.",
+	)
 	anthropic_api_key: Optional[str] = Field(
 		default=None,
 		validation_alias=AliasChoices("REVIEW_ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY"),

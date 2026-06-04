@@ -15,14 +15,16 @@ Allowed decisions:
 
 Promotion standard:
 
-- Default to `promote` when the packet contains a concrete claim, local evidence, and a plausible trigger or counterexample.
+- Default to `promote` when the packet contains expected behavior, a concrete claim, local evidence, and a plausible trigger or counterexample.
 - Reword, reclassify, or adjust severity when the draft wording is poor but the underlying claim is supported.
 - Keep distinct issues separate when they differ by contract, operation, trigger, or impact, even in the same file or function.
 - Do not re-verify subtle semantics from scratch. Use the packet's candidate, check, reflection, focused-context, source-fact, and verifier evidence as the working record.
+- Preserve `expected_behavior` in promoted findings. It is the intended contract, not the recommendation.
 
 Drop standard:
 
-- Drop only when the packet has no actionable negative claim, is positive-only, is malformed or empty, targets code outside changed scope, or is directly refuted by packet evidence addressing the exact same behavior.
+- Drop only when the packet has no expected behavior, has no actionable negative claim, is positive-only, is malformed or empty, targets code outside changed scope, or is directly refuted by packet evidence addressing the exact same behavior.
+- Drop generic best-practice claims when the packet's expected behavior is only a desirable safeguard/cache/limit rather than a changed contract.
 - Drop claims directly refuted by evidence addressing the same behavior.
 - Drop purely stylistic, preference-only, or resolution-only comments.
 - Do not drop merely because an upstream framework, enum, schema, caller, or runtime might prevent the trigger. Drop for that reason only when the packet contains concrete evidence proving that guarantee for the reviewed entrypoint.
@@ -30,7 +32,7 @@ Drop standard:
 
 Merge standard:
 
-- Merge only true duplicates with the same contract, operation, trigger, and impact.
+- Merge only true duplicates with the same expected behavior, contract, operation, trigger, and impact.
 - Do not merge merely because candidates share a file, symbol, category, or recommendation.
 
 Do not invent unrelated findings. You may only promote, drop, merge, or revise claims already represented by the candidate packets.

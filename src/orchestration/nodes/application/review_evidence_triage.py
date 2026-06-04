@@ -116,6 +116,7 @@ def _compact_candidate(candidate: CandidateFinding, state: GraphState) -> Dict[s
         "suspected_category": candidate.suspected_category,
         "reflection_specialties": list(candidate.reflection_specialties),
         "content": _truncate(candidate.content, 700),
+        "expected_behavior": _truncate(candidate.expected_behavior, 500),
         "failure_mode": _truncate(candidate.failure_mode, 500),
         "evidence_summary": _truncate(candidate.evidence_summary, 500),
         "required_context": list(candidate.required_context[:8]),
@@ -155,6 +156,10 @@ def _compact_check_result(result: ReviewCheckResult, check: ReviewCheck | None) 
         "check_id": result.check_id,
         "behavioral_question": _truncate(check.behavioral_question if check else "", 400),
         "affected_invariant": _truncate(check.affected_invariant if check else "", 400),
+        "expected_behavior": _truncate(
+            result.expected_behavior or (check.expected_behavior if check else ""),
+            500,
+        ),
         "decision": result.decision,
         "reportable_reason": _truncate(result.reportable_reason, 500),
     }

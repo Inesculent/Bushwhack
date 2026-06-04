@@ -32,6 +32,7 @@ def _candidate(candidate_id: str = "c1", *, file_path: str = "pkg/mod.py") -> Ca
         line_end=12,
         content="Changed operation can return the wrong value.",
         claim_type="defect",
+        expected_behavior="The changed operation returns the complete expected value.",
         failure_mode="wrong output",
         evidence_summary="local evidence",
         recommendation="preserve the expected value",
@@ -53,6 +54,7 @@ def _finding(candidate_id: str = "c1") -> ReviewFinding:
         severity="medium",
         feedback_type="defect_detection",
         recommendation="preserve the expected value",
+        expected_behavior="The changed operation returns the complete expected value.",
     )
 
 
@@ -139,6 +141,7 @@ def test_adjudication_packet_includes_available_evidence() -> None:
     assert len(packets) == 1
     packet = packets[0]
     assert packet["candidate"]["candidate_id"] == "c1"
+    assert packet["candidate"]["expected_behavior"] == "The changed operation returns the complete expected value."
     assert packet["originating_checks"][0]["check_id"] == "check-1"
     assert packet["reflection_reports"][0]["verdict"] == "accept"
     assert packet["focused_context"][0]["file_snippets"]
@@ -191,6 +194,7 @@ def test_adjudication_none_output_promotes_fallback_findings() -> None:
     findings, lifecycle, merge_map, warnings = _normalize(None, candidates)
 
     assert [finding.id for finding in findings] == ["c1", "c2"]
+    assert findings[0].expected_behavior == candidates["c1"].expected_behavior
     assert lifecycle["c1"]["decision"] == "promoted"
     assert lifecycle["c2"]["decision"] == "promoted"
     assert merge_map == {}
@@ -296,6 +300,7 @@ def test_adjudication_preserves_combo_uncertainty_when_decision_missing() -> Non
 
     assert [finding.id for finding in findings] == ["c1"]
     assert "implicitly return None" in findings[0].content
+    assert findings[0].expected_behavior == candidate.expected_behavior
     assert lifecycle["c1"]["decision"] == "promoted"
     assert "adjudication_missing_candidate_promoted_fallback:c1" in warnings
 
@@ -316,6 +321,7 @@ def test_adjudication_preserves_findall_tuple_data_loss_candidate() -> None:
 
     assert [finding.id for finding in findings] == ["c1"]
     assert "dropping other captured groups" in findings[0].content
+    assert findings[0].expected_behavior == candidate.expected_behavior
     assert lifecycle["c1"]["decision"] == "promoted"
     assert "adjudication_missing_candidate_promoted_fallback:c1" in warnings
 
@@ -326,7 +332,7 @@ def test_review_adjudicator_prompt_is_preservation_biased() -> None:
     assert "You are not a verifier" in prompt
     assert "Default to `promote`" in prompt
     assert "framework, enum, schema, caller, or runtime might prevent the trigger" in prompt
-    assert "Merge only true duplicates with the same contract, operation, trigger, and impact" in prompt
+    assert "Merge only true duplicates with the same expected behavior, contract, operation, trigger, and impact" in prompt
 
 
 def test_adjudication_batches_do_not_drop_candidates() -> None:

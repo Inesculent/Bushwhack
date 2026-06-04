@@ -17,6 +17,8 @@ def configure_langsmith_environment(settings: Settings) -> None:
     _set_if_present("LANGSMITH_PROJECT", settings.langsmith_project)
     _set_if_present("LANGSMITH_ENDPOINT", settings.langsmith_endpoint)
     _set_if_present("LANGSMITH_WORKSPACE_ID", settings.langsmith_workspace_id)
+    os.environ["LANGSMITH_HIDE_INPUTS"] = "true" if settings.langsmith_hide_inputs else "false"
+    os.environ["LANGSMITH_HIDE_OUTPUTS"] = "true" if settings.langsmith_hide_outputs else "false"
     if settings.langsmith_callbacks_background is not None:
         os.environ["LANGCHAIN_CALLBACKS_BACKGROUND"] = (
             "true" if settings.langsmith_callbacks_background else "false"

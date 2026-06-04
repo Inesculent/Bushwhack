@@ -18,6 +18,8 @@ Use the selected contract lens cards only when their relevance signals are prese
 
 Each check should own one contract claim: the surface, branch/mode/variant, contract dimension, counterexample family, and impact family it is responsible for testing. Populate `owned_contract_scope` with a compact marker for that ownership. Nearby checks may share a file or symbol, but they should not own the same contract claim unless one is intentionally narrower and materially different.
 
+Populate `expected_behavior` for every check. It must state what the changed code is intended or contracted to do for this check. Do not use `expected_behavior` for the fix recommendation, and do not merely repeat a generic issue class.
+
 If a potential issue belongs to a different owned contract scope, create a separate check only when the assigned task owns that scope. Otherwise leave it for the owning task instead of restating the same issue from this angle.
 
 The changed code anchor must be on a changed file and should name a changed function, class, line range, or behavior visible in the supplied diff/context.

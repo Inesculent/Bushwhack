@@ -239,6 +239,7 @@ def fallback_checks(state: GraphState, task: ReviewTask, slot: Mapping[str, Any]
                 changed_code_anchor=surface,
                 behavioral_question=f"Does the changed {surface} preserve {dimension}?",
                 affected_invariant=dimension,
+                expected_behavior=str(row.get("expected_behavior") or dimension)[:500],
                 required_evidence=[
                     str(row.get("evidence") or f"code evidence for {dimension}"),
                     *contract_material,
@@ -272,6 +273,7 @@ def fallback_checks(state: GraphState, task: ReviewTask, slot: Mapping[str, Any]
             changed_code_anchor=str(anchor_update.get("changed_code_anchor") or file_path or task.title),
             behavioral_question=f"Does the changed code satisfy the task-specific behavior: {task.title}?",
             affected_invariant=task.description[:400],
+            expected_behavior=task.description[:500],
             required_evidence=["changed-code behavior at the task anchor"],
             suppress_criteria=["Task evidence shows the changed behavior is preserved."],
             report_criteria=["Changed code creates a concrete reachable regression."],
@@ -302,6 +304,7 @@ def surface_coverage_check(state: GraphState, task: ReviewTask, surface: ReviewS
         affected_invariant=(
             f"{surface.name} in {surface.file_path} preserves the behavior targeted by {task.title}."
         ),
+        expected_behavior=f"{surface.name} preserves the behavior targeted by {task.title}.",
         required_evidence=[
             f"changed implementation for {surface.name}",
             "repository contract or local caller evidence when the local code is insufficient",
@@ -343,6 +346,7 @@ def coverage_check_for_file(state: GraphState, task: ReviewTask, file_path: str,
             f"Does the changed code in {file_path} preserve the task-specific behavior for {task.title}?"
         ),
         affected_invariant=task.description[:400] or task.title,
+        expected_behavior=(task.description or task.title)[:500],
         required_evidence=[
             f"changed behavior in {file_path}",
             "caller, contract, or runtime path needed to decide the changed behavior",
@@ -657,6 +661,10 @@ def coverage_check_for_obligation(
     ][:2]
     cardinality = signal_family == "aggregation_cardinality" or "structured" in dimension.lower()
     if cardinality:
+        expected_behavior = (
+            f"{surface} preserves each intended field, element, group, nested value, and cardinality "
+            "for this aggregation/cardinality path unless the changed contract intentionally narrows it."
+        )
         question = (
             f"Does the changed {surface} preserve each intended field, element, group, or nested value "
             "for this aggregation/cardinality path?"
@@ -670,6 +678,7 @@ def coverage_check_for_obligation(
             "or documents an intentional narrowing at the changed contract."
         )
     else:
+        expected_behavior = f"{surface} preserves {dimension}."
         question = f"Does the changed {surface} preserve {dimension}?"
         report = f"The changed {surface} violates {dimension} on a concrete reachable path."
         suppress = f"Concrete repository evidence shows {surface} preserves {dimension}."
@@ -688,6 +697,7 @@ def coverage_check_for_obligation(
         diff_signal=diff_signal[:240],
         behavioral_question=question,
         affected_invariant=dimension,
+        expected_behavior=expected_behavior,
         required_evidence=[
             evidence,
             *(operation_markers[:4] if operation_markers else []),
@@ -779,6 +789,7 @@ def surface_check_for_dimension(
         changed_code_anchor=surface.name,
         behavioral_question=question,
         affected_invariant=dimension,
+        expected_behavior=f"{surface.name} preserves {dimension}.",
         required_evidence=required_evidence,
         suppress_criteria=[
             f"Concrete repository evidence shows {surface.name} preserves {dimension}.",
@@ -873,6 +884,7 @@ def maintainability_floor_checks(
             changed_code_anchor=surface.name,
             behavioral_question=f"Does the changed {surface.name} avoid concrete docs/comment/readability regressions?",
             affected_invariant="maintainability contract",
+            expected_behavior=f"{surface.name} keeps changed docs/comments/text correct, consistent, and non-misleading.",
             required_evidence=[
                 f"changed docs/comment/readability evidence for {surface.name}",
                 "repository naming or documentation convention evidence when needed",
@@ -1014,6 +1026,10 @@ def uncovered_surface_behavior_checks(
                     "inputs/options and branch behavior, return shape, data shape, or local side effects?"
                 ),
                 affected_invariant="source-local changed behavior consistency",
+                expected_behavior=(
+                    f"{surface.name} keeps declared inputs/options, reachable branch behavior, "
+                    "return shape, data shape, and local side effects internally consistent."
+                ),
                 required_evidence=[
                     f"changed implementation for {surface.name}",
                     "declared inputs/options, branch bodies, return shape, data shape, and local side effects",
@@ -1081,6 +1097,10 @@ def omitted_file_surface_check(
             "have any reachable mismatch in inputs, branch behavior, return shape, data shape, or local side effects?"
         ),
         affected_invariant="source-local changed behavior consistency for omitted prompt file",
+        expected_behavior=(
+            f"{surface.name} keeps declared inputs/options, reachable branch behavior, "
+            "return shape, data shape, and local side effects internally consistent."
+        ),
         required_evidence=[
             f"focused changed implementation for {surface.name}",
             "declared inputs/options, branch bodies, return shape, data shape, and local side effects",
@@ -1113,6 +1133,10 @@ def omitted_file_behavior_check(
                 "in inputs, branch behavior, return shape, data shape, or local side effects?"
             ),
             "affected_invariant": "source-local changed behavior consistency for omitted prompt file",
+            "expected_behavior": (
+                f"{file_path} keeps changed prompt-file behavior, return shape, data shape, "
+                "and local side effects internally consistent."
+            ),
             "required_evidence": [
                 f"focused changed implementation in {file_path}",
                 "declared inputs/options, branch bodies, return shape, data shape, and local side effects",
@@ -1454,6 +1478,7 @@ def checks_from_surface_invariants(
                     f"Does the changed {surface.name} preserve {invariant.dimension}?"
                 ),
                 affected_invariant=invariant.expected_behavior[:400] or invariant.dimension,
+                expected_behavior=invariant.expected_behavior[:500] or invariant.dimension,
                 required_evidence=invariant.required_evidence
                 or [f"changed implementation for {surface.name}"],
                 suppress_criteria=[

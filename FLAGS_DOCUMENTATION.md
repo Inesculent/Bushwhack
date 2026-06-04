@@ -304,6 +304,8 @@ These settings are mirrored to the `LANGSMITH_*` / `LANGCHAIN_CALLBACKS_BACKGROU
 | `REVIEW_LANGSMITH_ENDPOINT` or `LANGSMITH_ENDPOINT` | string | _(unset)_ | Optional regional or self-hosted LangSmith API endpoint. |
 | `REVIEW_LANGSMITH_WORKSPACE_ID` or `LANGSMITH_WORKSPACE_ID` | string | _(unset)_ | Optional workspace ID for API keys with multiple workspaces. |
 | `REVIEW_LANGSMITH_CALLBACKS_BACKGROUND` or `LANGCHAIN_CALLBACKS_BACKGROUND` | boolean | _(unset)_ | Optional callback background mode for trace flushing. |
+| `REVIEW_LANGSMITH_HIDE_INPUTS` or `LANGSMITH_HIDE_INPUTS` | boolean | `false` | Hide run inputs before upload. Useful if input payloads exceed LangSmith limits or contain sensitive data. |
+| `REVIEW_LANGSMITH_HIDE_OUTPUTS` or `LANGSMITH_HIDE_OUTPUTS` | boolean | `true` | Hide run outputs before upload. Enabled by default because reviewer graph outputs may contain large LangGraph state payloads. |
 
 #### Local LLM Configuration (Ollama/LM Studio/vLLM)
 

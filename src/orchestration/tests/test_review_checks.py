@@ -106,6 +106,7 @@ def _check(**overrides: object) -> ReviewCheck:
         "changed_code_anchor": "handle",
         "behavioral_question": "Does handle still return the declared result on every changed path?",
         "affected_invariant": "return contract completeness",
+        "expected_behavior": "handle returns the declared result on every changed path.",
         "required_evidence": ["changed handle implementation", "declared return contract"],
         "suppress_criteria": ["All changed paths return the declared result."],
         "report_criteria": ["A reachable changed path returns None or the wrong result."],
@@ -620,6 +621,7 @@ def test_surface_invariant_checks_are_compiled_before_fallback(tmp_path) -> None
     assert compiled[0]["check_id"] == "review-logic:surface:1"
     assert compiled[0]["surface_ids"] == ["surface:handle"]
     assert compiled[0]["line_start"] == 7
+    assert compiled[0]["expected_behavior"] == "handle returns the declared result."
 
 
 def test_review_check_compiler_carries_completeness_material_without_extra_check(monkeypatch) -> None:
@@ -2980,8 +2982,10 @@ def test_review_check_executor_synthesizes_missing_candidate_payload(monkeypatch
 
     result = out["review_check_results"][0]
     assert result.decision == "candidate"
+    assert result.expected_behavior == check.expected_behavior
     assert result.candidate is not None
     assert result.candidate.candidate_id == f"{check.check_id}:candidate"
+    assert result.candidate.expected_behavior == check.expected_behavior
     assert result.candidate.evidence_for_contract
     assert result.candidate.counterexample
     assert result.candidate.rejection_check
@@ -3031,12 +3035,19 @@ def test_review_check_executor_records_contract_proof_backfills(monkeypatch) -> 
     assert meta["executor_contract_proof_backfills"] == [
         {
             "check_id": check.check_id,
-            "fields": ["evidence_for_contract", "counterexample", "rejection_check"],
+            "fields": [
+                "expected_behavior",
+                "evidence_for_contract",
+                "counterexample",
+                "rejection_check",
+            ],
         }
     ]
     result = out["review_check_results"][0]
     assert result.claim_digest
+    assert result.expected_behavior == check.expected_behavior
     assert result.candidate is not None
+    assert result.candidate.expected_behavior == check.expected_behavior
     assert result.candidate.claim_digest == result.claim_digest
     assert meta["executor_claim_digests"] == {
         result.candidate.candidate_id: result.candidate.claim_digest
@@ -3115,6 +3126,7 @@ def test_review_check_evidence_gate_promotes_only_supported_candidates_and_recor
         line_end=2,
         content="The changed handler now returns None.",
         claim_type="defect",
+        expected_behavior="handle returns the declared result on every changed path.",
         failure_mode="handle returns None instead of the declared result.",
         evidence_summary="Task evidence shows handle returns None.",
         evidence_for_contract="The check invariant and declared return contract require handle to return the result.",
@@ -3178,6 +3190,7 @@ def test_review_check_evidence_gate_drops_audit_only_check_candidates() -> None:
         line_end=2,
         content="The changed handler now returns None.",
         claim_type="defect",
+        expected_behavior="handle returns the declared result on every changed path.",
         failure_mode="handle returns None instead of the declared result.",
         evidence_summary="Task evidence shows handle returns None.",
         evidence_for_contract="The check invariant and declared return contract require handle to return the result.",
@@ -3355,6 +3368,7 @@ def test_review_check_evidence_gate_requires_contract_proof_fields() -> None:
         line_end=2,
         content="The changed handler now returns None.",
         claim_type="defect",
+        expected_behavior="handle returns the declared result on every changed path.",
         failure_mode="handle returns None instead of the declared result.",
         evidence_summary="Task evidence shows handle returns None.",
         evidence_for_contract="The declared return contract requires a result.",
@@ -3385,6 +3399,81 @@ def test_review_check_evidence_gate_requires_contract_proof_fields() -> None:
     assert gate["contract_proof"]["missing_count"] == 1
 
 
+def test_review_check_evidence_gate_requires_expected_behavior() -> None:
+    candidate = CandidateFinding(
+        candidate_id="review-logic:check:1:candidate",
+        patch_task_id="review-logic",
+        file_path="src/app.py",
+        line_start=1,
+        line_end=2,
+        content="The changed handler now returns None.",
+        claim_type="defect",
+        failure_mode="handle returns None instead of the declared result.",
+        evidence_summary="Task evidence shows handle returns None.",
+        evidence_for_contract="The declared return contract requires a result.",
+        counterexample="Calling handle on the changed path returns None.",
+        rejection_check="No caller guarantee or intentional narrowing is shown.",
+        recommendation="Return the declared result on this path.",
+        suspected_category="logic",
+        reflection_specialties=["logic"],
+    )
+    result = ReviewCheckResult(
+        check_id="review-logic:check:1",
+        patch_task_id="review-logic",
+        decision="candidate",
+        evidence_refs=["src/app.py:1"],
+        reportable_reason="The changed path returns None.",
+        candidate=candidate,
+    )
+
+    out = make_review_check_evidence_gate_node()(
+        _state(review_checks=[_check()], review_check_results=[result])
+    )  # type: ignore[arg-type]
+
+    gated = out["review_check_results"][0]
+    assert gated.gate_decision == "dropped"
+    assert gated.gate_reason == "missing_expected_behavior"
+    gate = out["metadata"]["review_checks"]["by_task"]["review-logic"]["gate"]
+    assert gate["contract_proof"]["missing_candidate_ids"] == [candidate.candidate_id]
+
+
+def test_review_check_evidence_gate_drops_advisory_expected_behavior() -> None:
+    candidate = CandidateFinding(
+        candidate_id="review-logic:check:1:candidate",
+        patch_task_id="review-logic",
+        file_path="src/app.py",
+        line_start=1,
+        line_end=2,
+        content="The changed handler should add a cache.",
+        claim_type="performance_regression",
+        expected_behavior="Consider adding a cache as a best practice.",
+        failure_mode="Repeated work may be slower.",
+        evidence_summary="Task evidence shows no cache.",
+        evidence_for_contract="Caching would be beneficial.",
+        counterexample="Repeated calls recompute the value.",
+        rejection_check="No cache exists.",
+        recommendation="Add a cache.",
+        suspected_category="performance",
+        reflection_specialties=["performance"],
+    )
+    result = ReviewCheckResult(
+        check_id="review-logic:check:1",
+        patch_task_id="review-logic",
+        decision="candidate",
+        evidence_refs=["src/app.py:1"],
+        reportable_reason="The changed path does not cache.",
+        candidate=candidate,
+    )
+
+    out = make_review_check_evidence_gate_node()(
+        _state(review_checks=[_check()], review_check_results=[result])
+    )  # type: ignore[arg-type]
+
+    gated = out["review_check_results"][0]
+    assert gated.gate_decision == "dropped"
+    assert gated.gate_reason == "generic_expected_behavior_not_contract"
+
+
 def test_review_check_evidence_gate_drops_self_doubting_contract_proof() -> None:
     candidate = CandidateFinding(
         candidate_id="review-logic:check:1:candidate",
@@ -3394,6 +3483,7 @@ def test_review_check_evidence_gate_drops_self_doubting_contract_proof() -> None
         line_end=2,
         content="The changed handler now returns None.",
         claim_type="defect",
+        expected_behavior="handle returns the declared result on every changed path.",
         failure_mode="handle returns None instead of the declared result.",
         evidence_summary="Task evidence shows handle returns None.",
         evidence_for_contract="The declared return contract requires a result.",

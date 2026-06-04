@@ -14,6 +14,8 @@ Use the compact candidate packet and originating check summaries to summarize th
 - `needed_context`: external facts still needed before a final judgment.
 - `rationale`: why these evidence lanes are appropriate.
 
+Preserve the candidate's `expected_behavior` when summarizing. Triage should route evidence for the stated expected behavior and alleged breach, not reframe the claim around a different invariant.
+
 Do not use keyword matching as the reason. Explain the relationship between the candidate claim, changed operation, and evidence needed.
 
 Do not invent new findings. This node only routes existing candidates.

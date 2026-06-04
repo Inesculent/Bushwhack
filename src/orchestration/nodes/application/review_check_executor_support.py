@@ -57,6 +57,14 @@ def _contract_evidence_from_check(check: ReviewCheck, result: ReviewCheckResult 
     return "; ".join(part for part in parts if part)[:500]
 
 
+def _expected_behavior_from_check(check: ReviewCheck, result: ReviewCheckResult | None = None) -> str:
+    if result is not None and result.expected_behavior.strip():
+        return result.expected_behavior.strip()[:500]
+    if check.expected_behavior.strip():
+        return check.expected_behavior.strip()[:500]
+    return check.affected_invariant.strip()[:500]
+
+
 def _counterexample_from_result(check: ReviewCheck, result: ReviewCheckResult) -> str:
     if result.counterexample.strip():
         return result.counterexample.strip()[:500]
@@ -81,6 +89,10 @@ def candidate_with_check_contract_proof(
     result: ReviewCheckResult,
 ) -> CandidateFinding:
     updates: dict[str, str] = {}
+    if not candidate.expected_behavior.strip():
+        expected = _expected_behavior_from_check(check, result)
+        if expected:
+            updates["expected_behavior"] = expected
     if not candidate.evidence_for_contract.strip():
         updates["evidence_for_contract"] = _contract_evidence_from_check(check, result)
     if not candidate.counterexample.strip():
@@ -94,6 +106,8 @@ def candidate_with_check_contract_proof(
 
 def _missing_contract_proof_field_names(candidate: CandidateFinding) -> list[str]:
     missing: list[str] = []
+    if not candidate.expected_behavior.strip():
+        missing.append("expected_behavior")
     if not candidate.evidence_for_contract.strip():
         missing.append("evidence_for_contract")
     if not candidate.counterexample.strip():
@@ -118,6 +132,9 @@ def _synthesize_candidate_from_result(
     result: ReviewCheckResult,
 ) -> CandidateFinding | None:
     if not _candidate_payload_is_concrete(result):
+        return None
+    expected_behavior = _expected_behavior_from_check(check, result)
+    if not expected_behavior:
         return None
     symptom, operation = _behavioral_defaults_for_check(check)
     specialty = task.specialty if task.specialty in {"security", "performance", "logic", "general"} else "general"
@@ -145,6 +162,7 @@ def _synthesize_candidate_from_result(
         feedback_type="defect_detection",
         severity="medium",
         recommendation=recommendation[:400],
+        expected_behavior=expected_behavior,
         behavioral_symptom=symptom,  # type: ignore[arg-type]
         root_operation=operation,  # type: ignore[arg-type]
         claim_digest=claim_digest_for_result(result, check),
@@ -211,6 +229,10 @@ def normalize_executor_results(
             continue
         check = by_check[raw.check_id]
         result = raw.model_copy(update={"patch_task_id": task.id})
+        if not result.expected_behavior.strip():
+            expected_behavior = _expected_behavior_from_check(check, result)
+            if expected_behavior:
+                result = result.model_copy(update={"expected_behavior": expected_behavior})
         digest = claim_digest_for_result(result, check)
         if digest and not result.claim_digest.strip():
             result = result.model_copy(update={"claim_digest": digest})

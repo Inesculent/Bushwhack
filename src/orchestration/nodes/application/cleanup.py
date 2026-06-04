@@ -1815,22 +1815,23 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
                     if _verifier_harness_error(candidate.candidate_id, verifier_hints):
                         runtime_note = "\n\n(runtime unverified: verifier harness error)"
                     promoted.append(
-                    ReviewFinding(
-                        id=candidate.candidate_id,
-                        file_path=candidate.file_path,
-                        line_start=candidate.line_start,
-                        line_end=candidate.line_end,
+                        ReviewFinding(
+                            id=candidate.candidate_id,
+                            file_path=candidate.file_path,
+                            line_start=candidate.line_start,
+                            line_end=candidate.line_end,
                             content=candidate.content + evidence_extra + runtime_note,
                             severity=candidate.severity,
                             feedback_type=feedback_type,  # type: ignore[arg-type]
                             recommendation=candidate.recommendation,
-                        references=[],
-                        behavioral_symptom=candidate.behavioral_symptom,
-                        root_operation=candidate.root_operation,
-                        claim_digest=_candidate_claim_digest(candidate),
-                        evidence_for_contract=candidate.evidence_for_contract,
-                        counterexample=candidate.counterexample,
-                        rejection_check=candidate.rejection_check,
+                            expected_behavior=candidate.expected_behavior,
+                            references=[],
+                            behavioral_symptom=candidate.behavioral_symptom,
+                            root_operation=candidate.root_operation,
+                            claim_digest=_candidate_claim_digest(candidate),
+                            evidence_for_contract=candidate.evidence_for_contract,
+                            counterexample=candidate.counterexample,
+                            rejection_check=candidate.rejection_check,
                         )
                     )
                     lifecycle[candidate.candidate_id] = {
@@ -2073,6 +2074,7 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
                     severity=candidate.severity,
                     feedback_type=feedback_type,  # type: ignore[arg-type]
                     recommendation=candidate.recommendation,
+                    expected_behavior=candidate.expected_behavior,
                     references=[],
                     behavioral_symptom=candidate.behavioral_symptom,
                     root_operation=candidate.root_operation,

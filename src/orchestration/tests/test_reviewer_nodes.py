@@ -1256,6 +1256,7 @@ def test_synthesizer_preserves_adjudicated_final_findings():
         content="Potential regression in changed control flow.",
         severity="medium",
         feedback_type="defect_detection",
+        expected_behavior="Changed control flow preserves the existing result contract.",
     )
 
     result = synthesizer_node(
@@ -1270,5 +1271,6 @@ def test_synthesizer_preserves_adjudicated_final_findings():
     )
 
     assert len(result["final_findings"]) == 2
+    assert result["final_findings"][0].expected_behavior == finding.expected_behavior
     assert result["metadata"]["review_synthesizer"]["raw_finding_count"] == 2
     assert result["metadata"]["review_synthesizer"]["final_finding_count"] == 2

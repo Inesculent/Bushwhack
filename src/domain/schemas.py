@@ -210,6 +210,11 @@ class ReviewFinding(BaseModel):
     # The recommendation for fixing the issue, and any references to documentation or code examples
     recommendation: Optional[str] = None
     references: List[str] = Field(default_factory=list)
+    expected_behavior: str = Field(
+        default="",
+        description="What the reviewed code is intended or contracted to do before the breach/fix is considered.",
+        max_length=500,
+    )
     behavioral_symptom: Optional[BehavioralSymptom] = None
     root_operation: Optional[RootOperation] = None
     claim_digest: str = Field(
@@ -335,6 +340,11 @@ class ReviewCheck(BaseModel):
         description="Behavior, contract, or invariant that could be affected.",
         max_length=400,
     )
+    expected_behavior: str = Field(
+        default="",
+        description="What the changed code is intended or contracted to do for this check.",
+        max_length=500,
+    )
     required_evidence: List[str] = Field(default_factory=list)
     suppress_criteria: List[str] = Field(default_factory=list)
     report_criteria: List[str] = Field(default_factory=list)
@@ -378,6 +388,11 @@ class ReviewCheckResult(BaseModel):
         description="Concrete required evidence still needed before this check can be decided.",
     )
     reportable_reason: str = Field(default="", max_length=500)
+    expected_behavior: str = Field(
+        default="",
+        description="What the checked code is intended or contracted to do.",
+        max_length=500,
+    )
     evidence_for_contract: str = Field(
         default="",
         description=(
@@ -471,6 +486,11 @@ class CandidateFinding(BaseModel):
     feedback_type: Literal["code_improvement", "defect_detection", "optimization", "other"] = "other"
     severity: Literal["low", "medium", "high"] = "medium"
     recommendation: Optional[str] = Field(default=None, description="Concrete suggested fix or verification step.")
+    expected_behavior: str = Field(
+        default="",
+        description="What the reviewed code is intended or contracted to do before the breach/fix is considered.",
+        max_length=500,
+    )
     behavioral_symptom: Optional[BehavioralSymptom] = Field(
         default=None,
         description="Generic behavioral symptom for preserving distinct failure modes during dedupe.",

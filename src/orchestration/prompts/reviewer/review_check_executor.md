@@ -25,12 +25,13 @@ Create a CandidateFinding only for `candidate`. Draft candidates are appropriate
 Every candidate result must include `evidence_refs` that point to concrete repository evidence, such as `path/to/file.py:42` or `focused_context:<request_id>`. Every candidate must include failure_mode, evidence_summary, recommendation, claim_type, suspected_category, and exactly one reflection_specialties entry.
 
 Every candidate must also justify the claim from a changed contract:
+- `expected_behavior`: what the changed code is intended or contracted to do. This is not the recommendation.
 - `evidence_for_contract`: old behavior, name, type, call site, schema, test, doc, or surrounding code proving the behavior is contractual.
 - `counterexample`: concrete input, state, path, mode, record shape, lifecycle path, or interleaving that triggers the violation.
 - `rejection_check`: why this is not merely style, speculation, intentional narrowing, or impossible under caller guarantees.
 - `claim_digest`: compact root-claim marker for the violated contract, including file/symbol plus branch/mode/variant, contract dimension, and impact when known.
 
-If you cannot fill those fields from the check evidence, return `unsupported` and list the missing fact instead of creating a candidate.
+If you cannot fill those fields from the check evidence, return `unsupported` and list the missing fact instead of creating a candidate. Answer the check's specific `expected_behavior`; do not pivot to a nearby easier invariant.
 
 Output budget:
 - Return only schema JSON; no prose outside fields.

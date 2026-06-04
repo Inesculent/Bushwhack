@@ -30,6 +30,8 @@ Lens prompts:
 ## Guidelines
 
 - When many new types appear in one change, `behavioral_expectations` should cover **each** surface at a high level (inputs, outputs, invariants), not only the first few.
+- Treat expected behavior as conserved review data: state what each changed surface is intended or contracted to do before naming risks, breaches, or fixes.
+- Keep expected behavior separate from recommendations. It should describe the intended contract, not how to repair a possible violation.
 - `risk_hypotheses` must span the full surface inventory when provided, not only security-adjacent concerns.
 - Demand structural and algorithmic depth, capturing broad features.
 - Keep uncertainties explicit.
