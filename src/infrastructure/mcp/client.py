@@ -36,13 +36,14 @@ class MCPClient:
         """Call a tool in a short-lived MCP session."""
         try:
             asyncio.get_running_loop()
+        except RuntimeError:
+            # No active loop in the current thread, this is the expected sync path.
+            pass
+        else:
             raise MCPClientError(
                 "MCPClient.call_tool() cannot run inside an active event loop. "
                 "Use call_tool_async() in async contexts."
             )
-        except RuntimeError:
-            # No active loop in the current thread, this is the expected sync path.
-            pass
 
         try:
             return asyncio.run(self.call_tool_async(name=name, arguments=arguments))
@@ -51,18 +52,21 @@ class MCPClient:
         except MCPClientError:
             raise
         except Exception as exc:
-            raise MCPClientError(f"MCP tool call failed for '{name}': {exc}") from exc
+            raise MCPClientError(
+                f"MCP tool call failed for '{name}': {self._describe_exception(exc)}"
+            ) from exc
 
     def list_tools(self) -> List[str]:
         """Return tool names advertised by the MCP server."""
         try:
             asyncio.get_running_loop()
+        except RuntimeError:
+            pass
+        else:
             raise MCPClientError(
                 "MCPClient.list_tools() cannot run inside an active event loop. "
                 "Use list_tools_async() in async contexts."
             )
-        except RuntimeError:
-            pass
 
         try:
             return asyncio.run(self.list_tools_async())
@@ -71,7 +75,7 @@ class MCPClient:
         except MCPClientError:
             raise
         except Exception as exc:
-            raise MCPClientError(f"MCP list_tools call failed: {exc}") from exc
+            raise MCPClientError(f"MCP list_tools call failed: {self._describe_exception(exc)}") from exc
 
     async def list_tools_async(self) -> List[str]:
         params = StdioServerParameters(
@@ -174,3 +178,15 @@ class MCPClient:
                     chunks.append(text)
 
         return "\n".join(chunks)
+
+    @staticmethod
+    def _describe_exception(exc: Exception) -> str:
+        nested = getattr(exc, "exceptions", None)
+        if not nested:
+            return str(exc)
+        details = [
+            f"{item.__class__.__name__}: {item}"
+            for item in list(nested)[:3]
+        ]
+        suffix = "" if len(nested) <= 3 else f"; +{len(nested) - 3} more"
+        return f"{exc} ({'; '.join(details)}{suffix})"

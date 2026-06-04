@@ -30,6 +30,7 @@ class GitHubMCPContextProvider(IGitHubContextProvider):
         self._cache = cache
         self._settings = settings
         self._available_tools: set[str] | None = None
+        self._tool_discovery_failed = False
 
     def get_repo_docs(
         self,
@@ -483,12 +484,14 @@ class GitHubMCPContextProvider(IGitHubContextProvider):
         list_tools = getattr(self._client, "list_tools", None)
         if not callable(list_tools):
             return True
+        if self._tool_discovery_failed:
+            return True
         if self._available_tools is None:
             try:
                 self._available_tools = set(list_tools())
             except Exception as exc:  # noqa: BLE001 - provider should fail open
                 logger.warning("GitHub MCP list_tools failed: %s: %s", exc.__class__.__name__, exc)
-                self._available_tools = set()
+                self._tool_discovery_failed = True
                 return True
         return name in self._available_tools
 

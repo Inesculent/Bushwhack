@@ -3669,6 +3669,7 @@ def test_github_mcp_preflight_records_present_and_missing_tools(monkeypatch) -> 
     healthy = _github_mcp_preflight(Settings(github_mcp_enabled=True))
 
     assert healthy["status"] == "ok"
+    assert healthy["tool_discovery_available"] is True
     assert healthy["missing_required_tools"] == []
 
     class MissingClient(PresentClient):
@@ -3680,7 +3681,21 @@ def test_github_mcp_preflight_records_present_and_missing_tools(monkeypatch) -> 
     degraded = _github_mcp_preflight(Settings(github_mcp_enabled=True))
 
     assert degraded["status"] == "degraded"
+    assert degraded["tool_discovery_available"] is True
     assert degraded["missing_required_tools"] == ["get_commits_for_path"]
+
+    class FailingDiscoveryClient(PresentClient):
+        def list_tools(self) -> list[str]:
+            raise RuntimeError("unhandled errors in a TaskGroup (1 sub-exception)")
+
+    monkeypatch.setattr(aacr, "MCPClient", FailingDiscoveryClient)
+
+    discovery_error = _github_mcp_preflight(Settings(github_mcp_enabled=True))
+
+    assert discovery_error["status"] == "tool_discovery_error"
+    assert discovery_error["tool_discovery_available"] is False
+    assert discovery_error["missing_required_tools"] == []
+    assert "TaskGroup" in discovery_error["error"]
 
 
 def test_coverage_audit_reports_stage_coverage_and_writes_json(tmp_path) -> None:

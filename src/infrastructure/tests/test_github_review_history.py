@@ -180,3 +180,38 @@ def test_file_review_history_skips_unknown_commits_tool_before_calling() -> None
     assert histories[0].comments == []
     assert histories[0].warnings == ["commits_fetch_failed:missing_mcp_tool:get_commits_for_path"]
     assert client.calls == []
+
+
+def test_file_review_history_fails_open_when_tool_discovery_fails() -> None:
+    class FailingDiscoveryClient:
+        def __init__(self) -> None:
+            self.list_calls = 0
+            self.calls: list[tuple[str, dict]] = []
+
+        def list_tools(self) -> list[str]:
+            self.list_calls += 1
+            raise RuntimeError("unhandled errors in a TaskGroup (1 sub-exception)")
+
+        def call_tool(self, name: str, args: dict) -> dict:
+            self.calls.append((name, args))
+            if name == "get_commits_for_path":
+                return {"error": "api unavailable", "commits": []}
+            raise AssertionError(f"unexpected tool call: {name}")
+
+    client = FailingDiscoveryClient()
+    provider = GitHubMCPContextProvider(
+        mcp_client=client,  # type: ignore[arg-type]
+        cache=InMemoryCache(),
+        settings=Settings(),
+    )
+
+    histories = provider.get_file_review_history(
+        "owner",
+        "repo",
+        "main",
+        ["src/one.py", "src/two.py"],
+    )
+
+    assert client.list_calls == 1
+    assert [call[1]["path"] for call in client.calls] == ["src/one.py", "src/two.py"]
+    assert all("missing_mcp_tool" not in warning for item in histories for warning in item.warnings)

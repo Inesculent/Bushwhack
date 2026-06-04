@@ -189,10 +189,11 @@ def _github_mcp_preflight(settings: Any) -> dict[str, Any]:
         tools = sorted(client.list_tools())
     except Exception as exc:  # noqa: BLE001 - benchmark runs should record MCP degradation, not fail
         return {
-            "status": "error",
+            "status": "tool_discovery_error",
             "required_tools": ["get_commits_for_path"],
             "available_tools": [],
-            "missing_required_tools": ["get_commits_for_path"],
+            "missing_required_tools": [],
+            "tool_discovery_available": False,
             "error": f"{exc.__class__.__name__}: {exc}",
         }
 
@@ -202,6 +203,7 @@ def _github_mcp_preflight(settings: Any) -> dict[str, Any]:
         "required_tools": ["get_commits_for_path"],
         "available_tools": tools,
         "missing_required_tools": missing,
+        "tool_discovery_available": True,
     }
 
 
