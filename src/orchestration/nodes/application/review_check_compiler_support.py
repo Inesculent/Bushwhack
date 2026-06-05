@@ -53,6 +53,26 @@ REVIEW_CHECK_LENSES = (
 )
 
 MAX_CHECKS_PER_TASK = 12
+ADAPTIVE_MAX_CHECKS_PER_TASK = 16
+CONTRACT_QUESTION_CHECK_GUARD = 32
+_OWNER_FAIR_CAP_OWNER_THRESHOLD = 3
+
+_PRIMARY_OWNER_SUFFIXES = {"execute", "run", "handle", "process", "call", "__call__"}
+_HIGH_SIGNAL_FAMILY_ORDER = (
+    "return_totality",
+    "variant_completeness",
+    "data_cardinality",
+    "serialization_type",
+    "error_boundary",
+    "index_bounds",
+    "aggregation",
+)
+_HIGH_SIGNAL_SWAP_FAMILIES = {
+    "index_bounds",
+    "data_cardinality",
+    "serialization_type",
+    "aggregation",
+}
 
 
 QUESTION_DIMENSION_TO_LENS = {
@@ -66,6 +86,184 @@ QUESTION_DIMENSION_TO_LENS = {
     "resource_work_amplification": "resource_lifecycle",
     "other": "other",
 }
+
+
+def _question_scope_key(question: ContractQuestion) -> tuple[str, str, str, str, str]:
+    return (
+        question.owner.strip().lower(),
+        question.dimension,
+        question.trigger_variant.strip().lower(),
+        question.operation.strip().lower(),
+        question.breach_question.strip().lower(),
+    )
+
+
+def _question_preferred_specialty(question: ContractQuestion) -> str:
+    if question.dimension == "resource_work_amplification":
+        return "performance"
+    if question.dimension == "integration_compatibility":
+        return "general"
+    if question.dimension == "other":
+        return "general"
+    return "logic"
+
+
+def _task_registry_tasks(state: GraphState) -> List[ReviewTask]:
+    raw = state.get("task_registry")
+    if not isinstance(raw, Mapping):
+        return []
+    out: List[ReviewTask] = []
+    for item in raw.values():
+        if isinstance(item, ReviewTask):
+            out.append(item)
+        elif isinstance(item, Mapping):
+            try:
+                out.append(ReviewTask.model_validate(item))
+            except Exception:  # noqa: BLE001
+                continue
+    return out
+
+
+def _surface_fill_task_id(task_id: str) -> bool:
+    return "surface-fill" in task_id
+
+
+def _surface_owner_base(surface: ReviewSurface) -> str:
+    return (surface.name or surface.surface_id).split(".", 1)[0].strip().lower()
+
+
+def _primary_owner_maps(
+    by_id: Mapping[str, ReviewSurface],
+) -> tuple[Dict[tuple[str, str], ReviewSurface], Dict[str, str]]:
+    grouped: Dict[tuple[str, str], List[ReviewSurface]] = {}
+    for surface in by_id.values():
+        if surface.kind == "file":
+            continue
+        key = (surface.file_path, _surface_owner_base(surface))
+        grouped.setdefault(key, []).append(surface)
+
+    primary_by_group: Dict[tuple[str, str], ReviewSurface] = {}
+    label_by_key: Dict[str, str] = {}
+    for key, surfaces in grouped.items():
+        executable = [
+            surface for surface in surfaces
+            if surface.name.rsplit(".", 1)[-1].lower() in _PRIMARY_OWNER_SUFFIXES
+        ]
+        non_helper = [surface for surface in surfaces if "input_types" not in surface.name.lower()]
+        primary = sorted(
+            executable or non_helper or surfaces,
+            key=lambda surface: (surface.line_start or 10**9, surface.name),
+        )[0]
+        primary_by_group[key] = primary
+        label_by_key[primary.surface_id] = primary.name
+    return primary_by_group, label_by_key
+
+
+def _primary_owner_key_for_surface(
+    surface: ReviewSurface,
+    primary_by_group: Mapping[tuple[str, str], ReviewSurface],
+) -> str:
+    primary = primary_by_group.get((surface.file_path, _surface_owner_base(surface)))
+    return primary.surface_id if primary is not None else surface.surface_id
+
+
+def _primary_owner_keys_for_check(
+    check: ReviewCheck,
+    *,
+    by_id: Mapping[str, ReviewSurface],
+    primary_by_group: Mapping[tuple[str, str], ReviewSurface],
+) -> List[str]:
+    keys: List[str] = []
+    seen: set[str] = set()
+    for sid in check.surface_ids:
+        surface = by_id.get(sid)
+        if surface is None:
+            continue
+        key = _primary_owner_key_for_surface(surface, primary_by_group)
+        if key not in seen:
+            seen.add(key)
+            keys.append(key)
+    if not keys and check.changed_code_anchor.strip():
+        keys.append(check.changed_code_anchor.strip().lower())
+    return keys
+
+
+def _task_primary_owner_keys(
+    task_surface_ids: Sequence[str],
+    *,
+    by_id: Mapping[str, ReviewSurface],
+    primary_by_group: Mapping[tuple[str, str], ReviewSurface],
+) -> List[str]:
+    keys: List[str] = []
+    seen: set[str] = set()
+    for sid in task_surface_ids:
+        surface = by_id.get(sid)
+        if surface is None:
+            continue
+        key = _primary_owner_key_for_surface(surface, primary_by_group)
+        if key not in seen:
+            seen.add(key)
+            keys.append(key)
+    return keys
+
+
+def _task_owns_contract_question(
+    state: GraphState,
+    task: ReviewTask,
+    question: ContractQuestion,
+    ledger: Sequence[ReviewSurface],
+) -> bool:
+    if not question.surface_id:
+        return True
+    task_surface_ids = set(surface_ids_for_task(task, ledger))
+    if question.surface_id not in task_surface_ids:
+        return False
+    registry_tasks = _task_registry_tasks(state)
+    if not registry_tasks:
+        return True
+    preferred_specialty = _question_preferred_specialty(question)
+    candidates = [
+        candidate
+        for candidate in registry_tasks
+        if candidate.specialty == preferred_specialty
+        and question.surface_id in set(surface_ids_for_task(candidate, ledger))
+    ]
+    if not candidates:
+        candidates = [
+            candidate
+            for candidate in registry_tasks
+            if question.surface_id in set(surface_ids_for_task(candidate, ledger))
+        ]
+    if not candidates:
+        return True
+
+    by_id = surface_by_id(ledger)
+
+    def rank(candidate: ReviewTask) -> tuple[int, int, int, int, str]:
+        surface_count = len([sid for sid in surface_ids_for_task(candidate, ledger) if sid in by_id])
+        explicit_surface_owner = (
+            0
+            if _surface_fill_task_id(candidate.id) and question.surface_id in set(candidate.surface_ids)
+            else 1
+        )
+        exact_surface = 0 if surface_count == 1 else 1
+        specialty_match = 0 if candidate.specialty == preferred_specialty else 1
+        baseline = 0 if candidate.id == f"review-{preferred_specialty}" else 1
+        return (explicit_surface_owner, exact_surface, specialty_match, baseline, candidate.id)
+
+    return min(candidates, key=rank).id == task.id
+
+
+def _contract_question_surface_ids(spec: BehavioralSpec | None) -> set[str]:
+    if spec is None:
+        return set()
+    return {
+        question.surface_id
+        for question in spec.contract_questions
+        if question.surface_id
+        and question.expected_behavior.strip()
+        and question.breach_question.strip()
+    }
 
 
 def check_origin(
@@ -216,6 +414,11 @@ def narrow_surface_ids_to_anchor(
     if len(concrete) == 1:
         return [concrete[0]]
     return valid
+
+
+def _check_text_is_cross_surface(check: ReviewCheck) -> bool:
+    blob = f"{check.changed_code_anchor} {check.behavioral_question} {check.affected_invariant}".lower()
+    return any(marker in blob for marker in ("cross-surface", "cross surface", "integration", "call path"))
 
 
 def fallback_checks(state: GraphState, task: ReviewTask, slot: Mapping[str, Any]) -> List[ReviewCheck]:
@@ -630,6 +833,46 @@ def check_covers_obligation(check: ReviewCheck, obligation: Mapping[str, Any]) -
     return surface_ok and dimension_ok
 
 
+def coverage_obligation_is_concrete(obligation: Mapping[str, Any]) -> bool:
+    file_path = str(obligation.get("file_path") or "").strip()
+    surface = str(obligation.get("surface") or "").strip()
+    dimension = str(obligation.get("dimension") or "").strip()
+    evidence = str(obligation.get("evidence") or "").strip()
+    operation_markers = obligation.get("operation_markers")
+    material = obligation.get("mental_model_contract_material")
+    has_contract_material = (
+        isinstance(operation_markers, list) and any(str(item).strip() for item in operation_markers)
+    ) or (
+        isinstance(material, list) and any(str(item).strip() for item in material)
+    )
+    signal = " ".join(
+        str(obligation.get(key) or "")
+        for key in ("diff_signal_family", "issue_family", "diff_signal")
+    )
+    blob = " ".join([dimension, evidence, signal, surface]).lower()
+    concrete_terms = (
+        "declared",
+        "schema",
+        "mode",
+        "option",
+        "return",
+        "output",
+        "field",
+        "element",
+        "group",
+        "serialize",
+        "caller",
+        "contract",
+        "branch",
+        "type",
+    )
+    if obligation.get("files_complete") and file_path and surface and dimension and evidence:
+        return True
+    return bool(file_path and surface and dimension and evidence and (has_contract_material or signal.strip())) and any(
+        term in blob for term in concrete_terms
+    )
+
+
 def coverage_check_for_obligation(
     state: GraphState,
     task: ReviewTask,
@@ -708,6 +951,7 @@ def coverage_check_for_obligation(
         issue_family=issue_family,
         diff_signal_family=signal_family,
         diff_signal=diff_signal[:240],
+        audit_only=not coverage_obligation_is_concrete(obligation),
         behavioral_question=question,
         affected_invariant=dimension,
         expected_behavior=expected_behavior,
@@ -726,9 +970,12 @@ def coverage_check_for_obligation(
 
 
 def migration_context_present(state: GraphState, task: ReviewTask, slot: Mapping[str, Any]) -> bool:
+    git_diff = str(state.get("git_diff") or "")
+    if not _diff_has_removed_or_renamed_evidence(git_diff):
+        return False
     blob = "\n".join(
         [
-            str(state.get("git_diff") or ""),
+            git_diff,
             task.title,
             task.description,
             str(slot.get("mental_model_excerpt") or ""),
@@ -746,6 +993,16 @@ def migration_context_present(state: GraphState, task: ReviewTask, slot: Mapping
         "rename",
     )
     return any(marker in blob for marker in markers)
+
+
+def _diff_has_removed_or_renamed_evidence(git_diff: str) -> bool:
+    for raw in (git_diff or "").splitlines():
+        line = raw.rstrip()
+        if line.startswith(("rename from ", "rename to ", "deleted file mode ")):
+            return True
+        if line.startswith("-") and not line.startswith("---") and line[1:].strip():
+            return True
+    return False
 
 
 def check_covers_dimension(check: ReviewCheck, dimension: str) -> bool:
@@ -919,6 +1176,28 @@ _BROAD_SURFACE_INVARIANTS = (
 )
 
 
+_IMPLEMENTATION_EXPECTATION_RE = re.compile(
+    r"(`[^`]+`|\bif\b|\belif\b|\belse\b|\bfor\b|\bwhile\b|[A-Za-z_][A-Za-z0-9_]*\s*\(|[=!<>]=|:=|\[[^\]]*\])"
+)
+
+
+def _invariant_check_is_audit_only(invariant: Any) -> bool:
+    dimension = str(getattr(invariant, "dimension", "") or "").strip().lower()
+    expected = str(getattr(invariant, "expected_behavior", "") or "").strip().lower()
+    return dimension in {"changed-surface behavior", "api contract"} or any(
+        marker in expected for marker in _BROAD_SURFACE_INVARIANTS
+    )
+
+
+def _expected_behavior_is_implementation_shaped(check: ReviewCheck) -> bool:
+    if check.diff_signal_family == "contract_question":
+        return False
+    text = check.expected_behavior.strip()
+    if not text:
+        return False
+    return bool(_IMPLEMENTATION_EXPECTATION_RE.search(text))
+
+
 def check_is_broad_surface_invariant(check: ReviewCheck) -> bool:
     blob = " ".join(
         [
@@ -1034,6 +1313,7 @@ def uncovered_surface_behavior_checks(
                 line_start=line_start,
                 line_end=line_end,
                 changed_code_anchor=surface.name,
+                audit_only=True,
                 behavioral_question=(
                     f"Does the changed {surface.name} have any reachable mismatch between declared "
                     "inputs/options and branch behavior, return shape, data shape, or local side effects?"
@@ -1364,20 +1644,46 @@ def ensure_compiler_coverage_floor(
         coverage_meta_by_id=ranking_meta_by_id,
         task_files=coverage_files,
     )
+    primary_by_group, _label_by_key = _primary_owner_maps(by_id)
+    primary_owner_keys = _task_primary_owner_keys(
+        task_surface_ids,
+        by_id=by_id,
+        primary_by_group=primary_by_group,
+    )
+    max_checks, adaptive_reason = adaptive_check_cap(
+        ranked,
+        primary_owner_count=len(primary_owner_keys),
+    )
     mandatory_ids = {
         check.check_id
         for check, _meta, kind in added_candidates
         if kind == "mandatory_omitted_file"
     }
     mandatory_ranked = [check for check in ranked if check.check_id in mandatory_ids]
-    capped = surface_fair_cap_checks(
+    capped, cap_diagnostics = surface_fair_cap_checks(
         ranked,
         task_surface_ids=task_surface_ids,
         by_id=by_id,
         slot=slot,
         task_files=coverage_files,
-        max_checks=MAX_CHECKS_PER_TASK,
+        max_checks=max_checks,
     )
+    capped, high_signal_swaps = preserve_trimmed_high_signal_checks(
+        capped,
+        ranked,
+        original_ids=original_ids,
+        mandatory_ids=mandatory_ids,
+        by_id=by_id,
+        slot=slot,
+        task_files=coverage_files,
+    )
+    if high_signal_swaps:
+        cap_diagnostics["high_signal_swaps"] = high_signal_swaps
+    cap_diagnostics["protected_existing_check_ids"] = [
+        check_id
+        for check_id in cap_diagnostics.get("protected_existing_check_ids", [])
+        if check_id in original_ids
+    ]
     capped_ids = {check.check_id for check in capped}
     final_checks = [*capped, *(check for check in mandatory_ranked if check.check_id not in capped_ids)]
     final_ids = {check.check_id for check in final_checks}
@@ -1392,6 +1698,21 @@ def ensure_compiler_coverage_floor(
     trimmed_existing: List[str] = [
         check.check_id for check in checks if check.check_id not in final_ids
     ]
+    origin_lookup: Dict[str, Dict[str, Any]] = {
+        **{key: dict(value) for key, value in dict(check_origins or {}).items()},
+        **added_origin_by_id,
+    }
+    check_by_id = {
+        check.check_id: check
+        for check in [*checks, *(check for check, _meta, _kind in added_candidates)]
+    }
+    trimmed_by_origin_family: Dict[str, List[str]] = {}
+    for check_id in trimmed_existing:
+        check = check_by_id.get(check_id)
+        origin = origin_lookup.get(check_id, {})
+        origin_kind = str(origin.get("origin_kind") or "unknown")
+        family = _check_signal_family(check) if check is not None else "unknown"
+        trimmed_by_origin_family.setdefault(f"{origin_kind}:{family}", []).append(check_id)
     skipped_due_to_cap: List[Dict[str, Any]] = [
         {
             **dict(added_by_id[check_id]),
@@ -1432,9 +1753,13 @@ def ensure_compiler_coverage_floor(
             for check in added
             if check.check_id in added_origin_by_id
         },
+        "adaptive_max_checks": max_checks,
+        "adaptive_cap_reason": adaptive_reason,
+        "owner_fair_cap": cap_diagnostics,
         "skipped_due_to_cap": skipped_due_to_cap,
         "trimmed_existing_check_ids": trimmed_existing,
-        "max_checks": MAX_CHECKS_PER_TASK,
+        "trimmed_existing_by_origin_family": trimmed_by_origin_family,
+        "max_checks": max_checks,
         "warnings": warnings,
     }, final_origins
 
@@ -1519,34 +1844,55 @@ def checks_from_contract_questions(
         return []
     ledger = spec.surfaces or surface_ledger_from_state(state)
     by_id = surface_by_id(ledger)
+    primary_by_group, _labels = _primary_owner_maps(by_id)
     task_surface_ids = set(surface_ids_for_task(task, ledger))
-    checks: List[ReviewCheck] = []
-    seen: set[tuple[str, str, str, str]] = set()
+    eligible_by_owner: Dict[str, List[tuple[ContractQuestion, ReviewSurface]]] = {}
+    owner_order: List[str] = []
+    seen: set[tuple[str, str, str, str, str]] = set()
     for question in spec.contract_questions:
         if question.surface_id not in task_surface_ids:
+            continue
+        if not _task_owns_contract_question(state, task, question, ledger):
             continue
         surface = by_id.get(question.surface_id)
         if surface is None:
             continue
-        key = (
-            question.owner.strip().lower(),
-            question.dimension,
-            question.expected_behavior.strip().lower(),
-            question.trigger_variant.strip().lower(),
-        )
+        key = _question_scope_key(question)
         if key in seen:
             continue
         seen.add(key)
+        owner_key = _primary_owner_key_for_surface(surface, primary_by_group)
+        if owner_key not in eligible_by_owner:
+            eligible_by_owner[owner_key] = []
+            owner_order.append(owner_key)
+        eligible_by_owner[owner_key].append((question, surface))
+
+    ordered: List[tuple[ContractQuestion, ReviewSurface]] = []
+    depth = 0
+    while len(ordered) < CONTRACT_QUESTION_CHECK_GUARD:
+        added_this_round = False
+        for owner_key in owner_order:
+            owner_items = eligible_by_owner.get(owner_key, [])
+            if depth >= len(owner_items):
+                continue
+            ordered.append(owner_items[depth])
+            added_this_round = True
+            if len(ordered) >= CONTRACT_QUESTION_CHECK_GUARD:
+                break
+        if not added_this_round:
+            break
+        depth += 1
+
+    checks: List[ReviewCheck] = []
+    for index, (question, surface) in enumerate(ordered, start=1):
         checks.append(
             _check_from_contract_question(
                 task=task,
                 question=question,
                 surface=surface,
-                index=len(checks) + 1,
+                index=index,
             )
         )
-        if len(checks) >= MAX_CHECKS_PER_TASK:
-            break
     return checks
 
 
@@ -1563,7 +1909,7 @@ def checks_from_surface_invariants(
     ledger = spec.surfaces or surface_ledger_from_state(state)
     by_id = surface_by_id(ledger)
     task_surface_ids = surface_ids_for_task(task, ledger)
-    excluded = set(exclude_surface_ids)
+    excluded = set(exclude_surface_ids) | _contract_question_surface_ids(spec)
     checks: List[ReviewCheck] = []
     for invariant in spec.surface_invariants:
         if invariant.surface_id in excluded:
@@ -1585,6 +1931,7 @@ def checks_from_surface_invariants(
                 line_start=line_start,
                 line_end=line_end,
                 changed_code_anchor=surface.name,
+                audit_only=_invariant_check_is_audit_only(invariant),
                 behavioral_question=(
                     f"Does the changed {surface.name} preserve {invariant.dimension}?"
                 ),
@@ -1661,6 +2008,156 @@ def prioritize_compiled_checks(
     return [check for _, check in sorted(enumerate(checks), key=lambda item: (*rank(item[1]), item[0]))]
 
 
+def _check_signal_family(check: ReviewCheck) -> str:
+    blob = " ".join(
+        [
+            check.diff_signal_family,
+            check.issue_family,
+            check.lens,
+            check.owned_contract_scope,
+            check.behavioral_question,
+            check.affected_invariant,
+            " ".join(check.required_evidence),
+        ]
+    ).lower()
+    if any(token in blob for token in ("index", "bounds", "bound", "group_index", "group index")):
+        return "index_bounds"
+    if any(token in blob for token in ("join", "serialize", "serialization", "type closure", "non-string", "none")):
+        return "serialization_type"
+    if any(token in blob for token in ("aggregation", "aggregate", "collect", "combine")):
+        return "aggregation"
+    if any(token in blob for token in ("cardinality", "tuple", "field", "group", "nested", "preservation")):
+        return "data_cardinality"
+    if any(token in blob for token in ("variant", "mode", "option", "dispatch")):
+        return "variant_completeness"
+    if any(token in blob for token in ("return", "output", "shape", "totality")):
+        return "return_totality"
+    if any(token in blob for token in ("error", "exception", "try", "except")):
+        return "error_boundary"
+    return "other"
+
+
+def _check_is_broad_floor(check: ReviewCheck) -> bool:
+    cid = check.check_id.lower()
+    return any(
+        marker in cid
+        for marker in (
+            ":surface-coverage:",
+            ":file-coverage:",
+            ":uncovered-behavior:",
+            ":coverage:",
+            ":surface:",
+        )
+    )
+
+
+def _eligible_for_owner_protection(
+    check: ReviewCheck,
+    *,
+    slot: Mapping[str, Any],
+    task_files: set[str],
+) -> bool:
+    return (
+        not check.audit_only
+        and not _check_is_broad_floor(check)
+        and check_is_concrete_source_local_behavior(check, slot=slot, task_files=task_files)
+    )
+
+
+def _owner_candidate_priority(
+    check: ReviewCheck,
+    *,
+    ranked_index: Mapping[str, int],
+) -> tuple[int, int, int, int]:
+    family = _check_signal_family(check)
+    family_rank = (
+        _HIGH_SIGNAL_FAMILY_ORDER.index(family)
+        if family in _HIGH_SIGNAL_FAMILY_ORDER
+        else len(_HIGH_SIGNAL_FAMILY_ORDER)
+    )
+    return (
+        1 if check.diff_signal_family == "contract_question" else 0,
+        1 if _check_is_broad_floor(check) else 0,
+        family_rank,
+        ranked_index.get(check.check_id, 10**9),
+    )
+
+
+def adaptive_check_cap(
+    ranked: Sequence[ReviewCheck],
+    *,
+    primary_owner_count: int,
+) -> tuple[int, str]:
+    eligible_non_audit = [check for check in ranked if not check.audit_only]
+    if primary_owner_count > _OWNER_FAIR_CAP_OWNER_THRESHOLD:
+        return ADAPTIVE_MAX_CHECKS_PER_TASK, "many_primary_owners"
+    if len(eligible_non_audit) > MAX_CHECKS_PER_TASK:
+        return ADAPTIVE_MAX_CHECKS_PER_TASK, "eligible_non_audit_over_base_cap"
+    return MAX_CHECKS_PER_TASK, "base"
+
+
+def preserve_trimmed_high_signal_checks(
+    selected: Sequence[ReviewCheck],
+    ranked: Sequence[ReviewCheck],
+    *,
+    original_ids: set[str],
+    mandatory_ids: set[str],
+    by_id: Mapping[str, ReviewSurface],
+    slot: Mapping[str, Any],
+    task_files: Sequence[str],
+) -> tuple[List[ReviewCheck], List[Dict[str, Any]]]:
+    if not selected:
+        return list(selected), []
+    out = list(selected)
+    selected_ids = {check.check_id for check in out}
+    local_task_files = {path.strip().replace("\\", "/") for path in task_files if path and path.strip()}
+    primary_by_group, label_by_key = _primary_owner_maps(by_id)
+
+    def owner_keys(check: ReviewCheck) -> List[str]:
+        return _primary_owner_keys_for_check(check, by_id=by_id, primary_by_group=primary_by_group)
+
+    swaps: List[Dict[str, Any]] = []
+    for incoming in ranked:
+        if incoming.check_id in selected_ids or incoming.check_id not in original_ids:
+            continue
+        incoming_family = _check_signal_family(incoming)
+        if incoming_family not in _HIGH_SIGNAL_SWAP_FAMILIES:
+            continue
+        if not _eligible_for_owner_protection(incoming, slot=slot, task_files=local_task_files):
+            continue
+        incoming_owners = set(owner_keys(incoming))
+        if not incoming_owners:
+            continue
+        replacement_index: int | None = None
+        for index in range(len(out) - 1, -1, -1):
+            current = out[index]
+            if current.check_id in mandatory_ids:
+                continue
+            if not incoming_owners.intersection(owner_keys(current)):
+                continue
+            if _check_is_broad_floor(current) or current.audit_only or current.check_id not in original_ids:
+                replacement_index = index
+                break
+        if replacement_index is None:
+            continue
+        replaced = out[replacement_index]
+        out[replacement_index] = incoming
+        selected_ids.remove(replaced.check_id)
+        selected_ids.add(incoming.check_id)
+        swaps.append(
+            {
+                "incoming_check_id": incoming.check_id,
+                "replaced_check_id": replaced.check_id,
+                "family": incoming_family,
+                "primary_owner_labels": [
+                    label_by_key.get(owner, owner)
+                    for owner in owner_keys(incoming)
+                ],
+            }
+        )
+    return out, swaps
+
+
 def surface_fair_cap_checks(
     ranked: Sequence[ReviewCheck],
     *,
@@ -1669,43 +2166,82 @@ def surface_fair_cap_checks(
     slot: Mapping[str, Any],
     task_files: Sequence[str],
     max_checks: int,
-) -> List[ReviewCheck]:
+) -> tuple[List[ReviewCheck], Dict[str, Any]]:
     if max_checks <= 0:
-        return []
+        return [], {}
     selected: List[ReviewCheck] = []
     selected_ids: set[str] = set()
     local_task_files = {path.strip().replace("\\", "/") for path in task_files if path and path.strip()}
-    for sid in task_surface_ids:
+    primary_by_group, label_by_key = _primary_owner_maps(by_id)
+    owner_keys = _task_primary_owner_keys(task_surface_ids, by_id=by_id, primary_by_group=primary_by_group)
+    ranked_index = {check.check_id: index for index, check in enumerate(ranked)}
+    protected_existing_ids: List[str] = []
+    selected_by_owner: Dict[str, List[str]] = {label_by_key.get(key, key): [] for key in owner_keys}
+    selected_families_by_owner: Dict[str, set[str]] = {key: set() for key in owner_keys}
+
+    def check_owner_keys(check: ReviewCheck) -> List[str]:
+        return _primary_owner_keys_for_check(check, by_id=by_id, primary_by_group=primary_by_group)
+
+    def add_check(check: ReviewCheck, *, owner_key: str | None = None, protected: bool = False) -> bool:
+        if len(selected) >= max_checks or check.check_id in selected_ids:
+            return False
+        selected.append(check)
+        selected_ids.add(check.check_id)
+        owners = [owner_key] if owner_key else check_owner_keys(check)
+        family = _check_signal_family(check)
+        for key in owners:
+            selected_families_by_owner.setdefault(key, set()).add(family)
+            selected_by_owner.setdefault(label_by_key.get(key, key), []).append(check.check_id)
+        if protected:
+            protected_existing_ids.append(check.check_id)
+        return True
+
+    for owner_key in owner_keys:
         if len(selected) >= max_checks:
             break
-        if sid not in by_id:
-            continue
-        match = next(
-            (
-                check
-                for check in ranked
+        candidates = sorted(
+            [
+                check for check in ranked
                 if check.check_id not in selected_ids
-                and sid in check.surface_ids
-                and check_is_concrete_source_local_behavior(
-                    check,
-                    slot=slot,
-                    task_files=local_task_files,
-                )
-            ),
-            None,
+                and owner_key in check_owner_keys(check)
+                and _eligible_for_owner_protection(check, slot=slot, task_files=local_task_files)
+            ],
+            key=lambda check: _owner_candidate_priority(check, ranked_index=ranked_index),
         )
-        if match is None:
-            continue
-        selected.append(match)
-        selected_ids.add(match.check_id)
+        if candidates:
+            add_check(candidates[0], owner_key=owner_key, protected=True)
+
+    for family in _HIGH_SIGNAL_FAMILY_ORDER:
+        for owner_key in owner_keys:
+            if len(selected) >= max_checks:
+                break
+            if family in selected_families_by_owner.get(owner_key, set()):
+                continue
+            candidates = sorted(
+                [
+                    check for check in ranked
+                    if check.check_id not in selected_ids
+                    and owner_key in check_owner_keys(check)
+                    and _check_signal_family(check) == family
+                    and _eligible_for_owner_protection(check, slot=slot, task_files=local_task_files)
+                ],
+                key=lambda check: _owner_candidate_priority(check, ranked_index=ranked_index),
+            )
+            if candidates:
+                add_check(candidates[0], owner_key=owner_key, protected=True)
+
     for check in ranked:
         if len(selected) >= max_checks:
             break
         if check.check_id in selected_ids:
             continue
-        selected.append(check)
-        selected_ids.add(check.check_id)
-    return selected
+        add_check(check)
+    return selected, {
+        "primary_owner_count": len(owner_keys),
+        "primary_owner_labels": [label_by_key.get(key, key) for key in owner_keys],
+        "selected_checks_by_primary_owner": selected_by_owner,
+        "protected_existing_check_ids": protected_existing_ids,
+    }
 
 
 def normalize_compiled_checks(
@@ -1740,6 +2276,8 @@ def normalize_compiled_checks(
             question=check.behavioral_question,
             by_id=by_id,
         )
+        if len(surface_ids) > 1 and not _check_text_is_cross_surface(check):
+            surface_ids = surface_ids[:1]
         anchor_update = surface_anchor_update(surface_ids[:1], state)
         if anchor_update:
             path = str(anchor_update.get("file_path") or path)
@@ -1748,21 +2286,20 @@ def normalize_compiled_checks(
         if anchor_update.get("line_start") and line_start == 1 and line_end == 1:
             line_start = int(anchor_update["line_start"])
             line_end = int(anchor_update.get("line_end") or line_start)
-        normalized.append(
-            check.model_copy(
-                update={
-                    "check_id": cid,
-                    "patch_task_id": task.id,
-                    "surface_ids": surface_ids,
-                    "file_path": path,
-                    "line_start": line_start,
-                    "line_end": line_end,
-                    "changed_code_anchor": str(
-                        anchor_update.get("changed_code_anchor") or check.changed_code_anchor
-                    ),
-                }
-            )
-        )
+        updates = {
+            "check_id": cid,
+            "patch_task_id": task.id,
+            "surface_ids": surface_ids,
+            "file_path": path,
+            "line_start": line_start,
+            "line_end": line_end,
+            "changed_code_anchor": str(
+                anchor_update.get("changed_code_anchor") or check.changed_code_anchor
+            ),
+        }
+        if _expected_behavior_is_implementation_shaped(check):
+            updates["audit_only"] = True
+        normalized.append(check.model_copy(update=updates))
         if not normalized[-1].owned_contract_scope.strip():
             normalized[-1] = normalized[-1].model_copy(
                 update={"owned_contract_scope": owned_contract_scope_for_check(normalized[-1])}
@@ -1782,6 +2319,7 @@ def render_compiler_prompt(state: GraphState, task: ReviewTask, slot: Mapping[st
             question.model_dump(mode="json")
             for question in spec.contract_questions
             if question.surface_id in task_surface_id_set
+            and _task_owns_contract_question(state, task, question, ledger)
         ][:12]
     te = slot.get("task_evidence") if isinstance(slot.get("task_evidence"), dict) else {}
     omitted_prompt_files = te.get("omitted_prompt_files") if isinstance(te.get("omitted_prompt_files"), list) else []

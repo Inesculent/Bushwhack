@@ -1146,17 +1146,23 @@ def _merge_compatible_claims(left: ReviewFinding, right: ReviewFinding) -> bool:
     right_digest = _finding_claim_digest(right)
     if left.file_path != right.file_path:
         return False
-    if _claim_subject_from_digest(left_digest) != _claim_subject_from_digest(right_digest):
-        return False
+    same_subject = _claim_subject_from_digest(left_digest) == _claim_subject_from_digest(right_digest)
     left_family = _claim_family_from_digest(left_digest)
     right_family = _claim_family_from_digest(right_digest)
-    if left_family and right_family and left_family != right_family:
+    sibling_overlap = (
+        False
+        if same_subject
+        else _sibling_root_claim_overlap(left, right, left_digest, right_digest)
+    )
+    if left_family and right_family and not _claim_token_overlap(left_family, right_family) and not sibling_overlap:
         return False
     left_impact = _claim_impact_from_digest(left_digest)
     right_impact = _claim_impact_from_digest(right_digest)
-    if left_impact and right_impact and left_impact != right_impact:
+    if left_impact and right_impact and not _claim_token_overlap(left_impact, right_impact) and not sibling_overlap:
         return False
-    return claim_digests_overlap(left_digest, right_digest)
+    if same_subject:
+        return claim_digests_overlap(left_digest, right_digest)
+    return sibling_overlap
 
 
 def _clusterable_findings(left: ReviewFinding, right: ReviewFinding) -> bool:
@@ -1168,7 +1174,50 @@ def _clusterable_findings(left: ReviewFinding, right: ReviewFinding) -> bool:
     right_subject = _claim_subject_from_digest(right_digest)
     same_subject = bool(left_subject and left_subject == right_subject)
     close_lines = _lines_overlap_or_close(left, right, distance=60)
-    return bool(same_subject and close_lines)
+    if same_subject and close_lines:
+        return True
+    return _sibling_root_claim_overlap(left, right, left_digest, right_digest)
+
+
+def _sibling_root_claim_overlap(
+    left: ReviewFinding,
+    right: ReviewFinding,
+    left_digest: str,
+    right_digest: str,
+) -> bool:
+    if left.file_path != right.file_path:
+        return False
+    if not _lines_overlap_or_close(left, right, distance=180):
+        return False
+    root_match = bool(left.root_operation and left.root_operation == right.root_operation)
+    family_match = _claim_token_overlap(
+        _claim_family_from_digest(left_digest),
+        _claim_family_from_digest(right_digest),
+    )
+    impact_match = (
+        bool(left.behavioral_symptom and left.behavioral_symptom == right.behavioral_symptom)
+        or _claim_token_overlap(_claim_impact_from_digest(left_digest), _claim_impact_from_digest(right_digest))
+    )
+    text_match = _claim_token_overlap(
+        " ".join([left.content, left.expected_behavior, left.counterexample, left.recommendation]),
+        " ".join([right.content, right.expected_behavior, right.counterexample, right.recommendation]),
+        min_overlap=2,
+    )
+    return bool((root_match or family_match) and (impact_match or text_match))
+
+
+def _claim_token_overlap(left: str, right: str, *, min_overlap: int = 1) -> bool:
+    left_tokens = {
+        token
+        for token in re.findall(r"[a-z0-9_]{4,}", left.lower())
+        if token not in {"return", "string", "value", "values", "changed", "behavior", "contract"}
+    }
+    right_tokens = {
+        token
+        for token in re.findall(r"[a-z0-9_]{4,}", right.lower())
+        if token not in {"return", "string", "value", "values", "changed", "behavior", "contract"}
+    }
+    return len(left_tokens & right_tokens) >= min_overlap
 
 
 def _semantic_claim_clusters(

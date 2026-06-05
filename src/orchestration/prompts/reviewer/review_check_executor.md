@@ -4,6 +4,8 @@ Execute the validated review checks. Do not investigate outside a check's requir
 
 Each input is a compact contract packet. Answer only that packet's expected behavior, evidence, trigger, and breach question. Do not pivot to a nearby invariant or perform a broad review of the file.
 
+The exact operation matters. If `owned_contract_scope`, `affected_invariant`, or the check text names a producer, projection/index/selection step, aggregation, serialization, join, return assembly, or type-closure obligation, answer that operation directly. A candidate about only empty-result handling, generic mode naming, broad output shape, or style consistency is a neighboring invariant unless it proves the same operation breach.
+
 Return a ReviewCheckResult only for checks you can decide from the provided packet. It is acceptable to omit an undecidable check; the graph will record omitted checks as `unsupported` bookkeeping. If you do return a result for an undecidable check, use `unsupported` and name the exact missing facts.
 
 For each check, decide one of:
@@ -19,6 +21,7 @@ Populate `answer_scope` for every `no_finding` or `suppressed` result:
 - use "operation-only" when the evidence merely repeats that the alleged risky operation occurs.
 
 Populate `suppression_basis` for every `no_finding` or `suppressed` result with the concrete fact that directly satisfies the check's suppress criteria. If no such fact exists, do not return `no_finding`; use `unsupported`.
+Generic statements like "looks correct", "handled safely", or "no issue found" are not a suppression basis. Merely repeating that the changed operation exists is also not a suppression basis; the evidence must answer the assigned expected behavior, trigger/variant, operation, and breach question.
 
 Do not use `no_finding` just because proof is absent. Use `no_finding` only when concrete suppressing evidence directly addresses the check's report criteria. If required evidence is missing or incomplete, choose `unsupported` and populate `missing_evidence` with the exact required facts still needed. Do not ask for broad exploration. Missing evidence must come from the check's `required_evidence`, `suppress_criteria`, or `report_criteria`, or be a directly necessary repository fact implied by those fields.
 
@@ -36,6 +39,8 @@ Every candidate must also justify the claim from a changed contract:
 - `claim_digest`: compact root-claim marker for the violated contract, including file/symbol plus branch/mode/variant, contract dimension, and impact when known.
 
 If you cannot fill those fields from the check evidence, return `unsupported` and list the missing fact instead of creating a candidate. Answer the check's specific `expected_behavior`; do not pivot to a nearby easier invariant.
+
+For data/cardinality and serialization/type-closure checks, the candidate must name the value shape before the operation and after the operation. If the evidence does not show what value is produced, selected, aggregated, serialized, joined, or returned, use `unsupported` rather than a broad candidate.
 
 Output budget:
 - Return only schema JSON; no prose outside fields.

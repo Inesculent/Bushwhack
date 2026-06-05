@@ -17,6 +17,7 @@ from src.infrastructure.llm.trace import append_trace, trace_from_exception, tra
 from src.orchestration.context.mandate_loop_context import (
     bootstrap_digest,
     build_bootstrap_digest,
+    build_repository_contract_context,
     format_delta_ledger_for_patch,
     ledger_since_last_patch,
     patch_seq,
@@ -25,11 +26,13 @@ from src.orchestration.context.mandate_loop_context import (
 from src.orchestration.nodes.application.planner import _target_files
 from src.orchestration.context.mandate_loop_context import mm_meta
 from src.orchestration.context.surface_ledger import (
+    build_contract_questions_from_ledger,
     build_migration_invariants_from_diff,
     build_surface_invariants_from_ledger,
     surface_inventory_names,
     surface_ledger_from_state,
 )
+from src.orchestration.nodes.mental_model import _normalize_contract_questions
 from src.orchestration.prompts.renderer import render_reviewer_prompt
 from src.orchestration.review_principles import DECLARED_INPUT_CONTRACT_GUIDANCE
 
@@ -44,6 +47,7 @@ class MandatePatchOutput(BaseModel):
     risk_hypotheses: str = Field(default="")
     reviewer_guidance: str = Field(default="")
     uncertainties: str = Field(default="")
+    contract_questions: List[ContractQuestion] = Field(default_factory=list)
 
 
 def _apply_patch_to_spec(
@@ -67,7 +71,17 @@ def _apply_patch_to_spec(
             refs.append(BehavioralEvidenceRef(kind="file", ref=fp, note="Changed in this PR"))
             seen.add(fp)
     merged_surfaces = surfaces or (prior.surfaces if prior else [])
-    contract_questions: List[ContractQuestion] = list(prior.contract_questions if prior else [])
+    contract_questions: List[ContractQuestion] = _normalize_contract_questions(
+        [
+            *(prior.contract_questions if prior else []),
+            *patch.contract_questions,
+            *build_contract_questions_from_ledger(
+                merged_surfaces,
+                risk_hypotheses=patch.risk_hypotheses,
+            ),
+        ],
+        surfaces=merged_surfaces,
+    )
     covered_surface_ids = {question.surface_id for question in contract_questions if question.surface_id}
     if covered_surface_ids:
         surface_invariants = [
@@ -145,6 +159,7 @@ def make_mandate_patch_node(settings: Settings | None = None, *, use_llm: bool =
                 prior = None
 
         delta_text = format_delta_ledger_for_patch(state)
+        repo_context = build_repository_contract_context(state, max_chars=1200)
         spec_excerpt = spec_excerpt_for_prompt(ref_str, resolved)
         llm_tokens = 0
         llm_trace: List[Dict[str, Any]] = []
@@ -158,6 +173,7 @@ def make_mandate_patch_node(settings: Settings | None = None, *, use_llm: bool =
                     {
                         "patch_mode": patch_mode,
                         "intent_summary": intent_summary[:4000],
+                        "repository_contract_context": repo_context,
                         "spec_excerpt": spec_excerpt,
                         "delta_ledger": delta_text[:14000],
                     },
@@ -174,6 +190,7 @@ def make_mandate_patch_node(settings: Settings | None = None, *, use_llm: bool =
                     input_summary={
                         "patch_mode": patch_mode,
                         "delta_entries": len(ledger_since_last_patch(state)),
+                        "repository_contract_context_chars": len(repo_context),
                     },
                 )
                 invoke_result = traced.result

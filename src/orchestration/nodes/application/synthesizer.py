@@ -3,8 +3,12 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List
 
+from src.config import get_settings
 from src.domain.schemas import ReviewFinding
 from src.domain.state import GraphState
+from src.infrastructure.llm.factory import Models
+from src.infrastructure.llm.token_usage import parse_structured_output
+from src.infrastructure.llm.trace import trace_from_exception, trace_llm_call
 from src.orchestration.routing.finding_dedupe import ensure_unique_finding_ids
 from src.orchestration.routing.review_obligations import recall_audit_for_final_findings
 
@@ -70,8 +74,71 @@ def _canonicalize_duplicate_map(
     return canonical
 
 
+def _reconcile_adjudicated_finding_duplicates(
+    state: GraphState,
+    findings: List[ReviewFinding],
+) -> tuple[List[ReviewFinding], Dict[str, List[str]], Dict[str, Any], int, List[Dict[str, Any]]]:
+    metadata = state.get("metadata", {}) or {}
+    if not isinstance(metadata.get("review_adjudicator"), dict) or len(findings) < 2:
+        return findings, {}, {}, 0, []
+    try:
+        from src.orchestration.nodes.application.cleanup import (  # noqa: PLC0415
+            SemanticClaimClusterOutput,
+            _apply_semantic_claim_cluster_audit,
+            _render_semantic_claim_cluster_prompt,
+            _reports_by_candidate,
+            _semantic_claim_clusters,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return findings, {}, {"warnings": [f"claim_cluster_import_failed:{exc.__class__.__name__}: {exc}"]}, 0, []
+
+    raw_by_cand = _reports_by_candidate(state.get("reflection_reports", []) or [])
+    clusters = _semantic_claim_clusters(findings, raw_by_cand)
+    if not clusters:
+        return findings, {}, {"cluster_count": 0}, 0, []
+
+    resolved = get_settings()
+    selected_model = getattr(resolved, "reviewer_worker_model_key", None)
+    try:
+        llm = Models.worker(
+            SemanticClaimClusterOutput,
+            model_key=selected_model,
+            max_completion_tokens=1800,
+        )
+        traced = trace_llm_call(
+            llm,
+            _render_semantic_claim_cluster_prompt(clusters),
+            state=state,
+            node_name="review_synthesizer_claim_cluster_reconciliation",
+            model_key=selected_model,
+            schema_name="SemanticClaimClusterOutput",
+            input_summary={"cluster_count": len(clusters)},
+        )
+        audit = parse_structured_output(traced.result, SemanticClaimClusterOutput)
+        reconciled, duplicates, duplicate_to_keeper, rejected = _apply_semantic_claim_cluster_audit(
+            findings,
+            audit,
+        )
+        return ensure_unique_finding_ids(reconciled), duplicates, {
+            "cluster_count": len(clusters),
+            "claim_cluster_groups": clusters,
+            "claim_cluster_audits": [item.model_dump(mode="json") for item in audit.clusters],
+            "claim_cluster_warnings": list(audit.warnings),
+            "claim_cluster_duplicate_to_keeper": duplicate_to_keeper,
+            "claim_cluster_rejected": rejected,
+        }, traced.tokens, traced.trace_records
+    except Exception as exc:  # noqa: BLE001
+        return findings, {}, {
+            "cluster_count": len(clusters),
+            "claim_cluster_groups": clusters,
+            "warnings": [f"claim_cluster_reconciliation_failed:{exc.__class__.__name__}: {exc}"],
+        }, 0, trace_from_exception(exc)
+
+
 def synthesizer_node(state: GraphState) -> Dict[str, Any]:
     findings = state.get("findings", []) or []
+    llm_tokens = 0
+    llm_trace: List[Dict[str, Any]] = []
 
     severity_rank = {"high": 0, "medium": 1, "low": 2}
     sorted_findings = sorted(
@@ -127,6 +194,16 @@ def synthesizer_node(state: GraphState) -> Dict[str, Any]:
         cleanup_claim_cluster_duplicates,
         adjudicator_merge_map,
     )
+    final, synthesizer_claim_cluster_duplicates, synthesizer_claim_cluster_meta, dedupe_tokens, dedupe_trace = (
+        _reconcile_adjudicated_finding_duplicates(state, final)
+    )
+    llm_tokens += dedupe_tokens
+    llm_trace.extend(dedupe_trace)
+    if synthesizer_claim_cluster_duplicates:
+        raw_combined_duplicate_map = _merge_duplicate_maps(
+            raw_combined_duplicate_map,
+            synthesizer_claim_cluster_duplicates,
+        )
     promoted_candidate_ids = {
         str(candidate_id)
         for candidate_id, entry in lifecycle.items()
@@ -161,6 +238,8 @@ def synthesizer_node(state: GraphState) -> Dict[str, Any]:
         "semantic_dedupe_duplicates": combined_duplicate_map,
         "dropped_resolution_only_ids": [],
         "lost_promoted_candidate_ids": lost_promoted_ids,
+        "claim_cluster_duplicates": synthesizer_claim_cluster_duplicates,
+        "claim_cluster_reconciliation": synthesizer_claim_cluster_meta,
         "recall_audit": recall_audit_for_final_findings(
             obligations_by_task=coverage_by_task,
             candidates=candidates,
@@ -198,5 +277,7 @@ def synthesizer_node(state: GraphState) -> Dict[str, Any]:
         "final_findings": final,
         "metadata": metadata,
         "node_history": ["review_synthesizer"],
+        "token_usage": llm_tokens,
+        "llm_trace": llm_trace,
         "next_step": "finalize",
     }

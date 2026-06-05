@@ -31,6 +31,7 @@ from src.infrastructure.behavioral_spec_store import BehavioralSpecStore
 from src.orchestration.context.mandate_loop_context import (
     bootstrap_digest,
     build_mandate_planning_context,
+    build_repository_contract_context,
     format_delta_ledger_for_patch,
     mm_meta,
     spec_excerpt_for_prompt,
@@ -67,6 +68,7 @@ SECTION_HEADINGS: Dict[str, str] = {
     "intent_summary": "Intent summary",
     "non_goals": "Non-goals",
     "bootstrap_digest": "Bootstrap digest",
+    "repository_contract_context": "Repository contract context",
     "current_spec_excerpt": "Current spec excerpt",
     "exploration_log": "Exploration log",
     "phase0_inputs": "Phase 0 inputs",
@@ -621,6 +623,16 @@ def build_mandate_synthesizer_packet(state: GraphState, *, settings: Settings | 
         _section("bootstrap_digest", 3, bootstrap_digest(state) or "(pending)", source="mental_model"),
     ]
     sections.extend(_scope_sections_for_state(state))
+    repo_context = build_repository_contract_context(state, max_chars=1200)
+    if repo_context:
+        sections.append(
+            _section(
+                "repository_contract_context",
+                4,
+                repo_context,
+                source="repository_kb",
+            )
+        )
     sections.extend(
         [
             _section("current_spec_excerpt", 4, spec_excerpt, source="behavioral_spec"),

@@ -667,9 +667,43 @@ def test_generic_surface_invariants_are_evidence_requirements_not_predicted_find
     invariants = build_surface_invariants_from_ledger([surface], risk_hypotheses="")
 
     dimensions = {invariant.dimension for invariant in invariants}
-    assert {"changed-surface behavior", "api contract", "data shape consistency"} <= dimensions
+    assert dimensions == {"data shape consistency"}
     assert all("defect" not in invariant.risk_hypothesis.lower() for invariant in invariants)
     assert all(invariant.required_evidence for invariant in invariants)
+
+
+def test_surface_invariants_prefer_real_owner_over_class_and_input_types() -> None:
+    surfaces = [
+        ReviewSurface(
+            surface_id="surface:node",
+            name="Node",
+            kind="class",
+            file_path="pkg/nodes.py",
+            line_start=1,
+            confidence=0.95,
+        ),
+        ReviewSurface(
+            surface_id="surface:node-input",
+            name="Node.INPUT_TYPES",
+            kind="method",
+            file_path="pkg/nodes.py",
+            line_start=3,
+            confidence=0.95,
+        ),
+        ReviewSurface(
+            surface_id="surface:node-execute",
+            name="Node.execute",
+            kind="method",
+            file_path="pkg/nodes.py",
+            line_start=12,
+            confidence=0.95,
+        ),
+    ]
+
+    invariants = build_surface_invariants_from_ledger(surfaces, risk_hypotheses="")
+
+    assert len(invariants) == 1
+    assert invariants[0].surface_id == "surface:node-execute"
 
 
 def test_surface_ledger_preserves_class_method_owners() -> None:
@@ -739,6 +773,7 @@ def test_surface_invariants_add_completeness_only_from_contract_signal() -> None
     ]
 
     assert "data shape consistency" not in plain_dimensions
+    assert plain_dimensions == {"changed-surface behavior"}
     assert structured_shape
     assert "cardinality/completeness" in structured_shape[0].expected_behavior
     assert "fields, and cardinality" in " ".join(structured_shape[0].required_evidence)

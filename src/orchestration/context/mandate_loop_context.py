@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 from src.config import Settings, get_settings
 from src.domain.schemas import BehavioralSpec
@@ -75,6 +75,111 @@ def format_delta_ledger_for_patch(
         max_chars=max_chars,
         header="New exploration observations (delta)",
     )
+    return text
+
+
+_REPOSITORY_CONTRACT_TERMS = (
+    "api",
+    "caller",
+    "contract",
+    "declare",
+    "expect",
+    "input",
+    "invariant",
+    "mode",
+    "option",
+    "output",
+    "return",
+    "schema",
+    "serialize",
+    "state",
+    "type",
+)
+
+
+def _squash_context_line(text: str, *, max_chars: int) -> str:
+    squashed = " ".join((text or "").split())
+    if len(squashed) <= max_chars:
+        return squashed
+    return squashed[: max_chars - 3].rstrip() + "..."
+
+
+def _record_value(raw: Any, key: str) -> Any:
+    if isinstance(raw, Mapping):
+        return raw.get(key)
+    return getattr(raw, key, None)
+
+
+def _changed_context_terms(state: GraphState) -> set[str]:
+    from src.orchestration.nodes.application.planner import _target_files
+
+    terms: set[str] = set()
+    for path in _target_files(state)[:12]:
+        norm = str(path or "").replace("\\", "/").strip("/")
+        if norm:
+            terms.add(norm.lower())
+            terms.add(norm.rsplit("/", 1)[-1].lower())
+    _, slot = mm_meta(state)
+    inventory = slot.get("diff_surface_inventory")
+    if isinstance(inventory, list):
+        for item in inventory[:20]:
+            text = str(item or "").strip().lower()
+            if text:
+                terms.add(text)
+                terms.add(text.rsplit(".", 1)[-1])
+    return {term for term in terms if len(term) >= 3}
+
+
+def _repo_context_line_relevant(line: str, changed_terms: set[str]) -> bool:
+    lowered = line.lower()
+    if any(term in lowered for term in changed_terms):
+        return True
+    return any(term in lowered for term in _REPOSITORY_CONTRACT_TERMS)
+
+
+def build_repository_contract_context(
+    state: GraphState,
+    *,
+    max_chars: int = 1200,
+) -> str:
+    """Small repo-memory slice for mandate prompts; excludes raw KB bodies."""
+
+    changed_terms = _changed_context_terms(state)
+    lines: List[str] = []
+
+    global_summary = str(state.get("global_summary") or "").strip()
+    if global_summary:
+        selected = [
+            _squash_context_line(line, max_chars=260)
+            for line in global_summary.splitlines()
+            if _repo_context_line_relevant(line, changed_terms)
+        ][:3]
+        if selected:
+            lines.append("Repo summary:")
+            lines.extend(f"- {line}" for line in selected)
+
+    records = state.get("repository_kb_summary_records") or []
+    record_lines: List[str] = []
+    for raw in records:
+        kind = str(_record_value(raw, "kind") or "")
+        if kind not in {"summary", "file", "symbol"}:
+            continue
+        summary = str(_record_value(raw, "summary") or "").strip()
+        if not summary or not _repo_context_line_relevant(summary, changed_terms):
+            continue
+        rid = str(_record_value(raw, "id") or kind).strip()
+        record_lines.append(f"- {rid}: {_squash_context_line(summary, max_chars=240)}")
+        if len(record_lines) >= 4:
+            break
+    if record_lines:
+        lines.append("Repository KB summaries:")
+        lines.extend(record_lines)
+
+    if not lines:
+        return ""
+    text = "\n".join(lines)
+    if len(text) > max_chars:
+        return text[: max_chars - 3].rstrip() + "..."
     return text
 
 

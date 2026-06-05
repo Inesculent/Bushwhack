@@ -34,6 +34,10 @@ Build reviewer cognition, not a checklist. For each important changed owner, fir
 
 Use `contract_questions` for questions that have a concrete owner and contract evidence. Each question must be narrow enough that a neighboring invariant cannot suppress it. Decompose broad expectations when they contain multiple obligations: variant handling is separate from output totality; collection existence is separate from nested data preservation; error catching is separate from safe serialization of produced values.
 
+For each owner, make questions distinct by the fields you already have: `dimension`, `trigger_variant`, `operation`, and `breach_question`. Do not restate the same contract in different wording. Keep the central contracts first: declarations, schemas, public API shape, caller expectations, named modes/options, output/return contracts, and changed data transformations. Add secondary directions only when they are genuinely different obligations, not because a lens exists.
+
+For changed transformation code, reason like a reviewer following the data through the operation chain. If a value is produced as a collection or structured payload, then projected/indexed/selected, then aggregated, serialized, joined, or returned, ask separate contract questions for those distinct steps using the existing fields. Do not collapse producer cardinality, projection/index semantics, and serialization/type closure into one broad "preserve data" question. Broad return or variant questions should not crowd out concrete transformation-step questions for the same owner.
+
 Use generic dimensions only:
 - variant_completeness
 - return_output_totality
@@ -47,6 +51,8 @@ Use generic dimensions only:
 
 Do not copy the same contract question across every surface. Attach each question to the most specific changed owner that can answer it, such as a class method, handler, entry point, serializer, dispatcher, or registration surface.
 
+If no concrete evidence could directly suppress a question, leave `direct_suppressor` empty. Do not write placeholder suppressors like "none", "n/a", or "not applicable".
+
 ## Guidelines
 
 - When many new types appear in one change, `behavioral_expectations` should cover **each** surface at a high level (inputs, outputs, invariants), not only the first few.
@@ -57,6 +63,7 @@ Do not copy the same contract question across every surface. Attach each questio
 - Keep uncertainties explicit.
 - Preserve intent, contracts, and precedent from Phase 0.
 - Balance PR description intent, repository mental model, and general review practices; do not anchor only on the PR description.
+- Use repository contract context only to identify conventions and contracts that matter to changed owners. Do not copy broad repo-memory prose into every invariant or question.
 - Do not claim a defect exists unless directly proven; phrase risks as balanced hypotheses.
 - When the PR intent or changed code names "all", "each", complete handling, collections, batches, grouped records, mappings, templates, or batched/structured outputs, express the cardinality/completeness contract generically so downstream checks can verify element and field preservation.
 - Provide comprehensive output that avoids context explosion while ensuring high recall of potential issues.

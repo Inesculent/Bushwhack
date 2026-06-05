@@ -8,7 +8,7 @@ import re
 from pathlib import PurePosixPath
 from typing import Any, Iterable, List, Mapping, Sequence
 
-from src.domain.schemas import CodeEntity, ReviewSurface, ReviewTask, SurfaceInvariant
+from src.domain.schemas import CodeEntity, ContractQuestion, ReviewSurface, ReviewTask, SurfaceInvariant
 from src.domain.state import GraphState
 from src.orchestration.context.contract_vocabulary import (
     DATA_SHAPE_CONTRACT_TERMS,
@@ -581,97 +581,232 @@ def build_surface_invariants_from_ledger(
 ) -> List[SurfaceInvariant]:
     invariants: List[SurfaceInvariant] = []
     risk = risk_hypotheses.strip()[:300]
-    for surface in ledger:
+    for surface in _primary_contract_surfaces(ledger):
         base_evidence = [
             f"changed implementation for {surface.name}",
             "repository contract or local caller evidence when the local code is insufficient",
         ]
+        signal_blob = f"{surface.name} {surface.file_path} {risk}".lower()
+        if has_any_contract_term(signal_blob, DATA_SHAPE_CONTRACT_TERMS) or "tensor" in signal_blob:
+            dimension = "data shape consistency"
+            expected_behavior = (
+                f"{surface.name} preserves structured values, element ordering, relevant fields, "
+                "cardinality/completeness, and expected container/tensor shapes across the changed path."
+            )
+            required_evidence = [
+                *base_evidence,
+                "producer and consumer expectations for structured values, fields, and cardinality at this surface",
+            ]
+            out_of_scope = "Do not invent shape requirements without local code or caller evidence."
+        elif any(token in signal_blob for token in ("state", "cache", "resource", "memory", "vram", "checkpoint", "load", "save", "move", "train")):
+            dimension = "state/resource lifecycle"
+            expected_behavior = (
+                f"{surface.name} preserves state transitions, ownership, cleanup, and resource "
+                "lifecycle order expected by callers."
+            )
+            required_evidence = [
+                *base_evidence,
+                "state/resource ownership and lifecycle ordering around this changed surface",
+            ]
+            out_of_scope = "Do not report lifecycle concerns without concrete changed ordering or ownership evidence."
+        elif any(token in signal_blob for token in ("path", "file", "permission", "auth", "security", "folder")):
+            dimension = "security boundary"
+            expected_behavior = (
+                f"{surface.name} preserves repository security boundaries for user-controlled inputs "
+                "and filesystem or permission-sensitive operations."
+            )
+            required_evidence = [
+                *base_evidence,
+                "source of external input and boundary validation for this surface",
+            ]
+            out_of_scope = "Do not report generic hardening without a reachable changed-code boundary."
+        else:
+            dimension = "changed-surface behavior"
+            expected_behavior = (
+                f"{surface.name} in {surface.file_path} preserves its externally visible contract "
+                "unless the PR explicitly changes it."
+            )
+            required_evidence = base_evidence
+            out_of_scope = (
+                "Do not infer defects outside this surface without direct changed-code or "
+                "repository-contract evidence."
+            )
         invariants.append(
             SurfaceInvariant(
                 surface_id=surface.surface_id,
-                dimension="changed-surface behavior",
-                expected_behavior=(
-                    f"{surface.name} in {surface.file_path} preserves its existing observable "
-                    "contract unless the PR explicitly changes it."
-                ),
+                dimension=dimension,
+                expected_behavior=expected_behavior,
                 risk_hypothesis=risk or "Changed implementation may affect local behavior or contracts.",
-                required_evidence=base_evidence,
-                out_of_scope=(
-                    "Do not infer defects outside this surface without direct changed-code or "
-                    "repository-contract evidence."
-                ),
+                required_evidence=required_evidence,
+                out_of_scope=out_of_scope,
             )
         )
-        if surface.kind != "file":
-            invariants.append(
-                SurfaceInvariant(
-                    surface_id=surface.surface_id,
-                    dimension="api contract",
-                    expected_behavior=(
-                        f"{surface.name} preserves caller-visible inputs, outputs, and exception behavior "
-                        "unless the PR explicitly changes that API."
-                    ),
-                    risk_hypothesis=risk or "Changed code may alter a public or internal contract.",
-                    required_evidence=[
-                        *base_evidence,
-                        "declared signature, return shape, or caller usage for this surface",
-                    ],
-                    out_of_scope="Do not require compatibility for behavior the PR explicitly removes or renames.",
-                )
-            )
-        signal_blob = f"{surface.name} {surface.file_path} {risk}".lower()
-        if has_any_contract_term(signal_blob, DATA_SHAPE_CONTRACT_TERMS) or "tensor" in signal_blob:
-            invariants.append(
-                SurfaceInvariant(
-                    surface_id=surface.surface_id,
-                    dimension="data shape consistency",
-                    expected_behavior=(
-                        f"{surface.name} preserves structured values, element ordering, relevant fields, "
-                        "cardinality/completeness, and expected container/tensor shapes across the changed path."
-                    ),
-                    risk_hypothesis=risk or "Changed structured data handling may alter observable results.",
-                    required_evidence=[
-                        *base_evidence,
-                        "producer and consumer expectations for structured values, fields, and cardinality at this surface",
-                    ],
-                    out_of_scope="Do not invent shape requirements without local code or caller evidence.",
-                )
-            )
-        if any(token in signal_blob for token in ("state", "cache", "resource", "memory", "vram", "checkpoint", "load", "save", "move", "train")):
-            invariants.append(
-                SurfaceInvariant(
-                    surface_id=surface.surface_id,
-                    dimension="state/resource lifecycle",
-                    expected_behavior=(
-                        f"{surface.name} preserves state transitions, ownership, cleanup, and resource "
-                        "lifecycle order expected by callers."
-                    ),
-                    risk_hypothesis=risk or "Changed lifecycle behavior may leak, reuse, or invalidate state incorrectly.",
-                    required_evidence=[
-                        *base_evidence,
-                        "state/resource ownership and lifecycle ordering around this changed surface",
-                    ],
-                    out_of_scope="Do not report lifecycle concerns without concrete changed ordering or ownership evidence.",
-                )
-            )
-        if any(token in signal_blob for token in ("path", "file", "permission", "auth", "security", "input", "folder")):
-            invariants.append(
-                SurfaceInvariant(
-                    surface_id=surface.surface_id,
-                    dimension="security boundary",
-                    expected_behavior=(
-                        f"{surface.name} preserves repository security boundaries for user-controlled inputs "
-                        "and filesystem or permission-sensitive operations."
-                    ),
-                    risk_hypothesis=risk or "Changed boundary handling may expose unsafe inputs or filesystem effects.",
-                    required_evidence=[
-                        *base_evidence,
-                        "source of external input and boundary validation for this surface",
-                    ],
-                    out_of_scope="Do not report generic hardening without a reachable changed-code boundary.",
-                )
-            )
     return invariants
+
+
+def build_contract_questions_from_ledger(
+    ledger: Sequence[ReviewSurface],
+    *,
+    risk_hypotheses: str = "",
+    existing_questions: Sequence[ContractQuestion] = (),
+) -> List[ContractQuestion]:
+    """Generate compact owner-scoped fallback questions from structural surfaces."""
+
+    questions: List[ContractQuestion] = []
+    risk = risk_hypotheses.lower()
+    existing_families = {
+        (question.owner.strip().lower(), question.dimension)
+        for question in existing_questions
+        if question.owner.strip() and question.breach_question.strip()
+    }
+
+    def should_add(owner: str, dimension: str) -> bool:
+        return (owner.strip().lower(), dimension) not in existing_families
+
+    for surface in _primary_contract_surfaces(ledger):
+        if surface.kind == "file":
+            continue
+        owner = surface.name
+        base_evidence = f"changed implementation and declared contract for {owner}"
+        if should_add(owner, "return_output_totality"):
+            questions.append(
+                ContractQuestion(
+                    owner=owner,
+                    surface_id=surface.surface_id,
+                    dimension="return_output_totality",
+                    expected_behavior=f"{owner} returns the declared output shape on every reachable execution path.",
+                    contract_evidence=base_evidence,
+                    trigger_variant="each declared branch, fallback/default path, and error path",
+                    operation="execute return contract",
+                    breach_question=(
+                        "Can any reachable branch, fallback/default path, or handled-error path fail to return "
+                        "the declared output shape?"
+                    ),
+                    direct_suppressor=(
+                        "Concrete evidence shows every reachable branch and fallback/default path returns the declared output shape."
+                    ),
+                    required_evidence=[
+                        base_evidence,
+                        "declared output shape",
+                        "branch/fallback/default behavior",
+                    ],
+                    source_confidence=0.35,
+                )
+            )
+        owner_blob = f"{owner} {surface.file_path} {risk}".lower()
+        if (
+            any(token in owner_blob for token in ("mode", "variant", "option", "input_types", "combo", "dispatch", "case", "compare", "convert", "regex", "extract"))
+            and should_add(owner, "variant_completeness")
+        ):
+            questions.append(
+                ContractQuestion(
+                    owner=owner,
+                    surface_id=surface.surface_id,
+                    dimension="variant_completeness",
+                    expected_behavior=f"{owner} handles declared variants distinctly and handles unsupported/default variants explicitly.",
+                    contract_evidence=base_evidence,
+                    trigger_variant="declared options plus unsupported/default variant",
+                    operation="variant dispatch",
+                    breach_question=(
+                        "Are declared variants and unsupported/default variants handled without falling through, "
+                        "silently reusing an unrelated behavior, or returning the wrong output shape?"
+                    ),
+                    direct_suppressor=(
+                        "Concrete evidence shows declared variants and unsupported/default variants are explicitly handled."
+                    ),
+                    required_evidence=[
+                        base_evidence,
+                        "declared variant/options contract",
+                        "variant dispatch implementation",
+                    ],
+                    source_confidence=0.35,
+                )
+            )
+        if any(token in owner_blob for token in ("extract", "parse", "serialize", "format", "join", "group", "record", "field", "batch", "collection", "match")):
+            data_operation = "collection producer and element projection/index selection"
+            if should_add(owner, "data_preservation_cardinality"):
+                questions.append(
+                    ContractQuestion(
+                        owner=owner,
+                        surface_id=surface.surface_id,
+                        dimension="data_preservation_cardinality",
+                        expected_behavior=(
+                            f"{owner} preserves produced collection payloads and selected elements according "
+                            "to the operation contract."
+                        ),
+                        contract_evidence=base_evidence,
+                        trigger_variant="multi-item, nested, grouped, optional, empty, and single-item values",
+                        operation=data_operation,
+                        breach_question=(
+                            "Can the changed producer/projection path select the wrong element, drop payload data, "
+                            "or lose part of a structured value without an explicit contract narrowing?"
+                        ),
+                        direct_suppressor=(
+                            "Concrete evidence shows producer cardinality and projection/index selection preserve the intended payload."
+                        ),
+                        required_evidence=[
+                            base_evidence,
+                            "producer cardinality and element payload contract",
+                            "projection/index/aggregation path",
+                        ],
+                        source_confidence=0.35,
+                    )
+                )
+            if should_add(owner, "serialization_type_closure"):
+                questions.append(
+                    ContractQuestion(
+                        owner=owner,
+                        surface_id=surface.surface_id,
+                        dimension="serialization_type_closure",
+                        expected_behavior=f"{owner} only sends values compatible with its declared output type into output assembly.",
+                        contract_evidence=base_evidence,
+                        trigger_variant="optional, absent, nested, non-string, or empty values",
+                        operation="output serialization",
+                        breach_question=(
+                            "Can optional, absent, nested, or non-output-compatible values reach output assembly and violate "
+                            "the declared output type?"
+                        ),
+                        direct_suppressor=(
+                            "Concrete evidence shows output assembly normalizes or rejects optional, absent, nested, and non-compatible values."
+                        ),
+                        required_evidence=[
+                            base_evidence,
+                            "declared output type",
+                            "output assembly and normalization path",
+                        ],
+                        source_confidence=0.35,
+                    )
+                )
+        if len(questions) >= 40:
+            break
+    return questions[:40]
+
+
+def _primary_contract_surfaces(ledger: Sequence[ReviewSurface]) -> List[ReviewSurface]:
+    grouped: dict[tuple[str, str], List[ReviewSurface]] = {}
+    standalone: List[ReviewSurface] = []
+    for surface in ledger:
+        if surface.kind == "file":
+            standalone.append(surface)
+            continue
+        base = surface.name.split(".", 1)[0]
+        grouped.setdefault((surface.file_path, base), []).append(surface)
+
+    selected: List[ReviewSurface] = []
+    for _key, surfaces in sorted(grouped.items(), key=lambda item: (item[0][0], item[0][1])):
+        execute = [
+            surface for surface in surfaces
+            if surface.name.rsplit(".", 1)[-1].lower() in {"execute", "run", "handle", "process", "call", "__call__"}
+        ]
+        if execute:
+            selected.append(sorted(execute, key=lambda item: item.line_start or 10**9)[0])
+            continue
+        non_helper = [
+            surface for surface in surfaces
+            if "input_types" not in surface.name.lower()
+        ]
+        selected.append(sorted(non_helper or surfaces, key=lambda item: (item.line_start or 10**9, item.name))[0])
+    return sorted([*selected, *standalone], key=lambda surface: (surface.file_path, surface.line_start or 10**9, surface.name))
 
 
 def build_migration_invariants_from_diff(
@@ -684,11 +819,13 @@ def build_migration_invariants_from_diff(
 ) -> List[SurfaceInvariant]:
     """Synthesize caller-reliance checks when a PR appears to migrate behavior."""
 
+    removed_symbols = _symbols_from_removed_lines(git_diff)
+    if not removed_symbols:
+        return []
     blob = f"{intent_summary}\n{pr_context}\n{git_diff}".lower()
     if not any(marker in blob for marker in _MIGRATION_MARKERS):
         return []
 
-    removed_symbols = _symbols_from_removed_lines(git_diff)
     added_calls = _symbols_from_added_call_lines(git_diff)
     old_contract = ", ".join(removed_symbols[:5]) or "the removed or changed implementation"
     new_contract = ", ".join(added_calls[:5]) or "the replacement implementation"

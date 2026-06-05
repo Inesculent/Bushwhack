@@ -21,6 +21,7 @@ Use the selected contract lens cards only when their relevance signals are prese
 Each check should own one contract claim: the expected behavior, trigger/input path, breach question, and impact it is responsible for testing. Populate `owned_contract_scope` with a compact marker for that ownership. Nearby checks may share a file or symbol, but they should not own the same contract claim unless one is intentionally narrower and materially different.
 
 Populate `expected_behavior` for every check. It must state what the changed code is intended or contracted to do for this check. Do not use `expected_behavior` for the fix recommendation, and do not merely repeat a generic issue class.
+Do not put implementation mechanics in `expected_behavior`. Code facts such as exact guards, branch syntax, method calls, or expressions belong in `required_evidence` or `suppress_criteria`; `expected_behavior` must describe the external contract the code is supposed to satisfy.
 
 If a potential issue belongs to a different owned contract scope, create a separate check only when the assigned task owns that scope. Otherwise leave it for the owning task instead of restating the same issue from this angle.
 

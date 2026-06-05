@@ -20,6 +20,7 @@ from src.domain.schemas import (
 )
 from src.infrastructure.behavioral_spec_store import BehavioralSpecStore
 from src.orchestration.nodes.application import critique_pipeline
+from src.orchestration.nodes.application import review_check_compiler_support as compiler_support
 from src.orchestration.nodes.application.review_checks import (
     make_review_check_compiler_node,
     make_review_check_context_planner_node,
@@ -740,6 +741,319 @@ def test_contract_questions_compile_before_surface_invariants(tmp_path) -> None:
     assert not any(check["check_id"].startswith("review-logic:surface:") for check in compiled)
 
 
+def test_contract_question_compiles_only_for_preferred_surface_task(tmp_path) -> None:
+    settings = Settings(snapshot_base_path=str(tmp_path))
+    surface = ReviewSurface(
+        surface_id="surface:handle-execute",
+        name="Handle.execute",
+        kind="method",
+        file_path="src/app.py",
+        line_start=7,
+        line_end=12,
+        confidence=0.95,
+    )
+    spec = BehavioralSpec(
+        intent_summary="change handle",
+        surfaces=[surface],
+        contract_questions=[
+            ContractQuestion(
+                question_id="q1",
+                owner="Handle.execute",
+                surface_id=surface.surface_id,
+                dimension="return_output_totality",
+                expected_behavior="Handle.execute returns the declared output.",
+                contract_evidence="RETURN_TYPES declares one output.",
+                trigger_variant="fallback branch",
+                operation="dispatch",
+                breach_question="Can fallback exit without the declared output?",
+                direct_suppressor="Caller evidence proves fallback cannot occur.",
+            )
+        ],
+    )
+    ref, _ = BehavioralSpecStore(settings).write("r1", spec)
+    baseline = _task().model_copy(update={"surface_ids": [surface.surface_id]})
+    surface_task = baseline.model_copy(
+        update={
+            "id": "review-logic-surface-fill-1",
+            "title": "Diff-local correctness: Handle.execute",
+            "surface_ids": [surface.surface_id],
+        }
+    )
+    state = _state(
+        behavioral_spec_ref=ref,
+        task_registry={baseline.id: baseline, surface_task.id: surface_task},
+        metadata={
+            **_state()["metadata"],
+            "mental_model": {"surface_ledger": [surface.model_dump(mode="json")]},
+        },
+    )
+
+    assert compiler_support.checks_from_contract_questions(state, baseline, settings=settings) == []
+    owned = compiler_support.checks_from_contract_questions(state, surface_task, settings=settings)
+
+    assert [check.check_id for check in owned] == ["review-logic-surface-fill-1:contract-question:1"]
+
+
+def test_contract_question_compilation_round_robins_multi_owner_task(tmp_path) -> None:
+    settings = Settings(snapshot_base_path=str(tmp_path))
+    surfaces = [
+        ReviewSurface(
+            surface_id=f"surface:owner-{idx}",
+            name=f"Owner{idx}.execute",
+            kind="method",
+            file_path="src/app.py",
+            line_start=idx * 10,
+            line_end=idx * 10 + 5,
+            confidence=0.95,
+        )
+        for idx in range(1, 5)
+    ]
+    dimensions = [
+        "return_output_totality",
+        "variant_completeness",
+        "data_preservation_cardinality",
+        "serialization_type_closure",
+    ]
+    spec = BehavioralSpec(
+        intent_summary="change owners",
+        surfaces=surfaces,
+        contract_questions=[
+            ContractQuestion(
+                owner=surface.name,
+                surface_id=surface.surface_id,
+                dimension=dimension,
+                expected_behavior=f"{surface.name} satisfies {dimension}.",
+                contract_evidence="Declared node contract.",
+                trigger_variant=dimension,
+                operation=dimension,
+                breach_question=f"Can {surface.name} violate {dimension}?",
+            )
+            for surface in surfaces
+            for dimension in dimensions
+        ],
+    )
+    ref, _ = BehavioralSpecStore(settings).write("r1", spec)
+    task = _task().model_copy(update={"surface_ids": [surface.surface_id for surface in surfaces]})
+    state = _state(
+        behavioral_spec_ref=ref,
+        task_registry={task.id: task},
+        metadata={
+            **_state()["metadata"],
+            "mental_model": {"surface_ledger": [surface.model_dump(mode="json") for surface in surfaces]},
+        },
+    )
+
+    checks = compiler_support.checks_from_contract_questions(state, task, settings=settings)
+
+    first_round_anchors = [check.changed_code_anchor for check in checks[:4]]
+    assert first_round_anchors == [surface.name for surface in surfaces]
+    assert "Owner4.execute" in [check.changed_code_anchor for check in checks]
+    assert len(checks) == 16
+
+
+def test_surface_invariants_suppressed_for_surfaces_with_routed_contract_questions(tmp_path) -> None:
+    settings = Settings(snapshot_base_path=str(tmp_path))
+    surface = ReviewSurface(
+        surface_id="surface:handle",
+        name="Handle.execute",
+        kind="method",
+        file_path="src/app.py",
+        line_start=1,
+        line_end=5,
+        confidence=0.95,
+    )
+    spec = BehavioralSpec(
+        intent_summary="change handle",
+        surfaces=[surface],
+        contract_questions=[
+            ContractQuestion(
+                owner="Handle.execute",
+                surface_id=surface.surface_id,
+                dimension="return_output_totality",
+                expected_behavior="Handle.execute returns the declared output.",
+                contract_evidence="RETURN_TYPES declares one output.",
+                trigger_variant="fallback branch",
+                operation="dispatch",
+                breach_question="Can fallback exit without the declared output?",
+            )
+        ],
+        surface_invariants=[
+            SurfaceInvariant(
+                surface_id=surface.surface_id,
+                dimension="changed-surface behavior",
+                expected_behavior="Handle.execute preserves broad behavior.",
+                required_evidence=["changed implementation"],
+            )
+        ],
+    )
+    ref, _ = BehavioralSpecStore(settings).write("r1", spec)
+    task = _task().model_copy(update={"surface_ids": [surface.surface_id]})
+    state = _state(
+        behavioral_spec_ref=ref,
+        metadata={
+            **_state()["metadata"],
+            "mental_model": {"surface_ledger": [surface.model_dump(mode="json")]},
+        },
+    )
+
+    invariant_checks = compiler_support.checks_from_surface_invariants(state, task, settings=settings)
+
+    assert invariant_checks == []
+
+
+def test_broad_surface_invariant_checks_are_audit_only(tmp_path) -> None:
+    settings = Settings(snapshot_base_path=str(tmp_path))
+    surface = ReviewSurface(
+        surface_id="surface:handle",
+        name="handle",
+        kind="function",
+        file_path="src/app.py",
+        line_start=1,
+        line_end=5,
+        confidence=0.95,
+    )
+    spec = BehavioralSpec(
+        intent_summary="change handle",
+        surfaces=[surface],
+        surface_invariants=[
+            SurfaceInvariant(
+                surface_id=surface.surface_id,
+                dimension="changed-surface behavior",
+                expected_behavior="handle preserves its externally visible contract.",
+                required_evidence=["changed implementation"],
+            )
+        ],
+    )
+    ref, _ = BehavioralSpecStore(settings).write("r1", spec)
+    state = _state(
+        behavioral_spec_ref=ref,
+        metadata={
+            **_state()["metadata"],
+            "mental_model": {"surface_ledger": [surface.model_dump(mode="json")]},
+        },
+    )
+
+    checks = compiler_support.checks_from_surface_invariants(
+        state,
+        _task().model_copy(update={"surface_ids": [surface.surface_id]}),
+        settings=settings,
+    )
+
+    assert checks
+    assert checks[0].audit_only is True
+
+
+def test_implementation_shaped_expected_behavior_becomes_audit_only() -> None:
+    surface = ReviewSurface(
+        surface_id="surface:handle",
+        name="handle",
+        kind="function",
+        file_path="src/app.py",
+        line_start=1,
+        line_end=5,
+        confidence=0.95,
+    )
+    task = _task().model_copy(update={"surface_ids": [surface.surface_id]})
+    state = _state(
+        task_registry={task.id: task},
+        metadata={
+            **_state()["metadata"],
+            "mental_model": {"surface_ledger": [surface.model_dump(mode="json")]},
+        },
+    )
+    check = _check(
+        surface_ids=[surface.surface_id],
+        expected_behavior="Before calling group(index), the code checks len(groups) >= index.",
+        diff_signal_family="llm_compiled",
+    )
+
+    normalized = compiler_support.normalize_compiled_checks(state, task, [check])  # type: ignore[arg-type]
+
+    assert normalized[0].audit_only is True
+
+
+def test_contract_question_expected_behavior_can_name_contract_terms() -> None:
+    surface = ReviewSurface(
+        surface_id="surface:handle",
+        name="handle",
+        kind="function",
+        file_path="src/app.py",
+        line_start=1,
+        line_end=5,
+        confidence=0.95,
+    )
+    task = _task().model_copy(update={"surface_ids": [surface.surface_id]})
+    state = _state(
+        task_registry={task.id: task},
+        metadata={
+            **_state()["metadata"],
+            "mental_model": {"surface_ledger": [surface.model_dump(mode="json")]},
+        },
+    )
+    check = _check(
+        surface_ids=[surface.surface_id],
+        expected_behavior="handle returns the declared output shape on every branch.",
+        diff_signal_family="contract_question",
+    )
+
+    normalized = compiler_support.normalize_compiled_checks(state, task, [check])  # type: ignore[arg-type]
+
+    assert normalized[0].audit_only is False
+
+
+def test_generic_coverage_obligation_becomes_audit_only() -> None:
+    check = compiler_support.coverage_check_for_obligation(
+        _state(),  # type: ignore[arg-type]
+        _task(),
+        {
+            "file_path": "src/app.py",
+            "surface": "handle",
+            "dimension": "changed-surface behavior",
+            "evidence": "review changed behavior",
+        },
+        1,
+    )
+
+    assert check.audit_only is True
+
+
+def test_normalize_compiled_checks_narrows_non_integration_multi_surface() -> None:
+    first = ReviewSurface(
+        surface_id="surface:first",
+        name="First.execute",
+        kind="method",
+        file_path="src/app.py",
+        line_start=1,
+        line_end=4,
+        confidence=0.95,
+    )
+    second = first.model_copy(
+        update={
+            "surface_id": "surface:second",
+            "name": "Second.execute",
+            "line_start": 8,
+            "line_end": 12,
+        }
+    )
+    task = _task().model_copy(update={"surface_ids": [first.surface_id, second.surface_id]})
+    state = _state(
+        task_registry={task.id: task},
+        metadata={
+            **_state()["metadata"],
+            "mental_model": {"surface_ledger": [first.model_dump(mode="json"), second.model_dump(mode="json")]},
+        },
+    )
+    check = _check(
+        surface_ids=[first.surface_id, second.surface_id],
+        changed_code_anchor="execute",
+        behavioral_question="Does execute return the declared value?",
+    )
+
+    normalized = compiler_support.normalize_compiled_checks(state, task, [check])  # type: ignore[arg-type]
+
+    assert len(normalized[0].surface_ids) == 1
+
+
 def test_review_check_compiler_carries_completeness_material_without_extra_check(monkeypatch) -> None:
     output = ReviewCheckCompilerOutput(
         summary="compiled",
@@ -1026,9 +1340,11 @@ def test_review_check_compiler_keeps_focused_llm_check_ahead_of_surface_cap(monk
 
     task_meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
     compiled_ids = [check["check_id"] for check in task_meta["compiled_checks"]]
-    assert len(compiled_ids) == 12
+    assert len(compiled_ids) == 16
     assert compiled_ids[0] == "review-logic:regexextract-tuple-indexing"
-    assert task_meta["compiler_coverage_floor"]["trimmed_existing_check_ids"]
+    assert task_meta["compiler_coverage_floor"]["adaptive_max_checks"] == 16
+    assert task_meta["compiler_coverage_floor"]["adaptive_cap_reason"] == "many_primary_owners"
+    assert task_meta["compiler_coverage_floor"]["skipped_due_to_cap"]
 
 
 def test_review_check_compiler_adds_tiny_uncovered_surface_behavior_floor(monkeypatch) -> None:
@@ -1195,6 +1511,59 @@ def test_review_check_compiler_adds_migration_floor_check() -> None:
         check for check in compiled if check["affected_invariant"] == "migration caller-reliance contract"
     )
     assert "caller reliance" in " ".join(migration_check["required_evidence"])
+
+
+def test_review_check_compiler_skips_migration_floor_for_pure_addition_prose() -> None:
+    surface = ReviewSurface(
+        surface_id="surface:new",
+        name="NewNode.execute",
+        kind="method",
+        file_path="src/nodes.py",
+        line_start=10,
+        line_end=20,
+        confidence=0.95,
+    )
+    task = _task().model_copy(
+        update={
+            "description": "Check replacement and migration behavior for the new node.",
+            "target_files": ["src/nodes.py"],
+            "surface_ids": [surface.surface_id],
+        }
+    )
+    state = _state(
+        git_diff=(
+            "diff --git a/src/nodes.py b/src/nodes.py\n"
+            "+++ b/src/nodes.py\n"
+            "@@ -0,0 +1,5 @@\n"
+            "+class NewNode:\n"
+            "+    def execute(self):\n"
+            "+        return (True,)\n"
+        ),
+        task_registry={task.id: task},
+        metadata={
+            **_state()["metadata"],
+            "mental_model": {"surface_ledger": [surface.model_dump(mode="json")]},
+            "critique_pipeline": {
+                "by_task": {
+                    task.id: {
+                        "direct_context": "class NewNode:\n    def execute(self):\n        return (True,)\n",
+                        "mental_model_excerpt": "This prose mentions migration and replacement.",
+                        "coverage_obligations": [],
+                    }
+                }
+            },
+        },
+    )
+
+    checks = compiler_support.migration_floor_checks(
+        state,  # type: ignore[arg-type]
+        task,
+        compiler_support.pipeline_slot(state, task.id),  # type: ignore[arg-type]
+        [],
+        1,
+    )
+
+    assert checks == []
 
 
 def test_review_check_compiler_adds_concrete_maintainability_floor_check() -> None:
@@ -1546,7 +1915,7 @@ def test_review_check_compiler_fair_cap_keeps_later_surface_source_local_check(m
             required_evidence=["changed alpha implementation", "branch and return evidence"],
             report_criteria=["A reachable alpha branch returns the wrong shape."],
         )
-        for idx in range(1, 13)
+        for idx in range(1, 17)
     ]
     llm_checks.append(
         _check(
@@ -1589,9 +1958,187 @@ def test_review_check_compiler_fair_cap_keeps_later_surface_source_local_check(m
 
     task_meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
     compiled_ids = [check["check_id"] for check in task_meta["compiled_checks"]]
-    assert task_meta["compiled_count"] == 12
+    assert task_meta["compiled_count"] == 16
+    assert task_meta["compiler_coverage_floor"]["adaptive_max_checks"] == 16
+    assert task_meta["compiler_coverage_floor"]["adaptive_cap_reason"] == "eligible_non_audit_over_base_cap"
     assert "review-logic:beta:1" in compiled_ids
-    assert "review-logic:alpha:12" in task_meta["compiler_coverage_floor"]["trimmed_existing_check_ids"]
+    assert "review-logic:alpha:16" in task_meta["compiler_coverage_floor"]["trimmed_existing_check_ids"]
+
+
+def test_review_check_compiler_keeps_late_owner_high_signal_checks_under_adaptive_cap(monkeypatch) -> None:
+    surfaces = [
+        ReviewSurface(
+            surface_id=f"surface:owner-{idx}",
+            name=f"Owner{idx}.execute",
+            kind="method",
+            file_path="src/app.py",
+            line_start=idx * 10,
+            line_end=idx * 10 + 5,
+            confidence=0.95,
+        )
+        for idx in range(1, 5)
+    ]
+    task = _task().model_copy(update={"surface_ids": [surface.surface_id for surface in surfaces]})
+    early_checks = [
+        _check(
+            check_id=f"review-logic:owner{owner}:{idx}",
+            surface_ids=[surfaces[owner - 1].surface_id],
+            changed_code_anchor=f"Owner{owner}.execute",
+            behavioral_question=f"Does Owner{owner}.execute preserve declared return shape for branch {idx}?",
+            affected_invariant="declared return shape",
+            required_evidence=[f"changed Owner{owner}.execute implementation"],
+            report_criteria=["A reachable branch returns the wrong shape."],
+        )
+        for owner in range(1, 4)
+        for idx in range(1, 6)
+    ]
+    late_checks = [
+        _check(
+            check_id="review-logic:owner4:tuple-cardinality",
+            surface_ids=[surfaces[3].surface_id],
+            changed_code_anchor="Owner4.execute",
+            behavioral_question="Does Owner4.execute preserve tuple/cardinality data groups?",
+            affected_invariant="tuple/cardinality data preservation",
+            required_evidence=["changed Owner4.execute implementation", "tuple cardinality data group handling"],
+            report_criteria=["A reachable path drops tuple data groups."],
+        ),
+        _check(
+            check_id="review-logic:owner4:join-none",
+            surface_ids=[surfaces[3].surface_id],
+            changed_code_anchor="Owner4.execute",
+            behavioral_question="Does Owner4.execute serialize None/type closure safely before join?",
+            affected_invariant="serialization/type closure",
+            required_evidence=["changed Owner4.execute implementation", "join serialization type closure"],
+            report_criteria=["A reachable path joins None or non-string values."],
+        ),
+        _check(
+            check_id="review-logic:owner4:group-index",
+            surface_ids=[surfaces[3].surface_id],
+            changed_code_anchor="Owner4.execute",
+            behavioral_question="Does Owner4.execute handle group_index bounds for group 0 and captured groups?",
+            affected_invariant="group_index bounds",
+            required_evidence=["changed Owner4.execute implementation", "group_index bounds handling"],
+            report_criteria=["A reachable group index is checked against the wrong bound."],
+        ),
+        _check(
+            check_id="review-logic:owner4:aggregation",
+            surface_ids=[surfaces[3].surface_id],
+            changed_code_anchor="Owner4.execute",
+            behavioral_question="Does Owner4.execute aggregate all produced values before returning?",
+            affected_invariant="aggregation completeness",
+            required_evidence=["changed Owner4.execute implementation", "aggregate combine path"],
+            report_criteria=["A reachable path omits a value from the aggregation."],
+        ),
+    ]
+    output = ReviewCheckCompilerOutput(summary="compiled", checks=[*early_checks, *late_checks])
+    monkeypatch.setattr(
+        "src.orchestration.nodes.application.review_checks.Models.worker",
+        lambda *_args, **_kwargs: _FakeLLM({"parsed": output, "raw": _Raw()}),
+    )
+    state = _state(
+        task_registry={task.id: task},
+        metadata={
+            "mental_model": {"surface_ledger": [surface.model_dump(mode="json") for surface in surfaces]},
+            "critique_pipeline": {
+                "by_task": {
+                    task.id: {
+                        "direct_context": "\n\n".join(
+                            f"class Owner{idx}:\n    def execute(self):\n        return ()"
+                            for idx in range(1, 5)
+                        ),
+                        "task_evidence": {
+                            "file_contents": {
+                                "src/app.py": "\n\n".join(
+                                    f"class Owner{idx}:\n    def execute(self):\n        return ()"
+                                    for idx in range(1, 5)
+                                )
+                            },
+                            "files_complete": {"src/app.py": True},
+                        },
+                        "coverage_obligations": [],
+                    }
+                }
+            },
+        },
+    )
+
+    out = make_review_check_compiler_node()(state)  # type: ignore[arg-type]
+
+    task_meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
+    compiled_ids = [check["check_id"] for check in task_meta["compiled_checks"]]
+    floor = task_meta["compiler_coverage_floor"]
+    assert task_meta["compiled_count"] == 16
+    assert floor["adaptive_max_checks"] == 16
+    assert floor["adaptive_cap_reason"] == "many_primary_owners"
+    assert "review-logic:owner4:tuple-cardinality" in compiled_ids
+    assert "review-logic:owner4:join-none" in compiled_ids
+    assert "review-logic:owner4:group-index" in compiled_ids
+    assert "review-logic:owner4:aggregation" in compiled_ids
+    assert "Owner4.execute" in floor["owner_fair_cap"]["selected_checks_by_primary_owner"]
+
+
+def test_compiler_swaps_same_owner_floor_for_trimmed_high_signal_check() -> None:
+    surface = ReviewSurface(
+        surface_id="surface:owner",
+        name="Owner.execute",
+        kind="method",
+        file_path="src/app.py",
+        line_start=1,
+        line_end=20,
+        confidence=0.95,
+    )
+    selected = [
+        _check(
+            check_id=f"review-logic:check:{idx}",
+            surface_ids=[surface.surface_id],
+            changed_code_anchor="Owner.execute",
+            behavioral_question=f"Does Owner.execute preserve declared return shape {idx}?",
+            affected_invariant="declared return shape",
+            required_evidence=["changed Owner.execute implementation"],
+        )
+        for idx in range(1, 12)
+    ]
+    floor = _check(
+        check_id="review-logic:coverage:12",
+        surface_ids=[surface.surface_id],
+        changed_code_anchor="Owner.execute",
+        behavioral_question="Does Owner.execute preserve assigned surface behavior?",
+        affected_invariant="assigned surface behavior",
+        required_evidence=["changed Owner.execute implementation"],
+    )
+    selected.append(floor)
+    incoming = _check(
+        check_id="review-logic:tuple-payload",
+        surface_ids=[surface.surface_id],
+        changed_code_anchor="Owner.execute",
+        behavioral_question="Does Owner.execute preserve tuple/cardinality data groups?",
+        affected_invariant="tuple/cardinality data preservation",
+        required_evidence=["changed Owner.execute implementation", "tuple cardinality data group handling"],
+        report_criteria=["A reachable path drops tuple data groups."],
+    )
+
+    capped, swaps = compiler_support.preserve_trimmed_high_signal_checks(
+        selected,
+        [*selected, incoming],
+        original_ids={*(check.check_id for check in selected[:-1]), incoming.check_id},
+        mandatory_ids=set(),
+        by_id={surface.surface_id: surface},
+        slot={"direct_context": "class Owner:\n    def execute(self):\n        return ()\n"},
+        task_files=["src/app.py"],
+    )
+
+    capped_ids = [check.check_id for check in capped]
+    assert len(capped_ids) == 12
+    assert incoming.check_id in capped_ids
+    assert floor.check_id not in capped_ids
+    assert swaps == [
+        {
+            "incoming_check_id": incoming.check_id,
+            "replaced_check_id": floor.check_id,
+            "family": "data_cardinality",
+            "primary_owner_labels": ["Owner.execute"],
+        }
+    ]
 
 
 def test_review_check_compiler_broad_surface_check_does_not_cover_specific_dimension(monkeypatch) -> None:
@@ -1647,7 +2194,7 @@ def test_review_check_compiler_prioritizes_local_behavior_floor_over_broad_surfa
             ],
             report_criteria=[f"The changed Surface{idx} violates api contract on a reachable path."],
         )
-        for idx in range(1, 13)
+        for idx in range(1, 18)
     ]
     output = ReviewCheckCompilerOutput(summary="compiled", checks=llm_checks)
     monkeypatch.setattr(
@@ -1693,11 +2240,11 @@ def test_review_check_compiler_prioritizes_local_behavior_floor_over_broad_surfa
     task_meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
     compiled_ids = [check["check_id"] for check in task_meta["compiled_checks"]]
     floor = task_meta["compiler_coverage_floor"]
-    assert task_meta["compiled_count"] == 12
-    assert "review-logic:coverage:13" in compiled_ids
-    assert "review-logic:coverage:14" in compiled_ids
-    assert "review-logic:surface:11" in floor["trimmed_existing_check_ids"]
-    assert "review-logic:surface:12" in floor["trimmed_existing_check_ids"]
+    assert task_meta["compiled_count"] == 16
+    assert floor["adaptive_max_checks"] == 16
+    assert floor["adaptive_cap_reason"] == "eligible_non_audit_over_base_cap"
+    assert any(check_id.startswith("review-logic:coverage:") for check_id in compiled_ids)
+    assert any(check_id.startswith("review-logic:surface:") for check_id in floor["trimmed_existing_check_ids"])
 
 
 def test_review_check_compiler_fans_out_omitted_file_check(monkeypatch) -> None:
@@ -2182,9 +2729,37 @@ def test_review_check_executor_downgrades_weak_no_finding(monkeypatch) -> None:
     result = out["review_check_results"][0]
     assert result.decision == "unsupported"
     assert result.missing_evidence
-    assert "weak_no_finding_requires_more_evidence" in result.warnings
+    assert "exact_question_mismatch:generic_suppression_basis" in result.warnings
     meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
-    assert "executor_weak_no_finding_downgraded:review-logic:check:1" in meta["executor_warnings"]
+    assert (
+        "executor_exact_question_mismatch:review-logic:check:1:generic_suppression_basis"
+        in meta["executor_warnings"]
+    )
+
+
+def test_review_check_executor_downgrades_generic_suppression_basis(monkeypatch) -> None:
+    output = ReviewCheckExecutorOutput(
+        results=[
+            ReviewCheckResult(
+                check_id="review-logic:check:1",
+                patch_task_id="review-logic",
+                decision="no_finding",
+                evidence_refs=["src/app.py:1"],
+                suppression_basis="Looks correct.",
+                suppressing_evidence=["Looks correct."],
+            )
+        ]
+    )
+    monkeypatch.setattr(
+        "src.orchestration.nodes.application.review_checks.Models.worker",
+        lambda *_args, **_kwargs: _FakeLLM({"parsed": output, "raw": _Raw()}),
+    )
+
+    out = make_review_check_executor_node()(_state(review_checks=[_check()]))  # type: ignore[arg-type]
+
+    result = out["review_check_results"][0]
+    assert result.decision == "unsupported"
+    assert "exact_question_mismatch:generic_suppression_basis" in result.warnings
 
 
 def test_review_check_executor_downgrades_dimension_thin_no_finding(monkeypatch) -> None:
@@ -2320,9 +2895,9 @@ def test_review_check_executor_downgrades_weak_no_finding_to_budget_exhausted(mo
     )  # type: ignore[arg-type]
 
     result = out["review_check_results"][0]
-    assert result.decision == "no_finding"
-    assert "weak_no_finding_requires_more_evidence" not in result.warnings
-    assert "review_check_budget_exhausted" not in result.warnings
+    assert result.decision == "budget_exhausted"
+    assert "exact_question_mismatch:generic_suppression_basis" in result.warnings
+    assert "review_check_budget_exhausted" in result.warnings
 
 
 def test_review_check_executor_source_only_overrides_missing_return_no_finding(monkeypatch) -> None:

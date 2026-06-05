@@ -14,6 +14,8 @@ from src.orchestration.prompts.ledger_formatter import format_exploration_ledger
 from src.orchestration.routing.send_payload import payload_for_send
 from src.tools.mental_model_tools import query_mental_model
 from src.orchestration.nodes.mental_model import _normalize_contract_questions
+from src.orchestration.nodes.mandate_patch_node import MandatePatchOutput, _apply_patch_to_spec
+from src.orchestration.context.surface_ledger import build_contract_questions_from_ledger
 
 
 def test_behavioral_spec_store_roundtrip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -111,6 +113,199 @@ def test_contract_question_normalization_dedupes_by_owner_dimension_trigger() ->
     assert len(normalized) == 1
     assert normalized[0].question_id.startswith("cq:")
     assert normalized[0].required_evidence
+
+
+def test_contract_question_normalization_keeps_central_high_confidence_questions() -> None:
+    surface = ReviewSurface(
+        surface_id="surface:handle",
+        name="Handle.execute",
+        kind="method",
+        file_path="src/app.py",
+        line_start=1,
+        line_end=5,
+        confidence=0.95,
+    )
+    questions = [
+        ContractQuestion(
+            owner="Handle.execute",
+            surface_id=surface.surface_id,
+            dimension="other",
+            expected_behavior=f"Handle.execute keeps incidental behavior {index}.",
+            contract_evidence="",
+            trigger_variant=f"incidental {index}",
+            operation="misc",
+            breach_question=f"Can incidental behavior {index} drift?",
+            direct_suppressor="n/a",
+            source_confidence=0.1,
+        )
+        for index in range(4)
+    ]
+    central = ContractQuestion(
+        owner="Handle.execute",
+        surface_id=surface.surface_id,
+        dimension="return_output_totality",
+        expected_behavior="Handle.execute returns the declared output for every mode.",
+        contract_evidence="RETURN_TYPES declares one output.",
+        trigger_variant="declared modes",
+        operation="dispatch",
+        breach_question="Can any dispatch branch exit without the declared output?",
+        direct_suppressor="none",
+        source_confidence=0.95,
+    )
+
+    normalized = _normalize_contract_questions([*questions, central], surfaces=[surface])
+
+    assert len(normalized) == 4
+    assert any(item.breach_question == central.breach_question for item in normalized)
+    kept = next(item for item in normalized if item.breach_question == central.breach_question)
+    assert kept.direct_suppressor == ""
+    assert kept.required_evidence[0] == "RETURN_TYPES declares one output."
+
+
+def test_contract_question_normalization_keeps_concrete_operation_question_under_owner_cap() -> None:
+    surface = ReviewSurface(
+        surface_id="surface:extract",
+        name="RecordExtract.execute",
+        kind="method",
+        file_path="src/app.py",
+        line_start=1,
+        line_end=20,
+        confidence=0.95,
+    )
+    generic = [
+        ContractQuestion(
+            owner="RecordExtract.execute",
+            surface_id=surface.surface_id,
+            dimension=dimension,  # type: ignore[arg-type]
+            expected_behavior=f"RecordExtract.execute satisfies {dimension}.",
+            contract_evidence="Declared node contract.",
+            trigger_variant=f"generic {dimension}",
+            operation=operation,
+            breach_question=f"Can generic {dimension} fail?",
+            source_confidence=0.35,
+        )
+        for dimension, operation in [
+            ("return_output_totality", "execute return contract"),
+            ("variant_completeness", "variant dispatch"),
+            ("data_preservation_cardinality", "aggregation or extraction"),
+            ("serialization_type_closure", "output serialization"),
+        ]
+    ]
+    concrete = ContractQuestion(
+        owner="RecordExtract.execute",
+        surface_id=surface.surface_id,
+        dimension="data_preservation_cardinality",
+        expected_behavior="RecordExtract.execute preserves projected payload elements.",
+        contract_evidence="The operation names an extraction contract.",
+        trigger_variant="multi-record extraction",
+        operation="element projection from produced records",
+        breach_question="Can projection select only part of the produced record payload?",
+        source_confidence=0.9,
+    )
+
+    normalized = _normalize_contract_questions([*generic, concrete], surfaces=[surface])
+
+    assert len(normalized) == 4
+    assert any(question.operation == concrete.operation for question in normalized)
+    assert not any(question.operation == "aggregation or extraction" for question in normalized)
+
+
+def test_contract_question_fallback_uses_existing_schema_without_new_fields() -> None:
+    surface = ReviewSurface(
+        surface_id="surface:extract-execute",
+        name="RecordExtract.execute",
+        kind="method",
+        file_path="src/app.py",
+        line_start=10,
+        line_end=30,
+        confidence=0.95,
+    )
+
+    questions = build_contract_questions_from_ledger(
+        [surface],
+        risk_hypotheses="Preserve every grouped record field during extraction.",
+    )
+
+    dumped = [question.model_dump() for question in questions]
+    assert dumped
+    assert all("preferred_specialty" not in item for item in dumped)
+    assert {question.dimension for question in questions} >= {
+        "return_output_totality",
+        "data_preservation_cardinality",
+        "serialization_type_closure",
+    }
+
+
+def test_contract_question_fallback_skips_dimensions_with_existing_questions() -> None:
+    surface = ReviewSurface(
+        surface_id="surface:extract-execute",
+        name="RecordExtract.execute",
+        kind="method",
+        file_path="src/app.py",
+        line_start=10,
+        line_end=30,
+        confidence=0.95,
+    )
+    existing = ContractQuestion(
+        owner="RecordExtract.execute",
+        surface_id=surface.surface_id,
+        dimension="data_preservation_cardinality",
+        expected_behavior="RecordExtract.execute preserves projected payload elements.",
+        contract_evidence="The operation names an extraction contract.",
+        trigger_variant="multi-record extraction",
+        operation="element projection from produced records",
+        breach_question="Can projection select only part of the produced record payload?",
+    )
+
+    questions = build_contract_questions_from_ledger(
+        [surface],
+        risk_hypotheses="Preserve every grouped record field during extraction.",
+        existing_questions=[existing],
+    )
+
+    assert all(question.dimension != "data_preservation_cardinality" for question in questions)
+    assert any(question.dimension == "serialization_type_closure" for question in questions)
+
+
+def test_mandate_patch_adds_contract_questions_when_prior_has_none() -> None:
+    surface = ReviewSurface(
+        surface_id="surface:handle",
+        name="Handle.execute",
+        kind="method",
+        file_path="src/app.py",
+        line_start=1,
+        line_end=5,
+        confidence=0.95,
+    )
+    patch = MandatePatchOutput(
+        behavioral_expectations="Handle returns its declared output.",
+        contract_questions=[
+            ContractQuestion(
+                owner="Handle.execute",
+                surface_id=surface.surface_id,
+                dimension="return_output_totality",
+                expected_behavior="Handle.execute returns its declared output.",
+                contract_evidence="Declared output shape.",
+                trigger_variant="fallback path",
+                operation="return",
+                breach_question="Can fallback path exit without the declared output?",
+            )
+        ],
+    )
+
+    spec = _apply_patch_to_spec(
+        prior=BehavioralSpec(intent_summary="x", surfaces=[surface]),
+        intent_summary="x",
+        patch=patch,
+        changed_files=["src/app.py"],
+        surfaces=[surface],
+        surface_invariants=[],
+    )
+
+    assert any(
+        question.breach_question == "Can fallback path exit without the declared output?"
+        for question in spec.contract_questions
+    )
 
 
 def test_reviewer_graph_compiles_legacy_planner_mode(monkeypatch: pytest.MonkeyPatch) -> None:

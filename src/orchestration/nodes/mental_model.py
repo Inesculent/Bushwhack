@@ -26,6 +26,7 @@ from src.orchestration.context.context_packets import (
 from src.orchestration.context.mandate_loop_context import mm_meta
 from src.orchestration.context.surface_ledger import (
     changed_file_integrity_diagnostics,
+    build_contract_questions_from_ledger,
     build_migration_invariants_from_diff,
     build_surface_invariants_from_ledger,
     surface_by_id,
@@ -156,6 +157,48 @@ def _contract_question_id(question: ContractQuestion) -> str:
     return f"cq:{digest}"
 
 
+_FAKE_SUPPRESSORS = {"none", "n/a", "na", "not applicable", "no suppressor", "unknown"}
+_CENTRAL_CONTRACT_MARKERS = (
+    "declar",
+    "schema",
+    "api",
+    "caller",
+    "mode",
+    "option",
+    "output",
+    "return",
+    "transform",
+    "serialize",
+    "preserve",
+)
+_LOW_CONFIDENCE_FALLBACK_QUESTION_MAX = 0.4
+
+
+def _clean_question_text(value: str) -> str:
+    text = value.strip()
+    if text.lower().strip(".:- ") in _FAKE_SUPPRESSORS:
+        return ""
+    return text
+
+
+def _question_selection_family(question: ContractQuestion) -> tuple[str, str]:
+    return (question.dimension, question.operation.strip().lower() or question.dimension)
+
+
+def _contract_question_priority(question: ContractQuestion, order: int) -> tuple[int, float, int]:
+    blob = " ".join(
+        [
+            question.expected_behavior,
+            question.contract_evidence,
+            question.trigger_variant,
+            question.operation,
+            question.breach_question,
+        ]
+    ).lower()
+    central = 1 if any(marker in blob for marker in _CENTRAL_CONTRACT_MARKERS) else 0
+    return (-central, -question.source_confidence, order)
+
+
 def _normalize_contract_questions(
     questions: List[ContractQuestion],
     *,
@@ -165,10 +208,10 @@ def _normalize_contract_questions(
         return []
     by_id = surface_by_id(surfaces)
     by_name = {surface.name.strip().lower(): surface for surface in surfaces if surface.name.strip()}
-    normalized: List[ContractQuestion] = []
+    candidates: List[tuple[int, ContractQuestion]] = []
     seen: set[tuple[str, str, str, str, str]] = set()
-    per_owner: dict[str, int] = {}
-    for raw in questions:
+    owner_order: List[str] = []
+    for order, raw in enumerate(questions):
         surface_id = raw.surface_id.strip()
         owner = raw.owner.strip()
         if surface_id not in by_id and owner:
@@ -184,21 +227,22 @@ def _normalize_contract_questions(
         key = (
             owner.lower(),
             raw.dimension,
-            raw.expected_behavior.strip().lower(),
             raw.trigger_variant.strip().lower(),
             raw.operation.strip().lower(),
+            raw.breach_question.strip().lower(),
         )
         if key in seen:
             continue
         seen.add(key)
-        per_owner[owner] = per_owner.get(owner, 0) + 1
-        if per_owner[owner] > 4:
-            continue
+        if owner not in owner_order:
+            owner_order.append(owner)
+        contract_evidence = _clean_question_text(raw.contract_evidence)
+        direct_suppressor = _clean_question_text(raw.direct_suppressor)
         required = [item for item in raw.required_evidence if str(item).strip()]
         if not required:
             required = [
                 item
-                for item in (raw.contract_evidence.strip(), raw.operation.strip(), raw.direct_suppressor.strip())
+                for item in (contract_evidence, raw.operation.strip(), direct_suppressor)
                 if item
             ]
         question = raw.model_copy(
@@ -206,12 +250,51 @@ def _normalize_contract_questions(
                 "question_id": raw.question_id.strip() or _contract_question_id(raw),
                 "owner": owner[:240],
                 "surface_id": surface_id,
+                "contract_evidence": contract_evidence[:500],
+                "direct_suppressor": direct_suppressor[:500],
                 "required_evidence": required[:5],
             }
         )
-        normalized.append(question)
+        candidates.append((order, question))
+    by_owner: dict[str, List[tuple[int, ContractQuestion]]] = {}
+    for item in candidates:
+        by_owner.setdefault(item[1].owner, []).append(item)
+    normalized: List[ContractQuestion] = []
+    for owner in owner_order:
+        owned = sorted(
+            by_owner.get(owner, []),
+            key=lambda item: _contract_question_priority(item[1], item[0]),
+        )
+        selected: List[tuple[int, ContractQuestion]] = []
+        selected_families: set[tuple[str, str]] = set()
+        for item in owned:
+            family = _question_selection_family(item[1])
+            if (
+                item[1].source_confidence <= _LOW_CONFIDENCE_FALLBACK_QUESTION_MAX
+                and any(
+                    selected_question.dimension == item[1].dimension
+                    and selected_question.source_confidence >= item[1].source_confidence
+                    for _selected_order, selected_question in selected
+                )
+            ):
+                continue
+            if family in selected_families:
+                continue
+            selected.append(item)
+            selected_families.add(family)
+            if len(selected) >= 4:
+                break
+        if len(selected) < 4:
+            selected_ids = {id(question) for _order, question in selected}
+            for item in owned:
+                if id(item[1]) in selected_ids:
+                    continue
+                selected.append(item)
+                if len(selected) >= 4:
+                    break
+        normalized.extend(question for _order, question in selected)
         if len(normalized) >= 40:
-            break
+            return normalized[:40]
     return normalized
 
 
@@ -393,7 +476,14 @@ def make_mandate_synthesizer_node(settings: Settings | None = None, *, use_llm: 
             risk_hypotheses=risks,
         )
         contract_questions = _normalize_contract_questions(
-            contract_questions,
+            [
+                *contract_questions,
+                *build_contract_questions_from_ledger(
+                    surface_ledger,
+                    risk_hypotheses=risks,
+                    existing_questions=contract_questions,
+                ),
+            ],
             surfaces=surface_ledger,
         )
         surface_invariants = _filter_invariants_with_contract_questions(

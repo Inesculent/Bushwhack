@@ -19,6 +19,7 @@ from src.orchestration.context.context_packets import (
     build_critique_revision_shard_packet,
     build_draft_planner_packet,
     build_intent_extractor_packet,
+    build_mandate_synthesizer_packet,
     build_plan_critic_packet,
     build_reflection_packet,
     build_verifier_generator_packet,
@@ -30,6 +31,7 @@ from src.orchestration.context.context_packets import (
     packet_to_storage_dict,
     spec_risks_excerpt_for_prompt,
 )
+from src.orchestration.context.mandate_loop_context import build_repository_contract_context
 from src.orchestration.nodes.application.worker import ReviewTaskContext
 
 
@@ -43,6 +45,63 @@ def _minimal_state(**overrides: object) -> GraphState:
     }
     base.update(overrides)  # type: ignore[typeddict-unknown-key]
     return base
+
+
+def test_repository_contract_context_is_compact_and_relevant() -> None:
+    state = _minimal_state(
+        git_diff=(
+            "diff --git a/src/widget.py b/src/widget.py\n"
+            "+++ b/src/widget.py\n"
+            "@@\n"
+            "+class Widget:\n"
+            "+    def execute(self):\n"
+            "+        return None\n"
+        ),
+        global_summary=(
+            "The repository has many unrelated utilities.\n"
+            "Widget nodes declare input schemas and return tuple-shaped outputs for callers.\n"
+            "Long unrelated deployment note " + ("x" * 600)
+        ),
+        repository_kb_summary_records=[
+            {
+                "id": "summary:widget",
+                "kind": "summary",
+                "summary": "src/widget.py owners preserve declared modes and output contracts.",
+            },
+            {
+                "id": "fact:raw",
+                "kind": "fact",
+                "summary": "Raw implementation evidence should not enter mandate memory.",
+            },
+            {
+                "id": "summary:other",
+                "kind": "summary",
+                "summary": "Unrelated deployment scripts manage packaging.",
+            },
+        ],
+    )
+
+    text = build_repository_contract_context(state, max_chars=500)
+
+    assert "tuple-shaped outputs" in text
+    assert "summary:widget" in text
+    assert "Raw implementation evidence" not in text
+    assert "Long unrelated deployment note" not in text
+    assert len(text) <= 500
+
+
+def test_mandate_synthesizer_packet_includes_bounded_repository_contract_context() -> None:
+    state = _minimal_state(
+        git_diff="diff --git a/src/widget.py b/src/widget.py\n+++ b/src/widget.py\n@@\n+def execute():\n+    return None\n",
+        global_summary="Widget execute surfaces declare outputs and callers expect tuple returns.",
+    )
+
+    packet = build_mandate_synthesizer_packet(state)
+    sections = {section.key: section for section in packet.sections}
+
+    assert "repository_contract_context" in sections
+    assert sections["repository_contract_context"].tier == 4
+    assert "tuple returns" in sections["repository_contract_context"].content
 
 
 def test_packet_budget_truncates_lowest_tier_first() -> None:

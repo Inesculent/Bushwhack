@@ -12,6 +12,7 @@ from src.orchestration.nodes.application.cleanup import (
     SemanticEquivalenceAuditOutput,
     _apply_semantic_claim_cluster_audit,
     _apply_semantic_equivalence_audit,
+    _semantic_claim_clusters,
     make_adversarial_cleanup_node,
 )
 from src.orchestration.nodes.application.synthesizer import synthesizer_node
@@ -1105,6 +1106,90 @@ def test_cleanup_claim_cluster_preserves_distinct_dimensions(monkeypatch) -> Non
     assert meta["semantic_claim_cluster_audits"][0]["distinct_ids"] == ["aggregation"]
 
 
+def test_semantic_claim_clusters_include_same_root_sibling_owners() -> None:
+    match = ReviewFinding(
+        id="regex-match-redos",
+        file_path="src/nodes.py",
+        line_start=100,
+        line_end=130,
+        content="RegexMatch.execute runs user regex without timeout validation.",
+        severity="high",
+        feedback_type="defect_detection",
+        recommendation="Add timeout or complexity validation.",
+        expected_behavior="User regex execution should be bounded.",
+        behavioral_symptom="unbounded_work",
+        root_operation="resource_use",
+        claim_digest="src/nodes.py::regexmatch_execute::variant=regex::contract=resource::impact=unbounded_work",
+    )
+    extract = match.model_copy(
+        update={
+            "id": "regex-extract-redos",
+            "line_start": 150,
+            "line_end": 190,
+            "content": "RegexExtract.execute runs user regex without timeout validation.",
+            "claim_digest": "src/nodes.py::regexextract_execute::variant=regex::contract=resource+representation::impact=missing_return",
+        }
+    )
+
+    clusters = _semantic_claim_clusters([match, extract], {})
+
+    assert clusters
+    assert {member["id"] for member in clusters[0]["members"]} == {
+        "regex-match-redos",
+        "regex-extract-redos",
+    }
+
+
+def test_cleanup_claim_cluster_can_merge_same_root_sibling_owners() -> None:
+    match = ReviewFinding(
+        id="regex-match-redos",
+        file_path="src/nodes.py",
+        line_start=100,
+        line_end=130,
+        content="RegexMatch.execute runs user regex without timeout validation.",
+        severity="high",
+        feedback_type="defect_detection",
+        recommendation="Add timeout or complexity validation.",
+        expected_behavior="User regex execution should be bounded.",
+        behavioral_symptom="unbounded_work",
+        root_operation="resource_use",
+        claim_digest="src/nodes.py::regexmatch_execute::variant=regex::contract=resource::impact=unbounded_work",
+    )
+    extract = match.model_copy(
+        update={
+            "id": "regex-extract-redos",
+            "line_start": 150,
+            "line_end": 190,
+            "content": "RegexExtract.execute runs user regex without timeout validation.",
+            "claim_digest": "src/nodes.py::regexextract_execute::variant=regex::contract=resource+representation::impact=missing_return",
+        }
+    )
+    audit = SemanticClaimClusterOutput(
+        clusters=[
+            SemanticClaimClusterDecision(
+                cluster_id="cluster-1",
+                duplicate_groups=[
+                    SemanticClaimDuplicateGroup(
+                        keeper_id="regex-match-redos",
+                        absorbed_ids=["regex-extract-redos"],
+                        rationale="Same root regex resource contract and mitigation.",
+                    )
+                ],
+            )
+        ]
+    )
+
+    findings, duplicates, duplicate_to_keeper, rejected = _apply_semantic_claim_cluster_audit(
+        [match, extract],
+        audit,
+    )
+
+    assert [finding.id for finding in findings] == ["regex-match-redos"]
+    assert duplicates == {"regex-match-redos": ["regex-extract-redos"]}
+    assert duplicate_to_keeper == {"regex-extract-redos": "regex-match-redos"}
+    assert rejected == {}
+
+
 def test_cleanup_drops_scope_claim_contradicted_by_code_evidence() -> None:
     node = make_adversarial_cleanup_node()
     cand = _cand(
@@ -2159,6 +2244,65 @@ def test_synthesizer_preserves_duplicate_findings_with_unique_ids() -> None:
     assert dupes == {}
     assert [item.id for item in out["final_findings"]] == ["x", "x__2"]
     assert out["metadata"]["review_synthesizer"]["lost_promoted_candidate_ids"] == []
+
+
+def test_synthesizer_reconciles_adjudicator_duplicates_globally(monkeypatch) -> None:
+    keeper = ReviewFinding(
+        id="keeper",
+        file_path="src/x.py",
+        line_start=10,
+        line_end=20,
+        content="Handler batch mode drops a tuple field.",
+        severity="medium",
+        feedback_type="defect_detection",
+        recommendation="Preserve every tuple field.",
+        behavioral_symptom="data_loss",
+        root_operation="aggregation",
+        claim_digest="src/x.py::handler::variant=batch::contract=cardinality::impact=data_loss",
+    )
+    duplicate = keeper.model_copy(
+        update={
+            "id": "duplicate",
+            "content": "Handler batch mode keeps only one tuple slot.",
+        }
+    )
+    audit = SemanticClaimClusterOutput(
+        clusters=[
+            SemanticClaimClusterDecision(
+                cluster_id="cluster-1",
+                duplicate_groups=[
+                    SemanticClaimDuplicateGroup(
+                        keeper_id="keeper",
+                        absorbed_ids=["duplicate"],
+                        rationale="Same contract, trigger, operation, and impact.",
+                    )
+                ],
+            )
+        ]
+    )
+    monkeypatch.setattr(
+        "src.orchestration.nodes.application.synthesizer.Models.worker",
+        lambda *_args, **_kwargs: type("FakeLLM", (), {"invoke": lambda self, _prompt: {"parsed": audit}})(),
+    )
+
+    out = synthesizer_node(
+        {
+            "findings": [keeper, duplicate],
+            "metadata": {
+                "review_adjudicator": {
+                    "candidate_lifecycle": {
+                        "keeper": {"decision": "promoted"},
+                        "duplicate": {"decision": "promoted"},
+                    }
+                }
+            },
+        }
+    )
+
+    assert [finding.id for finding in out["final_findings"]] == ["keeper"]
+    meta = out["metadata"]["review_synthesizer"]
+    assert meta["semantic_dedupe_duplicates"] == {"keeper": ["duplicate"]}
+    assert meta["recall_audit"]["duplicate_equivalents"] == {"duplicate": "keeper"}
 
 
 def test_synthesizer_uses_cleanup_duplicate_map_for_lost_promoted_audit() -> None:
