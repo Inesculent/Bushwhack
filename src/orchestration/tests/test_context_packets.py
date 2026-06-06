@@ -6,9 +6,11 @@ from src.domain.schemas import (
     BehavioralSpec,
     CandidateFinding,
     FocusedContextResult,
+    ReviewSurface,
     ReviewTask,
     SearchResult,
 )
+from src.orchestration.context.owner_contract_scaffold import build_owner_contract_scaffold
 from src.domain.state import GraphState
 from src.orchestration.context.context_packets import (
     AUTHORITY_NOTES,
@@ -102,6 +104,165 @@ def test_mandate_synthesizer_packet_includes_bounded_repository_contract_context
     assert "repository_contract_context" in sections
     assert sections["repository_contract_context"].tier == 4
     assert "tuple returns" in sections["repository_contract_context"].content
+
+
+def test_owner_contract_scaffold_preserves_complete_ast_span(tmp_path) -> None:
+    source = "\n".join(
+        [
+            "class Node:",
+            "    @classmethod",
+            "    def INPUT_TYPES(cls):",
+            "        return {'required': {'mode': (['a', 'b'],)}}",
+            "",
+            "    def execute(self, mode):",
+            "        if mode == 'a':",
+            "            return ('a',)",
+            "        return ('b',)",
+        ]
+    )
+    path = tmp_path / "pkg" / "node.py"
+    path.parent.mkdir()
+    path.write_text(source)
+    execute = ReviewSurface(
+        surface_id="surface:execute",
+        name="Node.execute",
+        kind="method",
+        file_path="pkg/node.py",
+        line_start=6,
+        line_end=9,
+        source="ast_enclosing_diff_hunk",
+        confidence=0.95,
+    )
+    inputs = ReviewSurface(
+        surface_id="surface:inputs",
+        name="Node.INPUT_TYPES",
+        kind="method",
+        file_path="pkg/node.py",
+        line_start=2,
+        line_end=4,
+        source="ast_enclosing_diff_hunk",
+        confidence=0.95,
+    )
+    state = _minimal_state(
+        repo_path=str(tmp_path),
+        git_diff=(
+            "diff --git a/pkg/node.py b/pkg/node.py\n"
+            "+++ b/pkg/node.py\n"
+            "@@ -7,1 +7,1 @@\n"
+            "+        if mode == 'a':\n"
+        ),
+        metadata={
+            "mental_model": {
+                "surface_ledger": [
+                    execute.model_dump(mode="json"),
+                    inputs.model_dump(mode="json"),
+                ]
+            }
+        },
+    )
+
+    text, diagnostics = build_owner_contract_scaffold(
+        state,
+        max_chars=4000,
+        owner_soft_chars=60,
+        owner_hard_chars=1000,
+    )
+
+    assert "Node.execute" in text
+    assert "6:     def execute" in text
+    assert "9:         return ('b',)" in text
+    assert "Node.INPUT_TYPES" in text
+    assert diagnostics["owner_snippets"][0]["snippet_status"] == "full_ast_span_over_soft"
+
+
+def test_owner_contract_scaffold_degrades_without_mid_function_truncation(tmp_path) -> None:
+    body = ["def execute(value):"]
+    body.extend(f"    filler_{idx} = {idx}" for idx in range(40))
+    body.extend(
+        [
+            "    if value:",
+            "        selected = value[0]",
+            "        return selected",
+            "    return None",
+        ]
+    )
+    path = tmp_path / "pkg" / "large.py"
+    path.parent.mkdir()
+    path.write_text("\n".join(body))
+    surface = ReviewSurface(
+        surface_id="surface:execute",
+        name="execute",
+        kind="function",
+        file_path="pkg/large.py",
+        line_start=1,
+        line_end=len(body),
+        source="ast_enclosing_diff_hunk",
+        confidence=0.95,
+    )
+    changed_line = len(body) - 2
+    state = _minimal_state(
+        repo_path=str(tmp_path),
+        git_diff=(
+            "diff --git a/pkg/large.py b/pkg/large.py\n"
+            "+++ b/pkg/large.py\n"
+            f"@@ -{changed_line},1 +{changed_line},1 @@\n"
+            "+        selected = value[0]\n"
+        ),
+        metadata={"mental_model": {"surface_ledger": [surface.model_dump(mode="json")]}},
+    )
+
+    text, diagnostics = build_owner_contract_scaffold(
+        state,
+        max_chars=2500,
+        owner_soft_chars=80,
+        owner_hard_chars=260,
+    )
+
+    assert "selected = value[0]" in text
+    assert "return selected" in text
+    assert "filler_0" not in text
+    assert diagnostics["owner_snippets"][0]["snippet_status"] in {
+        "degraded_complete_child_blocks",
+        "degraded_changed_hunks",
+    }
+
+
+def test_mandate_packet_includes_owner_contract_scaffold(tmp_path) -> None:
+    path = tmp_path / "pkg" / "node.py"
+    path.parent.mkdir()
+    path.write_text("def execute():\n    return ('ok',)\n")
+    state = _minimal_state(
+        repo_path=str(tmp_path),
+        git_diff=(
+            "diff --git a/pkg/node.py b/pkg/node.py\n"
+            "+++ b/pkg/node.py\n"
+            "@@ -2,1 +2,1 @@\n"
+            "+    return ('ok',)\n"
+        ),
+        metadata={
+            "mental_model": {
+                "surface_ledger": [
+                    ReviewSurface(
+                        surface_id="surface:execute",
+                        name="execute",
+                        kind="function",
+                        file_path="pkg/node.py",
+                        line_start=1,
+                        line_end=2,
+                        source="ast_enclosing_diff_hunk",
+                        confidence=0.95,
+                    ).model_dump(mode="json")
+                ]
+            }
+        },
+    )
+
+    packet = build_mandate_synthesizer_packet(state)
+    sections = {section.key: section for section in packet.sections}
+
+    assert "owner_contract_scaffold" in sections
+    assert "execute" in sections["owner_contract_scaffold"].content
+    assert packet.metadata["owner_contract_scaffold"]["primary_owner_count"] == 1
 
 
 def test_packet_budget_truncates_lowest_tier_first() -> None:

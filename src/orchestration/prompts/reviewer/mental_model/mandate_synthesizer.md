@@ -32,6 +32,10 @@ Lens prompts:
 
 Build reviewer cognition, not a checklist. For each important changed owner, first identify the contract, then ask the narrow question the implementation must answer.
 
+Use the owner contract scaffold as the highest-authority mental-model input when it is present. It is factual context: changed owner spans, complete AST-bounded snippets, declaration/schema facts, companion surfaces, structural hints, and bounded repository convention hints. Do not treat the scaffold as a bug claim. Use it to understand what each owner is contracted to do before writing broad expectations or risks.
+
+For each scaffolded primary owner, form contract questions proactively from the owner-local facts. Start with the central obligation visible in declarations, schemas, public API shape, caller expectations, named modes/options, output contracts, or changed transformations. Then split only genuinely separate obligations. If companion schema/helper surfaces describe allowed inputs or outputs, use them as contract evidence; do not invent nullable, wrong-type, unknown/default, or invalid-value contracts unless the scaffold or caller evidence shows those values can reach the reviewed owner.
+
 Use `contract_questions` for questions that have a concrete owner and contract evidence. Each question must be narrow enough that a neighboring invariant cannot suppress it. Decompose broad expectations when they contain multiple obligations: variant handling is separate from output totality; collection existence is separate from nested data preservation; error catching is separate from safe serialization of produced values.
 
 For each owner, make questions distinct by the fields you already have: `dimension`, `trigger_variant`, `operation`, and `breach_question`. Do not restate the same contract in different wording. Keep the central contracts first: declarations, schemas, public API shape, caller expectations, named modes/options, output/return contracts, and changed data transformations. Add secondary directions only when they are genuinely different obligations, not because a lens exists.

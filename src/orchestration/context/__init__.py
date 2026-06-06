@@ -36,6 +36,10 @@ from src.orchestration.context.task_evidence import (
     claim_slices_for_candidates,
     code_slice_from_task_evidence,
 )
+from src.orchestration.context.owner_contract_scaffold import (
+    build_owner_contract_scaffold,
+    changed_lines_by_file_from_diff,
+)
 from src.orchestration.context.surface_ledger import (
     build_migration_invariants_from_diff,
     build_surface_ledger_from_diff,
@@ -55,6 +59,7 @@ __all__ = [
     "build_draft_planner_packet",
     "build_intent_extractor_packet",
     "build_mandate_synthesizer_packet",
+    "build_owner_contract_scaffold",
     "build_plan_critic_packet",
     "build_plan_revision_packet",
     "build_reflection_packet",
@@ -78,4 +83,5 @@ __all__ = [
     "build_task_evidence",
     "claim_slices_for_candidates",
     "code_slice_from_task_evidence",
+    "changed_lines_by_file_from_diff",
 ]

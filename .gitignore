@@ -12,6 +12,7 @@ containers/*.sif
 opencode.json
 .cursor/
 .scripts/
+scripts/
 .logs/
 logs/
 knowledge-base/

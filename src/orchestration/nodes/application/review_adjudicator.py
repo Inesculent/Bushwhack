@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Sequence
 
 from src.config import Settings, get_settings
@@ -407,6 +408,68 @@ def _compact_triage(item: ReviewEvidenceTriageItem) -> Dict[str, Any]:
     }
 
 
+def _source_line_snippet(state: GraphState, candidate: CandidateFinding, *, context: int = 4, max_chars: int = 1200) -> Dict[str, Any]:
+    repo_path = Path(str(state.get("repo_path") or ".")).resolve()
+    file_path = candidate.file_path.strip().replace("\\", "/").lstrip("/")
+    if not file_path or candidate.line_start <= 0:
+        return {"status": "unavailable"}
+    try:
+        target = (repo_path / file_path).resolve()
+        target.relative_to(repo_path)
+        lines = target.read_text(encoding="utf-8", errors="replace").splitlines()
+    except Exception:
+        return {"status": "unavailable", "file_path": file_path}
+    start = max(1, int(candidate.line_start) - context)
+    end = min(len(lines), int(candidate.line_end or candidate.line_start) + context)
+    text = "\n".join(f"{line_no}: {lines[line_no - 1]}" for line_no in range(start, end + 1))
+    return {
+        "status": "included" if text else "unavailable",
+        "file_path": file_path,
+        "line_start": start,
+        "line_end": end,
+        "snippet": _truncate(text, max_chars),
+    }
+
+
+def _candidate_evidence_card(
+    state: GraphState,
+    candidate: CandidateFinding,
+    *,
+    check_results: Sequence[ReviewCheckResult],
+    reflections: Sequence[ReflectionReport],
+    source_facts: Sequence[SourceFact],
+) -> Dict[str, Any]:
+    accepted_reflections = [
+        report.reflector_specialty
+        for report in reflections
+        if report.verdict in {"accept", "reclassify"}
+    ]
+    rejecting_reflections = [
+        {
+            "specialty": report.reflector_specialty,
+            "verdict": report.verdict,
+            "rationale": _truncate(report.rationale, 300),
+        }
+        for report in reflections
+        if report.verdict in {"reject", "not_applicable"}
+    ]
+    contradiction_facts = [
+        _compact_source_fact(fact)
+        for fact in source_facts
+        if fact.fact_kind in {"contradicts_claim", "direct_contradiction", "framework_guarantee"}
+    ]
+    return {
+        "claim": _truncate(candidate.content, 500),
+        "expected_behavior": _truncate(candidate.expected_behavior, 500),
+        "operation": candidate.root_operation or candidate.claim_digest or candidate.suspected_category,
+        "source_lines": _source_line_snippet(state, candidate),
+        "accepted_reflection_specialties": accepted_reflections,
+        "rejecting_reflections": rejecting_reflections[:3],
+        "contradiction_facts": contradiction_facts[:4],
+        "originating_check_ids": [result.check_id for result in check_results[:6]],
+    }
+
+
 def build_review_adjudication_packets(
     state: GraphState,
     *,
@@ -433,6 +496,13 @@ def build_review_adjudication_packets(
         cid = candidate.candidate_id
         packets.append(
             {
+                "evidence_card": _candidate_evidence_card(
+                    state,
+                    candidate,
+                    check_results=checks.get(cid, []),
+                    reflections=reflections.get(cid, []),
+                    source_facts=source_facts.get(cid, []),
+                ),
                 "candidate": _compact_candidate(candidate),
                 "originating_checks": [
                     _compact_check_result(item, checks_by_id.get(item.check_id))

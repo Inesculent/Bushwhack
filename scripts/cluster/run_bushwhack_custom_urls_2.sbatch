@@ -1,6 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=vllm_qwen_custom
-#SBATCH --qos=ayadavally
+#SBATCH --account=ayadavally
+#SBATCH --qos=normal
 #SBATCH --gres=gpu:2
 #SBATCH -C h100
 #SBATCH --nodes=1

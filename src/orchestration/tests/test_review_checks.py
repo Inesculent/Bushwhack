@@ -2006,6 +2006,7 @@ def test_review_check_compiler_keeps_late_owner_high_signal_checks_under_adaptiv
             check_id="review-logic:owner4:join-none",
             surface_ids=[surfaces[3].surface_id],
             changed_code_anchor="Owner4.execute",
+            issue_family="serialization_type_closure",
             behavioral_question="Does Owner4.execute serialize None/type closure safely before join?",
             affected_invariant="serialization/type closure",
             required_evidence=["changed Owner4.execute implementation", "join serialization type closure"],
@@ -2015,6 +2016,7 @@ def test_review_check_compiler_keeps_late_owner_high_signal_checks_under_adaptiv
             check_id="review-logic:owner4:group-index",
             surface_ids=[surfaces[3].surface_id],
             changed_code_anchor="Owner4.execute",
+            issue_family="index_bounds",
             behavioral_question="Does Owner4.execute handle group_index bounds for group 0 and captured groups?",
             affected_invariant="group_index bounds",
             required_evidence=["changed Owner4.execute implementation", "group_index bounds handling"],
@@ -2024,6 +2026,7 @@ def test_review_check_compiler_keeps_late_owner_high_signal_checks_under_adaptiv
             check_id="review-logic:owner4:aggregation",
             surface_ids=[surfaces[3].surface_id],
             changed_code_anchor="Owner4.execute",
+            issue_family="aggregation",
             behavioral_question="Does Owner4.execute aggregate all produced values before returning?",
             affected_invariant="aggregation completeness",
             required_evidence=["changed Owner4.execute implementation", "aggregate combine path"],
@@ -2111,6 +2114,7 @@ def test_compiler_swaps_same_owner_floor_for_trimmed_high_signal_check() -> None
         check_id="review-logic:tuple-payload",
         surface_ids=[surface.surface_id],
         changed_code_anchor="Owner.execute",
+        issue_family="data_preservation_cardinality",
         behavioral_question="Does Owner.execute preserve tuple/cardinality data groups?",
         affected_invariant="tuple/cardinality data preservation",
         required_evidence=["changed Owner.execute implementation", "tuple cardinality data group handling"],
@@ -2139,6 +2143,24 @@ def test_compiler_swaps_same_owner_floor_for_trimmed_high_signal_check() -> None
             "primary_owner_labels": ["Owner.execute"],
         }
     ]
+
+
+def test_check_signal_family_uses_structured_metadata_not_prose() -> None:
+    check = _check(
+        check_id="task:check:prose",
+        lens="other",
+        issue_family="",
+        diff_signal_family="",
+        behavioral_question="Can join of optional grouped values lose nested cardinality?",
+        affected_invariant="Tuple group indexing and serialization must preserve values.",
+        required_evidence=["groups, tuples, joins, and indexes"],
+    )
+
+    assert compiler_support._check_signal_family(check) == "other"
+
+    structured = check.model_copy(update={"issue_family": "serialization_type_closure"})
+
+    assert compiler_support._check_signal_family(structured) == "serialization_type"
 
 
 def test_review_check_compiler_broad_surface_check_does_not_cover_specific_dimension(monkeypatch) -> None:

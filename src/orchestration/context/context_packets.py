@@ -36,6 +36,7 @@ from src.orchestration.context.mandate_loop_context import (
     mm_meta,
     spec_excerpt_for_prompt,
 )
+from src.orchestration.context.owner_contract_scaffold import build_owner_contract_scaffold
 from src.orchestration.context.lens_cards import (
     format_lens_cards,
     lens_card_selection_diagnostics,
@@ -96,6 +97,7 @@ SECTION_HEADINGS: Dict[str, str] = {
     "pr_context": "PR context",
     "diff_surface_inventory": "Surfaces introduced in diff",
     "surface_ledger": "Surface ledger (JSON)",
+    "owner_contract_scaffold": "Owner contract scaffold (factual)",
     "preflight_summary": "Preflight Summary",
     "structural_routing_hints": "Structural Routing Hints",
     "global_insights": "Global Insights",
@@ -617,11 +619,18 @@ def build_mandate_synthesizer_packet(state: GraphState, *, settings: Settings | 
     ref_str = ref if isinstance(ref, str) else None
     spec_excerpt = spec_excerpt_for_prompt(ref_str, settings) if ref_str else "(no spec yet)"
 
+    scaffold_text, scaffold_diagnostics = build_owner_contract_scaffold(
+        state,
+        max_chars=min(5200, max(1800, int(settings.reviewer_context_mandate_synth_max_chars) // 2)),
+    )
+
     sections: List[ContextSection] = [
         _section("intent_summary", 3, str(intent.get("intent_summary", "")), source="mental_model"),
         _section("non_goals", 3, str(intent.get("non_goals", "")), source="mental_model"),
         _section("bootstrap_digest", 3, bootstrap_digest(state) or "(pending)", source="mental_model"),
     ]
+    if scaffold_text.strip() and scaffold_text.strip() != "[]":
+        sections.append(_section("owner_contract_scaffold", 1, scaffold_text, source="owner_contract_scaffold"))
     sections.extend(_scope_sections_for_state(state))
     repo_context = build_repository_contract_context(state, max_chars=1200)
     if repo_context:
@@ -648,6 +657,7 @@ def build_mandate_synthesizer_packet(state: GraphState, *, settings: Settings | 
         stage="mandate_synthesizer",
         char_budget=int(settings.reviewer_context_mandate_synth_max_chars),
         sections=sections,
+        metadata={"owner_contract_scaffold": scaffold_diagnostics},
     )
     return enforce_packet_budget(packet)
 

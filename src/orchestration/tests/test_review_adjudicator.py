@@ -73,7 +73,27 @@ def _normalize(
     )
 
 
-def test_adjudication_packet_includes_available_evidence() -> None:
+def test_adjudication_packet_includes_available_evidence(tmp_path: Path) -> None:
+    repo_file = tmp_path / "pkg" / "mod.py"
+    repo_file.parent.mkdir()
+    repo_file.write_text(
+        "\n".join(
+            [
+                "line = 1",
+                "line = 2",
+                "line = 3",
+                "line = 4",
+                "line = 5",
+                "line = 6",
+                "line = 7",
+                "line = 8",
+                "line = 9",
+                "def changed():",
+                "    value = incomplete()",
+                "    return value",
+            ]
+        )
+    )
     candidate = _candidate()
     check_result = ReviewCheckResult(
         check_id="check-1",
@@ -100,7 +120,7 @@ def test_adjudication_packet_includes_available_evidence() -> None:
     )
     state = {
         "run_id": "r",
-        "repo_path": "/repo",
+        "repo_path": str(tmp_path),
         "git_diff": "diff --git a/pkg/mod.py b/pkg/mod.py",
         "candidate_findings": [candidate],
         "review_checks": [check],
@@ -159,6 +179,8 @@ def test_adjudication_packet_includes_available_evidence() -> None:
 
     assert len(packets) == 1
     packet = packets[0]
+    assert packet["evidence_card"]["source_lines"]["status"] == "included"
+    assert "10: def changed():" in packet["evidence_card"]["source_lines"]["snippet"]
     assert packet["candidate"]["candidate_id"] == "c1"
     assert packet["candidate"]["expected_behavior"] == "The changed operation returns the complete expected value."
     assert packet["originating_checks"][0]["check_id"] == "check-1"

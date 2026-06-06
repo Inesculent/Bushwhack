@@ -73,6 +73,22 @@ _HIGH_SIGNAL_SWAP_FAMILIES = {
     "serialization_type",
     "aggregation",
 }
+_STRUCTURED_SIGNAL_FAMILY_ALIASES = {
+    "return_output_totality": "return_totality",
+    "return_totality": "return_totality",
+    "variant_completeness": "variant_completeness",
+    "data_preservation_cardinality": "data_cardinality",
+    "data_cardinality": "data_cardinality",
+    "serialization_type_closure": "serialization_type",
+    "serialization_type": "serialization_type",
+    "error_boundary": "error_boundary",
+    "index_bounds": "index_bounds",
+    "aggregation": "aggregation",
+    "data_shape_consistency": "data_cardinality",
+    "api_compatibility": "return_totality",
+    "state_transition": "variant_completeness",
+    "error_propagation": "error_boundary",
+}
 
 
 QUESTION_DIMENSION_TO_LENS = {
@@ -2009,31 +2025,13 @@ def prioritize_compiled_checks(
 
 
 def _check_signal_family(check: ReviewCheck) -> str:
-    blob = " ".join(
-        [
-            check.diff_signal_family,
-            check.issue_family,
-            check.lens,
-            check.owned_contract_scope,
-            check.behavioral_question,
-            check.affected_invariant,
-            " ".join(check.required_evidence),
-        ]
-    ).lower()
-    if any(token in blob for token in ("index", "bounds", "bound", "group_index", "group index")):
-        return "index_bounds"
-    if any(token in blob for token in ("join", "serialize", "serialization", "type closure", "non-string", "none")):
-        return "serialization_type"
-    if any(token in blob for token in ("aggregation", "aggregate", "collect", "combine")):
-        return "aggregation"
-    if any(token in blob for token in ("cardinality", "tuple", "field", "group", "nested", "preservation")):
-        return "data_cardinality"
-    if any(token in blob for token in ("variant", "mode", "option", "dispatch")):
-        return "variant_completeness"
-    if any(token in blob for token in ("return", "output", "shape", "totality")):
-        return "return_totality"
-    if any(token in blob for token in ("error", "exception", "try", "except")):
-        return "error_boundary"
+    for raw in (check.diff_signal_family, check.issue_family, check.lens):
+        normalized = raw.strip().lower().replace("-", "_").replace(":", "_").replace("/", "_")
+        if normalized in _STRUCTURED_SIGNAL_FAMILY_ALIASES:
+            return _STRUCTURED_SIGNAL_FAMILY_ALIASES[normalized]
+        for key, family in _STRUCTURED_SIGNAL_FAMILY_ALIASES.items():
+            if normalized.endswith(f"_{key}"):
+                return family
     return "other"
 
 

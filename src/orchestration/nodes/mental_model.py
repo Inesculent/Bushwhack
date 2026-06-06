@@ -407,6 +407,7 @@ def make_mandate_synthesizer_node(settings: Settings | None = None, *, use_llm: 
         )
         uncertainties = ""
         warnings: List[str] = []
+        synth_packet = None
 
         if use_llm:
             try:
@@ -486,6 +487,15 @@ def make_mandate_synthesizer_node(settings: Settings | None = None, *, use_llm: 
             ],
             surfaces=surface_ledger,
         )
+        fallback_question_count = sum(
+            1
+            for question in contract_questions
+            if question.source_confidence <= _LOW_CONFIDENCE_FALLBACK_QUESTION_MAX
+        )
+        if contract_questions and fallback_question_count >= max(4, len(contract_questions) // 2):
+            warnings.append(
+                f"mental_model_contract_questions_fallback_heavy:{fallback_question_count}_of_{len(contract_questions)}"
+            )
         surface_invariants = _filter_invariants_with_contract_questions(
             [*base_invariants, *migration_invariants],
             contract_questions,
@@ -516,6 +526,8 @@ def make_mandate_synthesizer_node(settings: Settings | None = None, *, use_llm: 
         cache_refs["behavioral_spec"] = abs_path
 
         slot["mandate_synthesizer"] = {"warnings": warnings, "path": abs_path}
+        if synth_packet is not None:
+            slot["owner_contract_scaffold"] = synth_packet.metadata.get("owner_contract_scaffold", {})
         meta["mental_model"] = slot
 
         return {
