@@ -37,6 +37,24 @@ from src.orchestration.context.mandate_loop_context import build_repository_cont
 from src.orchestration.nodes.application.worker import ReviewTaskContext
 
 
+class FakeScaffoldProvider:
+    def __init__(self, files: dict[str, str], *, fail: bool = False) -> None:
+        self.files = files
+        self.fail = fail
+        self.started = False
+
+    def get_sandbox(self, state: GraphState) -> object:
+        if self.fail:
+            raise RuntimeError("sandbox unavailable")
+        self.started = True
+        return object()
+
+    def read_full_file(self, file_path: str, *, max_chars: int) -> str:
+        if self.fail:
+            raise RuntimeError("read unavailable")
+        return self.files.get(file_path, "")[:max_chars]
+
+
 def _minimal_state(**overrides: object) -> GraphState:
     base: GraphState = {
         "run_id": "test-run",
@@ -175,6 +193,130 @@ def test_owner_contract_scaffold_preserves_complete_ast_span(tmp_path) -> None:
     assert diagnostics["owner_snippets"][0]["snippet_status"] == "full_ast_span_over_soft"
 
 
+def test_owner_contract_scaffold_reads_remote_sandbox_provider_and_expands_anchor() -> None:
+    source = "\n".join(
+        [
+            "class RegexExtract:",
+            "    @classmethod",
+            "    def INPUT_TYPES(cls):",
+            "        return {'required': {'mode': (['All Matches'],)}}",
+            "",
+            "    def execute(self, mode):",
+            "        matches = []",
+            "        return ('',)",
+        ]
+    )
+    surface = ReviewSurface(
+        surface_id="surface:regex-execute",
+        name="RegexExtract.execute",
+        kind="method",
+        file_path="pkg/node.py",
+        line_start=6,
+        line_end=6,
+        source="diff",
+        confidence=0.95,
+    )
+    state = _minimal_state(
+        repo_path="https://example.test/repo.git",
+        git_diff=(
+            "diff --git a/pkg/node.py b/pkg/node.py\n"
+            "+++ b/pkg/node.py\n"
+            "@@ -7,1 +7,1 @@\n"
+            "+        matches = []\n"
+        ),
+        metadata={"mental_model": {"surface_ledger": [surface.model_dump(mode="json")]}},
+    )
+    provider = FakeScaffoldProvider({"pkg/node.py": source})
+
+    text, diagnostics = build_owner_contract_scaffold(
+        state,
+        context_provider=provider,
+        max_chars=4000,
+    )
+
+    assert provider.started
+    assert "6:     def execute" in text
+    assert "8:         return ('',)" in text
+    assert diagnostics["owner_snippets"][0]["source_status"] == "sandbox_provider"
+    assert diagnostics["owner_snippets"][0]["span_status"] == "expanded_ast"
+    assert diagnostics["owner_snippets"][0]["line_end"] == 8
+
+
+def test_owner_contract_scaffold_records_unavailable_provider_without_crashing() -> None:
+    surface = ReviewSurface(
+        surface_id="surface:execute",
+        name="Node.execute",
+        kind="method",
+        file_path="pkg/missing.py",
+        line_start=1,
+        line_end=1,
+        source="diff",
+        confidence=0.95,
+    )
+    state = _minimal_state(
+        repo_path="https://example.test/repo.git",
+        metadata={"mental_model": {"surface_ledger": [surface.model_dump(mode="json")]}},
+    )
+
+    text, diagnostics = build_owner_contract_scaffold(
+        state,
+        context_provider=FakeScaffoldProvider({}, fail=True),
+        max_chars=4000,
+    )
+
+    assert "Node.execute" in text
+    assert diagnostics["owner_snippets"][0]["source_status"] == "unavailable"
+    assert diagnostics["owner_snippets"][0]["snippet_status"] == "unavailable"
+
+
+def test_owner_contract_scaffold_preserves_late_primary_owners_under_budget() -> None:
+    surfaces = [
+        ReviewSurface(
+            surface_id=f"surface:{idx}",
+            name=f"Owner{idx}.execute",
+            kind="method",
+            file_path=f"pkg/o{idx}.py",
+            line_start=2,
+            line_end=2,
+            source="diff",
+            confidence=0.95,
+        )
+        for idx in range(6)
+    ]
+    files = {
+        f"pkg/o{idx}.py": "\n".join(
+            [
+                f"class Owner{idx}:",
+                "    def execute(self):",
+                f"        value = {idx}",
+                "        value += 1",
+                "        value += 2",
+                "        value += 3",
+                "        value += 4",
+                "        value += 5",
+                "        value += 6",
+                "        return value",
+            ]
+        )
+        for idx in range(6)
+    }
+    state = _minimal_state(
+        repo_path="https://example.test/repo.git",
+        metadata={"mental_model": {"surface_ledger": [s.model_dump(mode="json") for s in surfaces]}},
+    )
+
+    text, diagnostics = build_owner_contract_scaffold(
+        state,
+        context_provider=FakeScaffoldProvider(files),
+        max_chars=700,
+    )
+
+    assert "Owner0.execute" in text
+    assert "Owner5.execute" in text
+    assert "owners_dropped_for_budget" not in diagnostics
+    assert diagnostics["owners_compacted_for_budget"]
+
+
 def test_owner_contract_scaffold_degrades_without_mid_function_truncation(tmp_path) -> None:
     body = ["def execute(value):"]
     body.extend(f"    filler_{idx} = {idx}" for idx in range(40))
@@ -263,6 +405,38 @@ def test_mandate_packet_includes_owner_contract_scaffold(tmp_path) -> None:
     assert "owner_contract_scaffold" in sections
     assert "execute" in sections["owner_contract_scaffold"].content
     assert packet.metadata["owner_contract_scaffold"]["primary_owner_count"] == 1
+
+
+def test_mandate_packet_passes_provider_to_owner_contract_scaffold() -> None:
+    source = "def execute():\n    return ('ok',)\n"
+    surface = ReviewSurface(
+        surface_id="surface:execute",
+        name="execute",
+        kind="function",
+        file_path="pkg/node.py",
+        line_start=1,
+        line_end=1,
+        source="diff",
+        confidence=0.95,
+    )
+    state = _minimal_state(
+        repo_path="https://example.test/repo.git",
+        metadata={
+            "mental_model": {
+                "intent_extractor": {"intent_summary": "Add node."},
+                "surface_ledger": [surface.model_dump(mode="json")],
+            }
+        },
+    )
+    provider = FakeScaffoldProvider({"pkg/node.py": source})
+
+    packet = build_mandate_synthesizer_packet(state, context_provider=provider)
+    sections = {section.key: section for section in packet.sections}
+
+    assert provider.started
+    assert "owner_contract_scaffold" in sections
+    assert "return ('ok',)" in sections["owner_contract_scaffold"].content
+    assert packet.metadata["owner_contract_scaffold"]["owner_snippets"][0]["source_status"] == "sandbox_provider"
 
 
 def test_packet_budget_truncates_lowest_tier_first() -> None:

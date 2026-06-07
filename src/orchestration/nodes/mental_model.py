@@ -386,7 +386,12 @@ def make_intent_extractor_node(settings: Settings | None = None, *, use_llm: boo
     return intent_extractor_node
 
 
-def make_mandate_synthesizer_node(settings: Settings | None = None, *, use_llm: bool = True):
+def make_mandate_synthesizer_node(
+    settings: Settings | None = None,
+    *,
+    use_llm: bool = True,
+    context_provider: Any | None = None,
+):
     node_name = "mandate_synthesizer"
 
     def mandate_synthesizer_node(state: GraphState) -> Dict[str, Any]:
@@ -411,7 +416,11 @@ def make_mandate_synthesizer_node(settings: Settings | None = None, *, use_llm: 
 
         if use_llm:
             try:
-                synth_packet = build_mandate_synthesizer_packet(state, settings=resolved)
+                synth_packet = build_mandate_synthesizer_packet(
+                    state,
+                    settings=resolved,
+                    context_provider=context_provider,
+                )
                 prompt = render_reviewer_prompt(
                     "mental_model/mandate_synthesizer.md",
                     packet_to_prompt_sections(synth_packet),
@@ -476,15 +485,24 @@ def make_mandate_synthesizer_node(settings: Settings | None = None, *, use_llm: 
             ),
             risk_hypotheses=risks,
         )
+        authored_question_owners = {
+            question.owner.strip().lower()
+            for question in contract_questions
+            if question.owner.strip()
+            and question.breach_question.strip()
+            and question.source_confidence > _LOW_CONFIDENCE_FALLBACK_QUESTION_MAX
+        }
+        fallback_questions = [
+            question
+            for question in build_contract_questions_from_ledger(
+                surface_ledger,
+                risk_hypotheses=risks,
+                existing_questions=contract_questions,
+            )
+            if question.owner.strip().lower() not in authored_question_owners
+        ]
         contract_questions = _normalize_contract_questions(
-            [
-                *contract_questions,
-                *build_contract_questions_from_ledger(
-                    surface_ledger,
-                    risk_hypotheses=risks,
-                    existing_questions=contract_questions,
-                ),
-            ],
+            [*contract_questions, *fallback_questions],
             surfaces=surface_ledger,
         )
         fallback_question_count = sum(

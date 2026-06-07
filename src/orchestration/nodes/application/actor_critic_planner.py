@@ -210,7 +210,12 @@ def make_plan_revision_node(settings: Settings | None = None, *, use_llm: bool =
     return plan_revision_node
 
 
-def make_mandate_finalize_node(settings: Settings | None = None, *, use_llm: bool = True):
+def make_mandate_finalize_node(
+    settings: Settings | None = None,
+    *,
+    use_llm: bool = True,
+    context_provider: Any | None = None,
+):
     """Optional polish via mandate_synthesizer when spec is still thin."""
 
     node_name = "mandate_finalize"
@@ -226,7 +231,11 @@ def make_mandate_finalize_node(settings: Settings | None = None, *, use_llm: boo
         meta["mental_model"] = slot
         patch_seq = int(slot.get("patch_seq", 0))
         if patch_seq <= 1 and use_llm:
-            synth = make_mandate_synthesizer_node(settings, use_llm=use_llm)
+            synth = make_mandate_synthesizer_node(
+                settings,
+                use_llm=use_llm,
+                context_provider=context_provider,
+            )
             out = synth({**state, "metadata": meta})
             out["node_history"] = [node_name]
             return out

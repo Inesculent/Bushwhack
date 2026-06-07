@@ -611,7 +611,12 @@ def build_intent_extractor_packet(state: GraphState, *, settings: Settings | Non
     return enforce_packet_budget(packet)
 
 
-def build_mandate_synthesizer_packet(state: GraphState, *, settings: Settings | None = None) -> ContextPacket:
+def build_mandate_synthesizer_packet(
+    state: GraphState,
+    *,
+    settings: Settings | None = None,
+    context_provider: Any | None = None,
+) -> ContextPacket:
     settings = settings or get_settings()
     _meta, slot = mm_meta(state)
     intent = dict(slot.get("intent_extractor") or {})
@@ -621,6 +626,7 @@ def build_mandate_synthesizer_packet(state: GraphState, *, settings: Settings | 
 
     scaffold_text, scaffold_diagnostics = build_owner_contract_scaffold(
         state,
+        context_provider=context_provider,
         max_chars=min(5200, max(1800, int(settings.reviewer_context_mandate_synth_max_chars) // 2)),
     )
 

@@ -21,6 +21,7 @@ _OWNER_HARD_CHARS = 2_800
 _MAX_PRIMARY_OWNERS = 12
 _MAX_COMPANIONS_PER_OWNER = 3
 _WINDOW_CONTEXT = 2
+_FILE_READ_MAX_CHARS = 160_000
 
 
 def changed_lines_by_file_from_diff(git_diff: str) -> Dict[str, set[int]]:
@@ -65,6 +66,7 @@ def changed_lines_by_file_from_diff(git_diff: str) -> Dict[str, set[int]]:
 def build_owner_contract_scaffold(
     state: GraphState,
     *,
+    context_provider: Any | None = None,
     max_chars: int = _DEFAULT_MAX_CHARS,
     owner_soft_chars: int = _OWNER_SOFT_CHARS,
     owner_hard_chars: int = _OWNER_HARD_CHARS,
@@ -76,9 +78,9 @@ def build_owner_contract_scaffold(
     if not ledger:
         return "[]", {"status": "empty", "primary_owner_count": 0}
 
-    repo_path = Path(str(state.get("repo_path") or ".")).resolve()
+    repo_path = _local_repo_path(str(state.get("repo_path") or ""))
     changed_lines = changed_lines_by_file_from_diff(str(state.get("git_diff") or ""))
-    file_cache: Dict[str, List[str]] = {}
+    file_cache: Dict[str, tuple[List[str], str]] = {}
     primaries, omitted = _primary_surfaces(ledger, max_primary_owners=max_primary_owners)
     companions_by_id = _companion_surfaces_by_primary(primaries, ledger)
     graph_hints = _structural_hints_by_owner(state)
@@ -95,7 +97,9 @@ def build_owner_contract_scaffold(
     for surface in primaries:
         row, row_diag = _owner_row(
             surface,
+            state=state,
             repo_path=repo_path,
+            context_provider=context_provider,
             file_cache=file_cache,
             changed_lines=changed_lines.get(surface.file_path, set()),
             companions=companions_by_id.get(surface.surface_id, []),
@@ -123,9 +127,18 @@ def build_owner_contract_scaffold(
         payload["repo_convention_hints"] = ""
         diagnostics["repo_convention_status"] = "dropped_for_budget"
         text = json.dumps(payload, indent=2, ensure_ascii=False)
-    while len(text) > max_chars and payload["owners"]:
-        dropped = payload["owners"].pop()
-        diagnostics.setdefault("owners_dropped_for_budget", []).append(dropped.get("owner"))
+    if len(text) > max_chars:
+        compacted = _compact_primary_snippets(payload["owners"])
+        if compacted:
+            diagnostics["owners_compacted_for_budget"] = compacted
+            text = json.dumps(payload, indent=2, ensure_ascii=False)
+    if len(text) > max_chars:
+        omitted = _omit_primary_snippets(payload["owners"])
+        if omitted:
+            diagnostics["owner_snippets_omitted_for_budget"] = omitted
+            text = json.dumps(payload, indent=2, ensure_ascii=False)
+    if len(text) > max_chars:
+        diagnostics["budget_overflow_chars"] = len(text) - max_chars
         text = json.dumps(payload, indent=2, ensure_ascii=False)
     diagnostics["char_len"] = len(text)
     diagnostics["max_chars"] = max_chars
@@ -147,6 +160,31 @@ def _strip_companion_snippets(owners: Sequence[Dict[str, Any]]) -> List[str]:
             companion["snippet_status"] = "omitted_for_budget"
             stripped.append(str(companion.get("owner") or "unknown"))
     return stripped
+
+
+def _compact_primary_snippets(owners: Sequence[Dict[str, Any]]) -> List[str]:
+    compacted: List[str] = []
+    for owner in reversed(owners):
+        if not isinstance(owner, dict) or not owner.get("owner_snippet"):
+            continue
+        lines = str(owner.get("owner_snippet") or "").splitlines()
+        if len(lines) <= 6:
+            continue
+        owner["owner_snippet"] = "\n".join([*lines[:3], "...", *lines[-3:]])
+        owner["snippet_status"] = f"compacted_from_{owner.get('snippet_status') or 'unknown'}"
+        compacted.append(str(owner.get("owner") or "unknown"))
+    return compacted
+
+
+def _omit_primary_snippets(owners: Sequence[Dict[str, Any]]) -> List[str]:
+    omitted: List[str] = []
+    for owner in reversed(owners):
+        if not isinstance(owner, dict) or not owner.get("owner_snippet"):
+            continue
+        owner["owner_snippet"] = ""
+        owner["snippet_status"] = f"omitted_for_budget_from_{owner.get('snippet_status') or 'unknown'}"
+        omitted.append(str(owner.get("owner") or "unknown"))
+    return omitted
 
 
 def _primary_surfaces(
@@ -210,17 +248,26 @@ def _companion_surfaces_by_primary(
 def _owner_row(
     surface: ReviewSurface,
     *,
-    repo_path: Path,
-    file_cache: Dict[str, List[str]],
+    state: GraphState,
+    repo_path: Path | None,
+    context_provider: Any | None,
+    file_cache: Dict[str, tuple[List[str], str]],
     changed_lines: set[int],
     companions: Sequence[ReviewSurface],
     graph_hints: Sequence[str],
     owner_soft_chars: int,
     owner_hard_chars: int,
 ) -> tuple[Dict[str, Any], Dict[str, Any]]:
-    lines = _read_file_lines(repo_path, surface.file_path, file_cache)
+    lines, source_status = _read_file_lines(
+        state,
+        repo_path,
+        surface.file_path,
+        file_cache,
+        context_provider=context_provider,
+    )
+    effective_surface, span_status = _expand_surface_span(surface, lines)
     snippet, status = _surface_snippet(
-        surface,
+        effective_surface,
         lines,
         changed_lines=changed_lines,
         owner_soft_chars=owner_soft_chars,
@@ -228,9 +275,16 @@ def _owner_row(
     )
     companion_rows = []
     for companion in companions:
-        companion_lines = _read_file_lines(repo_path, companion.file_path, file_cache)
+        companion_lines, companion_source_status = _read_file_lines(
+            state,
+            repo_path,
+            companion.file_path,
+            file_cache,
+            context_provider=context_provider,
+        )
+        effective_companion, companion_span_status = _expand_surface_span(companion, companion_lines)
         companion_snippet, companion_status = _surface_snippet(
-            companion,
+            effective_companion,
             companion_lines,
             changed_lines=changed_lines,
             owner_soft_chars=max(400, owner_soft_chars // 2),
@@ -240,8 +294,10 @@ def _owner_row(
             {
                 "owner": companion.name,
                 "kind": companion.kind,
-                "line_start": companion.line_start,
-                "line_end": companion.line_end,
+                "line_start": effective_companion.line_start,
+                "line_end": effective_companion.line_end,
+                "source_status": companion_source_status,
+                "span_status": companion_span_status,
                 "snippet_status": companion_status,
                 "snippet": companion_snippet,
             }
@@ -251,19 +307,25 @@ def _owner_row(
         "surface_id": surface.surface_id,
         "kind": surface.kind,
         "file_path": surface.file_path,
-        "line_start": surface.line_start,
-        "line_end": surface.line_end,
-        "changed_lines": sorted(line for line in changed_lines if _line_in_surface(line, surface))[:40],
+        "line_start": effective_surface.line_start,
+        "line_end": effective_surface.line_end,
+        "source_status": source_status,
+        "span_status": span_status,
+        "changed_lines": sorted(line for line in changed_lines if _line_in_surface(line, effective_surface))[:40],
         "evidence_refs": list(surface.evidence_refs[:6]),
         "snippet_status": status,
         "owner_snippet": snippet,
-        "declaration_facts": _declaration_facts(lines, surface),
+        "declaration_facts": _declaration_facts(lines, effective_surface),
         "companion_surfaces": companion_rows,
         "structural_hints": list(graph_hints[:6]),
     }
     diag = {
         "owner": surface.name,
         "file_path": surface.file_path,
+        "source_status": source_status,
+        "span_status": span_status,
+        "line_start": effective_surface.line_start,
+        "line_end": effective_surface.line_end,
         "snippet_status": status,
         "snippet_chars": len(snippet),
         "companion_count": len(companion_rows),
@@ -271,18 +333,142 @@ def _owner_row(
     return row, diag
 
 
-def _read_file_lines(repo_path: Path, file_path: str, cache: Dict[str, List[str]]) -> List[str]:
+def _local_repo_path(repo_path: str) -> Path | None:
+    if not repo_path:
+        return None
+    try:
+        path = Path(repo_path).resolve()
+    except Exception:
+        return None
+    return path if path.is_dir() else None
+
+
+def _read_file_lines(
+    state: GraphState,
+    repo_path: Path | None,
+    file_path: str,
+    cache: Dict[str, tuple[List[str], str]],
+    *,
+    context_provider: Any | None,
+) -> tuple[List[str], str]:
     norm = normalize_repo_path(file_path)
     if norm in cache:
         return cache[norm]
-    try:
-        target = (repo_path / norm).resolve()
-        target.relative_to(repo_path)
-        text = target.read_text(encoding="utf-8", errors="replace")
-        cache[norm] = text.splitlines()
-    except Exception:
-        cache[norm] = []
+    text = ""
+    source_status = "unavailable"
+    if repo_path is not None:
+        try:
+            target = (repo_path / norm).resolve()
+            target.relative_to(repo_path)
+            text = target.read_text(encoding="utf-8", errors="replace")
+            source_status = "local_repo"
+        except Exception:
+            text = ""
+    if not text and context_provider is not None:
+        try:
+            get_sandbox = getattr(context_provider, "get_sandbox", None)
+            if callable(get_sandbox):
+                get_sandbox(state)
+            read_full = getattr(context_provider, "read_full_file", None)
+            if callable(read_full):
+                text = str(read_full(norm, max_chars=_FILE_READ_MAX_CHARS) or "")
+                if text:
+                    source_status = "sandbox_provider"
+        except Exception:
+            text = ""
+    if not text:
+        text = _state_file_text(state, norm)
+        if text:
+            source_status = "state_fallback"
+    cache[norm] = (text.splitlines(), source_status)
     return cache[norm]
+
+
+def _state_file_text(state: GraphState, file_path: str) -> str:
+    for raw in (state.get("focused_context_results", {}) or {}).values():
+        if not isinstance(raw, Mapping):
+            continue
+        for key in ("file_contents_full", "file_snippets"):
+            values = raw.get(key)
+            if not isinstance(values, Mapping):
+                continue
+            text = values.get(file_path) or values.get(file_path.replace("/", "\\"))
+            if isinstance(text, str) and text.strip():
+                return text
+    metadata = state.get("metadata", {}) or {}
+    review_checks = metadata.get("review_checks") if isinstance(metadata, Mapping) else None
+    by_task = review_checks.get("by_task") if isinstance(review_checks, Mapping) else None
+    if isinstance(by_task, Mapping):
+        for task_meta in by_task.values():
+            if not isinstance(task_meta, Mapping):
+                continue
+            evidence = task_meta.get("task_evidence")
+            if not isinstance(evidence, Mapping):
+                continue
+            files = evidence.get("file_contents")
+            if not isinstance(files, Mapping):
+                continue
+            text = files.get(file_path) or files.get(file_path.replace("/", "\\"))
+            if isinstance(text, str) and text.strip():
+                return text
+    return _file_text_from_added_diff(str(state.get("git_diff") or ""), file_path)
+
+
+def _file_text_from_added_diff(git_diff: str, file_path: str) -> str:
+    current_file = ""
+    lines: List[str] = []
+    for raw in git_diff.splitlines():
+        if raw.startswith("diff --git "):
+            current_file = ""
+            parts = raw.split()
+            if len(parts) >= 4 and parts[3].startswith("b/"):
+                current_file = normalize_repo_path(parts[3].removeprefix("b/"))
+            continue
+        if raw.startswith("+++ b/"):
+            current_file = normalize_repo_path(raw.removeprefix("+++ b/"))
+            continue
+        if current_file != file_path:
+            continue
+        if raw.startswith("+") and not raw.startswith("+++"):
+            lines.append(raw[1:])
+        elif raw.startswith(" ") and lines:
+            lines.append(raw[1:])
+    return "\n".join(lines)
+
+
+def _expand_surface_span(surface: ReviewSurface, lines: Sequence[str]) -> tuple[ReviewSurface, str]:
+    if not lines or not surface.file_path.endswith(".py") or not surface.line_start:
+        return surface, "unavailable" if not lines else "unchanged"
+    current_end = surface.line_end or surface.line_start
+    if current_end > surface.line_start:
+        return surface, "provided"
+    try:
+        tree = ast.parse("\n".join(lines))
+    except SyntaxError:
+        return surface, "parse_failed"
+    target_name = surface.name.rsplit(".", maxsplit=1)[-1]
+    class_name = _class_prefix(surface.name)
+    matches: List[tuple[int, int, int, ast.AST]] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            continue
+        start = getattr(node, "lineno", None)
+        end = getattr(node, "end_lineno", None)
+        if not isinstance(start, int) or not isinstance(end, int):
+            continue
+        if not (start <= surface.line_start <= end):
+            continue
+        name = getattr(node, "name", "")
+        if surface.kind in {"method", "function", "symbol"} and name != target_name:
+            if not (surface.kind == "symbol" and name == class_name):
+                continue
+        if surface.kind == "class" and name != surface.name:
+            continue
+        matches.append((end - start, start, end, node))
+    if not matches:
+        return surface, "no_enclosing_ast"
+    _, start, end, _node = sorted(matches, key=lambda item: (item[0], item[1]))[0]
+    return surface.model_copy(update={"line_start": start, "line_end": end}), "expanded_ast"
 
 
 def _surface_snippet(
