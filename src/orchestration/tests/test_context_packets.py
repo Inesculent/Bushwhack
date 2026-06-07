@@ -10,7 +10,11 @@ from src.domain.schemas import (
     ReviewTask,
     SearchResult,
 )
-from src.orchestration.context.owner_contract_scaffold import build_owner_contract_scaffold
+from src.orchestration.context.owner_contract_scaffold import (
+    build_owner_contract_scaffold,
+    build_owner_contract_scaffold_payload,
+    render_owner_contract_scaffold_payload,
+)
 from src.domain.state import GraphState
 from src.orchestration.context.context_packets import (
     AUTHORITY_NOTES,
@@ -191,6 +195,47 @@ def test_owner_contract_scaffold_preserves_complete_ast_span(tmp_path) -> None:
     assert "9:         return ('b',)" in text
     assert "Node.INPUT_TYPES" in text
     assert diagnostics["owner_snippets"][0]["snippet_status"] == "full_ast_span_over_soft"
+
+
+def test_owner_contract_scaffold_payload_preserves_raw_snippets_when_text_compacts(tmp_path) -> None:
+    body = "\n".join(f"        value += {index}" for index in range(80))
+    source = f"class Node:\n    def execute(self, value):\n{body}\n        return (value,)\n"
+    path = tmp_path / "pkg" / "node.py"
+    path.parent.mkdir()
+    path.write_text(source)
+    execute = ReviewSurface(
+        surface_id="surface:execute",
+        name="Node.execute",
+        kind="method",
+        file_path="pkg/node.py",
+        line_start=2,
+        line_end=83,
+        source="ast_enclosing_diff_hunk",
+        confidence=0.95,
+    )
+    state = _minimal_state(
+        repo_path=str(tmp_path),
+        git_diff=(
+            "diff --git a/pkg/node.py b/pkg/node.py\n"
+            "+++ b/pkg/node.py\n"
+            "@@ -2,1 +2,1 @@\n"
+            "+    def execute(self, value):\n"
+        ),
+        metadata={"mental_model": {"surface_ledger": [execute.model_dump(mode="json")]}},
+    )
+
+    payload, _diag = build_owner_contract_scaffold_payload(
+        state,
+        owner_soft_chars=100,
+        owner_hard_chars=4000,
+    )
+    raw_snippet = payload["owners"][0]["owner_snippet"]
+    text, diagnostics = render_owner_contract_scaffold_payload(payload, _diag, max_chars=350)
+
+    assert "value += 79" in raw_snippet
+    assert len(text) > 0
+    assert diagnostics["owner_snippets_final"][0]["snippet_status"] != diagnostics["owner_snippets"][0]["snippet_status"]
+    assert payload["owners"][0]["owner_snippet"] == raw_snippet
 
 
 def test_owner_contract_scaffold_attaches_only_same_owner_companions(tmp_path) -> None:

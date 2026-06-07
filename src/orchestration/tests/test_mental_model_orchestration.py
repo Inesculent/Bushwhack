@@ -240,6 +240,39 @@ def test_contract_question_fallback_uses_existing_schema_without_new_fields() ->
     }
 
 
+def test_contract_question_fallback_does_not_leak_global_operation_terms_to_unrelated_owner() -> None:
+    concat = ReviewSurface(
+        surface_id="surface:concat-execute",
+        name="StringConcatenate.execute",
+        kind="method",
+        file_path="src/nodes_string.py",
+        line_start=10,
+        line_end=15,
+        confidence=0.95,
+    )
+    extract = ReviewSurface(
+        surface_id="surface:extract-execute",
+        name="RegexExtract.execute",
+        kind="method",
+        file_path="src/nodes_string.py",
+        line_start=40,
+        line_end=90,
+        confidence=0.95,
+    )
+
+    questions = build_contract_questions_from_ledger(
+        [concat, extract],
+        risk_hypotheses="RegexExtract uses re.findall, m[0], groups, and join serialization.",
+    )
+
+    by_owner: dict[str, set[str]] = {}
+    for question in questions:
+        by_owner.setdefault(question.owner, set()).add(question.dimension)
+    assert "data_preservation_cardinality" not in by_owner.get("StringConcatenate.execute", set())
+    assert "serialization_type_closure" not in by_owner.get("StringConcatenate.execute", set())
+    assert "data_preservation_cardinality" in by_owner.get("RegexExtract.execute", set())
+
+
 def test_contract_question_fallback_skips_dimensions_with_existing_questions() -> None:
     surface = ReviewSurface(
         surface_id="surface:extract-execute",
@@ -333,6 +366,102 @@ def test_mandate_patch_adds_contract_questions_when_prior_has_none() -> None:
     )
 
 
+def test_mandate_patch_fallback_respects_existing_question_dimensions() -> None:
+    surface = ReviewSurface(
+        surface_id="surface:extract",
+        name="RecordExtract.execute",
+        kind="method",
+        file_path="src/app.py",
+        line_start=1,
+        line_end=20,
+        confidence=0.95,
+    )
+    patch = MandatePatchOutput(
+        behavioral_expectations="RecordExtract returns its declared output.",
+        risk_hypotheses="Preserve every grouped record field during extraction.",
+        contract_questions=[
+            ContractQuestion(
+                owner="RecordExtract.execute",
+                surface_id=surface.surface_id,
+                dimension="return_output_totality",
+                expected_behavior="RecordExtract.execute returns its declared output.",
+                contract_evidence="Declared output shape.",
+                trigger_variant="fallback path",
+                operation="return",
+                breach_question="Can fallback path exit without the declared output?",
+                source_confidence=0.2,
+            )
+        ],
+    )
+
+    spec = _apply_patch_to_spec(
+        prior=BehavioralSpec(intent_summary="x", surfaces=[surface]),
+        intent_summary="x",
+        patch=patch,
+        changed_files=["src/app.py"],
+        surfaces=[surface],
+        surface_invariants=[],
+    )
+
+    return_questions = [
+        question
+        for question in spec.contract_questions
+        if question.owner == "RecordExtract.execute"
+        and question.dimension == "return_output_totality"
+    ]
+    assert len(return_questions) == 1
+
+
+def test_mandate_patch_high_confidence_question_allows_missing_dimension_fallback() -> None:
+    surface = ReviewSurface(
+        surface_id="surface:extract",
+        name="RecordExtract.execute",
+        kind="method",
+        file_path="src/app.py",
+        line_start=1,
+        line_end=20,
+        confidence=0.95,
+    )
+    patch = MandatePatchOutput(
+        behavioral_expectations="RecordExtract projects records into a serialized output.",
+        risk_hypotheses="Preserve every grouped record field during extraction.",
+        contract_questions=[
+            ContractQuestion(
+                owner="RecordExtract.execute",
+                surface_id=surface.surface_id,
+                dimension="data_preservation_cardinality",
+                expected_behavior=(
+                    "RecordExtract.execute projects produced records into selected payload values "
+                    "for the serialized node output."
+                ),
+                contract_evidence="RecordExtract.execute produces and projects records.",
+                trigger_variant="multi-record extraction",
+                operation="record projection",
+                breach_question="Can projection select only part of each produced record payload?",
+                source_confidence=0.9,
+            )
+        ],
+    )
+
+    spec = _apply_patch_to_spec(
+        prior=BehavioralSpec(intent_summary="x", surfaces=[surface]),
+        intent_summary="x",
+        patch=patch,
+        changed_files=["src/app.py"],
+        surfaces=[surface],
+        surface_invariants=[],
+    )
+
+    dimensions = {question.dimension for question in spec.contract_questions}
+    assert "data_preservation_cardinality" in dimensions
+    assert "return_output_totality" in dimensions
+    assert sum(
+        1
+        for question in spec.contract_questions
+        if question.dimension == "data_preservation_cardinality"
+    ) == 1
+
+
 class _FakePatchScaffoldProvider:
     def __init__(self, files: dict[str, str]) -> None:
         self.files = files
@@ -374,6 +503,10 @@ def test_mandate_patch_uses_owner_contract_scaffold_from_provider(
         "src.orchestration.nodes.mandate_patch_node.render_reviewer_prompt",
         capture_render,
     )
+    monkeypatch.setattr(
+        "src.orchestration.nodes.mandate_patch_node.synthesize_owner_isolated_contract_questions",
+        lambda *args, **kwargs: ([], {}, 0, [], []),
+    )
 
     settings = Settings(snapshot_base_path=str(tmp_path))
     node = make_mandate_patch_node(settings=settings, context_provider=provider)
@@ -402,6 +535,76 @@ def test_mandate_patch_uses_owner_contract_scaffold_from_provider(
     assert "return ('ok',)" in captured["owner_contract_scaffold"]
     assert scaffold_meta["primary_owner_count"] == 1
     assert scaffold_meta["owner_snippets"][0]["source_status"] == "sandbox_provider"
+    assert out["metadata"]["mental_model"]["changed_file_inventory_diagnostics"]["status"] == "ok"
+    assert out["metadata"]["mental_model"]["mandate_patch"]["owner_contract_scaffold_status"] == "ok"
+    assert out["metadata"]["mental_model"]["mandate_patch"]["owners_without_authored_action_questions"]
+
+
+def test_mandate_patch_writes_owner_agent_questions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    surface = ReviewSurface(
+        surface_id="surface:execute",
+        name="Example.execute",
+        kind="method",
+        file_path="pkg/node.py",
+        line_start=2,
+        line_end=5,
+        source="diff",
+        confidence=0.95,
+    )
+    question = ContractQuestion(
+        owner="Example.execute",
+        surface_id=surface.surface_id,
+        dimension="return_output_totality",
+        expected_behavior="Example.execute returns the declared output tuple for the node API.",
+        contract_evidence="The owner scaffold shows execute returns the node output.",
+        trigger_variant="normal execution",
+        operation="node output return",
+        breach_question="Can normal execution fail to return the declared node output tuple?",
+        source_confidence=0.9,
+    )
+
+    monkeypatch.setattr(
+        "src.orchestration.nodes.mandate_patch_node.render_reviewer_prompt",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("skip broad prompt")),
+    )
+    monkeypatch.setattr(
+        "src.orchestration.nodes.mandate_patch_node.synthesize_owner_isolated_contract_questions",
+        lambda *args, **kwargs: (
+            [question],
+            {"status": "ok", "partition_count": 1},
+            0,
+            [],
+            [],
+        ),
+    )
+
+    settings = Settings(snapshot_base_path=str(tmp_path))
+    node = make_mandate_patch_node(settings=settings, context_provider=None)
+    state: GraphState = {  # type: ignore[assignment]
+        "run_id": "run-owner-agent",
+        "repo_path": str(tmp_path),
+        "git_diff": (
+            "diff --git a/pkg/node.py b/pkg/node.py\n"
+            "+++ b/pkg/node.py\n"
+            "@@ -2,1 +2,1 @@\n"
+            "+    def execute(self):\n"
+        ),
+        "metadata": {
+            "mental_model": {
+                "intent_extractor": {"intent_summary": "Add Example node."},
+                "surface_ledger": [surface.model_dump(mode="json")],
+            }
+        },
+    }
+
+    out = node(state)
+    spec = BehavioralSpecStore(settings).read(out["behavioral_spec_ref"])
+
+    assert any(item.breach_question == question.breach_question for item in spec.contract_questions)
+    assert out["metadata"]["mental_model"]["owner_contract_agentic"]["partition_count"] == 1
 
 
 def test_reviewer_graph_compiles_legacy_planner_mode(monkeypatch: pytest.MonkeyPatch) -> None:

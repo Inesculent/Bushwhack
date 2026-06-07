@@ -35,6 +35,9 @@ from src.orchestration.context.surface_ledger import (
 )
 from src.orchestration.context.surface_ledger import changed_files_from_diff
 from src.orchestration.nodes.application.planner import _target_files
+from src.orchestration.nodes.mental_model_owner_agents import (
+    synthesize_owner_isolated_contract_questions,
+)
 from src.orchestration.prompts.renderer import render_reviewer_prompt
 from src.orchestration.review_principles import DECLARED_INPUT_CONTRACT_GUIDANCE
 
@@ -435,6 +438,7 @@ def make_mandate_synthesizer_node(
         uncertainties = ""
         warnings: List[str] = []
         synth_packet = None
+        owner_agent_diagnostics: Dict[str, Any] = {}
 
         if use_llm:
             try:
@@ -487,6 +491,23 @@ def make_mandate_synthesizer_node(
             slot["diff_surface_inventory"] = surface_inventory_names(surface_ledger)
         slot["changed_file_inventory_diagnostics"] = changed_file_integrity_diagnostics({**state, "metadata": meta})
 
+        owner_questions, owner_agent_diagnostics, owner_tokens, owner_trace, owner_warnings = (
+            synthesize_owner_isolated_contract_questions(
+                {**state, "metadata": meta},
+                settings=resolved,
+                context_provider=context_provider,
+                intent_summary=str(intent.get("intent_summary", "")),
+                existing_questions=contract_questions,
+                stage_label="mandate_synthesizer_owner_agents",
+                use_llm=use_llm,
+            )
+        )
+        if owner_questions:
+            contract_questions = [*contract_questions, *owner_questions]
+        llm_tokens += owner_tokens
+        llm_trace.extend(owner_trace)
+        warnings.extend(owner_warnings)
+
         store_read: BehavioralSpec | None = None
         if isinstance(state.get("behavioral_spec_ref"), str):
             try:
@@ -514,15 +535,11 @@ def make_mandate_synthesizer_node(
             and question.breach_question.strip()
             and question.source_confidence > _LOW_CONFIDENCE_FALLBACK_QUESTION_MAX
         }
-        fallback_questions = [
-            question
-            for question in build_contract_questions_from_ledger(
-                surface_ledger,
-                risk_hypotheses=risks,
-                existing_questions=contract_questions,
-            )
-            if question.owner.strip().lower() not in authored_question_owners
-        ]
+        fallback_questions = build_contract_questions_from_ledger(
+            surface_ledger,
+            risk_hypotheses=risks,
+            existing_questions=contract_questions,
+        )
         fallback_questions = _cap_fallback_questions_per_owner(
             fallback_questions,
             enabled=bool(authored_question_owners),
@@ -569,7 +586,20 @@ def make_mandate_synthesizer_node(
         cache_refs = dict(state.get("cache_refs") or {})
         cache_refs["behavioral_spec"] = abs_path
 
-        slot["mandate_synthesizer"] = {"warnings": warnings, "path": abs_path}
+        surface_owners = {
+            surface.name.strip().lower()
+            for surface in surface_ledger
+            if surface.name.strip() and surface.kind != "file"
+        }
+        slot["mandate_synthesizer"] = {
+            "warnings": warnings,
+            "path": abs_path,
+            "owners_without_authored_action_questions": sorted(
+                owner for owner in surface_owners if owner not in authored_question_owners
+            ),
+        }
+        if owner_agent_diagnostics:
+            slot["owner_contract_agentic"] = owner_agent_diagnostics
         if synth_packet is not None:
             slot["owner_contract_scaffold"] = synth_packet.metadata.get("owner_contract_scaffold", {})
         meta["mental_model"] = slot

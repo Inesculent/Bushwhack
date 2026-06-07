@@ -693,9 +693,25 @@ def build_contract_questions_from_ledger(
                     source_confidence=0.35,
                 )
             )
-        owner_blob = f"{owner} {surface.file_path} {risk}".lower()
+        owner_blob = f"{owner} {surface.file_path}".lower()
+        risk_blob = risk if owner.lower() in risk else ""
         if (
-            any(token in owner_blob for token in ("mode", "variant", "option", "input_types", "combo", "dispatch", "case", "compare", "convert", "regex", "extract"))
+            any(
+                token in f"{owner_blob} {risk_blob}"
+                for token in (
+                    "mode",
+                    "variant",
+                    "option",
+                    "input_types",
+                    "combo",
+                    "dispatch",
+                    "case",
+                    "compare",
+                    "convert",
+                    "regex",
+                    "extract",
+                )
+            )
             and should_add(owner, "variant_completeness")
         ):
             questions.append(
@@ -722,7 +738,22 @@ def build_contract_questions_from_ledger(
                     source_confidence=0.35,
                 )
             )
-        if any(token in owner_blob for token in ("extract", "parse", "serialize", "format", "join", "group", "record", "field", "batch", "collection", "match")):
+        if any(
+            token in f"{owner_blob} {risk_blob}"
+            for token in (
+                "extract",
+                "parse",
+                "serialize",
+                "format",
+                "join",
+                "group",
+                "record",
+                "field",
+                "batch",
+                "collection",
+                "match",
+            )
+        ):
             data_operation = "collection producer and element projection/index selection"
             if should_add(owner, "data_preservation_cardinality"):
                 questions.append(

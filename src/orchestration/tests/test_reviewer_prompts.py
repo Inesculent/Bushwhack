@@ -206,6 +206,19 @@ def test_planning_prompts_gate_general_practice_as_questions() -> None:
     assert "It is acceptable to omit an undecidable check" in executor
 
 
+def test_action_contract_prompts_preserve_value_flow_focus() -> None:
+    synthesizer = load_reviewer_prompt("mental_model/mandate_synthesizer.md")
+    patch = load_reviewer_prompt("mental_model/mandate_patch.md")
+    executor = load_reviewer_prompt("review_check_executor.md")
+
+    assert "expected_behavior` as an action contract" in synthesizer
+    assert "expected_behavior` as an action contract" in patch
+    assert "produced, selected/transformed" in synthesizer
+    assert "produced value, selected/transformed value" in patch
+    assert "Treat `expected_behavior` as the action contract" in executor
+    assert "use `unsupported`" in executor
+
+
 def test_high_volume_structured_prompts_include_output_budget() -> None:
     executor = load_reviewer_prompt("review_check_executor.md")
     triage = load_reviewer_prompt("review_evidence_triage.md")

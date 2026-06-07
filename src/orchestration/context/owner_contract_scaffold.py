@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import copy
 import json
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Sequence
@@ -74,9 +75,36 @@ def build_owner_contract_scaffold(
 ) -> tuple[str, Dict[str, Any]]:
     """Return compact owner facts and diagnostics without inferring bug meaning."""
 
+    payload, diagnostics = build_owner_contract_scaffold_payload(
+        state,
+        context_provider=context_provider,
+        max_primary_owners=max_primary_owners,
+        owner_soft_chars=owner_soft_chars,
+        owner_hard_chars=owner_hard_chars,
+    )
+    text, diagnostics = render_owner_contract_scaffold_payload(
+        payload,
+        diagnostics,
+        max_chars=max_chars,
+        owner_soft_chars=owner_soft_chars,
+        owner_hard_chars=owner_hard_chars,
+    )
+    return text, diagnostics
+
+
+def build_owner_contract_scaffold_payload(
+    state: GraphState,
+    *,
+    context_provider: Any | None = None,
+    max_primary_owners: int = _MAX_PRIMARY_OWNERS,
+    owner_soft_chars: int = _OWNER_SOFT_CHARS,
+    owner_hard_chars: int = _OWNER_HARD_CHARS,
+) -> tuple[Dict[str, Any], Dict[str, Any]]:
+    """Return owner records before combined prompt budgeting is applied."""
+
     ledger = surface_ledger_from_state(state)
     if not ledger:
-        return "[]", {"status": "empty", "primary_owner_count": 0}
+        return {"owners": [], "repo_convention_hints": ""}, {"status": "empty", "primary_owner_count": 0}
 
     repo_path = _local_repo_path(str(state.get("repo_path") or ""))
     changed_lines = changed_lines_by_file_from_diff(str(state.get("git_diff") or ""))
@@ -117,6 +145,24 @@ def build_owner_contract_scaffold(
         "owners": owner_rows,
         "repo_convention_hints": repo_context,
     }
+    return payload, diagnostics
+
+
+def render_owner_contract_scaffold_payload(
+    payload: Dict[str, Any],
+    diagnostics: Dict[str, Any],
+    *,
+    max_chars: int = _DEFAULT_MAX_CHARS,
+    owner_soft_chars: int = _OWNER_SOFT_CHARS,
+    owner_hard_chars: int = _OWNER_HARD_CHARS,
+) -> tuple[str, Dict[str, Any]]:
+    """Render owner scaffold payload with budget diagnostics that reflect final text."""
+
+    payload = {
+        "owners": copy.deepcopy(list(payload.get("owners", []))),
+        "repo_convention_hints": payload.get("repo_convention_hints") or "",
+    }
+    diagnostics = dict(diagnostics)
     text = json.dumps(payload, indent=2, ensure_ascii=False)
     if len(text) > max_chars:
         payload["repo_convention_hints"] = ""
@@ -170,7 +216,28 @@ def build_owner_contract_scaffold(
     diagnostics["max_chars"] = max_chars
     diagnostics["owner_soft_chars"] = owner_soft_chars
     diagnostics["owner_hard_chars"] = owner_hard_chars
+    diagnostics["owner_snippets_final"] = _owner_snippet_diagnostics(payload["owners"])
     return text if payload["owners"] else "[]", diagnostics
+
+
+def _owner_snippet_diagnostics(owners: Sequence[Any]) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    for owner in owners:
+        if not isinstance(owner, Mapping):
+            out.append({"owner": str(owner).split(" ", maxsplit=1)[0], "snippet_status": "compact_string"})
+            continue
+        snippet = str(owner.get("owner_snippet") or "")
+        out.append(
+            {
+                "owner": str(owner.get("owner") or ""),
+                "file_path": str(owner.get("file_path") or owner.get("file") or ""),
+                "line_start": owner.get("line_start") or (owner.get("lines") or [None])[0],
+                "line_end": owner.get("line_end") or ((owner.get("lines") or [None, None])[1]),
+                "snippet_status": str(owner.get("snippet_status") or ""),
+                "snippet_chars": len(snippet),
+            }
+        )
+    return out
 
 
 def _strip_companion_snippets(owners: Sequence[Dict[str, Any]]) -> List[str]:

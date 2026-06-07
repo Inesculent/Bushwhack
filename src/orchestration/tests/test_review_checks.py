@@ -280,6 +280,49 @@ def test_documented_projection_can_suppress_preservation_check() -> None:
     assert no_finding_has_strong_suppression(result, check)
 
 
+def test_contract_question_check_requires_action_value_flow_evidence() -> None:
+    surface = ReviewSurface(
+        surface_id="surface:extract",
+        name="RecordExtract.execute",
+        kind="method",
+        file_path="src/app.py",
+        line_start=10,
+        line_end=30,
+        confidence=0.95,
+    )
+    question = ContractQuestion(
+        owner="RecordExtract.execute",
+        surface_id=surface.surface_id,
+        dimension="data_preservation_cardinality",
+        expected_behavior=(
+            "RecordExtract.execute projects produced records into selected payload values "
+            "for the serialized node output."
+        ),
+        contract_evidence="RecordExtract.execute produces records and serializes selected values.",
+        trigger_variant="multi-record extraction",
+        operation="record projection and output serialization",
+        breach_question="Can projection select only part of each produced record payload?",
+        required_evidence=["record producer and serializer source"],
+        source_confidence=0.9,
+    )
+
+    check = compiler_support._check_from_contract_question(
+        task=_task(),
+        question=question,
+        surface=surface,
+        index=1,
+    )
+
+    required = " ".join(check.required_evidence)
+    suppress = " ".join(check.suppress_criteria)
+    assert "produced value shape" in required
+    assert "selected or transformed value shape" in required
+    assert "returned, consumed, joined, or serialized value shape" in required
+    assert "same action contract" in suppress
+    assert check.expected_behavior == question.expected_behavior
+    assert "record projection and output serialization" in check.owned_contract_scope
+
+
 def test_neighboring_suppression_stays_visible_for_adjudication() -> None:
     check = _check(
         lens="data_shape_consistency",

@@ -30,6 +30,7 @@ from src.orchestration.context.surface_ledger import (
     build_contract_questions_from_ledger,
     build_migration_invariants_from_diff,
     build_surface_invariants_from_ledger,
+    changed_file_integrity_diagnostics,
     surface_inventory_names,
     surface_ledger_from_state,
 )
@@ -37,6 +38,9 @@ from src.orchestration.nodes.mental_model import (
     _LOW_CONFIDENCE_FALLBACK_QUESTION_MAX,
     _cap_fallback_questions_per_owner,
     _normalize_contract_questions,
+)
+from src.orchestration.nodes.mental_model_owner_agents import (
+    synthesize_owner_isolated_contract_questions,
 )
 from src.orchestration.prompts.renderer import render_reviewer_prompt
 from src.orchestration.review_principles import DECLARED_INPUT_CONTRACT_GUIDANCE
@@ -76,29 +80,26 @@ def _apply_patch_to_spec(
             refs.append(BehavioralEvidenceRef(kind="file", ref=fp, note="Changed in this PR"))
             seen.add(fp)
     merged_surfaces = surfaces or (prior.surfaces if prior else [])
+    existing_questions = [*(prior.contract_questions if prior else []), *patch.contract_questions]
     authored_question_owners = {
         question.owner.strip().lower()
-        for question in [*(prior.contract_questions if prior else []), *patch.contract_questions]
+        for question in existing_questions
         if question.owner.strip()
         and question.breach_question.strip()
         and question.source_confidence > _LOW_CONFIDENCE_FALLBACK_QUESTION_MAX
     }
-    fallback_questions = [
-        question
-        for question in build_contract_questions_from_ledger(
-            merged_surfaces,
-            risk_hypotheses=patch.risk_hypotheses,
-        )
-        if question.owner.strip().lower() not in authored_question_owners
-    ]
+    fallback_questions = build_contract_questions_from_ledger(
+        merged_surfaces,
+        risk_hypotheses=patch.risk_hypotheses,
+        existing_questions=existing_questions,
+    )
     fallback_questions = _cap_fallback_questions_per_owner(
         fallback_questions,
         enabled=bool(authored_question_owners),
     )
     contract_questions: List[ContractQuestion] = _normalize_contract_questions(
         [
-            *(prior.contract_questions if prior else []),
-            *patch.contract_questions,
+            *existing_questions,
             *fallback_questions,
         ],
         surfaces=merged_surfaces,
@@ -274,6 +275,29 @@ def make_mandate_patch_node(
             slot["surface_ledger"] = [s.model_dump(mode="json") for s in surface_ledger]
             slot["diff_surface_inventory"] = surface_inventory_names(surface_ledger)
         slot["owner_contract_scaffold"] = scaffold_diagnostics
+        slot["changed_file_inventory_diagnostics"] = changed_file_integrity_diagnostics(
+            {**state, "metadata": meta}
+        )
+        owner_questions, owner_agent_diagnostics, owner_tokens, owner_trace, owner_warnings = (
+            synthesize_owner_isolated_contract_questions(
+                {**state, "metadata": meta},
+                settings=resolved,
+                context_provider=context_provider,
+                intent_summary=intent_summary,
+                existing_questions=[*(prior.contract_questions if prior else []), *patch_out.contract_questions],
+                stage_label="mandate_patch_owner_agents",
+                use_llm=use_llm,
+            )
+        )
+        if owner_questions:
+            patch_out = patch_out.model_copy(
+                update={"contract_questions": [*patch_out.contract_questions, *owner_questions]}
+            )
+        llm_tokens += owner_tokens
+        llm_trace.extend(owner_trace)
+        warnings.extend(owner_warnings)
+        if owner_agent_diagnostics:
+            slot["owner_contract_agentic"] = owner_agent_diagnostics
 
         spec = _apply_patch_to_spec(
             prior=prior,
@@ -284,6 +308,33 @@ def make_mandate_patch_node(
             surface_invariants=surface_invariants,
         )
         ref_new, abs_path = store.write(run_id, spec)
+        authored_question_owners = {
+            question.owner.strip().lower()
+            for question in [*(prior.contract_questions if prior else []), *patch_out.contract_questions]
+            if question.owner.strip()
+            and question.breach_question.strip()
+            and question.source_confidence > _LOW_CONFIDENCE_FALLBACK_QUESTION_MAX
+        }
+        fallback_question_count = sum(
+            1
+            for question in spec.contract_questions
+            if question.source_confidence <= _LOW_CONFIDENCE_FALLBACK_QUESTION_MAX
+        )
+        primary_surface_owners = {
+            surface.name.strip().lower()
+            for surface in surface_ledger
+            if surface.name.strip() and surface.kind != "file"
+        }
+        owners_without_authored_action_questions = sorted(
+            owner for owner in primary_surface_owners if owner not in authored_question_owners
+        )
+        if spec.contract_questions and fallback_question_count >= max(
+            4,
+            len(spec.contract_questions) // 2,
+        ):
+            warnings.append(
+                f"mental_model_contract_questions_fallback_heavy:{fallback_question_count}_of_{len(spec.contract_questions)}"
+            )
         new_seq = prev_seq + 1
         inventory = slot.get("diff_surface_inventory")
         surface_inventory = (
@@ -308,6 +359,13 @@ def make_mandate_patch_node(
         loop["patch_count"] = int(loop.get("patch_count", 0)) + 1
         loop["patch_seq"] = new_seq
         slot["coupled_loop"] = loop
+        slot["mandate_patch"] = {
+            "warnings": warnings,
+            "path": abs_path,
+            "patch_mode": patch_mode,
+            "owner_contract_scaffold_status": scaffold_diagnostics.get("status"),
+            "owners_without_authored_action_questions": owners_without_authored_action_questions,
+        }
         meta["mental_model"] = slot
 
         cache_refs = dict(state.get("cache_refs") or {})

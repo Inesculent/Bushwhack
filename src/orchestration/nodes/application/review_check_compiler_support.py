@@ -1867,6 +1867,15 @@ def _check_from_contract_question(
     report = question.breach_question.strip() or (
         "The changed code violates the expected behavior on a reachable path."
     )
+    value_flow_required = _contract_question_requires_value_flow(question)
+    if value_flow_required:
+        required.extend(
+            [
+                "produced value shape before the operation",
+                "selected or transformed value shape at the operation",
+                "returned, consumed, joined, or serialized value shape after the operation",
+            ]
+        )
     owned_parts = [
         question.owner or surface.name,
         question.dimension,
@@ -1889,12 +1898,28 @@ def _check_from_contract_question(
         behavioral_question=report[:400],
         affected_invariant=question.breach_question[:400] or question.expected_behavior[:400],
         expected_behavior=question.expected_behavior[:500],
-        required_evidence=list(dict.fromkeys(required))[:6],
-        suppress_criteria=[suppress],
+        required_evidence=list(dict.fromkeys(required))[:8],
+        suppress_criteria=(
+            [
+                suppress,
+                (
+                    "Suppress only with evidence that the produced, selected/transformed, and "
+                    "returned/consumed value shapes satisfy this same action contract or are "
+                    "intentionally narrowed by the changed contract."
+                ),
+            ]
+            if value_flow_required
+            else [suppress]
+        ),
         report_criteria=[report],
         allowed_retrieval=["task_evidence", "focused_context"],
         budget=2,
     )
+
+
+def _contract_question_requires_value_flow(question: ContractQuestion) -> bool:
+    dimension = question.dimension.strip().lower()
+    return dimension in {"data_preservation_cardinality", "serialization_type_closure"}
 
 
 def checks_from_contract_questions(
