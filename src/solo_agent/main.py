@@ -9,6 +9,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from src.infrastructure.run_profile import add_run_profile_arguments, configure_run_profile_from_args
 from src.solo_agent.harness.aacr import (
     DEFAULT_AACR_PROCESSED_PATH,
     run_aacr_solo,
@@ -48,11 +49,13 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Override solo_agent_output_dir from settings.",
     )
+    add_run_profile_arguments(parser)
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
+    configure_run_profile_from_args(args)
 
     if args.dataset == "aacr":
         artifacts = run_aacr_solo(

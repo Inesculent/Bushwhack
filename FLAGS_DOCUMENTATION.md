@@ -70,8 +70,9 @@ The primary research command with comprehensive options for dataset-driven analy
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--trace` | boolean | `False` | Emit reviewer graph tracing logs for planning, worker dispatch, and synthesis. Verbose output for debugging agent behavior. |
+| `--trace` | boolean | `False` | Emit reviewer graph tracing logs, including bounded LLM request/response summaries and per-call token usage. Verbose output for debugging agent behavior. |
 | `--basic-graph` | boolean | `False` | Use the basic reviewer graph without adversarial critique/reflection nodes. |
+| `--review-check-mode` | choice | settings default | Check-first reviewer ablation mode: `off`, `log_only`, or `enforced`. |
 
 #### LLM Configuration Overrides
 
@@ -183,7 +184,7 @@ All environment variables must be prefixed with `REVIEW_` and can be set in a `.
 |----------|------|---------|-------------|
 | `REVIEW_AST_MCP_ENABLED` | boolean | `false` | Use MCP transport for AST parsing; otherwise use native in-process parsing. |
 | `REVIEW_AST_MCP_COMMAND` | string | `python` | Command used to start the AST MCP server process. |
-| `REVIEW_AST_MCP_ARGS` | list | `["mcp/fs-mcp/server.py"]` | Arguments for the AST MCP server command. Comma-separated or JSON array. |
+| `REVIEW_AST_MCP_ARGS` | list | `["docker_mcp/fs-mcp/server.py"]` | Arguments for the AST MCP server command. Comma-separated or JSON array. |
 | `REVIEW_AST_MCP_CWD` | path | `None` | Optional working directory used when launching AST MCP server. Defaults to project root. |
 | `REVIEW_AST_MCP_TIMEOUT_SECONDS` | integer | `30` | Timeout for each MCP request in seconds. Range: 1-300. |
 | `REVIEW_AST_MCP_PARSE_TOOL` | string | `parse_file` | Tool name used to parse a file AST via MCP. |
@@ -212,7 +213,7 @@ All environment variables must be prefixed with `REVIEW_` and can be set in a `.
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
 | `REVIEW_GITHUB_MCP_COMMAND` | string | `python` | Command used to start the GitHub MCP server process. |
-| `REVIEW_GITHUB_MCP_ARGS` | list | `["mcp/github-mcp/server.py"]` | Arguments for the GitHub MCP server command. Comma-separated or JSON array. |
+| `REVIEW_GITHUB_MCP_ARGS` | list | `["docker_mcp/github-mcp/server.py"]` | Arguments for the GitHub MCP server command. Comma-separated or JSON array. |
 | `REVIEW_GITHUB_MCP_CWD` | path | `None` | Optional working directory used when launching the GitHub MCP server. |
 | `REVIEW_GITHUB_MCP_TIMEOUT_SECONDS` | integer | `30` | Timeout for each GitHub MCP request in seconds. Range: 1-300. |
 
@@ -226,7 +227,29 @@ All environment variables must be prefixed with `REVIEW_` and can be set in a `.
 | `REVIEW_GITHUB_MCP_PR_MAX_COMMENTS` | integer | `20` | Maximum number of PR or issue comments fetched for the docs pre-brief. |
 | `REVIEW_GITHUB_MCP_PR_COMMENT_MAX_CHARS` | integer | `2000` | Maximum characters retained from each PR or issue comment. |
 | `REVIEW_GITHUB_MCP_DOC_PATHS` | list | common README/CONTRIBUTING/SECURITY/CHANGELOG/docs paths | Ordered documentation paths attempted for docs pre-brief and focused-context fallback. |
-| `REVIEW_DOCS_PREBRIEF_MODEL_KEY` | string | `qwen3.5-35b-a3b` | Model key used to summarize the documentation/PR pre-brief. Must match a key in `infrastructure.llm.factory.MODELS`. |
+| `REVIEW_DOCS_PREBRIEF_MODEL_KEY` | string | `qwen3.5-122b` (see `infrastructure.llm.defaults`) | Model key used to summarize the documentation/PR pre-brief. Must match a key in `infrastructure.llm.factory.MODELS`. |
+
+---
+
+### Execution profiles (`--local` / `--remote`)
+
+| CLI flag | `REVIEW_SANDBOX_BACKEND` | Typical use |
+|----------|--------------------------|-------------|
+| `--local` (default) | `docker` | Laptop / dev: Docker sandbox, `docker-compose.redis.yml`, LLM via SSH port-forward |
+| `--remote` | `apptainer` | Slurm node: Apptainer `.sif`, in-job `redis-server`, job-local vLLM |
+
+See [documentation/apptainer_cluster_guide.md](documentation/apptainer_cluster_guide.md) for SIF builds and `sbatch` examples.
+
+| Variable | Type | Default | Description |
+|----------|------|---------|-------------|
+| `REVIEW_RUN_PROFILE` | string | _(unset)_ | Optional preset: `local` or `remote` (same as CLI flags). |
+| `REVIEW_SANDBOX_BACKEND` | string | `docker` | Sandbox runtime: `docker` or `apptainer`. |
+| `REVIEW_APPTAINER_BINARY` | string | `apptainer` | Apptainer executable on PATH. |
+| `REVIEW_APPTAINER_IMAGE` | string | _(empty)_ | Path to review sandbox `.sif`. |
+| `REVIEW_APPTAINER_VERIFIER_IMAGE` | string | _(empty)_ | Path to verifier `.sif`. |
+| `REVIEW_APPTAINER_INSTANCE_DIR` | string | _(unset)_ | Optional Apptainer instance state directory. |
+| `REVIEW_APPTAINER_BIND_TMPFS` | boolean | `true` | Use `--writable-tmpfs` for Apptainer instances. |
+| `REVIEW_APPTAINER_EXTRA_BIND` | list | `[]` | Extra bind mounts (`host:container[:opts]`). |
 
 ---
 
@@ -241,12 +264,19 @@ All environment variables must be prefixed with `REVIEW_` and can be set in a `.
 | `REVIEW_REDIS_NAMESPACE` | string | `langgraph` | Namespace prefix for Redis checkpoint keys. Prevents key collisions in shared instances. |
 | `REVIEW_REDIS_TTL_SECONDS` | integer | `3600` | TTL for Redis checkpoint entries. In seconds. |
 
-#### Example Docker Compose Setup
+#### Example Docker Compose Setup (`--local`)
 
 ```bash
 docker-compose -f docker-compose.redis.yml up -d
 export REVIEW_REDIS_URL=redis://localhost:6379/0
 export REVIEW_REDIS_ENABLED=true
+```
+
+#### Example cluster loopback Redis (`--remote`)
+
+```bash
+source scripts/cluster/start_local_redis.sh
+python -m src.reviewer_agent.main --remote ...
 ```
 
 ---
@@ -262,7 +292,24 @@ export REVIEW_REDIS_ENABLED=true
 | `REVIEW_OPENAI_API_KEY` or `OPENAI_API_KEY` | string | OpenAI API key for hosted OpenAI model access. |
 | `REVIEW_ANTHROPIC_API_KEY` or `ANTHROPIC_API_KEY` | string | Anthropic API key for Claude model access. |
 
+#### LangSmith Tracing
+
+These settings are mirrored to the `LANGSMITH_*` / `LANGCHAIN_CALLBACKS_BACKGROUND` environment variables that LangChain and LangGraph read at runtime.
+
+| Variable | Type | Default | Description |
+|----------|------|---------|-------------|
+| `REVIEW_LANGSMITH_TRACING` or `LANGSMITH_TRACING` | boolean | `false` | Enable LangSmith tracing for LangGraph spans and LangChain model calls. |
+| `REVIEW_LANGSMITH_API_KEY` or `LANGSMITH_API_KEY` | string | _(unset)_ | LangSmith API key. Required when tracing is enabled. |
+| `REVIEW_LANGSMITH_PROJECT` or `LANGSMITH_PROJECT` | string | `bushwhack` | LangSmith project name. |
+| `REVIEW_LANGSMITH_ENDPOINT` or `LANGSMITH_ENDPOINT` | string | _(unset)_ | Optional regional or self-hosted LangSmith API endpoint. |
+| `REVIEW_LANGSMITH_WORKSPACE_ID` or `LANGSMITH_WORKSPACE_ID` | string | _(unset)_ | Optional workspace ID for API keys with multiple workspaces. |
+| `REVIEW_LANGSMITH_CALLBACKS_BACKGROUND` or `LANGCHAIN_CALLBACKS_BACKGROUND` | boolean | _(unset)_ | Optional callback background mode for trace flushing. |
+| `REVIEW_LANGSMITH_HIDE_INPUTS` or `LANGSMITH_HIDE_INPUTS` | boolean | `false` | Hide run inputs before upload. Useful if input payloads exceed LangSmith limits or contain sensitive data. |
+| `REVIEW_LANGSMITH_HIDE_OUTPUTS` or `LANGSMITH_HIDE_OUTPUTS` | boolean | `true` | Hide run outputs before upload. Enabled by default because reviewer graph outputs may contain large LangGraph state payloads. |
+
 #### Local LLM Configuration (Ollama/LM Studio/vLLM)
+
+**Hotswap default model:** edit `src/infrastructure/llm/defaults.py` (`DEFAULT_LOCAL_MODEL_KEY` and `DEFAULT_LOCAL_MODEL_PATH`). That registers the vLLM model id and sets defaults for all `REVIEW_*_MODEL_KEY` settings unless overridden in `.env`.
 
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
@@ -279,14 +326,21 @@ export REVIEW_REDIS_ENABLED=true
 
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
-| `REVIEW_REVIEWER_PLANNER_MODEL_KEY` | string | `qwen3.5-35b-a3b` | Model key used by the reviewer planner. Must match a key in `infrastructure.llm.factory.MODELS`. For Ollama: use the corresponding local model key. |
-| `REVIEW_REVIEWER_WORKER_MODEL_KEY` | string | `qwen3.5-35b-a3b` | Model key used by reviewer workers, critiquer, reflection, and revision nodes. For Ollama: use the corresponding local model key. |
+| `REVIEW_REVIEWER_PLANNER_MODEL_KEY` | string | `qwen3.5-122b` (see `infrastructure.llm.defaults`) | Model key used by the reviewer planner. Must match a key in `infrastructure.llm.factory.MODELS`. For Ollama: use the corresponding local model key. |
+| `REVIEW_REVIEWER_WORKER_MODEL_KEY` | string | `qwen3.5-122b` (see `infrastructure.llm.defaults`) | Model key used by reviewer workers, critiquer, reflection, and revision nodes. For Ollama: use the corresponding local model key. |
 
 #### Agent Behavior
 
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
 | `REVIEW_REVIEWER_USE_LEGACY_SPECIALIST_WORKERS` | boolean | `false` | Route review_planner tasks to legacy specialist workers instead of adversarial critiquer loop. |
+| `REVIEW_REVIEWER_CHECK_MODE` | choice | `off` | Check-first reviewer ablation mode: `off` preserves candidate-first review, `log_only` compiles and validates checks before the current critiquer, and `enforced` uses evidence-backed checks instead of direct candidate generation. |
+
+Check-first AACR runs also write health artifacts:
+
+- `coverage_audit.json` joins `documentation/dataset/positive_samples.json` to raw artifacts and reports compiled, valid, focused-context, executor, candidate, and final coverage by positive path.
+- `manifest.csv` includes invalid reason JSON and review-check health warnings.
+- `run_meta.json` includes GitHub MCP preflight status. If MCP tools change, deploy `docker_mcp/github-mcp/server.py` with `src`; replacing only `src` can leave stale cluster MCP tools.
 
 ---
 
@@ -336,8 +390,7 @@ REVIEW_REDIS_ENABLED=false
 REVIEW_AST_MCP_ENABLED=false
 REVIEW_GITHUB_MCP_ENABLED=false
 REVIEW_LOCAL_LLM_BASE_URL=http://localhost:8000/v1
-REVIEW_REVIEWER_PLANNER_MODEL_KEY=qwen3.5-35b-a3b
-REVIEW_REVIEWER_WORKER_MODEL_KEY=qwen3.5-35b-a3b
+# Defaults: src/infrastructure/llm/defaults.py (DEFAULT_LOCAL_MODEL_KEY / PATH)
 ```
 
 ```bash
@@ -353,8 +406,7 @@ REVIEW_REDIS_ENABLED=true
 REVIEW_REDIS_URL=redis://prod-redis-host:6379/0
 REVIEW_AST_MCP_ENABLED=true
 REVIEW_GITHUB_MCP_ENABLED=true
-REVIEW_REVIEWER_PLANNER_MODEL_KEY=qwen3.5-35b-a3b
-REVIEW_REVIEWER_WORKER_MODEL_KEY=qwen3.5-35b-a3b
+# Defaults: src/infrastructure/llm/defaults.py (DEFAULT_LOCAL_MODEL_KEY / PATH)
 ```
 
 ```bash
@@ -507,6 +559,8 @@ export REVIEW_AST_FALLBACK_TO_SEARCH=true
 # Disable optional GitHub context enrichment while preserving local review
 export REVIEW_GITHUB_MCP_ENABLED=false
 ```
+
+For check-first cluster runs, inspect `run_meta.json -> mcp_preflight`. A degraded preflight with `missing_required_tools: ["get_commits_for_path"]` usually means `docker_mcp/github-mcp/server.py` was not uploaded with the current code.
 
 #### 4. Out of Memory During AST Parsing
 

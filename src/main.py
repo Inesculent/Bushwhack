@@ -8,6 +8,7 @@ if str(REPO_ROOT) not in sys.path:
 	sys.path.insert(0, str(REPO_ROOT))
 
 from src.domain.state import GraphState
+from src.infrastructure.run_profile import add_run_profile_arguments, configure_run_profile_from_args
 from src.orchestration.context_graph import run_baseline
 
 
@@ -30,11 +31,13 @@ def parse_args() -> argparse.Namespace:
 		default="Baseline exploration run",
 		help="Optional high-level goals for the review.",
 	)
+	add_run_profile_arguments(parser)
 	return parser.parse_args()
 
 
 def main() -> None:
 	args = parse_args()
+	configure_run_profile_from_args(args)
 	initial_state: GraphState = {
 		"run_id": str(uuid.uuid4()),
 		"repo_path": str(Path(args.repo_path).resolve()),

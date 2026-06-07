@@ -1,4 +1,4 @@
-"""Parallel reviewer graph without adversarial critique/reflection nodes."""
+"""Harness-only legacy reviewer graph without adversarial critique/reflection nodes."""
 from __future__ import annotations
 
 import logging
@@ -19,6 +19,7 @@ from src.domain.schemas import (
     StructuralExtractionGap,
 )
 from src.domain.state import GraphState
+from src.orchestration.routing.send_payload import payload_for_send
 from src.infrastructure.remote_review_workflow import collect_structural_entities
 from src.infrastructure.factory import (
     build_ast_parser,
@@ -33,6 +34,7 @@ from src.infrastructure.redis_checkpoint import (
     delete_checkpoint_thread,
     redis_checkpoint_saver,
 )
+from src.infrastructure.llm.langsmith import configure_langsmith_environment
 from src.infrastructure.sandbox import RepoSandbox
 from src.infrastructure.structural_graph import StructuralGraphBuilder
 from src.infrastructure.structural_topology import (
@@ -243,8 +245,7 @@ def _route_review_tasks(state: GraphState):
         if state.get("task_status_by_id", {}).get(task_id) == "completed":
             continue
         specialty = task.specialty if task.specialty in WORKER_NODE_BY_SPECIALTY else "general"
-        payload = dict(state)
-        payload["current_task_id"] = task_id
+        payload = payload_for_send(state, current_task_id=task_id)
         sends.append(Send(WORKER_NODE_BY_SPECIALTY[specialty], payload))
         if metadata.get("review_trace_enabled"):
             trace_logger.info(
@@ -279,6 +280,7 @@ def build_graph(
     context_provider: LazyReviewContextProvider | None = None,
 ):
     settings = get_settings()
+    configure_langsmith_environment(settings)
     context_provider = context_provider or LazyReviewContextProvider()
     preflight_service = build_preflight_service()
     cache = build_cache_service()

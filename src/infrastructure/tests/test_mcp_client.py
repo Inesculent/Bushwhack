@@ -1,3 +1,4 @@
+import asyncio
 from types import SimpleNamespace
 
 import pytest
@@ -46,3 +47,27 @@ def test_call_tool_wraps_timeout_error(monkeypatch: pytest.MonkeyPatch) -> None:
 
     with pytest.raises(MCPClientError, match="timed out"):
         client.call_tool("parse_file", {"file_path": "x.py"})
+
+
+def test_sync_methods_reject_active_event_loop() -> None:
+    client = MCPClient(command="python", args=["-V"])  # Command is irrelevant before async transport starts.
+
+    async def _run() -> None:
+        with pytest.raises(MCPClientError, match="Use call_tool_async"):
+            client.call_tool("parse_file", {"file_path": "x.py"})
+        with pytest.raises(MCPClientError, match="Use list_tools_async"):
+            client.list_tools()
+
+    asyncio.run(_run())
+
+
+def test_describe_exception_includes_exception_group_children() -> None:
+    exc = ExceptionGroup(
+        "unhandled errors in a TaskGroup",
+        [RuntimeError("server process exited before initialize")],
+    )
+
+    description = MCPClient._describe_exception(exc)
+
+    assert "unhandled errors in a TaskGroup" in description
+    assert "RuntimeError: server process exited before initialize" in description

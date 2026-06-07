@@ -1,10 +1,12 @@
 import sys
 from functools import lru_cache
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from src.infrastructure.llm.defaults import DEFAULT_LOCAL_MODEL_KEY
 
 
 class Settings(BaseSettings):
@@ -30,7 +32,7 @@ class Settings(BaseSettings):
 		description="Command used to start the AST MCP server process.",
 	)
 	ast_mcp_args: List[str] = Field(
-		default_factory=lambda: ["mcp/fs-mcp/server.py"],
+		default_factory=lambda: ["docker_mcp/fs-mcp/server.py"],
 		description="Arguments for the AST MCP server command.",
 	)
 	ast_mcp_cwd: Optional[str] = Field(
@@ -101,6 +103,38 @@ class Settings(BaseSettings):
 		default=True,
 		description="Delete per-PR reviewer graph Redis checkpoints after artifacts are written.",
 	)
+	sandbox_backend: Literal["docker", "apptainer"] = Field(
+		default="docker",
+		description="Sandbox runtime: docker (--local) or apptainer (--remote).",
+	)
+	run_profile: Optional[Literal["local", "remote"]] = Field(
+		default=None,
+		description="Last applied execution profile (local or remote), if set via CLI or env.",
+	)
+	apptainer_binary: str = Field(
+		default="apptainer",
+		description="Apptainer/Singularity executable name on PATH.",
+	)
+	apptainer_image: str = Field(
+		default="",
+		description="Path to review sandbox .sif (git, ripgrep, python). Used when sandbox_backend=apptainer.",
+	)
+	apptainer_verifier_image: str = Field(
+		default="",
+		description="Path to verifier .sif; falls back to apptainer_image when empty.",
+	)
+	apptainer_instance_dir: Optional[str] = Field(
+		default=None,
+		description="Optional Apptainer instance state directory on the compute node.",
+	)
+	apptainer_bind_tmpfs: bool = Field(
+		default=True,
+		description="Use --writable-tmpfs for Apptainer instances (in-container RW for clones).",
+	)
+	apptainer_extra_bind: List[str] = Field(
+		default_factory=list,
+		description="Extra Apptainer bind mounts (host:container[:opts]).",
+	)
 	github_personal_access_token: Optional[str] = Field(
 		default=None,
 		validation_alias=AliasChoices(
@@ -118,7 +152,7 @@ class Settings(BaseSettings):
 		description="Command used to start the GitHub MCP server process.",
 	)
 	github_mcp_args: List[str] = Field(
-		default_factory=lambda: ["mcp/github-mcp/server.py"],
+		default_factory=lambda: ["docker_mcp/github-mcp/server.py"],
 		description="Arguments for the GitHub MCP server command.",
 	)
 	github_mcp_cwd: Optional[str] = Field(
@@ -156,6 +190,34 @@ class Settings(BaseSettings):
 		ge=200,
 		description="Max characters per PR/issue comment fetched via GitHub MCP.",
 	)
+	github_mcp_review_history_enabled: bool = Field(
+		default=True,
+		description="Fetch bounded prior PR review/comment history for changed files before mandate planning.",
+	)
+	github_mcp_review_history_commits_per_file: int = Field(
+		default=12,
+		ge=1,
+		le=100,
+		description="Max recent commits to inspect per changed file when building review history context.",
+	)
+	github_mcp_review_history_prs_per_file: int = Field(
+		default=3,
+		ge=1,
+		le=20,
+		description="Max prior PRs to inspect per changed file for historical review context.",
+	)
+	github_mcp_review_history_comments_per_pr: int = Field(
+		default=30,
+		ge=0,
+		le=100,
+		description="Max review/issue comments to fetch per prior PR for file review history.",
+	)
+	github_mcp_review_history_max_total_chars: int = Field(
+		default=8000,
+		ge=500,
+		le=64000,
+		description="Max rendered characters of prior review history added to the mental-model ledger.",
+	)
 	github_mcp_doc_paths: List[str] = Field(
 		default_factory=lambda: [
 			"README.md",
@@ -171,13 +233,33 @@ class Settings(BaseSettings):
 		],
 		description="Ordered doc paths to attempt for the GitHub MCP pre-brief.",
 	)
+	github_mcp_focused_context_doc_fallback: bool = Field(
+		default=False,
+		description=(
+			"When true, fetch github_mcp_doc_paths via GitHub MCP if sandbox ripgrep finds no hits "
+			"for symbol/text queries. Default false: code search stays in the cloned sandbox; "
+			"avoids repeated README/CONTRIBUTING fetches per focused-context request."
+		),
+	)
+	github_mcp_doc_discovery_enabled: bool = Field(
+		default=True,
+		description="Discover markdown docs via GitHub API to reduce 404s and stale paths.",
+	)
+	github_mcp_doc_discovery_max_paths: int = Field(
+		default=30,
+		ge=0,
+		description="Max discovered doc paths to attempt before falling back to static list.",
+	)
 	docs_prebrief_enabled: bool = Field(
 		default=True,
 		description="Generate a documentation-based pre-brief before semantic scanning.",
 	)
 	docs_prebrief_model_key: str = Field(
-		default="qwen3.5-35b-a3b",
-		description="Model key used for the documentation pre-brief summary.",
+		default=DEFAULT_LOCAL_MODEL_KEY,
+		description=(
+			"Model key used for the documentation pre-brief summary. "
+			"Default from infrastructure.llm.defaults.DEFAULT_LOCAL_MODEL_KEY."
+		),
 	)
 	google_api_key: Optional[str] = Field(
 		default=None,
@@ -188,6 +270,49 @@ class Settings(BaseSettings):
 		default=None,
 		validation_alias=AliasChoices("REVIEW_OPENAI_API_KEY", "OPENAI_API_KEY"),
 		description="OpenAI API key for hosted OpenAI model access.",
+	)
+	langsmith_tracing: bool = Field(
+		default=False,
+		validation_alias=AliasChoices("REVIEW_LANGSMITH_TRACING", "LANGSMITH_TRACING"),
+		description="Enable LangSmith tracing for LangChain and LangGraph runs.",
+	)
+	langsmith_api_key: Optional[str] = Field(
+		default=None,
+		validation_alias=AliasChoices("REVIEW_LANGSMITH_API_KEY", "LANGSMITH_API_KEY"),
+		description="LangSmith API key used when langsmith_tracing is enabled.",
+	)
+	langsmith_project: str = Field(
+		default="bushwhack",
+		validation_alias=AliasChoices("REVIEW_LANGSMITH_PROJECT", "LANGSMITH_PROJECT"),
+		description="LangSmith project name for traces.",
+	)
+	langsmith_endpoint: Optional[str] = Field(
+		default=None,
+		validation_alias=AliasChoices("REVIEW_LANGSMITH_ENDPOINT", "LANGSMITH_ENDPOINT"),
+		description="Optional LangSmith API endpoint for regional or self-hosted installations.",
+	)
+	langsmith_workspace_id: Optional[str] = Field(
+		default=None,
+		validation_alias=AliasChoices("REVIEW_LANGSMITH_WORKSPACE_ID", "LANGSMITH_WORKSPACE_ID"),
+		description="Optional LangSmith workspace ID when an API key has access to multiple workspaces.",
+	)
+	langsmith_callbacks_background: Optional[bool] = Field(
+		default=None,
+		validation_alias=AliasChoices(
+			"REVIEW_LANGSMITH_CALLBACKS_BACKGROUND",
+			"LANGCHAIN_CALLBACKS_BACKGROUND",
+		),
+		description="Optional LangChain callback background mode for trace flushing.",
+	)
+	langsmith_hide_inputs: bool = Field(
+		default=False,
+		validation_alias=AliasChoices("REVIEW_LANGSMITH_HIDE_INPUTS", "LANGSMITH_HIDE_INPUTS"),
+		description="Hide LangSmith run inputs before upload.",
+	)
+	langsmith_hide_outputs: bool = Field(
+		default=True,
+		validation_alias=AliasChoices("REVIEW_LANGSMITH_HIDE_OUTPUTS", "LANGSMITH_HIDE_OUTPUTS"),
+		description="Hide LangSmith run outputs before upload to avoid oversized LangGraph state payloads.",
 	)
 	anthropic_api_key: Optional[str] = Field(
 		default=None,
@@ -219,6 +344,18 @@ class Settings(BaseSettings):
 		ge=0,
 		le=10,
 		description="Retry count for OpenAI-compatible local model requests.",
+	)
+	llm_temperature: Optional[float] = Field(
+		default=None,
+		ge=0.0,
+		le=2.0,
+		description="Optional temperature override for LLM calls (planner/worker/synthesizer).",
+	)
+	llm_presence_penalty: Optional[float] = Field(
+		default=None,
+		ge=-2.0,
+		le=2.0,
+		description="Optional presence_penalty override for OpenAI-compatible providers.",
 	)
 
 	structural_topology_enabled: bool = Field(
@@ -261,7 +398,7 @@ class Settings(BaseSettings):
 		description="Maximum characters of the unified diff inlined into the solo-agent prompt.",
 	)
 	solo_agent_model_key: str = Field(
-		default="qwen3.5-35b-a3b",
+		default=DEFAULT_LOCAL_MODEL_KEY,
 		description="Model key (from Models factory) used by the solo-agent worker for free-form tagged output.",
 	)
 	solo_agent_prompt_version: str = Field(
@@ -274,20 +411,23 @@ class Settings(BaseSettings):
 		description="Root directory for reviewer-graph experiment artifacts.",
 	)
 	reviewer_planner_model_key: str = Field(
-		default="qwen3.5-35b-a3b",
+		default=DEFAULT_LOCAL_MODEL_KEY,
 		description=(
 			"Model key (from Models factory) used by the reviewer planner. "
 			"Must match a key in infrastructure.llm.factory.MODELS; for Ollama use the corresponding local model key."
 		),
 	)
 	reviewer_planner_max_completion_tokens: int = Field(
-		default=8192,
+		default=12288,
 		ge=256,
 		le=32768,
-		description="Maximum completion tokens for reviewer planner LLM calls.",
+		description=(
+			"Per-invocation cap on completion tokens for planner-role LLM calls (draft/revise plan, monolithic planner). "
+			"Run-level totals in run_meta.json (total_llm_tokens) sum many calls and are unrelated to this cap."
+		),
 	)
 	reviewer_worker_model_key: str = Field(
-		default="qwen3.5-35b-a3b",
+		default=DEFAULT_LOCAL_MODEL_KEY,
 		description=(
 			"Model key (from Models factory) used by reviewer workers, critiquer, reflection, and revision nodes. "
 			"Aligns with Models.DEFAULT_ROLE_MODELS['worker']. For Ollama set to the corresponding local model key and "
@@ -295,21 +435,240 @@ class Settings(BaseSettings):
 		),
 	)
 	reviewer_worker_max_completion_tokens: int = Field(
-		default=4096,
+		default=12288,
 		ge=512,
 		le=65536,
-		description="Maximum completion tokens for reviewer worker, reflection, and critique-revision LLM calls.",
+		description=(
+			"Per-invocation cap on completion tokens for worker-role calls (critiquer, reflection, Phase 0 mental-model "
+			"nodes, specialist workers, verifier test gen). Structured outputs for wide PRs can need more than a few "
+			"thousand tokens per call; run_meta total_llm_tokens is the sum across all calls, not this setting."
+		),
+	)
+	reviewer_critiquer_max_completion_tokens: int = Field(
+		default=20480,
+		ge=512,
+		le=65536,
+		description=(
+			"Per-invocation completion token cap for the general critiquer structured-output call. "
+			"Falls back to a compact retry when the model hits the length limit."
+		),
+	)
+	reviewer_critiquer_single_file_max_chars: int = Field(
+		default=80_000,
+		ge=5_000,
+		le=500_000,
+		description=(
+			"Max characters per target file excerpt when a review task has exactly one target file "
+			"(avoids truncating mid-class logic for COMBO/execute review tasks)."
+		),
+	)
+	reviewer_allow_host_pr_worktree: bool = Field(
+		default=True,
+		description=(
+			"When true, snapshot AACR resume clones the PR head into a host worktree under the snapshot root "
+			"(enables AST and local ripgrep). Set REVIEW_REVIEWER_ALLOW_HOST_PR_WORKTREE=false to use Docker sandbox only."
+		),
 	)
 	reviewer_use_legacy_specialist_workers: bool = Field(
 		default=False,
 		description="When true, route review_planner tasks to legacy specialist workers instead of the adversarial critiquer loop.",
 	)
-	reviewer_cleanup_redis_checkpoints: bool = Field(
+	reviewer_legacy_planner_mode: bool = Field(
+		default=False,
+		description=(
+			"When true, skip Phase 0 mental-model formulation and actor-critic planning; use the monolithic review_planner. "
+			"Orthogonal to reviewer_use_legacy_specialist_workers."
+		),
+	)
+	reviewer_check_mode: Literal["off", "log_only", "enforced"] = Field(
+		default="off",
+		description=(
+			"Check-first reviewer ablation mode for the non-legacy adversarial critique path. "
+			"off preserves candidate-first review, log_only compiles/validates checks before running the "
+			"current critiquer, and enforced skips direct candidate generation in favor of evidence-backed checks."
+		),
+	)
+	reviewer_actor_critic_max_plan_revisions: int = Field(
+		default=5,
+		ge=0,
+		le=5,
+		description="Max plan_revision cycles after plan_critic before emitting tasks anyway.",
+	)
+	reviewer_mental_model_max_queries_per_run: int = Field(
+		default=40,
+		ge=0,
+		le=500,
+		description="Cap query_mental_model tool invocations per graph run (across parallel tasks).",
+	)
+	reviewer_mental_model_max_answer_chars: int = Field(
+		default=2500,
+		ge=200,
+		le=16000,
+		description="Max characters returned from query_mental_model (excerpt of BehavioralSpec).",
+	)
+	reviewer_mandate_explorer_enabled: bool = Field(
 		default=True,
-		description="Delete per-PR Redis checkpoints after reviewer-agent experiments finish each graph run.",
+		description="When true, run mandate_explorer (bootstrap + critic-targeted) before/during coupled planning.",
+	)
+	reviewer_mandate_bootstrap_max_steps: int = Field(
+		default=8,
+		ge=1,
+		le=24,
+		description="ReAct steps for mandatory bootstrap mandate_explorer pass.",
+	)
+	reviewer_mandate_targeted_max_steps: int = Field(
+		default=4,
+		ge=1,
+		le=16,
+		description="ReAct steps per critic-triggered targeted explorer pass.",
+	)
+	reviewer_mandate_explorer_max_observation_chars: int = Field(
+		default=4000,
+		ge=500,
+		le=32000,
+		description="Max characters per mandate explorer tool result.",
+	)
+	reviewer_mandate_ledger_max_total_chars: int = Field(
+		default=48000,
+		ge=4000,
+		le=200000,
+		description="Soft cap on total mandate_tool_observation preview chars in exploration_ledger.",
+	)
+	reviewer_mandate_bootstrap_digest_max_chars: int = Field(
+		default=1200,
+		ge=200,
+		le=8000,
+		description="Planner/critic bootstrap digest size stored in metadata.mental_model.",
+	)
+	reviewer_mandate_plan_max_cycles: int = Field(
+		default=5,
+		ge=1,
+		le=8,
+		description="Max joint critic cycles (explorer/patch/revision) before plan_emit.",
+	)
+	reviewer_mandate_spec_excerpt_max_chars: int = Field(
+		default=8000,
+		ge=1000,
+		le=32000,
+		description="BehavioralSpec JSON excerpt size for mandate synthesizer prompts (full spec).",
+	)
+	reviewer_context_intent_max_chars: int = Field(
+		default=4000,
+		ge=500,
+		le=32000,
+		description="ContextPacket char budget for intent_extractor.",
+	)
+	reviewer_context_mandate_synth_max_chars: int = Field(
+		default=8000,
+		ge=1000,
+		le=32000,
+		description="ContextPacket char budget for mandate_synthesizer.",
+	)
+	reviewer_context_plan_critic_max_chars: int = Field(
+		default=6000,
+		ge=1000,
+		le=32000,
+		description="ContextPacket char budget for draft_planner / plan_critic / plan_revision.",
+	)
+	reviewer_critique_packet_max_chars: int = Field(
+		default=22000,
+		ge=4000,
+		le=64000,
+		description=(
+			"Quality ceiling for task-scoped critique evidence and critiquer ContextPacket "
+			"(code slices + principles; diff hunk capped separately)."
+		),
+	)
+	reviewer_context_critique_probe_max_chars: int = Field(
+		default=16000,
+		ge=2000,
+		le=64000,
+		description="ContextPacket char budget for critique_context_probe (pre-critiquer gather).",
+	)
+	reviewer_context_critiquer_max_chars: int = Field(
+		default=20000,
+		ge=2000,
+		le=64000,
+		description="ContextPacket char budget for general_critiquer LLM prompt.",
+	)
+	reviewer_context_critiquer_diff_hunk_max_chars: int = Field(
+		default=4000,
+		ge=500,
+		le=32000,
+		description="Per-section cap for git diff excerpt inside critiquer ContextPacket.",
+	)
+	reviewer_context_reflection_max_chars: int = Field(
+		default=14000,
+		ge=500,
+		le=32000,
+		description="ContextPacket char budget per adversarial_reflection batch.",
+	)
+	reviewer_context_verifier_gen_max_chars: int = Field(
+		default=4000,
+		ge=500,
+		le=32000,
+		description="ContextPacket char budget for verifier test_generator.",
+	)
+	reviewer_cleanup_require_full_reflection_quorum: bool = Field(
+		default=False,
+		description=(
+			"When true, adversarial_cleanup drops a candidate unless every routed reflector specialty produced a "
+			"ReflectionReport (strict quorum). When false (default), missing specialties abstain: if at least one "
+			"relevant report exists and none of them reject, promotion uses only the reports that arrived "
+			"(e.g. logic timed out but general accepted — avoids losing findings to graph/LLM timeouts)."
+		),
+	)
+	reviewer_use_legacy_adversarial_cleanup: bool = Field(
+		default=False,
+		description=(
+			"When true, use the legacy deterministic adversarial_cleanup promotion/dedupe node. "
+			"Default false routes final candidate judgment through review_adjudicator."
+		),
+	)
+	reviewer_triage_max_batch_chars: int = Field(
+		default=28_000,
+		ge=4_000,
+		le=200_000,
+		description="Approximate max characters of candidate evidence per review_evidence_triage batch.",
+	)
+	reviewer_triage_max_candidate_chars: int = Field(
+		default=8_000,
+		ge=1_000,
+		le=80_000,
+		description="Max rendered characters for one candidate packet in review_evidence_triage prompts.",
+	)
+	reviewer_triage_max_completion_tokens: int = Field(
+		default=12_288,
+		ge=512,
+		le=65_536,
+		description="Completion token cap for review_evidence_triage structured-output calls.",
+	)
+	reviewer_adjudicator_max_batch_chars: int = Field(
+		default=32_000,
+		ge=4_000,
+		le=200_000,
+		description="Approximate max characters of candidate evidence per review_adjudicator batch.",
+	)
+	reviewer_adjudicator_max_candidate_chars: int = Field(
+		default=10_000,
+		ge=1_000,
+		le=80_000,
+		description="Max rendered characters for one candidate evidence packet in review_adjudicator prompts.",
+	)
+	reviewer_adjudicator_focused_context_max_chars: int = Field(
+		default=2_400,
+		ge=200,
+		le=20_000,
+		description="Per focused-context blob character cap inside review_adjudicator evidence packets.",
+	)
+	reviewer_adjudicator_max_completion_tokens: int = Field(
+		default=16_384,
+		ge=512,
+		le=65_536,
+		description="Completion token cap for review_adjudicator structured-output calls.",
 	)
 	reviewer_critique_revision_max_shard_chars: int = Field(
-		default=12_000,
+		default=16_000,
 		ge=2_000,
 		description="Approximate max characters of focused context JSON per critique-revision digest shard.",
 	)
@@ -317,6 +676,21 @@ class Settings(BaseSettings):
 		default=8_000,
 		ge=500,
 		description="Truncate inlined CandidateFinding JSON per digest shard prompt.",
+	)
+	reviewer_critique_revision_reduce_batch_size: int = Field(
+		default=2,
+		ge=1,
+		le=4,
+		description="Candidates per critique_revision_reduce LLM call (1–2 recommended to avoid output token ceiling).",
+	)
+	reviewer_critique_revision_max_completion_tokens: int = Field(
+		default=16_384,
+		ge=512,
+		le=65536,
+		description=(
+			"Completion token cap for critique_revision digest and reduce structured-output calls "
+			"(overrides reviewer_worker_max_completion_tokens for those nodes only)."
+		),
 	)
 	reviewer_reflection_retry_backoff_seconds: float = Field(
 		default=5.0,
@@ -339,12 +713,48 @@ class Settings(BaseSettings):
 		default=True,
 		description=(
 			"Enable verifier after focused_context or post_reflection_evidence_pass for eligible claim types. "
-			"When true, runs only for claim types allowed below; use verifier_skip_if_no_docker to no-op when Docker is absent."
+			"When true, runs only for claim types allowed below; use verifier_skip_if_no_sandbox to no-op when the sandbox runtime is absent."
 		),
 	)
 	verifier_image: str = Field(
 		default="verifier-test-env:latest",
-		description="Docker image for verifier script execution (repo mounted at /repo).",
+		description="Docker image for verifier script execution when using a host-mounted checkout.",
+	)
+	verifier_clone_image: str = Field(
+		default="agent-fs-sandbox",
+		description=(
+			"Docker image for verifier runs that git-clone the PR inside the container. "
+			"Must include git (e.g. agent-fs-sandbox). Rebuild verifier-test-env after Dockerfile.verifier "
+			"changes if you prefer a single image for both clone and test execution."
+		),
+	)
+	verifier_clone_remote_in_container: bool = Field(
+		default=True,
+		description=(
+			"When true (default), if repo_path is not a local directory, clone review_repo_url inside the "
+			"verifier container at /repo (requires git in verifier_image). When false, use an empty /workspace "
+			"only if verifier_require_repo_in_container is also false."
+		),
+	)
+	verifier_require_repo_in_container: bool = Field(
+		default=True,
+		description=(
+			"When true (default), verifier refuses snippet-only runs when no local checkout and remote clone "
+			"metadata/URL is unavailable (attempt records harness/inconclusive instead of fake /repo symlink)."
+		),
+	)
+	verifier_use_execution_workspace: bool = Field(
+		default=True,
+		description=(
+			"After mounting or cloning at /repo, copy tree into a writable /exec_* workspace and run verifier "
+			"scripts there (matches review sandbox RO + RW test area pattern)."
+		),
+	)
+	verifier_reflection_batch_size: int = Field(
+		default=3,
+		ge=1,
+		le=10,
+		description="Max candidates per adversarial reflection LLM call (per specialty).",
 	)
 	verifier_test_timeout_seconds: int = Field(
 		default=300,
@@ -353,10 +763,10 @@ class Settings(BaseSettings):
 		description="Wall-clock timeout per verifier script execution.",
 	)
 	verifier_max_attempts: int = Field(
-		default=3,
+		default=4,
 		ge=1,
 		le=5,
-		description="Max test-generation/execute cycles per candidate before inconclusive.",
+		description="Max test-generation/execute cycles per candidate before inconclusive (self-healing retries).",
 	)
 	verifier_run_on_defect: bool = Field(
 		default=True,
@@ -374,15 +784,34 @@ class Settings(BaseSettings):
 		default=True,
 		description="Instruct the generator to use sys.modules MagicMock prelude for heavy deps.",
 	)
+	verifier_prepare_env_enabled: bool = Field(
+		default=True,
+		description=(
+			"Best-effort verifier environment preparation. When enabled, verifier attempts create a "
+			"local venv in the execution workspace and use it when setup succeeds."
+		),
+	)
+	verifier_prepare_env_install_deps: bool = Field(
+		default=False,
+		description=(
+			"Reserved for targeted verifier dependency installation. Broad repository requirements "
+			"installation is intentionally avoided because review verification only needs imports "
+			"reachable from the candidate target."
+		),
+	)
 	verifier_total_budget_per_pr: int = Field(
 		default=10,
 		ge=1,
 		le=50,
 		description="Max verifier Send branches per focused_context wave.",
 	)
-	verifier_skip_if_no_docker: bool = Field(
+	verifier_skip_if_no_sandbox: bool = Field(
 		default=True,
-		description="If Docker is unreachable, skip verifier and continue the reviewer graph.",
+		validation_alias=AliasChoices(
+			"REVIEW_VERIFIER_SKIP_IF_NO_SANDBOX",
+			"REVIEW_VERIFIER_SKIP_IF_NO_DOCKER",
+		),
+		description="If the active sandbox runtime is unavailable, skip verifier and continue the reviewer graph.",
 	)
 	verifier_require_focused_evidence: bool = Field(
 		default=True,
@@ -405,6 +834,25 @@ class Settings(BaseSettings):
 		le=500_000,
 		description="Truncate each linter stdout/stderr stream stored on verifier attempts.",
 	)
+	verifier_focused_context_max_chars: int = Field(
+		default=16_000,
+		ge=2_000,
+		le=120_000,
+		description="Max characters of focused-context JSON passed to the verifier test generator.",
+	)
+	verifier_test_generator_max_completion_tokens: int = Field(
+		default=8192,
+		ge=1024,
+		le=32_768,
+		description="Completion token cap for verifier test-script generation (separate from worker default).",
+	)
+	verifier_source_only_static_enabled: bool = Field(
+		default=True,
+		description=(
+			"Run cheap source-only verifier checks before sandbox execution for syntax/name/import "
+			"regressions that do not require importing repository packages."
+		),
+	)
 
 	# Phase 2 semantic enrichment + snapshot layout
 	snapshot_base_path: Path = Field(
@@ -419,10 +867,94 @@ class Settings(BaseSettings):
 		default=True,
 		description="Run Phase 2 semantic bubble-up after structural extraction when topology exists.",
 	)
+	semantic_legacy_community_agents_enabled: bool = Field(
+		default=False,
+		description=(
+			"Run legacy LLM community semantic agents after Review KB dispatch. Modern runs leave this "
+			"off and use deterministic Review KB records plus optional KB distillation."
+		),
+	)
 	semantic_max_tokens_per_community: int = Field(
 		default=8000,
 		ge=500,
-		description="Approximate max prompt characters budget per community agent (rough token proxy).",
+		description="Approximate prompt token budget per community agent, converted to a rough character cap.",
+	)
+	semantic_agent_max_completion_tokens: int = Field(
+		default=8192,
+		ge=512,
+		le=32768,
+		description="Completion token cap for high-level community semantic summaries.",
+	)
+	repository_kb_distillation_max_completion_tokens: int = Field(
+		default=2048,
+		ge=512,
+		le=8192,
+		description="Completion token cap for bounded Repository KB distillation calls.",
+	)
+	repository_kb_distillation_mode: Literal["review_neighborhood", "on_demand", "full", "off"] = Field(
+		default="on_demand",
+		description=(
+			"Repository KB LLM enrichment mode. on_demand skips upfront distillation; "
+			"review_neighborhood distills review boundary packs; full opts into whole-repo distillation."
+		),
+	)
+	repository_kb_intelligence_profile: Literal["lean", "standard", "deep", "offline"] = Field(
+		default="standard",
+		description=(
+			"Soft effort profile for adaptive Repository KB intelligence. Profiles guide evidence selection "
+			"and prompt expansion; hard ceilings remain safety controls."
+		),
+	)
+	repository_kb_distillation_budget_mode: Literal["adaptive", "unbounded"] = Field(
+		default="adaptive",
+		description="Budget strategy for Repository KB distillation. Adaptive may defer work instead of failing.",
+	)
+	repository_kb_distillation_hard_token_ceiling: Optional[int] = Field(
+		default=None,
+		ge=1,
+		description="Optional safety ceiling for adaptive Repository KB distillation.",
+	)
+	repository_kb_distillation_review_neighborhood_max_communities: int = Field(
+		default=4,
+		ge=1,
+		le=64,
+		description="Max review-neighborhood communities used to select boundary packs for LLM distillation.",
+	)
+	repository_kb_distillation_communities_per_call: int = Field(
+		default=1,
+		ge=1,
+		le=16,
+		description="Max community evidence packs included in one Repository KB distillation call.",
+	)
+	repository_kb_distillation_max_prompt_chars: int = Field(
+		default=8000,
+		ge=2000,
+		le=60000,
+		description="Approximate prompt character cap for one Repository KB distillation call.",
+	)
+	repository_kb_distillation_max_shards_per_community: int = Field(
+		default=6,
+		ge=1,
+		le=200,
+		description="Max bounded evidence shards to distill per Repository KB community.",
+	)
+	repository_kb_distillation_shard_merge_max_prompt_chars: int = Field(
+		default=16000,
+		ge=2000,
+		le=80000,
+		description="Approximate prompt character cap for merging shard summaries into a community summary.",
+	)
+	semantic_merge_max_prompt_chars: int = Field(
+		default=24000,
+		ge=2000,
+		le=120000,
+		description="Approximate prompt character cap for global semantic merge synthesis.",
+	)
+	semantic_merge_max_completion_tokens: int = Field(
+		default=2048,
+		ge=512,
+		le=8192,
+		description="Completion token cap for global semantic merge synthesis.",
 	)
 	semantic_max_files_per_agent: int = Field(
 		default=20,
@@ -468,14 +1000,14 @@ class Settings(BaseSettings):
 		description="Max resolver self-loop rounds for newly surfaced unverified targets.",
 	)
 	semantic_model_key: str = Field(
-		default="qwen3.5-35b-a3b",
+		default=DEFAULT_LOCAL_MODEL_KEY,
 		description=(
 			"Models factory key for community semantic agents (same registry as reviewer_worker_model_key). "
 			"Defaults to the local Qwen stack; set e.g. gemini-pro only if langchain-google-genai is installed."
 		),
 	)
 	semantic_merge_model_key: str = Field(
-		default="qwen3.5-35b-a3b",
+		default=DEFAULT_LOCAL_MODEL_KEY,
 		description=(
 			"Models factory key for global semantic synthesis at merge (same as Models.DEFAULT_ROLE_MODELS['synthesizer']). "
 			"Defaults to local Qwen; override with REVIEW_SEMANTIC_MERGE_MODEL_KEY."

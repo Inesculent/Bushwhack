@@ -12,7 +12,8 @@ from src.domain.interfaces import IGitHubContextProvider
 from src.domain.schemas import GitHubIssueContext, GitHubPullRequestContext, RepoDocument
 from src.domain.state import GraphState
 from src.infrastructure.llm.factory import Models
-from src.infrastructure.llm.token_usage import extract_total_tokens_from_llm_result, parse_structured_output
+from src.infrastructure.llm.token_usage import parse_structured_output
+from src.infrastructure.llm.trace import trace_llm_call
 from src.orchestration.prompts.exploration_prompts import render_docs_prebrief_prompt
 
 logger = logging.getLogger(__name__)
@@ -45,7 +46,8 @@ def make_docs_prebrief_node(
 
         pr_number = _resolve_pr_number(state)
         pr_context = _resolve_pr_context(state, github_provider, owner, repo, pr_number)
-        ref = (pr_context.base_ref if pr_context and pr_context.base_ref else None) or "main"
+        default_branch = _resolve_default_branch(owner, repo, github_provider)
+        ref = (pr_context.base_ref if pr_context and pr_context.base_ref else None) or default_branch or "main"
 
         docs, doc_warnings = _collect_docs(
             state=state,
@@ -74,9 +76,23 @@ def make_docs_prebrief_node(
         )
 
         llm = Models.synthesizer(DocsPrebriefOutput, model_key=resolved_settings.docs_prebrief_model_key)
-        invoke_result = llm.invoke(prompt)
+        traced = trace_llm_call(
+            llm,
+            prompt,
+            state=state,
+            node_name="docs_prebrief",
+            model_key=resolved_settings.docs_prebrief_model_key,
+            schema_name="DocsPrebriefOutput",
+            input_summary={
+                "repo": f"{owner}/{repo}",
+                "doc_count": len(docs),
+                "issue_count": len(issues),
+                "comment_count": len(comments),
+            },
+        )
+        invoke_result = traced.result
         response = parse_structured_output(invoke_result, DocsPrebriefOutput)
-        tokens = extract_total_tokens_from_llm_result(invoke_result)
+        tokens = traced.tokens
 
         summary = response.summary or ""
         insights = response.insights or ([summary] if summary else [])
@@ -88,21 +104,27 @@ def make_docs_prebrief_node(
             sources.append(f"issue:{issue.number}")
         if comments:
             sources.append(f"pr_comments:{len(comments)}")
+        repository_docs_summary = _repository_docs_summary(docs)
+        repository_docs_sources = [f"doc:{doc.path}" for doc in docs]
 
         meta["docs_prebrief"] = {
             "status": "ok",
             "ref": ref,
             "sources": sources,
+            "repository_docs_sources": repository_docs_sources,
             "warnings": doc_warnings,
         }
 
         return {
             "docs_prebrief_summary": summary,
             "docs_prebrief_sources": sources,
+            "repository_docs_summary": repository_docs_summary,
+            "repository_docs_sources": repository_docs_sources,
             "global_insights": insights,
             "metadata": meta,
             "node_history": ["docs_prebrief"],
             "token_usage": tokens,
+            "llm_trace": traced.trace_records,
         }
 
     return docs_prebrief_node
@@ -212,6 +234,65 @@ def _resolve_pr_comments(
     return formatted
 
 
+def _resolve_default_branch(
+    owner: str,
+    repo: str,
+    github_provider: IGitHubContextProvider | None,
+) -> str | None:
+    if github_provider is None:
+        return None
+    meta = github_provider.get_repo_metadata(owner, repo)
+    if meta is None:
+        return None
+    branch = getattr(meta, "default_branch", None)
+    if isinstance(branch, str) and branch.strip():
+        return branch.strip()
+    return None
+
+
+def _merge_doc_paths(primary: Sequence[str], secondary: Sequence[str]) -> List[str]:
+    seen: set[str] = set()
+    merged: List[str] = []
+    for raw in list(primary) + list(secondary):
+        path = (raw or "").strip().lstrip("/")
+        if not path or path in seen:
+            continue
+        seen.add(path)
+        merged.append(path)
+    return merged
+
+
+def _discover_doc_paths(
+    owner: str,
+    repo: str,
+    ref: str,
+    github_provider: IGitHubContextProvider | None,
+    settings: Settings,
+) -> List[str]:
+    if github_provider is None or not settings.github_mcp_doc_discovery_enabled:
+        return []
+    max_paths = settings.github_mcp_doc_discovery_max_paths
+    if max_paths <= 0:
+        return []
+
+    paths: List[str] = []
+    seen: set[str] = set()
+    for seed in ("", "docs", ".github"):
+        listing = github_provider.get_repo_structure(owner, repo, seed, ref)
+        entries = listing.entries if hasattr(listing, "entries") else []
+        for entry in entries:
+            entry_path = (entry.path or "").strip().lstrip("/")
+            if not entry_path or entry_path in seen:
+                continue
+            lower = entry_path.lower()
+            if entry.type == "file" and lower.endswith((".md", ".rst", ".txt")):
+                seen.add(entry_path)
+                paths.append(entry_path)
+                if len(paths) >= max_paths:
+                    return paths
+    return paths
+
+
 def _collect_docs(
     *,
     state: GraphState,
@@ -238,6 +319,10 @@ def _collect_docs(
         warnings.append("github_docs_unavailable")
         return [], warnings
 
+    discovered = _discover_doc_paths(owner, repo, ref, github_provider, settings)
+    if discovered:
+        warnings.append(f"docs_discovery_paths:{len(discovered)}")
+        doc_paths = _merge_doc_paths(discovered, doc_paths)
     bundle = github_provider.get_repo_docs(owner, repo, ref, doc_paths)
     warnings.extend(bundle.warnings)
     return list(bundle.documents), warnings
@@ -281,6 +366,24 @@ def _format_docs(docs: Iterable[RepoDocument]) -> str:
         header = f"# {doc.path}"
         blocks.append(f"{header}\n{doc.content}")
     return "\n\n".join(blocks) or "(none)"
+
+
+def _repository_docs_summary(docs: Sequence[RepoDocument]) -> str:
+    """Build a PR-agnostic docs brief for repository-level KB distillation."""
+    blocks: List[str] = []
+    for doc in docs[:5]:
+        lines = []
+        for raw in doc.content.splitlines():
+            line = raw.strip()
+            if not line:
+                continue
+            if line.startswith("#") or len(lines) < 6:
+                lines.append(line[:240])
+            if len(lines) >= 8:
+                break
+        if lines:
+            blocks.append(f"{doc.path}: " + " ".join(lines))
+    return "\n".join(blocks)[:4000]
 
 
 def _format_pr_context(pr_context: GitHubPullRequestContext | None) -> str:

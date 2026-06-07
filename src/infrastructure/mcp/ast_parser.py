@@ -130,6 +130,13 @@ class MCPASTParser(IASTParser):
                 dl = int(definition_line)
             except (TypeError, ValueError):
                 dl = None
+        definition_end_line = raw_entity.get("definition_end_line")
+        del_: Optional[int] = None
+        if definition_end_line is not None:
+            try:
+                del_ = int(definition_end_line)
+            except (TypeError, ValueError):
+                del_ = None
 
         return CodeEntity(
             name=str(raw_entity.get("name", "unknown")),
@@ -138,6 +145,7 @@ class MCPASTParser(IASTParser):
             body=str(raw_entity.get("body", "")),
             dependencies=[str(dep) for dep in dependencies],
             definition_line=dl,
+            definition_end_line=del_,
         )
 
     def _map_definitions_payload(self, payload: Dict[str, Any]) -> List[SymbolDefinition]:

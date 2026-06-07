@@ -8,6 +8,11 @@ from pydantic import BaseModel
 from typing import Any, Literal, Optional, Type
 
 from src.config import Settings, get_settings
+from src.infrastructure.llm.defaults import DEFAULT_LOCAL_MODEL_KEY, DEFAULT_LOCAL_MODEL_PATH
+from src.infrastructure.llm.langsmith import (
+    configure_langsmith_environment,
+    langsmith_model_metadata,
+)
 
 
 
@@ -67,6 +72,10 @@ MODELS = {
         model_name="qwen3-coder",
         provider="local",
     ),
+    DEFAULT_LOCAL_MODEL_KEY: LLMConfig(
+        model_name=DEFAULT_LOCAL_MODEL_PATH,
+        provider="local",
+    ),
     "qwen3.5-35b-a3b": LLMConfig(
         model_name="/lustre/fs1/home/dy828490/bushwhack_dev/qwen-3.5-35b-a3b",
         provider="local",
@@ -84,19 +93,21 @@ class Models:
     """
 
     DEFAULT_ROLE_MODELS = {
-        "explorer": "qwen3.5-35b-a3b",
-        "planner": "qwen3.5-35b-a3b",
-        "worker": "qwen3.5-35b-a3b",
-        "synthesizer": "qwen3.5-35b-a3b",
+        "explorer": DEFAULT_LOCAL_MODEL_KEY,
+        "planner": DEFAULT_LOCAL_MODEL_KEY,
+        "worker": DEFAULT_LOCAL_MODEL_KEY,
+        "synthesizer": DEFAULT_LOCAL_MODEL_KEY,
     }
 
     @staticmethod
     def get(model_key: str, max_completion_tokens: int | None = None):
         config = _get_model_config(model_key)
+        settings = get_settings()
+        configure_langsmith_environment(settings)
         llm_class = _get_llm_class(config.provider)
         llm_kwargs = _build_llm_kwargs(
             config,
-            settings=get_settings(),
+            settings=settings,
             max_completion_tokens=max_completion_tokens,
         )
         return llm_class(**llm_kwargs)
@@ -128,19 +139,36 @@ class Models:
         )
 
     @staticmethod
-    def worker(schema: Type[BaseModel], model_key: Optional[str] = None):
+    def worker(
+        schema: Type[BaseModel],
+        model_key: Optional[str] = None,
+        max_completion_tokens: int | None = None,
+    ):
         settings = get_settings()
         selected_model = model_key or Models.DEFAULT_ROLE_MODELS["worker"]
+        cap = (
+            max_completion_tokens
+            if max_completion_tokens is not None
+            else settings.reviewer_worker_max_completion_tokens
+        )
         return Models.get_structured(
             selected_model,
             schema,
-            max_completion_tokens=settings.reviewer_worker_max_completion_tokens,
+            max_completion_tokens=cap,
         )
 
     @staticmethod
-    def synthesizer(schema: Type[BaseModel], model_key: Optional[str] = None):
+    def synthesizer(
+        schema: Type[BaseModel],
+        model_key: Optional[str] = None,
+        max_completion_tokens: int | None = None,
+    ):
         selected_model = model_key or Models.DEFAULT_ROLE_MODELS["synthesizer"]
-        return Models.get_structured(selected_model, schema)
+        return Models.get_structured(
+            selected_model,
+            schema,
+            max_completion_tokens=max_completion_tokens,
+        )
 
 
 def _get_model_config(model_key: str) -> LLMConfig:
@@ -184,14 +212,21 @@ def _build_llm_kwargs(
     settings: Settings,
     max_completion_tokens: int | None = None,
 ) -> dict[str, Any]:
-    kwargs: dict[str, Any] = {"model": config.model_name}
+    kwargs: dict[str, Any] = {
+        "model": config.model_name,
+        "metadata": langsmith_model_metadata(config.model_name, config.provider),
+    }
     if max_completion_tokens is not None:
         kwargs["max_completion_tokens"] = max_completion_tokens
+    if settings.llm_temperature is not None:
+        kwargs["temperature"] = settings.llm_temperature
     if config.provider == "local":
         kwargs["base_url"] = settings.local_llm_base_url
         kwargs["api_key"] = settings.local_llm_api_key
         kwargs["timeout"] = settings.local_llm_timeout_seconds
         kwargs["max_retries"] = settings.local_llm_max_retries
+        if settings.llm_presence_penalty is not None:
+            kwargs["presence_penalty"] = settings.llm_presence_penalty
         return kwargs
 
     if not config.api_key_env:
@@ -205,6 +240,8 @@ def _build_llm_kwargs(
         kwargs["google_api_key"] = api_key_value
     elif config.provider in {"openai", "anthropic"}:
         kwargs["api_key"] = api_key_value
+        if config.provider == "openai" and settings.llm_presence_penalty is not None:
+            kwargs["presence_penalty"] = settings.llm_presence_penalty
 
     return kwargs
 

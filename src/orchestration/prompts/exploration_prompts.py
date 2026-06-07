@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Sequence
 
-from src.domain.schemas import CommunitySemanticSummary, CommunityWorkItem
+from src.domain.schemas import CommunitySemanticSummary, CommunityWorkItem, ReviewKBRecord
 
 from src.orchestration.prompts.renderer import load_exploration_prompt
 
@@ -83,4 +83,70 @@ def render_semantic_merge_prompt(summaries: Sequence[CommunitySemanticSummary]) 
     return _fill_template(
         load_exploration_prompt("semantic_merge.md"),
         community_summaries=block,
+    )
+
+
+def render_repository_kb_community_distill_prompt(*, pack_json: str) -> str:
+    """Prompt bounded community-level Repository KB distillation."""
+    return _fill_template(
+        load_exploration_prompt("repository_kb_community_distill.md"),
+        pack_json=pack_json,
+    )
+
+
+def render_repository_kb_shard_distill_prompt(*, pack_json: str) -> str:
+    """Prompt bounded lane/shard Repository KB distillation."""
+    return _fill_template(
+        load_exploration_prompt("repository_kb_shard_distill.md"),
+        pack_json=pack_json,
+    )
+
+
+def render_repository_kb_community_merge_prompt(*, pack_json: str) -> str:
+    """Prompt community-level synthesis from shard summary records."""
+    return _fill_template(
+        load_exploration_prompt("repository_kb_community_merge.md"),
+        pack_json=pack_json,
+    )
+
+
+def render_repository_kb_repo_distill_prompt(*, pack_json: str) -> str:
+    """Prompt bounded repo-level Repository KB distillation."""
+    return _fill_template(
+        load_exploration_prompt("repository_kb_repo_distill.md"),
+        pack_json=pack_json,
+    )
+
+
+def render_semantic_merge_from_kb_prompt(
+    summaries: Sequence[ReviewKBRecord],
+    *,
+    max_chars: int | None = None,
+) -> str:
+    """Prompt global synthesis from Repository KB summary records."""
+    lines = []
+    budget = max_chars or 120000
+    for record in summaries:
+        meta = record.metadata
+        details = [
+            f"scope={meta.get('summary_scope') or 'unknown'}",
+            f"confidence={record.confidence}",
+        ]
+        for key in ("boundary_scope", "community_id", "file_path", "fan_in", "fan_out"):
+            value = meta.get(key)
+            if value not in (None, "", []):
+                details.append(f"{key}={value}")
+        deps = meta.get("dependency_community_ids")
+        if isinstance(deps, list) and deps:
+            details.append("deps=" + ",".join(str(x) for x in deps[:8]))
+        line = (
+            f"- {record.id} ({'; '.join(details)}): "
+            f"{record.summary[:500]}"
+        )
+        if len("\n".join([*lines, line])) > budget:
+            break
+        lines.append(line)
+    return _fill_template(
+        load_exploration_prompt("semantic_merge.md"),
+        community_summaries="\n".join(lines),
     )

@@ -24,10 +24,139 @@ from src.infrastructure.llm.local_status import (
     sleep_for_retry,
     status_urls,
 )
-from src.infrastructure.llm.token_usage import extract_total_tokens_from_llm_result, parse_structured_output
+from src.infrastructure.llm.token_usage import parse_structured_output
+from src.infrastructure.llm.trace import trace_from_exception, trace_llm_call
 from src.orchestration.prompts.exploration_prompts import render_community_semantic_prompt
 
 logger = logging.getLogger(__name__)
+
+MAX_SUMMARY_FILES = 8
+MAX_SUMMARY_SYMBOLS = 15
+MAX_SUMMARY_UNVERIFIED_CALLS = 20
+MAX_SUMMARY_WARNINGS = 5
+
+_COMPACT_RETRY_APPENDIX = (
+    "\n\n## OUTPUT BUDGET (retry - required)\n"
+    "Your previous response exceeded the length limit. Return the smallest valid high-level map. "
+    "Use at most 3 file_summaries, 5 symbol_summaries, 5 unverified_calls, and 2 short warnings. "
+    "Keep every purpose/rationale under 120 characters. No prose outside the schema fields."
+)
+
+
+def _is_length_finish_error(exc: Exception) -> bool:
+    if "LengthFinish" in exc.__class__.__name__:
+        return True
+    msg = str(exc).lower()
+    return "length limit" in msg or "length_finish" in msg
+
+
+def _coverage_metadata(
+    item: CommunityWorkItem,
+    summary: CommunitySemanticSummary,
+    *,
+    raw_file_count: int,
+    raw_symbol_count: int,
+    raw_call_count: int,
+) -> Dict[str, int | bool]:
+    total_files = item.total_files or len(item.file_paths)
+    total_symbols = item.total_symbols or len(item.symbol_context_lines)
+    total_targets = item.total_unverified_targets or len(item.outbound_cross_community_targets)
+    summarized_files = len(summary.file_summaries)
+    summarized_symbols = len(summary.symbol_summaries)
+    summarized_targets = len(summary.unverified_calls)
+    omitted_files = max(0, total_files - summarized_files)
+    omitted_symbols = max(0, total_symbols - summarized_symbols)
+    omitted_targets = max(0, total_targets - summarized_targets)
+    return {
+        "summary_truncated": (
+            raw_file_count > summarized_files
+            or raw_symbol_count > summarized_symbols
+            or raw_call_count > summarized_targets
+            or omitted_files > 0
+            or omitted_symbols > 0
+            or omitted_targets > 0
+        ),
+        "total_files": total_files,
+        "summarized_files": summarized_files,
+        "omitted_files": omitted_files,
+        "total_symbols": total_symbols,
+        "summarized_symbols": summarized_symbols,
+        "omitted_symbols": omitted_symbols,
+        "total_unverified_targets": total_targets,
+        "summarized_unverified_targets": summarized_targets,
+        "omitted_unverified_targets": omitted_targets,
+    }
+
+
+def _clamp_summary(summary: CommunitySemanticSummary) -> tuple[CommunitySemanticSummary, Dict[str, int]]:
+    raw_counts = {
+        "file_summaries": len(summary.file_summaries),
+        "symbol_summaries": len(summary.symbol_summaries),
+        "unverified_calls": len(summary.unverified_calls),
+    }
+    return (
+        summary.model_copy(
+            update={
+                "file_summaries": summary.file_summaries[:MAX_SUMMARY_FILES],
+                "symbol_summaries": summary.symbol_summaries[:MAX_SUMMARY_SYMBOLS],
+                "unverified_calls": summary.unverified_calls[:MAX_SUMMARY_UNVERIFIED_CALLS],
+            }
+        ),
+        raw_counts,
+    )
+
+
+def _compact_retry_item(item: CommunityWorkItem) -> CommunityWorkItem:
+    slim_symbols: List[str] = []
+    for line in item.symbol_context_lines[:8]:
+        header = line.splitlines()[0] if line else ""
+        if header:
+            slim_symbols.append(header[:300])
+    return item.model_copy(
+        update={
+            "file_paths": item.file_paths[:5],
+            "symbol_context_lines": slim_symbols,
+            "outbound_cross_community_targets": item.outbound_cross_community_targets[:10],
+            "target_communities_hint": item.target_communities_hint[:10],
+        }
+    )
+
+
+def _should_start_compact(item: CommunityWorkItem) -> bool:
+    total_files = item.total_files or len(item.file_paths)
+    total_symbols = item.total_symbols or len(item.symbol_context_lines)
+    total_targets = item.total_unverified_targets or len(item.outbound_cross_community_targets)
+    return (
+        total_files > MAX_SUMMARY_FILES * 2
+        or total_symbols > MAX_SUMMARY_SYMBOLS * 2
+        or total_targets > MAX_SUMMARY_UNVERIFIED_CALLS * 2
+    )
+
+
+def _deterministic_fallback_summary(item: CommunityWorkItem, reason: str) -> CommunitySemanticSummary:
+    file_summaries = [
+        FileSemanticSummary(
+            file_node_id=f"file:{path}",
+            purpose="Representative file from this community; inspect the structural graph for details.",
+            key_symbols=[],
+            confidence=0.2,
+        )
+        for path in item.file_paths[:3]
+    ]
+    return CommunitySemanticSummary(
+        community_id=item.community_id,
+        label=f"Community {item.community_id}",
+        purpose=(
+            f"Deterministic high-level fallback after {reason}. "
+            f"Community has {item.total_files or len(item.file_paths)} files and "
+            f"{item.total_symbols or len(item.symbol_context_lines)} symbols; use the structural graph for detail."
+        ),
+        file_summaries=file_summaries,
+        symbol_summaries=[],
+        unverified_calls=[],
+        cross_community_dependencies=sorted({c for c in item.target_communities_hint if c >= 0}),
+        confidence=0.2,
+    )
 
 
 def _is_local_model(model_key: str) -> bool:
@@ -98,8 +227,13 @@ def make_community_semantic_agent_node(
                 "metadata": {"semantic_phase2": {"community_stub": item.community_id}},
             }
 
-        prompt = render_community_semantic_prompt(repo_path=repo_path, item=item)
+        base_prompt = render_community_semantic_prompt(repo_path=repo_path, item=item)
+        compact_prompt = render_community_semantic_prompt(
+            repo_path=repo_path,
+            item=_compact_retry_item(item),
+        )
         llm_tokens = 0
+        llm_trace: List[Dict[str, Any]] = []
         warnings: List[str] = []
         attempts = 0
         last_exc: Exception | None = None
@@ -110,15 +244,38 @@ def make_community_semantic_agent_node(
             else None
         )
         attempt = 0
+        compact_retry = _should_start_compact(item)
+        if compact_retry:
+            warnings.append("community_semantic_compact:first_pass")
+        raw_counts = {"file_summaries": 0, "symbol_summaries": 0, "unverified_calls": 0}
         while True:
             attempt += 1
             attempts = attempt
             try:
-                llm = Models.worker(CommunityAgentOutput, model_key=selected_model)
-                invoke_result = llm.invoke(prompt)
+                llm = Models.worker(
+                    CommunityAgentOutput,
+                    model_key=selected_model,
+                    max_completion_tokens=resolved_settings.semantic_agent_max_completion_tokens,
+                )
+                prompt = f"{compact_prompt}{_COMPACT_RETRY_APPENDIX}" if compact_retry else base_prompt
+                traced = trace_llm_call(
+                    llm,
+                    prompt,
+                    state=state,
+                    node_name="community_semantic_agent",
+                    model_key=selected_model,
+                    schema_name="CommunityAgentOutput",
+                    request_label=f"community_{item.community_id}:{'compact' if compact_retry else 'primary'}",
+                    input_summary={
+                        "community_id": item.community_id,
+                        "file_count": len(item.file_paths),
+                    },
+                )
+                invoke_result = traced.result
                 parsed = parse_structured_output(invoke_result, CommunityAgentOutput)
-                llm_tokens = extract_total_tokens_from_llm_result(invoke_result)
-                warnings = [*warnings, *parsed.warnings]
+                llm_tokens += traced.tokens
+                llm_trace.extend(traced.trace_records)
+                warnings = [*warnings, *parsed.warnings[:MAX_SUMMARY_WARNINGS]]
                 summary = parsed.summary
                 summary = summary.model_copy(
                     update={
@@ -128,9 +285,11 @@ def make_community_semantic_agent_node(
                         ),
                     }
                 )
+                summary, raw_counts = _clamp_summary(summary)
                 last_exc = None
                 break
             except Exception as exc:  # noqa: BLE001
+                llm_trace.extend(trace_from_exception(exc))
                 last_exc = exc
                 timeout_with_patience_left = (
                     _is_timeout_exception(exc)
@@ -163,6 +322,35 @@ def make_community_semantic_agent_node(
                         status_detail,
                         exc,
                     )
+                if _is_length_finish_error(exc) and not compact_retry:
+                    compact_retry = True
+                    warnings.append("community_semantic_llm_retry:reason=length")
+                    logger.warning(
+                        "community_semantic_agent LLM compact retry run_id=%s community=%s attempt=%s err=%s",
+                        run_id,
+                        item.community_id,
+                        attempt,
+                        exc,
+                    )
+                    continue
+                if _is_length_finish_error(exc) and compact_retry:
+                    warnings.append("community_semantic_deterministic_fallback:reason=length")
+                    logger.warning(
+                        "community_semantic_agent deterministic fallback after length retry "
+                        "run_id=%s community=%s attempt=%s err=%s",
+                        run_id,
+                        item.community_id,
+                        attempt,
+                        exc,
+                    )
+                    summary = _deterministic_fallback_summary(item, "LLM length failures")
+                    raw_counts = {
+                        "file_summaries": len(summary.file_summaries),
+                        "symbol_summaries": 0,
+                        "unverified_calls": 0,
+                    }
+                    last_exc = None
+                    break
                 if attempt >= max_attempts:
                     break
                 logger.warning(
@@ -193,6 +381,7 @@ def make_community_semantic_agent_node(
                 cross_community_dependencies=sorted({c for c in item.target_communities_hint if c >= 0}),
                 confidence=0.1,
             )
+            raw_counts = {"file_summaries": 0, "symbol_summaries": 0, "unverified_calls": 0}
 
         flat_targets: List[UnverifiedCallTarget] = []
         for call in summary.unverified_calls:
@@ -206,11 +395,19 @@ def make_community_semantic_agent_node(
 
         meta = dict(state.get("metadata", {}))
         meta.setdefault("semantic_phase2", {})
+        coverage = _coverage_metadata(
+            item,
+            summary,
+            raw_file_count=raw_counts["file_summaries"],
+            raw_symbol_count=raw_counts["symbol_summaries"],
+            raw_call_count=raw_counts["unverified_calls"],
+        )
         meta["semantic_phase2"][f"community_{item.community_id}"] = {
             "model": selected_model,
-            "warnings": warnings,
+            "warnings": warnings[:MAX_SUMMARY_WARNINGS],
             "tokens": llm_tokens,
             "attempts": attempts,
+            **coverage,
         }
 
         return {
@@ -219,6 +416,7 @@ def make_community_semantic_agent_node(
             "metadata": meta,
             "node_history": [f"community_semantic_agent:{item.community_id}"],
             "token_usage": llm_tokens,
+            "llm_trace": llm_trace,
         }
 
     return community_semantic_agent_node

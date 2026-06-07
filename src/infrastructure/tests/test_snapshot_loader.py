@@ -245,11 +245,14 @@ class TestSnapshotLoaderIntegration:
         if not base.exists():
             pytest.skip("bushwhack_runs directory not found")
 
-        snapshot_dirs = [d for d in base.iterdir() if d.is_dir()]
+        snapshot_dirs = sorted(d for d in base.iterdir() if d.is_dir())
         if not snapshot_dirs:
             pytest.skip("No snapshot directories found in bushwhack_runs")
 
-        snapshot_dir = snapshot_dirs[0]
+        snapshot_dir = next((d for d in snapshot_dirs if (d / "snapshot.json").is_file()), None)
+        if snapshot_dir is None:
+            pytest.skip("No run directory with snapshot.json under bushwhack_runs")
+
         run_id = snapshot_dir.name
 
         # Test loading snapshot pointer
@@ -275,11 +278,14 @@ class TestSnapshotLoaderIntegration:
         if not base.exists():
             pytest.skip("bushwhack_runs directory not found")
 
-        snapshot_dirs = [d for d in base.iterdir() if d.is_dir()]
+        snapshot_dirs = sorted(d for d in base.iterdir() if d.is_dir())
         if not snapshot_dirs:
             pytest.skip("No snapshot directories found in bushwhack_runs")
 
-        snapshot_dir = snapshot_dirs[0]
+        snapshot_dir = next((d for d in snapshot_dirs if (d / "snapshot.json").is_file()), None)
+        if snapshot_dir is None:
+            pytest.skip("No run directory with snapshot.json under bushwhack_runs")
+
         run_id = snapshot_dir.name
 
         snapshot = loader.load_snapshot_pointer(run_id)

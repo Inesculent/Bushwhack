@@ -212,6 +212,8 @@ class StructuralGraphBuilder:
                     symbol_name=entity.name,
                     symbol_type=entity.type,
                     signature=entity.signature,
+                    definition_line=entity.definition_line,
+                    definition_end_line=entity.definition_end_line,
                 )
                 graph.add_edge(
                     file_node_id,

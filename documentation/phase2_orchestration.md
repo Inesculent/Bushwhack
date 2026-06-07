@@ -2,6 +2,8 @@
 
 This document shows the reviewer graph with the Phase 2 semantic bubble-up phase inserted between structural extraction and review planning.
 
+Note: the current implementation now uses a filesystem-backed Repository Knowledge Base as the primary repository understanding layer. The broad `community_semantic_agent` fanout remains as a compatibility path, but new live runs build deterministic KB records and KB-derived community summaries first. See [repository_kb_architecture.md](repository_kb_architecture.md) for the current repository-scoped design and [review_kb_architecture.md](review_kb_architecture.md) for earlier migration context.
+
 ## End-to-End Reviewer Graph
 
 ```mermaid

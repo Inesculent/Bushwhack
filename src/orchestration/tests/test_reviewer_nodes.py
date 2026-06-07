@@ -1,5 +1,40 @@
-from src.domain.schemas import ReviewFinding, ReviewTask, StructuralTopologyCommunity, StructuralTopologySummary
-from src.orchestration.nodes.application.planner import _normalize_tasks, _render_planner_prompt, make_review_planner_node
+from pathlib import Path
+
+from src.domain.schemas import (
+    CodeEntity,
+    ReviewFinding,
+    ReviewSurface,
+    ReviewTask,
+    StructuralTopologyCommunity,
+    StructuralTopologySummary,
+)
+from src.orchestration.nodes.application.planner import (
+    _amend_diff_narrowed_tasks,
+    _baseline_diff_local_correctness_task,
+    _chunk_logic_tasks_by_surface,
+    _diff_signals_structured_extraction,
+    _ensure_diff_local_correctness_task,
+    _ensure_structured_extraction_logic_task,
+    _is_duplicate_task,
+    _normalize_tasks,
+    _render_planner_prompt,
+    _target_files,
+    _task_covers_structured_extraction,
+    dedupe_tasks_by_surface_dimension,
+    finalize_emitted_tasks,
+    prepare_surface_first_tasks,
+    _sanitize_batched_logic_task_description,
+    make_review_planner_node,
+    validate_surface_bound_plan,
+)
+from src.orchestration.nodes.application.actor_critic_planner import make_plan_emit_node
+from src.orchestration.context.surface_ledger import (
+    build_surface_invariants_from_ledger,
+    build_surface_ledger_from_diff,
+    changed_file_integrity_diagnostics,
+    surface_ids_for_text,
+    surface_ledger_from_state,
+)
 from src.orchestration.nodes.application.synthesizer import synthesizer_node
 from src.orchestration.nodes.application.worker import (
     ReviewTaskContext,
@@ -13,6 +48,1099 @@ class FakeContextProvider:
             explored_files=task.target_files,
             file_snippets={path: "def changed():\n    return True\n" for path in task.target_files},
         )
+
+
+def test_baseline_diff_local_task_lists_multi_surface_inventory() -> None:
+    diff = "\n".join(
+        f"diff --git a/pkg/h{i}.py b/pkg/h{i}.py\n+++ b/pkg/h{i}.py\n+class H{i}:\n+    pass\n"
+        for i in range(5)
+    )
+    state = {"git_diff": diff, "metadata": {"mental_model": {"diff_surface_inventory": [f"H{i}" for i in range(5)]}}}
+    task = _baseline_diff_local_correctness_task(["pkg/h0.py"], state)
+    assert "H0" in task.description
+    assert "H4" in task.description
+    assert "entry point" in task.description.lower()
+
+
+def test_amend_diff_narrowed_tasks_expands_logic_scope_after_bootstrap() -> None:
+    surfaces = [f"Node{i}" for i in range(6)]
+    state = {
+        "git_diff": "",
+        "metadata": {
+            "mental_model": {
+                "bootstrap_completed": True,
+                "diff_surface_inventory": surfaces,
+            }
+        },
+    }
+    narrow = ReviewTask(
+        id="logic-diff-local-5-nodes",
+        title="Diff-local correctness: 5 visible nodes",
+        description="Focus only on the 322-line excerpt; do not infer behavior for unexposed nodes.",
+        target_files=["comfy_extras/nodes_string.py"],
+        specialty="logic",
+    )
+    out = _amend_diff_narrowed_tasks([narrow], state)
+    assert "do not infer" not in out[0].description.lower()
+    assert "Node0" in out[0].description
+    assert "entry point" in out[0].description.lower()
+
+
+def test_amend_diff_narrowed_tasks_removes_generic_excerpt_limiting_scope() -> None:
+    state = {
+        "git_diff": "",
+        "metadata": {
+            "mental_model": {
+                "bootstrap_completed": True,
+                "diff_surface_inventory": ["Alpha", "Beta", "Gamma", "Delta"],
+            }
+        },
+    }
+    narrow = ReviewTask(
+        id="logic-visible-subset",
+        title="Diff-local correctness for displayed subset",
+        description=(
+            "Audit the changed handlers. Restrict review to code shown in the snippet; "
+            "ignore handlers that are not included in the displayed patch."
+        ),
+        target_files=["pkg/nodes.py"],
+        specialty="logic",
+    )
+
+    out = _amend_diff_narrowed_tasks([narrow], state)
+
+    lowered = out[0].description.lower()
+    assert "restrict review" not in lowered
+    assert "ignore handlers" not in lowered
+    assert "Alpha" in out[0].description
+    assert "entry point" in lowered
+
+
+def test_diff_signals_do_not_classify_structured_extraction_from_keywords() -> None:
+    diff = "\n".join(
+        [
+            "diff --git a/pkg/h.py b/pkg/h.py",
+            "+++ b/pkg/h.py",
+            "+    rows = re.findall(pat, s)",
+            "+    return ','.join(rows)",
+        ]
+    )
+    assert _diff_signals_structured_extraction({"git_diff": diff}) is False
+
+
+def test_mega_logic_checklist_does_not_block_structured_extraction_task() -> None:
+    mega = ReviewTask(
+        id="task-1",
+        title="Diff-local correctness for all handlers",
+        description=(
+            "Audit all handlers for branch exhaustiveness and structured result paths "
+            "and aggregation in the changed file."
+        ),
+        target_files=["pkg/h.py"],
+        specialty="logic",
+    )
+    assert _task_covers_structured_extraction(mega) is False
+
+
+def test_chunk_monolithic_logic_into_surface_scoped_shards() -> None:
+    surfaces = [f"Node{i}" for i in range(10)]
+    state = {
+        "git_diff": "diff --git a/pkg/h.py b/pkg/h.py\n+++ b/pkg/h.py\n+import re\n+re.findall(x)\n",
+        "metadata": {"mental_model": {"diff_surface_inventory": surfaces}},
+    }
+    mega = ReviewTask(
+        id="task-1",
+        title="Diff-local correctness all nodes",
+        description="Audit each of: " + ", ".join(surfaces) + ".",
+        target_files=["pkg/h.py"],
+        specialty="logic",
+    )
+    out = _chunk_logic_tasks_by_surface(
+        [mega, ReviewTask(id="task-2", title="Security", description="ReDoS", target_files=["pkg/h.py"], specialty="security")],
+        state,
+    )
+    logic = [t for t in out if t.specialty == "logic"]
+    assert len(logic) >= 5
+    assert all("do not review any other surface" in t.description.lower() for t in logic)
+    mentioned = {name for t in logic for name in surfaces if name in t.description}
+    assert mentioned == set(surfaces)
+
+
+def test_chunk_comfy_like_inventory_signal_tasks() -> None:
+    surfaces = [
+        "StringConcatenate",
+        "StringSubstring",
+        "StringLength",
+        "CaseConverter",
+        "StringTrim",
+        "StringReplace",
+        "StringContains",
+        "StringCompare",
+        "RegexMatch",
+        "RegexExtract",
+    ]
+    diff = "\n".join(
+        [
+            "diff --git a/comfy_extras/nodes_string.py b/comfy_extras/nodes_string.py",
+            "+++ b/comfy_extras/nodes_string.py",
+            "+class StringCompare():",
+            "+    elif mode == 'Equal':",
+            "+        return a == b",
+            "+    elif mode == 'Ends With':",
+            "+        return a.endswith(b)",
+            "+class RegexExtract():",
+            "+    rows = re.findall(pat, s)",
+            "+    return join_delimiter.join(rows)",
+        ]
+    )
+    state = {"git_diff": diff, "metadata": {"mental_model": {"diff_surface_inventory": surfaces}}}
+    mega = ReviewTask(
+        id="task-1",
+        title="Diff-local correctness",
+        description="Diff-local correctness for all handlers: " + ", ".join(surfaces),
+        target_files=["comfy_extras/nodes_string.py"],
+        specialty="logic",
+    )
+    out = _chunk_logic_tasks_by_surface([mega], state)
+    logic = [t for t in out if t.specialty == "logic"]
+    assert len(logic) >= 4
+    regex_tasks = [t for t in logic if "RegexExtract" in t.description]
+    assert regex_tasks
+    assert any("changed behavior" in t.description.lower() for t in regex_tasks)
+    compare_tasks = [t for t in logic if "StringCompare" in t.description]
+    assert compare_tasks
+    assert any("changed behavior" in t.description.lower() for t in compare_tasks)
+
+
+def test_finalize_emitted_tasks_preserves_surface_ids_for_many_single_file_surfaces() -> None:
+    surfaces = [f"Node{i}" for i in range(9)]
+    diff = "\n".join(
+        [
+            "diff --git a/pkg/nodes.py b/pkg/nodes.py",
+            "+++ b/pkg/nodes.py",
+            "@@ -0,0 +1,36 @@",
+            *[f"+class {name}:\n+    pass" for name in surfaces],
+        ]
+    )
+    state = {"git_diff": diff}
+    mega = ReviewTask(
+        id="logic-all",
+        title="Diff-local correctness for every node",
+        description="Audit all changed nodes: " + ", ".join(surfaces),
+        target_files=["pkg/nodes.py"],
+        specialty="logic",
+    )
+
+    out = finalize_emitted_tasks([mega], state)
+
+    logic = [task for task in out if task.specialty == "logic"]
+    assert len(logic) >= 4
+    owners: dict[str, str] = {}
+    for task in logic:
+        assert task.surface_ids
+        for sid in task.surface_ids:
+            assert sid not in owners
+            owners[sid] = task.id
+        names_in_description = [name for name in surfaces if name in task.description]
+        assert len(names_in_description) < len(surfaces)
+    assert len(owners) == len(build_surface_ledger_from_diff(diff))
+
+
+def test_surface_plan_validation_rejects_non_changed_target_file() -> None:
+    diff = (
+        "diff --git a/src/app.py b/src/app.py\n"
+        "+++ b/src/app.py\n"
+        "@@ -0,0 +1,2 @@\n"
+        "+def handle():\n"
+        "+    return None\n"
+    )
+    task = ReviewTask(
+        id="logic-handle",
+        title="Diff-local correctness: handle",
+        description="Audit handle only.",
+        target_files=["tests/test_app.py"],
+        specialty="logic",
+    )
+
+    diagnostics = validate_surface_bound_plan([task], {"git_diff": diff})
+
+    assert diagnostics["ok"] is False
+    assert diagnostics["invalid_target_files"] == [
+        {"task_id": "logic-handle", "file_path": "tests/test_app.py"}
+    ]
+
+
+def test_target_files_uses_canonical_new_paths_for_renames() -> None:
+    diff = (
+        "diff --git a/src/old_name.py b/src/new_name.py\n"
+        "similarity index 88%\n"
+        "rename from src/old_name.py\n"
+        "rename to src/new_name.py\n"
+        "--- a/src/old_name.py\n"
+        "+++ b/src/new_name.py\n"
+        "@@ -1 +1 @@\n"
+        "-old = True\n"
+        "+new = True\n"
+    )
+
+    assert _target_files({"git_diff": diff}) == ["src/new_name.py"]
+
+
+def test_changed_file_integrity_guard_adds_missing_metadata_surface() -> None:
+    diff = (
+        "diff --git a/src/app.py b/src/app.py\n"
+        "+++ b/src/app.py\n"
+        "@@ -0,0 +1,2 @@\n"
+        "+def handle():\n"
+        "+    return None\n"
+    )
+    state = {
+        "git_diff": diff,
+        "metadata": {"benchmark_changed_files": ["src/app.py", "comfy/ldm/cosmos/blocks.py"]},
+    }
+
+    diagnostics = changed_file_integrity_diagnostics(state)
+    ledger = surface_ledger_from_state(state)
+
+    assert diagnostics["status"] == "degraded"
+    assert diagnostics["missing_from_diff_union"] == ["comfy/ldm/cosmos/blocks.py"]
+    guarded = next(surface for surface in ledger if surface.file_path == "comfy/ldm/cosmos/blocks.py")
+    assert guarded.source == "changed_file_integrity_guard"
+    assert guarded.kind == "file"
+    assert guarded.confidence == 0.65
+
+
+def test_surface_plan_validation_allows_trusted_metadata_changed_file() -> None:
+    diff = (
+        "diff --git a/src/app.py b/src/app.py\n"
+        "+++ b/src/app.py\n"
+        "@@ -0,0 +1,2 @@\n"
+        "+def handle():\n"
+        "+    return None\n"
+    )
+    task = ReviewTask(
+        id="logic-blocks",
+        title="Diff-local correctness: blocks.py",
+        description="Audit blocks.py metadata changed file.",
+        target_files=["comfy/ldm/cosmos/blocks.py"],
+        specialty="logic",
+    )
+
+    diagnostics = validate_surface_bound_plan(
+        [task],
+        {"git_diff": diff, "metadata": {"benchmark_changed_files": ["comfy/ldm/cosmos/blocks.py"]}},
+    )
+
+    assert diagnostics["invalid_target_files"] == []
+    assert diagnostics["changed_file_inventory_diagnostics"]["status"] == "degraded"
+
+
+def test_surface_ledger_recalls_existing_entity_when_body_changes() -> None:
+    diff = (
+        "diff --git a/src/cache.py b/src/cache.py\n"
+        "+++ b/src/cache.py\n"
+        "@@ -12,7 +12,7 @@\n"
+        " def _untouch(blocks):\n"
+        "     for block in blocks:\n"
+        "-        queue.append(block)\n"
+        "+        queue.appendleft(block)\n"
+    )
+    entities = {
+        "src/cache.py": [
+            CodeEntity(
+                name="_untouch",
+                type="function",
+                signature="def _untouch(blocks):",
+                body="def _untouch(blocks):\n    for block in blocks:\n        queue.appendleft(block)\n",
+                definition_line=10,
+                definition_end_line=14,
+            )
+        ]
+    }
+
+    ledger = build_surface_ledger_from_diff(diff, entities_by_file=entities)
+
+    untouch = next(surface for surface in ledger if surface.name == "_untouch")
+    assert untouch.source == "ast_enclosing_diff_hunk"
+    assert untouch.line_start == 10
+    assert untouch.line_end == 14
+
+
+def test_surface_ledger_does_not_assign_ambiguous_inventory_to_first_file() -> None:
+    diff = (
+        "diff --git a/pkg/a.py b/pkg/a.py\n"
+        "+++ b/pkg/a.py\n"
+        "@@ -1,1 +1,1 @@\n"
+        "-old_a()\n"
+        "+new_a()\n"
+        "diff --git a/pkg/b.py b/pkg/b.py\n"
+        "+++ b/pkg/b.py\n"
+        "@@ -1,1 +1,1 @@\n"
+        "-old_b()\n"
+        "+new_b()\n"
+    )
+
+    ledger = build_surface_ledger_from_diff(diff, inventory=["SharedName"])
+
+    assert all(surface.name != "SharedName" for surface in ledger)
+
+
+def test_surface_ids_for_text_ignores_negated_surface_mentions() -> None:
+    surface = ReviewSurface(
+        surface_id="surface:b",
+        name="model_patcher.py",
+        kind="file",
+        file_path="pkg/model_patcher.py",
+        confidence=0.95,
+    )
+
+    ids = surface_ids_for_text("Audit cache behavior without reviewing model_patcher.py.", [surface])
+
+    assert ids == []
+
+
+def test_surface_plan_validation_ignores_out_of_scope_file_surface_overlap() -> None:
+    diff = (
+        "diff --git a/pkg/a.py b/pkg/a.py\n"
+        "+++ b/pkg/a.py\n"
+        "@@ -0,0 +1,2 @@\n"
+        "+def handle_a():\n"
+        "+    return None\n"
+        "diff --git a/pkg/b.py b/pkg/b.py\n"
+        "+++ b/pkg/b.py\n"
+        "@@ -0,0 +1,2 @@\n"
+        "+def handle_b():\n"
+        "+    return None\n"
+    )
+    file_surface = ReviewSurface(
+        surface_id="surface:file-b",
+        name="b.py",
+        kind="file",
+        file_path="pkg/b.py",
+        confidence=0.95,
+    )
+    handle_a = ReviewSurface(
+        surface_id="surface:handle-a",
+        name="handle_a",
+        kind="function",
+        file_path="pkg/a.py",
+        confidence=0.95,
+    )
+    handle_b = ReviewSurface(
+        surface_id="surface:handle-b",
+        name="handle_b",
+        kind="function",
+        file_path="pkg/b.py",
+        confidence=0.95,
+    )
+    state = {
+        "git_diff": diff,
+        "metadata": {
+            "mental_model": {
+                "surface_ledger": [
+                    file_surface.model_dump(),
+                    handle_a.model_dump(),
+                    handle_b.model_dump(),
+                ]
+            }
+        },
+    }
+    first = ReviewTask(
+        id="logic-a",
+        title="Diff-local correctness in a.py",
+        description="Audit a.py only, without reviewing b.py.",
+        target_files=["pkg/a.py"],
+        surface_ids=["surface:handle-a", "surface:file-b"],
+        specialty="logic",
+    )
+    second = ReviewTask(
+        id="logic-b",
+        title="Diff-local correctness in b.py",
+        description="Audit b.py.",
+        target_files=["pkg/b.py"],
+        surface_ids=["surface:file-b", "surface:handle-b"],
+        specialty="logic",
+    )
+
+    diagnostics = validate_surface_bound_plan([first, second], state)
+
+    assert diagnostics["ok"] is True
+    assert diagnostics["overlapping_tasks"] == []
+
+
+def test_surface_plan_validation_reports_same_symbol_logic_overlap_without_blocking() -> None:
+    diff = (
+        "diff --git a/pkg/a.py b/pkg/a.py\n"
+        "+++ b/pkg/a.py\n"
+        "@@ -0,0 +1,2 @@\n"
+        "+def handle():\n"
+        "+    return None\n"
+    )
+    surface = ReviewSurface(
+        surface_id="surface:handle",
+        name="handle",
+        kind="function",
+        file_path="pkg/a.py",
+        confidence=0.95,
+    )
+    state = {
+        "git_diff": diff,
+        "metadata": {"mental_model": {"surface_ledger": [surface.model_dump()]}},
+    }
+    first = ReviewTask(
+        id="logic-a",
+        title="Diff-local correctness: handle branches",
+        description="Audit handle branch behavior.",
+        target_files=["pkg/a.py"],
+        surface_ids=["surface:handle"],
+        specialty="logic",
+    )
+    second = ReviewTask(
+        id="logic-b",
+        title="Diff-local correctness: handle returns",
+        description="Audit handle return behavior.",
+        target_files=["pkg/a.py"],
+        surface_ids=["surface:handle"],
+        specialty="logic",
+    )
+
+    diagnostics = validate_surface_bound_plan([first, second], state)
+
+    assert diagnostics["ok"] is True
+    assert diagnostics["overlapping_tasks"] == [
+        {"surface_id": "surface:handle", "task_ids": ["logic-a", "logic-b"]}
+    ]
+
+
+def test_surface_first_fill_adds_missing_load_image_set_node_tasks() -> None:
+    diff = (
+        "diff --git a/comfy_extras/nodes_train.py b/comfy_extras/nodes_train.py\n"
+        "+++ b/comfy_extras/nodes_train.py\n"
+        "@@ -100,6 +100,8 @@\n"
+        "+class LoadImageSetNode:\n"
+        "+    pass\n"
+        "@@ -170,6 +172,8 @@\n"
+        "+class LoadImageSetFromFolderNode:\n"
+        "+    pass\n"
+    )
+    surfaces = [
+        ReviewSurface(
+            surface_id="surface:load-image-set",
+            name="LoadImageSetNode",
+            kind="class",
+            file_path="comfy_extras/nodes_train.py",
+            confidence=0.95,
+            line_start=101,
+        ),
+        ReviewSurface(
+            surface_id="surface:load-image-set-folder",
+            name="LoadImageSetFromFolderNode",
+            kind="class",
+            file_path="comfy_extras/nodes_train.py",
+            confidence=0.95,
+            line_start=173,
+        ),
+    ]
+    state = {
+        "git_diff": diff,
+        "metadata": {"mental_model": {"surface_ledger": [surface.model_dump() for surface in surfaces]}},
+    }
+    planner_task = ReviewTask(
+        id="general-train",
+        title="General train node review",
+        description="Review the train node update broadly.",
+        target_files=["comfy_extras/nodes_train.py"],
+        specialty="general",
+    )
+
+    tasks, meta = prepare_surface_first_tasks([planner_task], state)
+    diagnostics = validate_surface_bound_plan(tasks, state)
+
+    assert diagnostics["ok"] is True
+    assert {task.surface_ids[0] for task in tasks if task.id.startswith("review-logic-surface-fill")} == {
+        "surface:load-image-set",
+        "surface:load-image-set-folder",
+    }
+    assert [item["surface_id"] for item in meta["surface_fill_uncovered_before"]] == [
+        "surface:load-image-set",
+        "surface:load-image-set-folder",
+    ]
+
+
+def test_broad_surface_prose_does_not_create_surface_ownership() -> None:
+    diff = (
+        "diff --git a/comfy_extras/nodes_train.py b/comfy_extras/nodes_train.py\n"
+        "+++ b/comfy_extras/nodes_train.py\n"
+        "@@ -100,6 +100,8 @@\n"
+        "+class LoadImageSetNode:\n"
+        "+    pass\n"
+    )
+    surfaces = [
+        ReviewSurface(
+            surface_id="surface:load-image-set",
+            name="LoadImageSetNode",
+            kind="class",
+            file_path="comfy_extras/nodes_train.py",
+            confidence=0.95,
+        ),
+        ReviewSurface(
+            surface_id="surface:load-image-set-folder",
+            name="LoadImageSetFromFolderNode",
+            kind="class",
+            file_path="comfy_extras/nodes_train.py",
+            confidence=0.95,
+        ),
+    ]
+    state = {
+        "git_diff": diff,
+        "metadata": {"mental_model": {"surface_ledger": [surface.model_dump() for surface in surfaces]}},
+    }
+    task = ReviewTask(
+        id="logic-broad",
+        title="Audit all image-loading surfaces",
+        description=(
+            "Audit every changed entry point, including LoadImageSetNode and "
+            "LoadImageSetFromFolderNode."
+        ),
+        target_files=["comfy_extras/nodes_train.py"],
+        specialty="logic",
+    )
+
+    diagnostics = validate_surface_bound_plan([task], state)
+
+    assert diagnostics["ok"] is False
+    assert {item["surface_id"] for item in diagnostics["uncovered_surfaces"]} == {
+        "surface:load-image-set",
+        "surface:load-image-set-folder",
+    }
+    assert diagnostics["tasks_missing_surface_ids"] == ["logic-broad"]
+
+
+def test_broad_cross_surface_task_does_not_satisfy_primary_surface_coverage() -> None:
+    surfaces = [
+        ReviewSurface(
+            surface_id="surface:first",
+            name="First",
+            kind="class",
+            file_path="pkg/nodes.py",
+            confidence=0.95,
+        ),
+        ReviewSurface(
+            surface_id="surface:second",
+            name="Second",
+            kind="class",
+            file_path="pkg/nodes.py",
+            confidence=0.95,
+        ),
+    ]
+    state = {
+        "git_diff": "diff --git a/pkg/nodes.py b/pkg/nodes.py\n+++ b/pkg/nodes.py\n+class First:\n+    pass\n",
+        "metadata": {"mental_model": {"surface_ledger": [surface.model_dump() for surface in surfaces]}},
+    }
+    task = ReviewTask(
+        id="logic-cross",
+        title="Cross-surface diff-local correctness for all surfaces",
+        description="Audit all changed entry points broadly.",
+        target_files=["pkg/nodes.py"],
+        surface_ids=["surface:first", "surface:second"],
+        specialty="logic",
+    )
+
+    diagnostics = validate_surface_bound_plan([task], state)
+
+    assert diagnostics["ok"] is False
+    assert {item["surface_id"] for item in diagnostics["uncovered_surfaces"]} == {
+        "surface:first",
+        "surface:second",
+    }
+
+
+def test_generic_surface_invariants_are_evidence_requirements_not_predicted_findings() -> None:
+    surface = ReviewSurface(
+        surface_id="surface:parse",
+        name="parse_tensor_shape",
+        kind="function",
+        file_path="pkg/parser.py",
+        confidence=0.95,
+    )
+
+    invariants = build_surface_invariants_from_ledger([surface], risk_hypotheses="")
+
+    dimensions = {invariant.dimension for invariant in invariants}
+    assert dimensions == {"data shape consistency"}
+    assert all("defect" not in invariant.risk_hypothesis.lower() for invariant in invariants)
+    assert all(invariant.required_evidence for invariant in invariants)
+
+
+def test_surface_invariants_prefer_real_owner_over_class_and_input_types() -> None:
+    surfaces = [
+        ReviewSurface(
+            surface_id="surface:node",
+            name="Node",
+            kind="class",
+            file_path="pkg/nodes.py",
+            line_start=1,
+            confidence=0.95,
+        ),
+        ReviewSurface(
+            surface_id="surface:node-input",
+            name="Node.INPUT_TYPES",
+            kind="method",
+            file_path="pkg/nodes.py",
+            line_start=3,
+            confidence=0.95,
+        ),
+        ReviewSurface(
+            surface_id="surface:node-execute",
+            name="Node.execute",
+            kind="method",
+            file_path="pkg/nodes.py",
+            line_start=12,
+            confidence=0.95,
+        ),
+    ]
+
+    invariants = build_surface_invariants_from_ledger(surfaces, risk_hypotheses="")
+
+    assert len(invariants) == 1
+    assert invariants[0].surface_id == "surface:node-execute"
+
+
+def test_surface_ledger_preserves_class_method_owners() -> None:
+    diff = (
+        "diff --git a/pkg/nodes.py b/pkg/nodes.py\n"
+        "+++ b/pkg/nodes.py\n"
+        "@@ -1,0 +1,12 @@\n"
+        "+class FirstNode:\n"
+        "+    @classmethod\n"
+        "+    def INPUT_TYPES(cls):\n"
+        "+        return {}\n"
+        "+    def execute(self):\n"
+        "+        return (1,)\n"
+        "+class SecondNode:\n"
+        "+    @classmethod\n"
+        "+    def INPUT_TYPES(cls):\n"
+        "+        return {}\n"
+        "+    def execute(self):\n"
+        "+        return (2,)\n"
+    )
+
+    ledger = build_surface_ledger_from_diff(diff)
+    names = {surface.name for surface in ledger}
+
+    assert "FirstNode.INPUT_TYPES" in names
+    assert "FirstNode.execute" in names
+    assert "SecondNode.INPUT_TYPES" in names
+    assert "SecondNode.execute" in names
+
+
+def test_mandate_prompt_names_repo_agnostic_completeness_contracts() -> None:
+    prompt = Path("src/orchestration/prompts/reviewer/mental_model/mandate_synthesizer.md").read_text()
+
+    assert "cardinality/completeness contract" in prompt
+    assert "collections, batches, grouped records, mappings" in prompt
+    assert "regex" not in prompt.lower()
+    assert "benchmark" not in prompt.lower()
+
+
+def test_surface_invariants_add_completeness_only_from_contract_signal() -> None:
+    plain = ReviewSurface(
+        surface_id="surface:handle",
+        name="handle",
+        kind="function",
+        file_path="pkg/app.py",
+        confidence=0.95,
+    )
+    structured = ReviewSurface(
+        surface_id="surface:emit",
+        name="emit_batch_summary",
+        kind="function",
+        file_path="pkg/app.py",
+        confidence=0.95,
+    )
+
+    plain_dimensions = {
+        invariant.dimension
+        for invariant in build_surface_invariants_from_ledger([plain], risk_hypotheses="")
+    }
+    structured_invariants = build_surface_invariants_from_ledger(
+        [structured],
+        risk_hypotheses="The changed path should preserve every field in batched records.",
+    )
+    structured_shape = [
+        invariant for invariant in structured_invariants
+        if invariant.dimension == "data shape consistency"
+    ]
+
+    assert "data shape consistency" not in plain_dimensions
+    assert plain_dimensions == {"changed-surface behavior"}
+    assert structured_shape
+    assert "cardinality/completeness" in structured_shape[0].expected_behavior
+    assert "fields, and cardinality" in " ".join(structured_shape[0].required_evidence)
+
+
+def test_task_dedupe_collapses_same_surface_specialty_dimension() -> None:
+    surface = ReviewSurface(
+        surface_id="surface:handle",
+        name="handle",
+        kind="function",
+        file_path="pkg/a.py",
+        confidence=0.95,
+    )
+    state = {
+        "metadata": {"mental_model": {"surface_ledger": [surface.model_dump()]}},
+    }
+    first = ReviewTask(
+        id="logic-handle",
+        title="Diff-local correctness: handle",
+        description="Diff-local correctness for handle only.",
+        target_files=["pkg/a.py"],
+        surface_ids=["surface:handle"],
+        specialty="logic",
+    )
+    duplicate = ReviewTask(
+        id="logic-handle-fill",
+        title="Diff-local correctness: handle branches",
+        description="Diff-local correctness for handle only. Inspect branch behavior.",
+        target_files=["pkg/a.py", "pkg/helpers.py"],
+        surface_ids=["surface:handle"],
+        specialty="logic",
+    )
+
+    tasks, meta = dedupe_tasks_by_surface_dimension([first, duplicate], state)
+
+    assert len(tasks) == 1
+    assert tasks[0].surface_ids == ["surface:handle"]
+    assert tasks[0].target_files == ["pkg/a.py", "pkg/helpers.py"]
+    assert meta["task_dedupe_dropped"] == [
+        {
+            "key": {
+                "surface_id": "surface:handle",
+                "specialty": "logic",
+                    "dimension": "logic",
+            },
+            "kept_task_id": "logic-handle-fill",
+            "dropped_task_id": "logic-handle",
+        }
+    ]
+
+
+def test_plan_emit_emits_surface_valid_plan_when_critic_misaligned_after_budget() -> None:
+    diff = (
+        "diff --git a/src/app.py b/src/app.py\n"
+        "+++ b/src/app.py\n"
+        "@@ -0,0 +1,2 @@\n"
+        "+def handle():\n"
+        "+    return None\n"
+    )
+    task = ReviewTask(
+        id="logic-handle",
+        title="Diff-local correctness: handle",
+        description="Audit handle only.",
+        target_files=["src/app.py"],
+        specialty="logic",
+    )
+    state = {
+        "git_diff": diff,
+        "metadata": {
+            "actor_critic_planner": {
+                "draft_tasks": [task.model_dump(mode="json")],
+                "revision_count": 99,
+                "aligned": False,
+                "last_critique": {"gaps": "missing boundaries"},
+            },
+            "mental_model": {"coupled_loop": {"cycles": 99}},
+        },
+    }
+
+    out = make_plan_emit_node()(state)
+
+    assert out["next_step"] == "review"
+    assert out["metadata"]["actor_critic_review"]["emitted_after_budget"] is True
+    assert "plan_critic_misaligned_after_budget" in out["metadata"]["review_planner"]["warnings"]
+    assert [task_id for task_id in out["task_registry"] if task_id != out["root_task_id"]] == [
+        "logic-handle"
+    ]
+
+
+def test_plan_emit_still_blocks_surface_invalid_plan_after_budget() -> None:
+    diff = (
+        "diff --git a/src/app.py b/src/app.py\n"
+        "+++ b/src/app.py\n"
+        "@@ -0,0 +1,2 @@\n"
+        "+def handle():\n"
+        "+    return None\n"
+    )
+    task = ReviewTask(
+        id="logic-handle",
+        title="Diff-local correctness: handle",
+        description="Audit handle only.",
+        target_files=["tests/test_app.py"],
+        specialty="logic",
+    )
+    state = {
+        "git_diff": diff,
+        "metadata": {
+            "actor_critic_planner": {
+                "draft_tasks": [task.model_dump(mode="json")],
+                "revision_count": 99,
+                "aligned": False,
+                "last_critique": {"gaps": "missing boundaries"},
+            },
+            "mental_model": {"coupled_loop": {"cycles": 99}},
+        },
+    }
+
+    out = make_plan_emit_node()(state)
+
+    assert out["next_step"] == "blocked"
+    assert out["metadata"]["review_planner"]["blocked"] is True
+    assert out["metadata"]["review_planner"]["plan_validation"]["blocked_reason"] == (
+        "surface_plan_validation_failed"
+    )
+    assert [task_id for task_id in out["task_registry"] if task_id != out["root_task_id"]] == []
+
+
+def test_plan_emit_prunes_non_changed_context_target_when_changed_target_remains() -> None:
+    diff = (
+        "diff --git a/src/app.py b/src/app.py\n"
+        "+++ b/src/app.py\n"
+        "@@ -0,0 +1,2 @@\n"
+        "+def handle():\n"
+        "+    return None\n"
+    )
+    task = ReviewTask(
+        id="test-coverage",
+        title="Test coverage for changed behavior",
+        description="Audit tests and changed implementation.",
+        target_files=["tests/", "src/app.py"],
+        specialty="general",
+    )
+    state = {
+        "git_diff": diff,
+        "metadata": {
+            "actor_critic_planner": {
+                "draft_tasks": [task.model_dump(mode="json")],
+                "revision_count": 99,
+                "aligned": False,
+                "last_critique": {"gaps": "missing boundaries"},
+            },
+            "mental_model": {"coupled_loop": {"cycles": 99}},
+        },
+    }
+
+    out = make_plan_emit_node()(state)
+
+    assert out["next_step"] == "review"
+    emitted = out["task_registry"]["test-coverage"]
+    assert emitted.target_files == ["src/app.py"]
+    validation = out["metadata"]["review_planner"]["plan_validation"]
+    assert validation["invalid_target_files"] == []
+    assert validation["task_target_files_pruned"] == [
+        {"task_id": "test-coverage", "dropped": ["tests/"], "kept": ["src/app.py"]}
+    ]
+
+
+def test_plan_emit_allows_aligned_surface_bound_plan() -> None:
+    diff = (
+        "diff --git a/src/app.py b/src/app.py\n"
+        "+++ b/src/app.py\n"
+        "@@ -0,0 +1,2 @@\n"
+        "+def handle():\n"
+        "+    return None\n"
+    )
+    task = ReviewTask(
+        id="logic-handle",
+        title="Diff-local correctness: handle",
+        description="Audit handle only.",
+        target_files=["src/app.py"],
+        specialty="logic",
+    )
+    state = {
+        "git_diff": diff,
+        "metadata": {
+            "actor_critic_planner": {
+                "draft_tasks": [task.model_dump(mode="json")],
+                "revision_count": 0,
+                "aligned": True,
+            }
+        },
+    }
+
+    out = make_plan_emit_node()(state)
+
+    assert out["next_step"] == "review"
+    leaf_ids = [task_id for task_id in out["task_registry"] if task_id != out["root_task_id"]]
+    assert leaf_ids == ["logic-handle"]
+    assert out["metadata"]["review_planner"]["plan_validation"]["ok"] is True
+
+
+def test_dedupe_allows_same_file_different_class_scopes() -> None:
+    left = ReviewTask(
+        id="a",
+        title="RegexExtract — structured extraction",
+        description="Type-tracing on RegexExtract only. Do not review any other class.",
+        target_files=["nodes_string.py"],
+        specialty="logic",
+    )
+    right = ReviewTask(
+        id="b",
+        title="StringCompare — branch exhaustiveness",
+        description="Branch checks on StringCompare only. Do not review any other class.",
+        target_files=["nodes_string.py"],
+        specialty="logic",
+    )
+    assert _is_duplicate_task(right, [left]) is False
+
+
+def test_sanitize_batched_logic_strips_cross_surface_boilerplate() -> None:
+    inventory = [
+        "StringConcatenate",
+        "StringSubstring",
+        "StringLength",
+        "CaseConverter",
+        "StringTrim",
+        "StringReplace",
+        "StringContains",
+        "StringCompare",
+        "RegexMatch",
+        "RegexExtract",
+    ]
+    state = {
+        "git_diff": "diff --git a/pkg/h.py b/pkg/h.py\n+++ b/pkg/h.py\n+class StringCompare():\n+    pass\n",
+        "metadata": {"mental_model": {"diff_surface_inventory": inventory}},
+    }
+    suffix = (
+        " Audit every changed entry point in: "
+        + ", ".join(inventory)
+        + ". For each: branch exhaustiveness on mode/discriminant inputs, consistent return on "
+        "all paths, correct indexing into structured results (e.g. regex tuples, capture groups), "
+        "and safe aggregation before return."
+    )
+    task = ReviewTask(
+        id="logic_1a",
+        title="StringConcatenate, StringSubstring, StringLength, CaseConverter, StringTrim: diff-local",
+        description="Audit five nodes." + suffix,
+        target_files=["pkg/h.py", "pkg/other.py"],
+        specialty="logic",
+    )
+    cleaned = _sanitize_batched_logic_task_description(task, state, inventory)
+    assert "Audit every changed entry point in:" not in cleaned
+    assert "do not review any other surface" in cleaned.lower()
+
+
+def test_finalize_emitted_tasks_does_not_inject_dedicated_structured_logic_task() -> None:
+    diff = "diff --git a/pkg/h.py b/pkg/h.py\n+++ b/pkg/h.py\n+    return ','.join(re.findall(p, s))\n"
+    state = {"git_diff": diff}
+    tasks = [
+        ReviewTask(
+            id="task-1",
+            title="Diff-local correctness",
+            description="Diff-local correctness in changed hunks.",
+            target_files=["pkg/h.py"],
+            specialty="logic",
+        ),
+    ]
+    out = finalize_emitted_tasks(tasks, state)
+    logic = [t for t in out if t.specialty == "logic"]
+    assert len(logic) == 1
+    assert logic[0].id == "task-1"
+
+
+def test_broad_logic_structured_title_is_not_promoted_to_dedicated_task() -> None:
+    diff = "diff --git a/pkg/h.py b/pkg/h.py\n+++ b/pkg/h.py\n+    return ','.join(re.findall(p, s))\n"
+    state = {"git_diff": diff}
+    inventory = ["HandlerA", "HandlerB"]
+    state["metadata"] = {"mental_model": {"diff_surface_inventory": inventory}}
+    tasks = [
+        ReviewTask(
+            id="logic_3",
+            title="HandlerA, HandlerB - structured extraction and aggregation",
+            description=(
+                "Audit HandlerA and HandlerB for structured result handling. "
+                "Verify index/slot selection and join paths."
+            ),
+            target_files=["pkg/h.py"],
+            specialty="logic",
+        ),
+    ]
+    out = _ensure_structured_extraction_logic_task(tasks, state)
+    assert out == tasks
+
+
+def test_ensure_structured_extraction_logic_task_noops_when_signals_present() -> None:
+    diff = "diff --git a/pkg/h.py b/pkg/h.py\n+++ b/pkg/h.py\n+    return ','.join(re.findall(p, s))\n"
+    state = {"git_diff": diff}
+    tasks = [
+        ReviewTask(
+            id="review-logic-diff-local",
+            title="Diff-local correctness",
+            description="Diff-local correctness: control flow in changed hunks.",
+            target_files=["pkg/h.py"],
+            specialty="logic",
+        ),
+        ReviewTask(
+            id="review-security",
+            title="Security",
+            description="Injection and unsafe patterns.",
+            target_files=["pkg/h.py"],
+            specialty="security",
+        ),
+    ]
+    out = _ensure_structured_extraction_logic_task(tasks, state)
+    logic = [t for t in out if t.specialty == "logic"]
+    assert len(logic) == 1
+    assert out == tasks
+
+
+def test_ensure_diff_local_not_skipped_when_only_structured_scoped_task() -> None:
+    inventory = [f"Node{i}" for i in range(10)]
+    diff = "diff --git a/pkg/h.py b/pkg/h.py\n+++ b/pkg/h.py\n+import re\n+class Node0():\n+    pass\n"
+    state = {
+        "git_diff": diff,
+        "metadata": {"mental_model": {"diff_surface_inventory": inventory}},
+    }
+    tasks = [
+        ReviewTask(
+            id="review-logic-structured-extraction",
+            title="Structured extraction and aggregation",
+            description=(
+                "Audit structured extraction and aggregation in changed entry points. "
+                "Do not review any other surface in the target file."
+            ),
+            target_files=["pkg/h.py"],
+            specialty="logic",
+        ),
+    ]
+    out = _ensure_diff_local_correctness_task(tasks, state)
+    assert any("diff-local" in f"{t.title} {t.description}".lower() for t in out)
+
+
+def test_ensure_diff_local_correctness_injects_when_llm_plan_omits_it():
+    state = {
+        "run_id": "test",
+        "repo_path": "/tmp/repo",
+        "git_diff": "diff --git a/src/app.py b/src/app.py\n+++ b/src/app.py\n",
+    }
+    tasks = [
+        ReviewTask(
+            id="review-security",
+            title="Auth chain review",
+            description="Verify authorization decorators and caller permission checks across the repo.",
+            target_files=["src/app.py"],
+            specialty="security",
+        ),
+        ReviewTask(
+            id="review-logic-callers",
+            title="Caller contract review",
+            description="Trace all callers of changed symbols and confirm middleware behavior.",
+            target_files=["src/app.py"],
+            specialty="logic",
+        ),
+    ]
+    out = _ensure_diff_local_correctness_task(tasks, state)
+    assert any("diff-local" in f"{t.title} {t.description}".lower() for t in out)
+    assert len(out) == 3
 
 
 def test_review_planner_deterministic_fallback_creates_parallel_tasks():
@@ -37,6 +1165,8 @@ def test_review_planner_deterministic_fallback_creates_parallel_tasks():
         "performance",
         "general",
     }
+    logic_tasks = [t for t in leaf_tasks if t.specialty == "logic"]
+    assert any("diff-local" in f"{t.title} {t.description}".lower() for t in logic_tasks)
     assert all(task.target_files == ["src/app.py"] for task in leaf_tasks)
     assert result["next_step"] == "review"
 
@@ -92,6 +1222,9 @@ def test_review_planner_prompt_uses_structural_routing_hints():
     assert "changed" in prompt
     assert "node_to_community" not in prompt
     assert "node-999" not in prompt
+    assert "review topics as planning lenses" in prompt
+    assert "not as a checklist that must produce one task per topic" in prompt
+    assert "Create a topic-specific task only when" in prompt
 
 
 def test_review_planner_flattens_nested_llm_task_output():
@@ -119,8 +1252,8 @@ def test_review_planner_flattens_nested_llm_task_output():
                     subtasks=[
                         ReviewTask(
                             id="review-logic",
-                            title="Logic",
-                            description="Logic leaf.",
+                            title="Diff-local correctness",
+                            description="Diff-local correctness leaf for changed hunks.",
                             target_files=[],
                             specialty="logic",
                         )
@@ -177,7 +1310,7 @@ def test_specialist_worker_marks_task_complete_without_llm():
     assert result["reviewer_worker_reports"][0].explored_files == ["src/app.py"]
 
 
-def test_synthesizer_deduplicates_final_findings():
+def test_synthesizer_preserves_adjudicated_final_findings():
     finding = ReviewFinding(
         id="review-logic:1",
         file_path="src/app.py",
@@ -186,6 +1319,7 @@ def test_synthesizer_deduplicates_final_findings():
         content="Potential regression in changed control flow.",
         severity="medium",
         feedback_type="defect_detection",
+        expected_behavior="Changed control flow preserves the existing result contract.",
     )
 
     result = synthesizer_node(
@@ -199,6 +1333,7 @@ def test_synthesizer_deduplicates_final_findings():
         }
     )
 
-    assert len(result["final_findings"]) == 1
+    assert len(result["final_findings"]) == 2
+    assert result["final_findings"][0].expected_behavior == finding.expected_behavior
     assert result["metadata"]["review_synthesizer"]["raw_finding_count"] == 2
-    assert result["metadata"]["review_synthesizer"]["final_finding_count"] == 1
+    assert result["metadata"]["review_synthesizer"]["final_finding_count"] == 2

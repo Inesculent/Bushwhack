@@ -12,6 +12,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from src.infrastructure.run_profile import add_run_profile_arguments, configure_run_profile_from_args
 from src.reviewer_agent.harness.aacr import (
     DEFAULT_AACR_PROCESSED_PATH,
     DatasetRange,
@@ -86,10 +87,20 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Optional 1-based inclusive PR range after de-duplication, e.g. '11:20' or '11-'.",
     )
-    parser.add_argument(
+    pr_selector = parser.add_mutually_exclusive_group()
+    pr_selector.add_argument(
         "--pr-url",
         default=None,
         help="Optional exact PR URL to run from the processed dataset before applying --limit.",
+    )
+    pr_selector.add_argument(
+        "--pr-urls",
+        nargs="+",
+        default=None,
+        help=(
+            "Optional explicit PR URL list to run instead of scanning the dataset. "
+            "When set, the harness processes exactly those PRs in the order provided."
+        ),
     )
     parser.add_argument(
         "--snapshot-id",
@@ -114,8 +125,8 @@ def parse_args() -> argparse.Namespace:
             "--snapshot-id is used and metadata repo_path is a GitHub URL, the harness may fetch "
             "pull/<PR>/head under <snapshot_root>/_reviewer_worktree using host git if available. "
             "--repo-root skips that and mounts your checkout read-only (recommended when you already "
-            "have the PR checked out). Without either, the verifier image may run "
-            "`git clone` (needs git in the image)."
+            "have the PR checked out). Without it, the verifier still runs self-contained generated scripts in "
+            "Docker; full in-container clone is opt-in (verifier_clone_remote_in_container + git in the image)."
         ),
     )
     parser.add_argument(
@@ -127,6 +138,15 @@ def parse_args() -> argparse.Namespace:
         "--basic-graph",
         action="store_true",
         help="Use the basic reviewer graph without adversarial critique/reflection nodes.",
+    )
+    parser.add_argument(
+        "--review-check-mode",
+        choices=["off", "log_only", "enforced"],
+        default=None,
+        help=(
+            "Check-first reviewer ablation mode. Defaults to REVIEW_REVIEWER_CHECK_MODE "
+            "or 'off' from settings."
+        ),
     )
     parser.add_argument(
         "--llm-timeout",
@@ -145,6 +165,7 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Leave reviewer graph Redis checkpoints in place after each PR run.",
     )
+    add_run_profile_arguments(parser)
     return parser.parse_args()
 
 
@@ -161,14 +182,17 @@ def _cli_flags_for_run_meta(args: argparse.Namespace) -> dict[str, Any]:
             else None
         ),
         "pr_url": args.pr_url,
+        "pr_urls": args.pr_urls,
         "snapshot_id": args.snapshot_id,
         "output_root": str(args.output_root) if args.output_root is not None else None,
         "repo_root": str(args.repo_root) if args.repo_root is not None else None,
         "trace": args.trace,
         "basic_graph": args.basic_graph,
+        "review_check_mode": args.review_check_mode,
         "llm_timeout": args.llm_timeout,
         "llm_max_retries": args.llm_max_retries,
         "keep_redis_checkpoints": args.keep_redis_checkpoints,
+        "run_profile": getattr(args, "run_profile", "local"),
     }
 
 
@@ -185,11 +209,16 @@ def main() -> None:
         os.environ["REVIEW_LOCAL_LLM_MAX_RETRIES"] = str(args.llm_max_retries)
     if args.keep_redis_checkpoints:
         os.environ["REVIEW_REVIEWER_CLEANUP_REDIS_CHECKPOINTS"] = "false"
+    if args.review_check_mode is not None:
+        os.environ["REVIEW_REVIEWER_CHECK_MODE"] = args.review_check_mode
+
+    configure_run_profile_from_args(args)
 
     if (
         args.llm_timeout is not None
         or args.llm_max_retries is not None
         or args.keep_redis_checkpoints
+        or args.review_check_mode is not None
     ):
         from src.config import get_settings
 
@@ -200,6 +229,7 @@ def main() -> None:
         run_id=args.run_id,
         limit=args.limit,
         pr_url=args.pr_url,
+        pr_urls=args.pr_urls,
         dataset_range=args.dataset_range,
         output_root=args.output_root,
         repo_root=args.repo_root,

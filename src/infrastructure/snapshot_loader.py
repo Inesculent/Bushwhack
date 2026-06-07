@@ -17,6 +17,7 @@ from src.domain.schemas import (
     SymbolSemanticSummary,
     UnverifiedCallTarget,
 )
+from src.infrastructure.review_kb import load_review_kb
 
 
 class SnapshotLoader:
@@ -136,6 +137,14 @@ class SnapshotLoader:
         content = diagnostics_path.read_text(encoding="utf-8")
         data = json.loads(content)
         return SnapshotDiagnostics.model_validate(data)
+
+    def load_review_kb(self, snapshot_root: str) -> Dict[str, Any]:
+        """Load the persisted review knowledge base for query-time retrieval."""
+        return load_review_kb(snapshot_root)
+
+    def load_repository_kb(self, snapshot_root: str) -> Dict[str, Any]:
+        """Load the persisted repository knowledge base for query-time retrieval."""
+        return load_review_kb(snapshot_root)
 
     def load_community_shards(self, snapshot_root: str) -> List[CommunitySemanticSummary]:
         """

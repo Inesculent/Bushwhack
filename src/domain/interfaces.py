@@ -4,11 +4,14 @@ from typing import List, Optional, Any, Dict, Sequence
 from .schemas import (
     CodeEntity,
     DiffManifest,
+    GitHubFileReviewHistory,
     GitHubIssueContext,
     GitHubIssueComment,
     GitHubPullRequestContext,
     PreflightRequest,
     RepoDocsBundle,
+    RepoMetadata,
+    RepoStructure,
     SearchResult,
     SymbolDefinition,
 )
@@ -155,6 +158,22 @@ class IGitHubContextProvider(ABC):
         pass
 
     @abstractmethod
+    def get_repo_structure(
+        self,
+        owner: str,
+        repo: str,
+        path: str = "",
+        ref: str = "",
+    ) -> RepoStructure:
+        """Return a directory listing for doc discovery."""
+        pass
+
+    @abstractmethod
+    def get_repo_metadata(self, owner: str, repo: str) -> RepoMetadata | None:
+        """Fetch lightweight repository metadata (default branch, etc.)."""
+        pass
+
+    @abstractmethod
     def get_pull_request(
         self,
         owner: str,
@@ -188,6 +207,25 @@ class IGitHubContextProvider(ABC):
     ) -> List[GitHubIssueComment]:
         """
         Fetch a bounded list of comments for a PR or issue.
+        """
+        pass
+
+    @abstractmethod
+    def get_file_review_history(
+        self,
+        owner: str,
+        repo: str,
+        ref: str,
+        paths: Sequence[str],
+        *,
+        current_pr_number: int | None = None,
+        commits_per_file: int = 12,
+        prs_per_file: int = 3,
+        comments_per_pr: int = 30,
+        max_total_chars: int = 8000,
+    ) -> List[GitHubFileReviewHistory]:
+        """
+        Fetch bounded prior PR review/comment context for repository-relative file paths.
         """
         pass
 

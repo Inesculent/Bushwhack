@@ -1,0 +1,616 @@
+"""Phase 0: mental model formulation (intent, contracts, history, mandate)."""
+
+from __future__ import annotations
+
+import logging
+import hashlib
+import subprocess
+from pathlib import Path
+from typing import Any, Dict, List
+
+from pydantic import BaseModel, Field
+
+from src.config import Settings, get_settings
+from src.domain.schemas import BehavioralEvidenceRef, BehavioralSpec, ContractQuestion, SurfaceInvariant
+from src.domain.state import GraphState
+from src.infrastructure.behavioral_spec_store import BehavioralSpecStore
+from src.infrastructure.llm.factory import Models
+from src.infrastructure.llm.token_usage import parse_structured_output
+from src.infrastructure.llm.trace import append_trace, trace_from_exception, trace_llm_call
+from src.orchestration.context.context_packets import (
+    build_intent_extractor_packet,
+    build_mandate_synthesizer_packet,
+    enrich_intent_summary_with_diff_scope,
+    packet_to_prompt_sections,
+)
+from src.orchestration.context.mandate_loop_context import mm_meta
+from src.orchestration.context.surface_ledger import (
+    changed_file_integrity_diagnostics,
+    build_contract_questions_from_ledger,
+    build_migration_invariants_from_diff,
+    build_surface_invariants_from_ledger,
+    surface_by_id,
+    surface_inventory_names,
+    surface_ledger_from_state,
+)
+from src.orchestration.context.surface_ledger import changed_files_from_diff
+from src.orchestration.nodes.application.planner import _target_files
+from src.orchestration.nodes.mental_model_owner_agents import (
+    synthesize_owner_isolated_contract_questions,
+)
+from src.orchestration.prompts.renderer import render_reviewer_prompt
+from src.orchestration.review_principles import DECLARED_INPUT_CONTRACT_GUIDANCE
+
+logger = logging.getLogger(__name__)
+
+
+def _git_recent_messages(repo_path: str, *, max_lines: int = 8) -> str:
+    try:
+        proc = subprocess.run(
+            ["git", "log", "-n", str(max_lines), "--oneline", "--no-decorate"],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            timeout=12,
+            check=False,
+        )
+        if proc.returncode != 0 or not proc.stdout.strip():
+            return ""
+        return proc.stdout.strip()[:4000]
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("historical_miner git log skipped: %s", exc)
+        return ""
+
+
+def _new_files_from_diff(git_diff: str) -> List[str]:
+    new_files: List[str] = []
+    current: str | None = None
+    for line in git_diff.splitlines():
+        if line.startswith("diff --git "):
+            parts = line.split()
+            current = None
+            if len(parts) >= 4 and parts[3].startswith("b/"):
+                current = parts[3].removeprefix("b/")
+            continue
+        if current and (line.startswith("new file mode") or line.startswith("--- /dev/null")):
+            new_files.append(current)
+    return sorted({p for p in new_files if p and p != "/dev/null"})
+
+
+def _fallback_paths_for_new_files(repo_path: str, new_files: List[str], *, max_paths: int = 6) -> List[str]:
+    root = Path(repo_path).resolve()
+    collected: List[str] = []
+    seen: set[str] = set()
+    for rel in new_files:
+        try:
+            nf_path = (root / rel).resolve()
+            nf_path.relative_to(root)
+        except Exception:
+            continue
+        dir_path = nf_path.parent
+        if not dir_path.is_dir():
+            continue
+        preferred = dir_path / "nodes.py"
+        if preferred.is_file():
+            candidate = preferred.relative_to(root).as_posix()
+            if candidate not in seen and candidate != rel:
+                collected.append(candidate)
+                seen.add(candidate)
+                if len(collected) >= max_paths:
+                    return collected
+        for fp in sorted(dir_path.glob("*.py")):
+            candidate = fp.relative_to(root).as_posix()
+            if candidate == rel or candidate in seen:
+                continue
+            collected.append(candidate)
+            seen.add(candidate)
+            if len(collected) >= max_paths:
+                return collected
+    return collected
+
+
+def _git_log_for_paths(repo_path: str, paths: List[str], *, max_lines: int = 8) -> str:
+    if not paths:
+        return ""
+    try:
+        proc = subprocess.run(
+            ["git", "log", "-n", str(max_lines), "--oneline", "--no-decorate", "--", *paths],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            timeout=12,
+            check=False,
+        )
+        if proc.returncode != 0 or not proc.stdout.strip():
+            return ""
+        return proc.stdout.strip()[:4000]
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("historical_miner git log for paths skipped: %s", exc)
+        return ""
+
+
+class IntentExtractorOutput(BaseModel):
+    intent_summary: str = Field(default="", description="Concise PR intent and scope.")
+    non_goals: str = Field(default="", description="Explicit out-of-scope items if any.")
+
+
+class MandateSynthesizerOutput(BaseModel):
+    behavioral_expectations: str = Field(default="", description="Approximate expected behavior.")
+    risk_hypotheses: str = Field(default="", description="Hypotheses only, not asserted defects.")
+    reviewer_guidance: str = Field(
+        default="",
+        description="Remind reviewers to stay structural and unbiased.",
+    )
+    uncertainties: str = Field(default="", description="Known unknowns.")
+    contract_questions: List[ContractQuestion] = Field(default_factory=list)
+
+
+def _contract_question_id(question: ContractQuestion) -> str:
+    payload = "|".join(
+        [
+            question.owner.strip().lower(),
+            question.surface_id.strip().lower(),
+            question.dimension,
+            question.expected_behavior.strip().lower(),
+            question.trigger_variant.strip().lower(),
+            question.operation.strip().lower(),
+        ]
+    )
+    digest = hashlib.sha1(payload.encode("utf-8")).hexdigest()[:12]
+    return f"cq:{digest}"
+
+
+_FAKE_SUPPRESSORS = {"none", "n/a", "na", "not applicable", "no suppressor", "unknown"}
+_CENTRAL_CONTRACT_MARKERS = (
+    "declar",
+    "schema",
+    "api",
+    "caller",
+    "mode",
+    "option",
+    "output",
+    "return",
+    "transform",
+    "serialize",
+    "preserve",
+)
+_LOW_CONFIDENCE_FALLBACK_QUESTION_MAX = 0.4
+
+
+def _clean_question_text(value: str) -> str:
+    text = value.strip()
+    if text.lower().strip(".:- ") in _FAKE_SUPPRESSORS:
+        return ""
+    return text
+
+
+def _question_selection_family(question: ContractQuestion) -> tuple[str, str]:
+    return (question.dimension, question.operation.strip().lower() or question.dimension)
+
+
+def _contract_question_priority(question: ContractQuestion, order: int) -> tuple[int, float, int]:
+    blob = " ".join(
+        [
+            question.expected_behavior,
+            question.contract_evidence,
+            question.trigger_variant,
+            question.operation,
+            question.breach_question,
+        ]
+    ).lower()
+    central = 1 if any(marker in blob for marker in _CENTRAL_CONTRACT_MARKERS) else 0
+    return (-central, -question.source_confidence, order)
+
+
+def _normalize_contract_questions(
+    questions: List[ContractQuestion],
+    *,
+    surfaces: List[Any],
+) -> List[ContractQuestion]:
+    if not questions:
+        return []
+    by_id = surface_by_id(surfaces)
+    by_name = {surface.name.strip().lower(): surface for surface in surfaces if surface.name.strip()}
+    candidates: List[tuple[int, ContractQuestion]] = []
+    seen: set[tuple[str, str, str, str, str]] = set()
+    owner_order: List[str] = []
+    for order, raw in enumerate(questions):
+        surface_id = raw.surface_id.strip()
+        owner = raw.owner.strip()
+        if surface_id not in by_id and owner:
+            surface = by_name.get(owner.lower())
+            if surface is not None:
+                surface_id = surface.surface_id
+        if not owner and surface_id in by_id:
+            owner = by_id[surface_id].name
+        if not owner or not surface_id or surface_id not in by_id:
+            continue
+        if not raw.expected_behavior.strip() or not raw.breach_question.strip():
+            continue
+        key = (
+            owner.lower(),
+            raw.dimension,
+            raw.trigger_variant.strip().lower(),
+            raw.operation.strip().lower(),
+            raw.breach_question.strip().lower(),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        if owner not in owner_order:
+            owner_order.append(owner)
+        contract_evidence = _clean_question_text(raw.contract_evidence)
+        direct_suppressor = _clean_question_text(raw.direct_suppressor)
+        required = [item for item in raw.required_evidence if str(item).strip()]
+        if not required:
+            required = [
+                item
+                for item in (contract_evidence, raw.operation.strip(), direct_suppressor)
+                if item
+            ]
+        question = raw.model_copy(
+            update={
+                "question_id": raw.question_id.strip() or _contract_question_id(raw),
+                "owner": owner[:240],
+                "surface_id": surface_id,
+                "contract_evidence": contract_evidence[:500],
+                "direct_suppressor": direct_suppressor[:500],
+                "required_evidence": required[:5],
+            }
+        )
+        candidates.append((order, question))
+    by_owner: dict[str, List[tuple[int, ContractQuestion]]] = {}
+    for item in candidates:
+        by_owner.setdefault(item[1].owner, []).append(item)
+    normalized: List[ContractQuestion] = []
+    for owner in owner_order:
+        owned = sorted(
+            by_owner.get(owner, []),
+            key=lambda item: _contract_question_priority(item[1], item[0]),
+        )
+        selected: List[tuple[int, ContractQuestion]] = []
+        selected_families: set[tuple[str, str]] = set()
+        for item in owned:
+            family = _question_selection_family(item[1])
+            if (
+                item[1].source_confidence <= _LOW_CONFIDENCE_FALLBACK_QUESTION_MAX
+                and any(
+                    selected_question.dimension == item[1].dimension
+                    and selected_question.source_confidence >= item[1].source_confidence
+                    for _selected_order, selected_question in selected
+                )
+            ):
+                continue
+            if family in selected_families:
+                continue
+            selected.append(item)
+            selected_families.add(family)
+            if len(selected) >= 4:
+                break
+        if len(selected) < 4:
+            selected_ids = {id(question) for _order, question in selected}
+            for item in owned:
+                if id(item[1]) in selected_ids:
+                    continue
+                selected.append(item)
+                if len(selected) >= 4:
+                    break
+        normalized.extend(question for _order, question in selected)
+        if len(normalized) >= 40:
+            return normalized[:40]
+    return normalized
+
+
+def _cap_fallback_questions_per_owner(
+    questions: List[ContractQuestion],
+    *,
+    enabled: bool,
+) -> List[ContractQuestion]:
+    if not enabled:
+        return questions
+    out: List[ContractQuestion] = []
+    seen_owners: set[str] = set()
+    for question in questions:
+        owner = question.owner.strip().lower()
+        if (
+            question.source_confidence <= _LOW_CONFIDENCE_FALLBACK_QUESTION_MAX
+            and owner in seen_owners
+        ):
+            continue
+        out.append(question)
+        if question.source_confidence <= _LOW_CONFIDENCE_FALLBACK_QUESTION_MAX and owner:
+            seen_owners.add(owner)
+    return out
+
+
+def _filter_invariants_with_contract_questions(
+    invariants: List[SurfaceInvariant],
+    questions: List[ContractQuestion],
+) -> List[SurfaceInvariant]:
+    covered_surface_ids = {question.surface_id for question in questions if question.surface_id}
+    if not covered_surface_ids:
+        return invariants
+    return [
+        invariant
+        for invariant in invariants
+        if invariant.surface_id not in covered_surface_ids
+    ]
+
+
+def make_intent_extractor_node(settings: Settings | None = None, *, use_llm: bool = True):
+    node_name = "intent_extractor"
+
+    def intent_extractor_node(state: GraphState) -> Dict[str, Any]:
+        resolved = settings or get_settings()
+        meta, slot = mm_meta(state)
+        llm_tokens = 0
+        llm_trace: List[Dict[str, Any]] = []
+        intent_summary = ""
+        non_goals = ""
+        warnings: List[str] = []
+
+        if use_llm:
+            try:
+                packet = build_intent_extractor_packet(state, settings=resolved)
+                prompt = render_reviewer_prompt(
+                    "mental_model/intent_extractor.md",
+                    packet_to_prompt_sections(packet),
+                )
+                llm = Models.worker(IntentExtractorOutput, model_key=resolved.reviewer_worker_model_key)
+                traced = trace_llm_call(
+                    llm,
+                    prompt,
+                    state=state,
+                    node_name=node_name,
+                    model_key=resolved.reviewer_worker_model_key,
+                    schema_name="IntentExtractorOutput",
+                    input_summary={"changed_files": changed_files_from_diff(state.get("git_diff", "") or "")},
+                )
+                invoke_result = traced.result
+                out = parse_structured_output(invoke_result, IntentExtractorOutput)
+                llm_tokens = traced.tokens
+                llm_trace = append_trace(llm_trace, traced)
+                intent_summary = out.intent_summary.strip()
+                non_goals = out.non_goals.strip()
+            except Exception as exc:  # noqa: BLE001
+                llm_trace.extend(trace_from_exception(exc))
+                warnings.append(f"{node_name}_llm_fallback:{exc.__class__.__name__}")
+                logger.warning("%s LLM fallback: %s", node_name, exc)
+
+        if not intent_summary:
+            files = changed_files_from_diff(state.get("git_diff", "") or "")
+            goals = str(state.get("user_goals", "") or "")
+            intent_summary = (
+                f"Heuristic intent: change touches {len(files)} file(s). "
+                f"Review for regressions and contract fit. User goals: {goals[:800] or '(none)'}"
+            ).strip()
+
+        git_diff = state.get("git_diff", "") or ""
+        surface_ledger = surface_ledger_from_state({**state, "metadata": meta})
+        inventory = surface_inventory_names(surface_ledger)
+        intent_summary, scope_warnings = enrich_intent_summary_with_diff_scope(
+            intent_summary, git_diff
+        )
+        warnings.extend(scope_warnings)
+
+        slot["intent_extractor"] = {
+            "intent_summary": intent_summary,
+            "non_goals": non_goals,
+            "warnings": warnings,
+        }
+        slot["surface_ledger"] = [s.model_dump(mode="json") for s in surface_ledger]
+        slot["diff_surface_inventory"] = inventory
+        meta["mental_model"] = slot
+        return {
+            "metadata": meta,
+            "node_history": [node_name],
+            "token_usage": llm_tokens,
+            "llm_trace": llm_trace,
+        }
+
+    return intent_extractor_node
+
+
+def make_mandate_synthesizer_node(
+    settings: Settings | None = None,
+    *,
+    use_llm: bool = True,
+    context_provider: Any | None = None,
+):
+    node_name = "mandate_synthesizer"
+
+    def mandate_synthesizer_node(state: GraphState) -> Dict[str, Any]:
+        resolved = settings or get_settings()
+        run_id = str(state.get("run_id", "unknown"))
+        meta, slot = mm_meta(state)
+        intent = dict(slot.get("intent_extractor") or {})
+        llm_tokens = 0
+        llm_trace: List[Dict[str, Any]] = []
+        expectations = ""
+        risks = ""
+        contract_questions: List[ContractQuestion] = []
+        guidance = (
+            f"{DECLARED_INPUT_CONTRACT_GUIDANCE} "
+            "Treat the behavioral mandate as directional context only. "
+            "Do not assume defects exist because they are hypothesized here. "
+            "Prioritize direct code evidence from the diff and repository."
+        )
+        uncertainties = ""
+        warnings: List[str] = []
+        synth_packet = None
+        owner_agent_diagnostics: Dict[str, Any] = {}
+
+        if use_llm:
+            try:
+                synth_packet = build_mandate_synthesizer_packet(
+                    state,
+                    settings=resolved,
+                    context_provider=context_provider,
+                )
+                prompt = render_reviewer_prompt(
+                    "mental_model/mandate_synthesizer.md",
+                    packet_to_prompt_sections(synth_packet),
+                )
+                llm = Models.worker(MandateSynthesizerOutput, model_key=resolved.reviewer_worker_model_key)
+                traced = trace_llm_call(
+                    llm,
+                    prompt,
+                    state=state,
+                    node_name=node_name,
+                    model_key=resolved.reviewer_worker_model_key,
+                    schema_name="MandateSynthesizerOutput",
+                    input_summary={"intent_chars": len(str(intent.get("intent_summary", "")))},
+                )
+                invoke_result = traced.result
+                out = parse_structured_output(invoke_result, MandateSynthesizerOutput)
+                llm_tokens = traced.tokens
+                llm_trace = append_trace(llm_trace, traced)
+                expectations = out.behavioral_expectations.strip()
+                risks = out.risk_hypotheses.strip()
+                if out.reviewer_guidance.strip():
+                    guidance = f"{out.reviewer_guidance.strip()} {DECLARED_INPUT_CONTRACT_GUIDANCE}"
+                uncertainties = out.uncertainties.strip()
+                contract_questions = list(out.contract_questions or [])
+            except Exception as exc:  # noqa: BLE001
+                llm_trace.extend(trace_from_exception(exc))
+                warnings.append(f"{node_name}_llm_fallback:{exc.__class__.__name__}")
+                logger.warning("%s LLM fallback: %s", node_name, exc)
+
+        if not expectations:
+            expectations = (
+                "Expect the change to preserve existing observable behavior unless the diff explicitly changes it."
+            )
+
+        evidence_refs: List[BehavioralEvidenceRef] = []
+        for fp in _target_files(state)[:12]:
+            evidence_refs.append(BehavioralEvidenceRef(kind="file", ref=fp, note="Changed in this PR"))
+
+        surface_ledger = surface_ledger_from_state({**state, "metadata": meta})
+        if surface_ledger:
+            slot["surface_ledger"] = [s.model_dump(mode="json") for s in surface_ledger]
+            slot["diff_surface_inventory"] = surface_inventory_names(surface_ledger)
+        slot["changed_file_inventory_diagnostics"] = changed_file_integrity_diagnostics({**state, "metadata": meta})
+
+        owner_questions, owner_agent_diagnostics, owner_tokens, owner_trace, owner_warnings = (
+            synthesize_owner_isolated_contract_questions(
+                {**state, "metadata": meta},
+                settings=resolved,
+                context_provider=context_provider,
+                intent_summary=str(intent.get("intent_summary", "")),
+                existing_questions=contract_questions,
+                stage_label="mandate_synthesizer_owner_agents",
+                use_llm=use_llm,
+            )
+        )
+        if owner_questions:
+            contract_questions = [*contract_questions, *owner_questions]
+        llm_tokens += owner_tokens
+        llm_trace.extend(owner_trace)
+        warnings.extend(owner_warnings)
+
+        store_read: BehavioralSpec | None = None
+        if isinstance(state.get("behavioral_spec_ref"), str):
+            try:
+                store_read = BehavioralSpecStore(resolved).read(state["behavioral_spec_ref"])
+            except Exception:  # noqa: BLE001
+                store_read = None
+
+        base_invariants = build_surface_invariants_from_ledger(
+            surface_ledger,
+            risk_hypotheses=risks,
+        )
+        migration_invariants = build_migration_invariants_from_diff(
+            surface_ledger,
+            state.get("git_diff", "") or "",
+            intent_summary=str(intent.get("intent_summary", "")),
+            pr_context="\n".join(
+                str(meta.get(key) or "") for key in ("pr_title", "pr_description")
+            ),
+            risk_hypotheses=risks,
+        )
+        authored_question_owners = {
+            question.owner.strip().lower()
+            for question in contract_questions
+            if question.owner.strip()
+            and question.breach_question.strip()
+            and question.source_confidence > _LOW_CONFIDENCE_FALLBACK_QUESTION_MAX
+        }
+        fallback_questions = build_contract_questions_from_ledger(
+            surface_ledger,
+            risk_hypotheses=risks,
+            existing_questions=contract_questions,
+        )
+        fallback_questions = _cap_fallback_questions_per_owner(
+            fallback_questions,
+            enabled=bool(authored_question_owners),
+        )
+        contract_questions = _normalize_contract_questions(
+            [*contract_questions, *fallback_questions],
+            surfaces=surface_ledger,
+        )
+        fallback_question_count = sum(
+            1
+            for question in contract_questions
+            if question.source_confidence <= _LOW_CONFIDENCE_FALLBACK_QUESTION_MAX
+        )
+        if contract_questions and fallback_question_count >= max(4, len(contract_questions) // 2):
+            warnings.append(
+                f"mental_model_contract_questions_fallback_heavy:{fallback_question_count}_of_{len(contract_questions)}"
+            )
+        surface_invariants = _filter_invariants_with_contract_questions(
+            [*base_invariants, *migration_invariants],
+            contract_questions,
+        )
+
+        spec = BehavioralSpec(
+            intent_summary=str(intent.get("intent_summary", "")),
+            behavioral_expectations=expectations,
+            contract_boundaries=(
+                store_read.contract_boundaries if store_read else ""
+            ),
+            historical_precedents=(
+                store_read.historical_precedents if store_read else ""
+            ),
+            risk_hypotheses=risks or "None stated; stay unbiased.",
+            reviewer_guidance=guidance,
+            evidence_refs=evidence_refs,
+            surfaces=surface_ledger,
+            surface_invariants=surface_invariants,
+            contract_questions=contract_questions,
+            confidence=0.55 if warnings else 0.7,
+            uncertainties=uncertainties or "LLM synthesis may be incomplete; verify against code.",
+        )
+
+        store = BehavioralSpecStore(resolved)
+        ref, abs_path = store.write(run_id, spec)
+        cache_refs = dict(state.get("cache_refs") or {})
+        cache_refs["behavioral_spec"] = abs_path
+
+        surface_owners = {
+            surface.name.strip().lower()
+            for surface in surface_ledger
+            if surface.name.strip() and surface.kind != "file"
+        }
+        slot["mandate_synthesizer"] = {
+            "warnings": warnings,
+            "path": abs_path,
+            "owners_without_authored_action_questions": sorted(
+                owner for owner in surface_owners if owner not in authored_question_owners
+            ),
+        }
+        if owner_agent_diagnostics:
+            slot["owner_contract_agentic"] = owner_agent_diagnostics
+        if synth_packet is not None:
+            slot["owner_contract_scaffold"] = synth_packet.metadata.get("owner_contract_scaffold", {})
+        meta["mental_model"] = slot
+
+        return {
+            "behavioral_spec_ref": ref,
+            "cache_refs": cache_refs,
+            "metadata": meta,
+            "node_history": [node_name],
+            "token_usage": llm_tokens,
+            "llm_trace": llm_trace,
+        }
+
+    return mandate_synthesizer_node

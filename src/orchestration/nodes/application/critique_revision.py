@@ -19,7 +19,21 @@ from src.domain.verifier_schemas import VerifierReport
 from src.domain.state import GraphState
 from src.infrastructure.llm.factory import Models
 from src.infrastructure.llm.token_usage import extract_total_tokens_from_llm_result, parse_structured_output
+from src.infrastructure.llm.trace import append_trace, trace_from_exception, trace_llm_call
+from src.orchestration.nodes.verifier.failure_class import (
+    verifier_confidence_label,
+)
+from src.orchestration.context.context_packets import (
+    build_critique_revision_shard_packet,
+    packet_to_prompt_sections,
+)
 from src.orchestration.prompts.renderer import render_reviewer_prompt
+from src.orchestration.routing.claim_digest import claim_digest_for_candidate
+from src.orchestration.routing.finding_dedupe import candidate_signature_key
+from src.orchestration.routing.reflection_consolidation import (
+    candidate_has_local_defect_signature,
+    consolidate_reflection_reports,
+)
 
 logger = logging.getLogger(__name__)
 trace_logger = logging.getLogger("research_pipeline.reviewer_trace")
@@ -52,20 +66,34 @@ def _coerce_focused_result(raw: Any) -> FocusedContextResult | None:
     return None
 
 
+def _reject_recheck_revision_candidates(state: GraphState) -> Set[str]:
+    """Source-local claims rejected after focused context was gathered."""
+    out: Set[str] = set()
+    reports = consolidate_reflection_reports(state.get("reflection_reports", []) or [])
+    by_id = _all_candidates_by_id(state)
+    for report in reports:
+        if report.verdict != "reject":
+            continue
+        if report.reflector_specialty not in ("logic", "security"):
+            continue
+        if not _focused_results_for_candidate(state, report.candidate_id):
+            continue
+        cand = by_id.get(report.candidate_id)
+        if cand is None:
+            continue
+        if report.support_scope == "local" or (
+            report.support_scope is None and candidate_has_local_defect_signature(cand)
+        ):
+            out.add(report.candidate_id)
+    return out
+
+
 def _needs_revision_candidates(state: GraphState) -> List[str]:
     ids: set[str] = set()
-    for raw in state.get("reflection_reports", []) or []:
-        if isinstance(raw, ReflectionReport):
-            report = raw
-        elif isinstance(raw, dict):
-            try:
-                report = ReflectionReport.model_validate(raw)
-            except Exception:
-                continue
-        else:
-            continue
+    for report in consolidate_reflection_reports(state.get("reflection_reports", []) or []):
         if report.verdict in ("needs_context", "needs_verification"):
             ids.add(report.candidate_id)
+    ids.update(_reject_recheck_revision_candidates(state))
     return sorted(ids)
 
 
@@ -102,16 +130,68 @@ def _has_verifier_report_for_candidate(state: GraphState, candidate_id: str) -> 
     return False
 
 
+def expected_critique_revision_shard_ids(
+    state: GraphState,
+    candidate_ids: Sequence[str],
+    *,
+    max_shard_chars: int | None = None,
+    max_candidate_chars: int | None = None,
+) -> set[str]:
+    """Shard ids that must exist in ``critique_revision_digests`` before reduce runs."""
+    settings = get_settings()
+    if max_shard_chars is None:
+        max_shard_chars = settings.reviewer_critique_revision_max_shard_chars
+    if max_candidate_chars is None:
+        max_candidate_chars = settings.reviewer_critique_revision_max_candidate_chars
+    return {
+        s.shard_id
+        for s in plan_critique_revision_shards(
+            state,
+            list(candidate_ids),
+            max_shard_chars=max_shard_chars,
+            max_candidate_chars=max_candidate_chars,
+        )
+    }
+
+
+def _candidate_revision_input_ready(state: GraphState, candidate_id: str) -> bool:
+    """Per-candidate: focused hits and/or verifier report when reflection asked for runtime proof."""
+    if _focused_results_for_candidate(state, candidate_id):
+        return True
+    if (
+        candidate_id in _candidate_ids_needs_verification(state)
+        and _has_verifier_report_for_candidate(state, candidate_id)
+    ):
+        return True
+    return False
+
+
+def revision_ready_candidate_ids(
+    state: GraphState,
+    candidate_ids: Sequence[str] | None = None,
+) -> List[str]:
+    """Subset of revision candidates that have enough input to run digest/reduce (does not block siblings)."""
+    ids = list(candidate_ids) if candidate_ids is not None else _needs_revision_candidates(state)
+    return [cid for cid in ids if _candidate_revision_input_ready(state, cid)]
+
+
+def critique_revision_digests_complete(state: GraphState) -> bool:
+    """True when every planned digest shard for revision-ready candidates is present."""
+    candidate_ids = revision_ready_candidate_ids(
+        state, _dedupe_revision_candidate_ids(state, _needs_revision_candidates(state))
+    )
+    if not candidate_ids:
+        return True
+    expected = expected_critique_revision_shard_ids(state, candidate_ids)
+    if not expected:
+        return True
+    have = set((state.get("critique_revision_digests") or {}).keys())
+    return expected <= have
+
+
 def revision_inputs_ready(state: GraphState, candidate_ids: Sequence[str]) -> bool:
-    """True when every revision candidate has focused evidence and/or a verifier report if reflection requested it."""
-    nv = _candidate_ids_needs_verification(state)
-    for cid in candidate_ids:
-        if _focused_results_for_candidate(state, cid):
-            continue
-        if cid in nv and _has_verifier_report_for_candidate(state, cid):
-            continue
-        return False
-    return True
+    """True when at least one revision candidate has focused evidence and/or a verifier report."""
+    return bool(revision_ready_candidate_ids(state, candidate_ids))
 
 
 def _has_focused_evidence(state: GraphState, candidate_ids: Sequence[str]) -> bool:
@@ -219,17 +299,53 @@ def plan_critique_revision_shards(
 
 
 def _render_digest_shard_prompt(
+    state: GraphState,
     shard: CritiqueRevisionShardPayload,
     *,
-    max_candidate_chars: int,
+    verifier_advisory: str = "",
 ) -> str:
-    cand_raw = shard.candidate.model_dump_json()
-    if len(cand_raw) > max_candidate_chars:
-        cand_raw = cand_raw[:max_candidate_chars] + "\n... [truncated]"
-    parts: List[str] = [f"### Candidate ({shard.candidate_id})\n{cand_raw}"]
-    for res in shard.focused_results:
-        parts.append(f"#### Focused context {res.request_id}\n{res.model_dump_json()}")
-    return "\n\n".join(parts)
+    """Render shard evidence via ContextPacket (never reads critique_pipeline direct_context)."""
+    packet = build_critique_revision_shard_packet(
+        state,
+        candidate=shard.candidate,
+        focused_results=shard.focused_results,
+        verifier_advisory=verifier_advisory,
+    )
+    sections = packet_to_prompt_sections(packet)
+    return sections.get("Candidate And Focused Evidence", "")
+
+
+def _compact_verifier_report_json(report: VerifierReport) -> str:
+    """Advisory blob for revision prompts — omit multi-kB generated test_code."""
+    import json
+
+    payload = report.model_dump(mode="json")
+    attempts = payload.get("attempts") or []
+    slim_attempts: List[Dict[str, Any]] = []
+    for att in attempts:
+        if not isinstance(att, dict):
+            continue
+        stdout = str(att.get("stdout") or "")
+        stderr = str(att.get("stderr") or "")
+        if len(stdout) > 1500:
+            stdout = stdout[-1500:]
+        if len(stderr) > 1500:
+            stderr = stderr[-1500:]
+        slim_attempts.append(
+            {
+                "attempt_number": att.get("attempt_number"),
+                "exit_code": att.get("exit_code"),
+                "timeout": att.get("timeout"),
+                "sandbox_mode": att.get("sandbox_mode"),
+                "failure_class": att.get("failure_class"),
+                "stdout": stdout,
+                "stderr": stderr,
+            }
+        )
+    payload["attempts"] = slim_attempts
+    meta = dict(payload.get("metadata") or {})
+    payload["metadata"] = meta
+    return json.dumps(payload, indent=2, ensure_ascii=False)
 
 
 def _render_verifier_advisory_section(
@@ -239,6 +355,7 @@ def _render_verifier_advisory_section(
     max_chars: int = 8000,
 ) -> str:
     want = set(candidate_ids)
+    hints = dict((state.get("metadata") or {}).get("verifier_hints") or {})
     parts: List[str] = []
     for raw in state.get("verifier_reports") or []:
         if isinstance(raw, VerifierReport):
@@ -252,7 +369,10 @@ def _render_verifier_advisory_section(
             continue
         if r.candidate_id not in want:
             continue
-        parts.append(r.model_dump_json())
+        hint = hints.get(r.candidate_id) if isinstance(hints.get(r.candidate_id), dict) else {}
+        if hint.get("confidence") != "clean_product_signal":
+            continue
+        parts.append(_compact_verifier_report_json(r))
     if not parts:
         return ""
     blob = "\n\n".join(parts)
@@ -298,6 +418,118 @@ def _render_reduction_bundle(
     return "\n\n".join(sections)
 
 
+def _all_candidates_by_id(state: GraphState) -> Dict[str, CandidateFinding]:
+    out: Dict[str, CandidateFinding] = {}
+    for raw in state.get("candidate_findings", []) or []:
+        cand = _coerce_candidate(raw)
+        if cand is not None:
+            out[cand.candidate_id] = cand
+    return out
+
+
+def _dedupe_revision_candidate_ids_with_duplicates(
+    state: GraphState,
+    candidate_ids: List[str],
+) -> tuple[List[str], Dict[str, List[str]]]:
+    """Drop exact same-claim revision duplicates while preserving distinct same-file issues."""
+    by_id = _all_candidates_by_id(state)
+    git_diff = state.get("git_diff", "") or ""
+    seen: Dict[tuple[str, str, str, str, str, str], str] = {}
+    duplicates: Dict[str, List[str]] = {}
+    out: List[str] = []
+    for cid in candidate_ids:
+        cand = by_id.get(cid)
+        if cand is None:
+            out.append(cid)
+            continue
+        key = (
+            *candidate_signature_key(cand, git_diff=git_diff),
+            claim_digest_for_candidate(cand).lower(),
+        )
+        if key in seen:
+            duplicates.setdefault(seen[key], []).append(cid)
+            continue
+        seen[key] = cid
+        out.append(cid)
+    return out, duplicates
+
+
+def _dedupe_revision_candidate_ids(state: GraphState, candidate_ids: List[str]) -> List[str]:
+    ids, _ = _dedupe_revision_candidate_ids_with_duplicates(state, candidate_ids)
+    return ids
+
+
+def _apply_digest_contradict_policy(
+    revisions: List[Dict[str, Any]],
+    digests: Mapping[str, CritiqueRevisionDigest],
+) -> tuple[List[Dict[str, Any]], List[str]]:
+    """Downgrade accept → reject when any digest shard contradicts the candidate."""
+    contradicts_by_candidate: Dict[str, int] = {}
+    for digest in digests.values():
+        if digest.impact == "contradicts":
+            contradicts_by_candidate[digest.candidate_id] = (
+                contradicts_by_candidate.get(digest.candidate_id, 0) + 1
+            )
+
+    warnings: List[str] = []
+    adjusted: List[Dict[str, Any]] = []
+    for row in revisions:
+        row = dict(row)
+        cid = str(row.get("candidate_id") or "")
+        if str(row.get("verdict", "")).lower() == "accept" and contradicts_by_candidate.get(cid, 0) > 0:
+            summary = str(row.get("updated_evidence_summary") or "")
+            row["verdict"] = "reject"
+            row["updated_evidence_summary"] = (
+                f"{summary} Digest impact=contradicts; acceptance overridden.".strip()
+            )
+            warnings.append(f"critique_revision_digest_contradicts:{cid}")
+        adjusted.append(row)
+    return adjusted, warnings
+
+
+def _apply_verifier_policy_to_revisions(
+    revisions: List[Dict[str, Any]],
+    state: GraphState,
+) -> tuple[List[Dict[str, Any]], List[str]]:
+    """Adjust revision rows using verifier_hints (harness-aware)."""
+    hints: Dict[str, Any] = dict((state.get("metadata") or {}).get("verifier_hints") or {})
+    warnings: List[str] = []
+    adjusted: List[Dict[str, Any]] = []
+    candidates_by_id = _all_candidates_by_id(state)
+    for row in revisions:
+        row = dict(row)
+        cid = str(row.get("candidate_id") or "")
+        hint = hints.get(cid)
+        if not isinstance(hint, dict):
+            adjusted.append(row)
+            continue
+        harness = bool(hint.get("harness_error"))
+        v_verdict = str(hint.get("verdict") or "").lower()
+        scope = str(hint.get("verification_scope") or "")
+        confidence = str(hint.get("confidence") or "")
+        summary = str(row.get("updated_evidence_summary") or "")
+        cand = candidates_by_id.get(cid)
+        cand_dict = cand.model_dump(mode="json") if cand is not None else {"failure_mode": ""}
+        if not confidence:
+            confidence = verifier_confidence_label(
+                cand_dict,
+                verifier_verdict=v_verdict,
+                verification_scope=scope,
+                harness_error=harness,
+                product_verified=bool(hint.get("product_verified")),
+            )
+        if harness:
+            warnings.append(f"critique_revision_verifier_ignored:{cid}:harness")
+        elif v_verdict in {"verified", "refuted"}:
+            note = str(hint.get("updated_evidence_summary") or hint.get("final_rationale") or "")
+            fallback = f"Runtime verifier reported {v_verdict}; treat as advisory evidence."
+            if note or fallback:
+                row["updated_evidence_summary"] = f"{summary} {note or fallback}".strip()
+            warnings.append(f"critique_revision_verifier_{v_verdict}_advisory:{cid}:{confidence or 'advisory'}")
+        adjusted.append(row)
+    return adjusted, warnings
+
+
 def _normalize_revision_rows(
     revisions: Sequence[Any],
     expected_ids: Set[str],
@@ -325,6 +557,114 @@ def _normalize_revision_rows(
     return list(ordered.values()), warnings
 
 
+def _partition_revision_batches(
+    candidate_ids: Sequence[str],
+    batch_size: int,
+) -> List[List[str]]:
+    size = max(1, int(batch_size))
+    ids = list(candidate_ids)
+    return [ids[i : i + size] for i in range(0, len(ids), size)]
+
+
+def _critique_revision_completion_cap(settings: Any) -> int:
+    return int(settings.reviewer_critique_revision_max_completion_tokens)
+
+
+def _invoke_reduce_batch(
+    *,
+    state: GraphState,
+    batch_ids: Sequence[str],
+    digests: Mapping[str, CritiqueRevisionDigest],
+    max_candidate_chars: int,
+    model_key: str | None,
+    use_llm: bool,
+    batch_index: int,
+    batch_count: int,
+) -> tuple[List[Dict[str, Any]], List[str], int, List[Dict[str, Any]], bool]:
+    """Run one reduce LLM call; return rows, warnings, tokens, trace, failed."""
+    run_id = state.get("run_id", "unknown")
+    settings = get_settings()
+    warnings: List[str] = []
+    llm_tokens = 0
+    expected_ids = set(batch_ids)
+
+    bundle = _render_reduction_bundle(
+        state,
+        batch_ids,
+        digests,
+        max_candidate_chars=max_candidate_chars,
+    )
+    prompt = render_reviewer_prompt(
+        "critique_revision.md",
+        {
+            "Candidates And Digest Summaries": bundle,
+            "Git Diff Excerpt": (state.get("git_diff", "") or "")[:8000],
+        },
+    )
+
+    if _trace_enabled(state):
+        trace_logger.info(
+            "TRACE critique_revision_reduce_batch run_id=%s batch=%s/%s candidates=%s prompt_chars=%s bundle_chars=%s",
+            run_id,
+            batch_index + 1,
+            batch_count,
+            list(batch_ids),
+            len(prompt),
+            len(bundle),
+        )
+
+    if not use_llm:
+        return [], warnings, llm_tokens, [], False
+
+    selected_model = model_key or getattr(settings, "reviewer_worker_model_key", None)
+    llm_trace: List[Dict[str, Any]] = []
+    try:
+        llm = Models.worker(
+            CritiqueRevisionOutput,
+            model_key=selected_model,
+            max_completion_tokens=_critique_revision_completion_cap(settings),
+        )
+        traced = trace_llm_call(
+            llm,
+            prompt,
+            state=state,
+            node_name="critique_revision_reduce",
+            model_key=selected_model,
+            schema_name="CritiqueRevisionOutput",
+            request_label=f"batch_{batch_index + 1}_of_{batch_count}",
+            input_summary={"candidate_ids": list(batch_ids), "batch_index": batch_index},
+        )
+        invoke_result = traced.result
+        response = parse_structured_output(invoke_result, CritiqueRevisionOutput)
+        llm_tokens = traced.tokens
+        llm_trace = append_trace(llm_trace, traced)
+        rows, norm_warnings = _normalize_revision_rows(response.revisions, expected_ids)
+        warnings.extend(norm_warnings)
+        warnings.extend(response.warnings)
+        if _trace_enabled(state):
+            trace_logger.info(
+                "TRACE critique_revision_reduce_batch_done run_id=%s batch=%s/%s revisions=%s tokens=%s",
+                run_id,
+                batch_index + 1,
+                batch_count,
+                len(rows),
+                llm_tokens,
+            )
+        return rows, warnings, llm_tokens, llm_trace, False
+    except Exception as exc:  # noqa: BLE001
+        llm_trace.extend(trace_from_exception(exc))
+        w = f"critique_revision_reduce_batch_failed:{batch_index}:{exc.__class__.__name__}: {exc}"
+        warnings.append(w)
+        logger.warning(
+            "critique_revision_reduce batch failed run_id=%s batch=%s/%s reason=%s",
+            run_id,
+            batch_index + 1,
+            batch_count,
+            exc,
+        )
+        return [], warnings, llm_tokens, llm_trace, True
+
+
 def make_critique_revision_digest_node(model_key: str | None = None, use_llm: bool = True):
     node_name = "critique_revision_digest"
 
@@ -341,31 +681,57 @@ def make_critique_revision_digest_node(model_key: str | None = None, use_llm: bo
             return {"node_history": [f"{node_name}:invalid_shard:{exc.__class__.__name__}"]}
 
         settings = get_settings()
-        max_candidate_chars = settings.reviewer_critique_revision_max_candidate_chars
+        verifier_advisory = _render_verifier_advisory_section(state, [shard.candidate_id])
+        shard_packet = build_critique_revision_shard_packet(
+            state,
+            candidate=shard.candidate,
+            focused_results=shard.focused_results,
+            verifier_advisory=verifier_advisory,
+            settings=settings,
+        )
+        shard_sections = packet_to_prompt_sections(shard_packet)
         prompt = render_reviewer_prompt(
             "critique_revision_digest.md",
             {
                 "Shard Id": shard.shard_id,
-                "Candidate And Focused Evidence": _render_digest_shard_prompt(
-                    shard,
-                    max_candidate_chars=max_candidate_chars,
+                "Candidate And Focused Evidence": shard_sections.get(
+                    "Candidate And Focused Evidence",
+                    _render_digest_shard_prompt(state, shard, verifier_advisory=verifier_advisory),
                 ),
-                "Git Diff Excerpt": (state.get("git_diff", "") or "")[:6000],
-                "Verifier Advisory": _render_verifier_advisory_section(state, [shard.candidate_id]),
+                "Git Diff Excerpt": shard_sections.get(
+                    "Git Diff Excerpt",
+                    (state.get("git_diff", "") or "")[:6000],
+                ),
+                "Verifier Advisory": verifier_advisory,
             },
         )
 
         warnings: List[str] = []
         digest: CritiqueRevisionDigest
         llm_tokens = 0
+        llm_trace: List[Dict[str, Any]] = []
 
         if use_llm:
             selected_model = model_key or getattr(settings, "reviewer_worker_model_key", None)
             try:
-                llm = Models.worker(CritiqueRevisionDigestOutput, model_key=selected_model)
-                invoke_result = llm.invoke(prompt)
+                llm = Models.worker(
+                    CritiqueRevisionDigestOutput,
+                    model_key=selected_model,
+                    max_completion_tokens=_critique_revision_completion_cap(settings),
+                )
+                traced = trace_llm_call(
+                    llm,
+                    prompt,
+                    state=state,
+                    node_name=node_name,
+                    model_key=selected_model,
+                    schema_name="CritiqueRevisionDigestOutput",
+                    input_summary={"shard_id": shard.shard_id, "candidate_id": shard.candidate_id},
+                )
+                invoke_result = traced.result
                 response = parse_structured_output(invoke_result, CritiqueRevisionDigestOutput)
-                llm_tokens = extract_total_tokens_from_llm_result(invoke_result)
+                llm_tokens = traced.tokens
+                llm_trace = append_trace(llm_trace, traced)
                 if response.candidate_id != shard.candidate_id:
                     warnings.append(
                         f"digest_candidate_mismatch:expected={shard.candidate_id} got={response.candidate_id}"
@@ -380,6 +746,7 @@ def make_critique_revision_digest_node(model_key: str | None = None, use_llm: bo
                     warnings=list(response.warnings) + warnings,
                 )
             except Exception as exc:  # noqa: BLE001
+                llm_trace.extend(trace_from_exception(exc))
                 w = f"critique_revision_digest_llm_failed:{exc.__class__.__name__}: {exc}"
                 warnings.append(w)
                 logger.warning("%s failed run_id=%s shard=%s reason=%s", node_name, run_id, shard.shard_id, exc)
@@ -413,6 +780,7 @@ def make_critique_revision_digest_node(model_key: str | None = None, use_llm: bo
             "critique_revision_digests": {shard.shard_id: digest},
             "node_history": [node_name],
             "token_usage": llm_tokens,
+            "llm_trace": llm_trace,
         }
 
     return critique_revision_digest_node
@@ -423,7 +791,33 @@ def make_critique_revision_reduce_node(model_key: str | None = None, use_llm: bo
 
     def critique_revision_reduce_node(state: GraphState) -> Dict[str, Any]:
         run_id = state.get("run_id", "unknown")
-        candidate_ids = _needs_revision_candidates(state)
+        metadata_existing = dict(state.get("metadata", {}) or {})
+        if metadata_existing.get("critique_revision", {}).get("reduce_completed"):
+            return {"node_history": [f"{node_name}:idempotent_skip"]}
+
+        if not critique_revision_digests_complete(state):
+            if _trace_enabled(state):
+                expected = expected_critique_revision_shard_ids(
+                    state,
+                    revision_ready_candidate_ids(
+                        state,
+                        _dedupe_revision_candidate_ids(
+                            state, _needs_revision_candidates(state)
+                        ),
+                    ),
+                )
+                have = set((state.get("critique_revision_digests") or {}).keys())
+                trace_logger.info(
+                    "TRACE critique_revision_reduce_barrier_waiting run_id=%s have=%s expected=%s",
+                    run_id,
+                    sorted(have),
+                    sorted(expected),
+                )
+            return {"node_history": [f"{node_name}:barrier_incomplete"]}
+
+        candidate_ids, revision_duplicate_map = _dedupe_revision_candidate_ids_with_duplicates(
+            state, _needs_revision_candidates(state)
+        )
         digests_map = dict(state.get("critique_revision_digests") or {})
 
         if not candidate_ids:
@@ -443,69 +837,63 @@ def make_critique_revision_reduce_node(model_key: str | None = None, use_llm: bo
                 except Exception:
                     continue
 
-        if not revision_inputs_ready(state, candidate_ids):
+        ready_ids = revision_ready_candidate_ids(state, candidate_ids)
+        if not ready_ids:
             return {"node_history": [f"{node_name}:skipped_no_results"]}
+        candidate_ids = ready_ids
 
-        bundle = _render_reduction_bundle(
-            state,
-            candidate_ids,
-            digests,
-            max_candidate_chars=max_candidate_chars,
-        )
-
-        prompt = render_reviewer_prompt(
-            "critique_revision.md",
-            {
-                "Candidates And Digest Summaries": bundle,
-                "Git Diff Excerpt": (state.get("git_diff", "") or "")[:8000],
-            },
-        )
-
-        revisions: List[Dict[str, Any]] = []
+        batch_size = int(settings.reviewer_critique_revision_reduce_batch_size)
+        batches = _partition_revision_batches(candidate_ids, batch_size)
+        raw_revisions: List[Dict[str, Any]] = []
         warnings: List[str] = []
         llm_tokens = 0
+        llm_trace: List[Dict[str, Any]] = []
+        failed_batches = 0
+        for kept, dropped_ids in revision_duplicate_map.items():
+            for dropped in dropped_ids:
+                warnings.append(f"critique_revision_duplicate_candidate:{dropped}:kept={kept}")
 
-        expected_ids = set(candidate_ids)
-
-        if use_llm:
-            selected_model = model_key or getattr(settings, "reviewer_worker_model_key", None)
-            try:
-                llm = Models.worker(CritiqueRevisionOutput, model_key=selected_model)
-                invoke_result = llm.invoke(prompt)
-                response = parse_structured_output(invoke_result, CritiqueRevisionOutput)
-                llm_tokens = extract_total_tokens_from_llm_result(invoke_result)
-                rows, norm_warnings = _normalize_revision_rows(response.revisions, expected_ids)
-                revisions = rows
-                warnings.extend(norm_warnings)
-                warnings.extend(response.warnings)
-            except Exception as exc:  # noqa: BLE001
-                warnings.append(f"critique_revision_reduce_llm_failed:{exc.__class__.__name__}: {exc}")
-                logger.warning(
-                    "%s failed run_id=%s reason=%s: %s",
-                    node_name,
-                    run_id,
-                    exc.__class__.__name__,
-                    exc,
-                )
-
-        shard_ids_expected = {
-            s.shard_id
-            for s in plan_critique_revision_shards(
-                state,
-                candidate_ids,
-                max_shard_chars=settings.reviewer_critique_revision_max_shard_chars,
+        for batch_index, batch_ids in enumerate(batches):
+            rows, batch_warnings, batch_tokens, batch_trace, batch_failed = _invoke_reduce_batch(
+                state=state,
+                batch_ids=batch_ids,
+                digests=digests,
                 max_candidate_chars=max_candidate_chars,
+                model_key=model_key,
+                use_llm=use_llm,
+                batch_index=batch_index,
+                batch_count=len(batches),
             )
-        }
+            llm_tokens += batch_tokens
+            llm_trace.extend(batch_trace)
+            warnings.extend(batch_warnings)
+            if batch_failed:
+                failed_batches += 1
+            raw_revisions.extend(rows)
+
+        revisions, policy_warnings = _apply_verifier_policy_to_revisions(raw_revisions, state)
+        warnings.extend(policy_warnings)
+        revisions, digest_warnings = _apply_digest_contradict_policy(revisions, digests)
+        warnings.extend(digest_warnings)
+
+        shard_ids_expected = expected_critique_revision_shard_ids(
+            state,
+            candidate_ids,
+            max_candidate_chars=max_candidate_chars,
+        )
         missing_shards = sorted(shard_ids_expected - set(digests.keys()))
+
+        reduce_failed = use_llm and len(revisions) == 0 and bool(candidate_ids)
 
         if _trace_enabled(state):
             trace_logger.info(
-                "TRACE critique_revision_reduce run_id=%s candidates=%s revisions=%s digests=%s",
+                "TRACE critique_revision_reduce run_id=%s candidates=%s revisions=%s digests=%s batches=%s failed_batches=%s",
                 run_id,
                 candidate_ids,
                 len(revisions),
                 len(digests),
+                len(batches),
+                failed_batches,
             )
 
         metadata = dict(state.get("metadata", {}))
@@ -517,12 +905,22 @@ def make_critique_revision_reduce_node(model_key: str | None = None, use_llm: bo
             "digest_count": len(digests),
             "digest_shard_ids": sorted(digests.keys()),
             "missing_digest_shards": missing_shards,
+            "dedupe_duplicate_map": revision_duplicate_map,
+            "dedupe_duplicate_candidate_ids": [
+                cid for ids in revision_duplicate_map.values() for cid in ids
+            ],
+            "reduce_batch_size": batch_size,
+            "reduce_batch_count": len(batches),
+            "reduce_failed_batches": failed_batches,
+            "reduce_failed": reduce_failed,
+            "reduce_completed": True,
         }
 
         return {
             "metadata": metadata,
             "node_history": [node_name],
             "token_usage": llm_tokens,
+            "llm_trace": llm_trace,
         }
 
     return critique_revision_reduce_node

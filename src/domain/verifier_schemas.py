@@ -46,6 +46,10 @@ class VerifierAttemptRecord(BaseModel):
     execution_time_seconds: float = 0.0
     status: VerificationStatus = VerificationStatus.PENDING
     lint_runs: List[VerifierLintRun] = Field(default_factory=list)
+    sandbox_mode: str = ""
+    repo_root: str = ""
+    failure_class: str = ""
+    env_metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
 class VerifierReport(BaseModel):

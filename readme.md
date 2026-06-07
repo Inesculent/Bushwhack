@@ -51,7 +51,7 @@ Adapter implementations for external systems:
 .
 ├── data/
 ├── logs/
-├── mcp/
+├── docker_mcp/
 │   ├── fs-mcp/
 │   └── github-mcp/
 ├── plots/
@@ -96,18 +96,21 @@ Useful settings to get started:
 - `REVIEW_AST_ENABLED=true`
 - `REVIEW_AST_MCP_ENABLED=false`
 - `REVIEW_AST_MCP_COMMAND=python`
-- `REVIEW_AST_MCP_ARGS=["mcp/fs-mcp/server.py"]`
+- `REVIEW_AST_MCP_ARGS=["docker_mcp/fs-mcp/server.py"]`
 - `REVIEW_REDIS_ENABLED=true`
 - `REVIEW_LOCAL_LLM_BASE_URL=http://localhost:8000/v1`
 - `REVIEW_GITHUB_PERSONAL_ACCESS_TOKEN=...` (for dataset enrichment)
+- `REVIEW_LANGSMITH_TRACING=true` and `REVIEW_LANGSMITH_API_KEY=...` to send LangGraph/LangChain traces to LangSmith.
 
 ## 2.1) Run Redis For LangGraph Checkpointing (Optional)
 
-Start Redis from repo root:
+**Local profile (`--local`, default):** start Redis from repo root:
 
 ```powershell
 docker compose -f docker-compose.redis.yml up -d
 ```
+
+**Cluster profile (`--remote`):** use loopback Redis in the Slurm job — see [documentation/apptainer_cluster_guide.md](documentation/apptainer_cluster_guide.md).
 
 Stop Redis:
 
@@ -115,7 +118,7 @@ Stop Redis:
 docker compose -f docker-compose.redis.yml down
 ```
 
-This Redis container is separate from MCP Dockerfiles in `mcp/fs-mcp` and `mcp/github-mcp`.
+This Redis container is separate from MCP Dockerfiles in `docker_mcp/fs-mcp` and `docker_mcp/github-mcp`.
 Those Dockerfiles are for MCP server processes, while this compose service is only for shared state/checkpoint storage.
 
 If Redis is unavailable, set `REVIEW_REDIS_ENABLED=false` to run without checkpointing.
@@ -143,11 +146,15 @@ Parallel reviewer graph over the processed AACR dataset:
 python -m src.reviewer_agent.main --dataset aacr
 ```
 
+Use `--local` (Docker sandbox, compose Redis, LLM via SSH port-forward) or `--remote` (Apptainer on Slurm). See [documentation/apptainer_cluster_guide.md](documentation/apptainer_cluster_guide.md).
+
 Useful flags:
 
 - `--basic-graph` to skip critique/reflection nodes.
-- `--trace` to emit review-trace logs.
+- `--trace` to emit review-trace logs, including bounded LLM I/O summaries and per-call token usage.
 - `--limit 10` for smoke runs.
+
+LangSmith tracing is separate from `--trace`: set `REVIEW_LANGSMITH_TRACING=true`, `REVIEW_LANGSMITH_API_KEY`, and optionally `REVIEW_LANGSMITH_PROJECT` in `.env`. Local OpenAI-compatible models are still created with `langchain-openai`; the factory adds LangSmith metadata so local model IDs show clearly in traces. `REVIEW_LANGSMITH_HIDE_OUTPUTS` defaults to `true` because full LangGraph states can exceed LangSmith upload limits.
 
 ## 5) Run the Solo Agent (Dataset Harness)
 

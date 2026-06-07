@@ -22,6 +22,10 @@ class CodeEntity(BaseModel):
         default=None,
         description="1-based line number of the definition signature when known (AST).",
     )
+    definition_end_line: Optional[int] = Field(
+        default=None,
+        description="1-based inclusive end line of the definition body when known (AST).",
+    )
 
 
 SymbolDefinitionSource = Literal["jedi", "tree_sitter", "regex", "mcp"]
@@ -77,14 +81,148 @@ class ReviewTask(BaseModel):
     title: str = Field(description="Short title summarizing the review task")
     description: str = Field(description="Detailed description of the review task")
     target_files: List[str] = Field(default_factory=list)
+    surface_ids: List[str] = Field(default_factory=list)
     
     # Defining recursive subtasks as necessary
     subtasks: List[Self] = Field(default_factory=list)
     
     # Static planning metadata for orchestration
     specialty: Literal["security", "performance", "logic", "style", "general"] = "general"
+    review_dimension: str = Field(
+        default="general",
+        description="Generic review dimension used for surface/task dedupe and coverage diagnostics.",
+    )
     depth: int = Field(default = 0, ge = 0, le = 5, description="Depth level for the review task") # Might be useful if we need to define a max depth
     assigned_model: Optional[str] = None
+
+
+class BehavioralEvidenceRef(BaseModel):
+    """Pointer to evidence used when forming the behavioral mandate (not a bug claim)."""
+
+    kind: Literal["file", "symbol", "community", "doc", "diff", "other"] = "other"
+    ref: str = Field(description="Human-readable reference, e.g. repo-relative path or node id.")
+    note: str = Field(default="", description="Why this evidence matters.")
+
+
+ReviewSurfaceKind = Literal["file", "class", "function", "method", "symbol", "other"]
+
+
+class ReviewSurface(BaseModel):
+    """Changed review boundary that planning and checks can target explicitly."""
+
+    surface_id: str
+    name: str
+    kind: ReviewSurfaceKind = "other"
+    file_path: str = Field(description="Repository-relative file path using '/' separators.")
+    line_start: Optional[int] = Field(default=None, ge=1)
+    line_end: Optional[int] = Field(default=None, ge=1)
+    source: str = Field(default="diff")
+    confidence: float = Field(default=0.5, ge=0.0, le=1.0)
+    evidence_refs: List[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_line_range(self) -> Self:
+        if self.line_start is not None and self.line_end is not None and self.line_end < self.line_start:
+            raise ValueError("line_end must be >= line_start")
+        return self
+
+
+class SurfaceInvariant(BaseModel):
+    """Behavioral contract/risk hypothesis tied to one changed review surface."""
+
+    surface_id: str
+    dimension: str = Field(default="changed-surface behavior")
+    expected_behavior: str = ""
+    risk_hypothesis: str = ""
+    required_evidence: List[str] = Field(default_factory=list)
+    out_of_scope: str = ""
+
+
+ContractQuestionDimension = Literal[
+    "variant_completeness",
+    "return_output_totality",
+    "data_preservation_cardinality",
+    "serialization_type_closure",
+    "error_boundary",
+    "lifecycle_state_ordering",
+    "integration_compatibility",
+    "resource_work_amplification",
+    "other",
+]
+
+
+class ContractQuestion(BaseModel):
+    """Narrow reviewer question derived from a changed contract."""
+
+    question_id: str = Field(default="", max_length=160)
+    owner: str = Field(default="", description="Most specific changed owner, e.g. Class.method.", max_length=240)
+    surface_id: str = ""
+    dimension: ContractQuestionDimension = "other"
+    expected_behavior: str = Field(default="", max_length=500)
+    contract_evidence: str = Field(default="", max_length=500)
+    trigger_variant: str = Field(default="", max_length=300)
+    operation: str = Field(default="", max_length=240)
+    breach_question: str = Field(default="", max_length=500)
+    direct_suppressor: str = Field(default="", max_length=500)
+    required_evidence: List[str] = Field(default_factory=list)
+    source_confidence: float = Field(default=0.5, ge=0.0, le=1.0)
+
+
+class BehavioralSpec(BaseModel):
+    """
+    Heuristic behavioral mandate for pull-request review.
+    Downstream reviewers must treat this as directional context, not a checklist of expected defects.
+    """
+
+    intent_summary: str = Field(default="", description="Concise PR intent and scope.")
+    behavioral_expectations: str = Field(
+        default="",
+        description="Approximate expected behavior and explicit non-goals.",
+    )
+    contract_boundaries: str = Field(
+        default="",
+        description="Type, interface, API, and data-contract signals from the repo.",
+    )
+    historical_precedents: str = Field(
+        default="",
+        description="Relevant precedent or conventions (bounded, evidence-linked).",
+    )
+    risk_hypotheses: str = Field(
+        default="",
+        description="Broad areas worth attention, explicitly marked as hypotheses.",
+    )
+    reviewer_guidance: str = Field(
+        default="",
+        description="Instructions to stay structural and unbiased; avoid anchoring on predicted bugs.",
+    )
+    evidence_refs: List[BehavioralEvidenceRef] = Field(default_factory=list)
+    surfaces: List[ReviewSurface] = Field(default_factory=list)
+    surface_invariants: List[SurfaceInvariant] = Field(default_factory=list)
+    contract_questions: List[ContractQuestion] = Field(default_factory=list)
+    confidence: float = Field(default=0.5, ge=0.0, le=1.0)
+    uncertainties: str = Field(default="", description="Known gaps in understanding.")
+
+
+BehavioralSymptom = Literal[
+    "wrong_output",
+    "data_loss",
+    "crash",
+    "missing_return",
+    "uncaught_exception",
+    "unbounded_work",
+    "contract_mismatch",
+    "other",
+]
+RootOperation = Literal[
+    "dispatch",
+    "indexing",
+    "aggregation",
+    "exception_scope",
+    "resource_use",
+    "serialization",
+    "contract",
+    "other",
+]
 
 
 class ReviewFinding(BaseModel):
@@ -103,6 +241,39 @@ class ReviewFinding(BaseModel):
     # The recommendation for fixing the issue, and any references to documentation or code examples
     recommendation: Optional[str] = None
     references: List[str] = Field(default_factory=list)
+    expected_behavior: str = Field(
+        default="",
+        description="What the reviewed code is intended or contracted to do before the breach/fix is considered.",
+        max_length=500,
+    )
+    behavioral_symptom: Optional[BehavioralSymptom] = None
+    root_operation: Optional[RootOperation] = None
+    claim_digest: str = Field(
+        default="",
+        description="Compact root-claim marker used for semantic clustering and duplicate accounting.",
+        max_length=240,
+    )
+    evidence_for_contract: str = Field(
+        default="",
+        description=(
+            "Why the reviewed behavior is a contract rather than a preference: old behavior, name, "
+            "type, call site, schema, test, doc, or surrounding code."
+        ),
+        max_length=500,
+    )
+    counterexample: str = Field(
+        default="",
+        description="Concrete input, state, path, mode, record shape, lifecycle path, or interleaving that triggers it.",
+        max_length=500,
+    )
+    rejection_check: str = Field(
+        default="",
+        description=(
+            "Why the claim is not merely style, speculation, intentional narrowing, "
+            "or impossible under caller guarantees."
+        ),
+        max_length=500,
+    )
 
 
 class ReviewerWorkerReport(BaseModel):
@@ -122,6 +293,7 @@ ReflectionVerdict = Literal[
     "reclassify",
     "not_applicable",
 ]
+SupportScope = Literal["local", "needs_context", "runtime_dependent", "unclear"]
 ClaimType = Literal[
     "defect",
     "security_risk",
@@ -130,6 +302,194 @@ ClaimType = Literal[
     "positive_observation",
     "uncertain",
 ]
+ReviewLens = Literal[
+    "permission_boundary",
+    "api_compatibility",
+    "state_transition",
+    "input_validation",
+    "error_propagation",
+    "resource_lifecycle",
+    "data_shape_consistency",
+    "concurrency_ordering",
+    "test_oracle_strength",
+    "other",
+]
+
+
+class ReviewCheck(BaseModel):
+    """Runtime-compiled, evidence-first review contract for one task."""
+
+    check_id: str = Field(description="Stable id for this check within the graph run.")
+    patch_task_id: str = Field(description="Planner task id this check belongs to.")
+    surface_ids: List[str] = Field(default_factory=list)
+    lens: ReviewLens = "other"
+    file_path: str = Field(description="Repository-relative file path using '/' separators.")
+    line_start: int = Field(default=1, ge=1)
+    line_end: int = Field(default=1, ge=1)
+    changed_code_anchor: str = Field(
+        default="",
+        description="Changed function/class/line range the check is anchored to.",
+        max_length=240,
+    )
+    owned_contract_scope: str = Field(
+        default="",
+        description="Compact scope marker for the contract this check owns.",
+        max_length=240,
+    )
+    issue_family: str = Field(
+        default="",
+        description=(
+            "Compatibility alias for the diff-signal family this check tests, such as branch_return, "
+            "aggregation_cardinality, or contract_delta. This is routing/diagnostic metadata, not a closed issue taxonomy."
+        ),
+        max_length=80,
+    )
+    diff_signal_family: str = Field(
+        default="",
+        description=(
+            "Open-ended diff-signal bucket that suggested this check. Unknown concrete changed contracts should use "
+            "contract_delta rather than being dropped."
+        ),
+        max_length=80,
+    )
+    diff_signal: str = Field(
+        default="",
+        description="Short diff-local signal that caused this check to exist.",
+        max_length=240,
+    )
+    audit_only: bool = Field(
+        default=False,
+        description="True when a broad coverage check is diagnostic and cannot promote candidates.",
+    )
+    behavioral_question: str = Field(
+        default="",
+        description="Concrete yes/no review question this check must answer.",
+        max_length=400,
+    )
+    affected_invariant: str = Field(
+        default="",
+        description="Behavior, contract, or invariant that could be affected.",
+        max_length=400,
+    )
+    expected_behavior: str = Field(
+        default="",
+        description="What the changed code is intended or contracted to do for this check.",
+        max_length=500,
+    )
+    required_evidence: List[str] = Field(default_factory=list)
+    suppress_criteria: List[str] = Field(default_factory=list)
+    report_criteria: List[str] = Field(default_factory=list)
+    allowed_retrieval: List[str] = Field(default_factory=list)
+    budget: int = Field(default=2, ge=1, le=10)
+
+    @model_validator(mode="after")
+    def validate_line_range(self) -> Self:
+        if self.line_end < self.line_start:
+            raise ValueError("line_end must be >= line_start")
+        return self
+
+
+class InvalidReviewCheck(BaseModel):
+    """Compiled check rejected before execution."""
+
+    check: ReviewCheck
+    reasons: List[str] = Field(default_factory=list)
+
+
+ReviewCheckDecision = Literal[
+    "no_finding",
+    "candidate",
+    "unsupported",
+    "suppressed",
+    "budget_exhausted",
+]
+ReviewCheckGateDecision = Literal["pending", "passed", "dropped"]
+
+
+class ReviewCheckResult(BaseModel):
+    """Outcome from executing one validated review check."""
+
+    check_id: str
+    patch_task_id: str
+    decision: ReviewCheckDecision = "no_finding"
+    evidence_refs: List[str] = Field(default_factory=list)
+    suppressing_evidence: List[str] = Field(default_factory=list)
+    missing_evidence: List[str] = Field(
+        default_factory=list,
+        description="Concrete required evidence still needed before this check can be decided.",
+    )
+    reportable_reason: str = Field(default="", max_length=500)
+    expected_behavior: str = Field(
+        default="",
+        description="What the checked code is intended or contracted to do.",
+        max_length=500,
+    )
+    evidence_for_contract: str = Field(
+        default="",
+        description=(
+            "Why the check's report criteria reflect a real contract: old behavior, name, type, "
+            "call site, schema, test, doc, or surrounding code."
+        ),
+        max_length=500,
+    )
+    counterexample: str = Field(
+        default="",
+        description="Concrete input, state, path, mode, record shape, lifecycle path, or interleaving that triggers it.",
+        max_length=500,
+    )
+    rejection_check: str = Field(
+        default="",
+        description=(
+            "Why a candidate is not merely style, speculation, intentional narrowing, "
+            "or impossible under caller guarantees."
+        ),
+        max_length=500,
+    )
+    claim_digest: str = Field(
+        default="",
+        description="Compact root-claim marker used for semantic clustering and duplicate accounting.",
+        max_length=240,
+    )
+    answer_scope: str = Field(
+        default="",
+        description="Whether the result answers the exact check question or only a neighboring invariant.",
+        max_length=240,
+    )
+    suppression_basis: str = Field(
+        default="",
+        description="For no_finding/suppressed decisions, the concrete fact that directly satisfies suppress criteria.",
+        max_length=500,
+    )
+    candidate: Optional["CandidateFinding"] = None
+    gate_decision: ReviewCheckGateDecision = "pending"
+    gate_reason: str = ""
+    warnings: List[str] = Field(default_factory=list)
+
+
+class ReviewCheckCompilerOutput(BaseModel):
+    """Structured compiler output: checks only, no findings."""
+
+    summary: str = Field(default="", max_length=1200)
+    checks: List[ReviewCheck] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
+
+
+class ReviewCheckExecutorOutput(BaseModel):
+    """Structured executor output for validated checks."""
+
+    results: List[ReviewCheckResult] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
+
+
+class AuditCoverageRecord(BaseModel):
+    """Non-promotable coverage note from a critiquer pass."""
+
+    surface: str = Field(default="", description="Reviewed class, function, file, or entry point.")
+    dimensions: List[str] = Field(
+        default_factory=list,
+        description="Abstract review dimensions considered for this surface.",
+    )
+    notes: str = Field(default="", max_length=500)
 
 
 class CandidateFinding(BaseModel):
@@ -140,13 +500,17 @@ class CandidateFinding(BaseModel):
     file_path: str = Field(description="Repository-relative file path using '/' separators.")
     line_start: int = Field(ge=1)
     line_end: int = Field(ge=1)
-    content: str = Field(description="Issue description with evidence pointers.")
+    content: str = Field(description="Issue description with evidence pointers.", max_length=600)
     claim_type: ClaimType = Field(
         default="uncertain",
         description="Type of claim. Only actionable negative claims are eligible for promotion.",
     )
-    failure_mode: str = Field(default="", description="What breaks, regresses, or can be exploited.")
-    evidence_summary: str = Field(default="", description="Short note on what evidence supports this.")
+    failure_mode: str = Field(default="", description="What breaks, regresses, or can be exploited.", max_length=400)
+    evidence_summary: str = Field(
+        default="",
+        description="Short note on what evidence supports this.",
+        max_length=400,
+    )
     required_context: List[str] = Field(
         default_factory=list,
         description="External facts or code paths that must be checked before promotion.",
@@ -163,6 +527,45 @@ class CandidateFinding(BaseModel):
     feedback_type: Literal["code_improvement", "defect_detection", "optimization", "other"] = "other"
     severity: Literal["low", "medium", "high"] = "medium"
     recommendation: Optional[str] = Field(default=None, description="Concrete suggested fix or verification step.")
+    expected_behavior: str = Field(
+        default="",
+        description="What the reviewed code is intended or contracted to do before the breach/fix is considered.",
+        max_length=500,
+    )
+    behavioral_symptom: Optional[BehavioralSymptom] = Field(
+        default=None,
+        description="Generic behavioral symptom for preserving distinct failure modes during dedupe.",
+    )
+    root_operation: Optional[RootOperation] = Field(
+        default=None,
+        description="Generic operation family where the defect arises.",
+    )
+    claim_digest: str = Field(
+        default="",
+        description="Compact root-claim marker used for semantic clustering and duplicate accounting.",
+        max_length=240,
+    )
+    evidence_for_contract: str = Field(
+        default="",
+        description=(
+            "Why the reviewed behavior is a contract rather than a preference: old behavior, name, "
+            "type, call site, schema, test, doc, or surrounding code."
+        ),
+        max_length=500,
+    )
+    counterexample: str = Field(
+        default="",
+        description="Concrete input, state, path, mode, record shape, lifecycle path, or interleaving that triggers it.",
+        max_length=500,
+    )
+    rejection_check: str = Field(
+        default="",
+        description=(
+            "Why the claim is not merely style, speculation, intentional narrowing, "
+            "or impossible under caller guarantees."
+        ),
+        max_length=500,
+    )
 
     @model_validator(mode="after")
     def validate_line_range(self) -> Self:
@@ -207,9 +610,20 @@ class ReflectionReport(BaseModel):
     candidate_id: str
     reflector_specialty: Literal["security", "performance", "logic", "style", "general"]
     verdict: ReflectionVerdict
-    rationale: str = ""
+    rationale: str = Field(
+        default="",
+        max_length=1500,
+        description="Verdict reasoning; cite paths/lines—do not paste code blocks.",
+    )
     reclassified_category: Optional[ReviewCategory] = None
     focused_request: Optional[FocusedContextRequest] = None
+    support_scope: Optional[SupportScope] = Field(
+        default=None,
+        description=(
+            "Whether the supplied code evidence is enough to judge the claim locally, "
+            "or whether static context/runtime proof is needed."
+        ),
+    )
 
 
 class ReflectionBatchOutput(BaseModel):
@@ -222,8 +636,12 @@ class ReflectionBatchOutput(BaseModel):
 class CritiquerOutput(BaseModel):
     """General critiquer structured output."""
 
-    summary: str = Field(default="", description="Brief overview of the critique pass.")
+    summary: str = Field(default="", description="Brief overview of the critique pass.", max_length=2000)
     candidates: List[CandidateFinding] = Field(default_factory=list)
+    audit_coverage: List[AuditCoverageRecord] = Field(
+        default_factory=list,
+        description="Non-promotable notes on reviewed surfaces and abstract dimensions considered.",
+    )
     initial_focus_requests: List[FocusedContextRequest] = Field(
         default_factory=list,
         description="Optional bounded follow-up context before reflection.",
@@ -238,6 +656,7 @@ class ReflectionOutput(BaseModel):
     rationale: str = ""
     reclassified_category: Optional[ReviewCategory] = None
     focused_request: Optional[FocusedContextRequest] = None
+    support_scope: Optional[SupportScope] = None
 
 
 class CritiqueRevisionItem(BaseModel):
@@ -250,6 +669,68 @@ class CritiqueRevisionOutput(BaseModel):
     """Post-focused-context revision for candidates that needed more evidence."""
 
     revisions: List[CritiqueRevisionItem] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
+
+
+class SourceFact(BaseModel):
+    """Deterministic source fact extracted without deciding review-claim validity."""
+
+    candidate_id: str
+    fact_kind: str = Field(description="Stable structural fact kind, e.g. reachable_fallthrough.")
+    file_path: str = Field(description="Repository-relative file path using '/' separators.")
+    line_start: Optional[int] = Field(default=None, ge=1)
+    line_end: Optional[int] = Field(default=None, ge=1)
+    summary: str = Field(default="", max_length=700)
+    evidence: str = Field(default="", max_length=1000)
+
+
+class ReviewEvidenceTriageItem(BaseModel):
+    """LLM triage of a candidate before reflection/verifier routing."""
+
+    candidate_id: str
+    claim_summary: str = Field(default="", max_length=700)
+    claim_family: str = Field(default="other", max_length=120)
+    suggested_reflection_specialties: List[Literal["security", "performance", "logic", "general"]] = Field(
+        default_factory=list
+    )
+    source_fact_requests: List[str] = Field(default_factory=list, max_length=8)
+    runtime_verification_usefulness: Literal["useful", "advisory", "not_useful", "unclear"] = "unclear"
+    needed_context: List[str] = Field(default_factory=list, max_length=8)
+    rationale: str = Field(default="", max_length=1200)
+
+
+class ReviewEvidenceTriageOutput(BaseModel):
+    """Structured output for pre-adjudication evidence triage."""
+
+    items: List[ReviewEvidenceTriageItem] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
+
+
+ReviewAdjudicationDecision = Literal["promote", "drop", "merge"]
+
+
+class ReviewAdjudicationItem(BaseModel):
+    """Final LLM adjudication for one candidate claim."""
+
+    candidate_id: str
+    decision: ReviewAdjudicationDecision
+    merge_into: Optional[str] = Field(
+        default=None,
+        description="Candidate/finding id this item merges into when decision is merge.",
+    )
+    finding: Optional[ReviewFinding] = Field(
+        default=None,
+        description="Final review finding when decision is promote.",
+    )
+    rationale: str = Field(default="", max_length=1200)
+    evidence_refs: List[str] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
+
+
+class ReviewAdjudicationOutput(BaseModel):
+    """Structured output for final candidate adjudication."""
+
+    items: List[ReviewAdjudicationItem] = Field(default_factory=list)
     warnings: List[str] = Field(default_factory=list)
 
 
@@ -324,6 +805,34 @@ class RepoDocsBundle(BaseModel):
     warnings: List[str] = Field(default_factory=list)
 
 
+class RepoStructureEntry(BaseModel):
+    """One entry from a repository structure listing."""
+
+    type: str = Field(description="Entry type: file or dir.")
+    path: str = Field(description="Repository-relative path using '/' separators.")
+    name: str = ""
+    sha: Optional[str] = None
+
+
+class RepoStructure(BaseModel):
+    """Directory listing response for repo structure discovery."""
+
+    owner: str
+    repo: str
+    path: str = ""
+    ref: Optional[str] = None
+    entries: List[RepoStructureEntry] = Field(default_factory=list)
+    error: Optional[str] = None
+
+
+class RepoMetadata(BaseModel):
+    """Lightweight repository metadata from GitHub."""
+
+    owner: str
+    repo: str
+    default_branch: Optional[str] = None
+
+
 class GitHubPullRequestContext(BaseModel):
     number: int
     title: str = ""
@@ -348,6 +857,30 @@ class GitHubIssueComment(BaseModel):
     body: str = ""
     html_url: Optional[str] = None
     created_at: Optional[str] = None
+
+
+class GitHubReviewHistoryComment(BaseModel):
+    """Prior PR/comment context for one repository file."""
+
+    file_path: str
+    pr_number: int
+    pr_title: str = ""
+    pr_html_url: Optional[str] = None
+    commit_sha: str = ""
+    author: Optional[str] = None
+    created_at: Optional[str] = None
+    body: str = ""
+    comment_path: str = ""
+    line: Optional[int] = None
+    source: Literal["review_comment", "issue_comment"] = "review_comment"
+
+
+class GitHubFileReviewHistory(BaseModel):
+    """Bounded historical review context for a changed file."""
+
+    file_path: str
+    comments: List[GitHubReviewHistoryComment] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
 
 
 DiffChangeType = Literal["A", "M", "D", "R"]
@@ -597,6 +1130,9 @@ class CommunityWorkItem(BaseModel):
         default_factory=list,
         description="Community ids of outbound cross-boundary targets (same order as targets when possible).",
     )
+    total_files: int = Field(default=0, ge=0)
+    total_symbols: int = Field(default=0, ge=0)
+    total_unverified_targets: int = Field(default=0, ge=0)
 
 
 class CommunityAgentOutput(BaseModel):
@@ -610,9 +1146,115 @@ class GlobalSemanticSynthesisOutput(BaseModel):
     global_summary: str = Field(default="", description="Repository-level synthesis from community summaries.")
 
 
+class RepositoryKBCommunityDistillationItem(BaseModel):
+    community_id: int
+    label: str = Field(default="", max_length=120)
+    purpose: str = Field(default="", max_length=1200)
+    responsibilities: List[str] = Field(default_factory=list, max_length=16)
+    contracts: List[str] = Field(default_factory=list, max_length=12)
+    public_contracts: List[str] = Field(default_factory=list, max_length=16)
+    boundary_points: List[str] = Field(default_factory=list, max_length=12)
+    cascade_paths: List[str] = Field(default_factory=list, max_length=12)
+    bridge_symbols: List[str] = Field(default_factory=list, max_length=16)
+    important_facts: List[str] = Field(default_factory=list, max_length=16)
+    data_shape_notes: List[str] = Field(default_factory=list, max_length=16)
+    risk_surfaces: List[str] = Field(default_factory=list, max_length=16)
+    uncertainties: List[str] = Field(default_factory=list, max_length=10)
+    retrieval_hints: List[str] = Field(default_factory=list, max_length=16)
+    source_record_ids: List[str] = Field(default_factory=list, max_length=48)
+
+
+class RepositoryKBCommunityDistillationOutput(BaseModel):
+    communities: List[RepositoryKBCommunityDistillationItem] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
+
+
+class RepositoryKBShardDistillationItem(BaseModel):
+    community_id: int
+    shard_id: str
+    lane: str = ""
+    summary: str = Field(default="", max_length=500)
+    responsibilities: List[str] = Field(default_factory=list, max_length=8)
+    contracts: List[str] = Field(default_factory=list, max_length=6)
+    public_contracts: List[str] = Field(default_factory=list, max_length=8)
+    boundary_points: List[str] = Field(default_factory=list, max_length=6)
+    cascade_paths: List[str] = Field(default_factory=list, max_length=6)
+    important_facts: List[str] = Field(default_factory=list, max_length=8)
+    data_shape_notes: List[str] = Field(default_factory=list, max_length=8)
+    risk_surfaces: List[str] = Field(default_factory=list, max_length=8)
+    uncertainties: List[str] = Field(default_factory=list, max_length=6)
+    retrieval_hints: List[str] = Field(default_factory=list, max_length=8)
+    source_record_ids: List[str] = Field(default_factory=list, max_length=24)
+
+
+class RepositoryKBShardDistillationOutput(BaseModel):
+    shards: List[RepositoryKBShardDistillationItem] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
+
+
+class RepositoryKBRepoDistillationOutput(BaseModel):
+    summary: str = Field(default="", max_length=2400)
+    what_it_is: str = Field(default="", max_length=1600)
+    core_workflows: List[str] = Field(default_factory=list)
+    domain_concepts: List[str] = Field(default_factory=list)
+    runtime_model: List[str] = Field(default_factory=list)
+    extension_points: List[str] = Field(default_factory=list)
+    data_model_contracts: List[str] = Field(default_factory=list)
+    review_mental_model: List[str] = Field(default_factory=list)
+    docs_alignment: List[str] = Field(default_factory=list)
+    top_subsystems: List[str] = Field(default_factory=list)
+    public_contracts: List[str] = Field(default_factory=list)
+    dependency_flow: List[str] = Field(default_factory=list)
+    risk_surfaces: List[str] = Field(default_factory=list)
+    uncertainties: List[str] = Field(default_factory=list)
+    source_record_ids: List[str] = Field(default_factory=list)
+    doc_source_ids: List[str] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
+
+
 class ResolverSymbolSummaryOutput(BaseModel):
     """One-shot summary when resolving a symbol via AST in the resolver tier."""
 
     symbol_node_id: str
     one_line_summary: str = Field(default="", description="Single-sentence purpose summary.")
+
+
+ReviewKBKind = Literal["repo", "community", "file", "symbol", "fact", "edge", "summary"]
+ReviewKBConfidence = Literal["structural", "inferred", "llm_synthesized"]
+
+
+class ReviewKBEvidence(BaseModel):
+    file_path: str = ""
+    line_start: Optional[int] = Field(default=None, ge=1)
+    line_end: Optional[int] = Field(default=None, ge=1)
+    graph_node_id: Optional[str] = None
+    note: str = ""
+
+
+class ReviewKBRecord(BaseModel):
+    id: str
+    kind: ReviewKBKind
+    summary: str = ""
+    evidence: List[ReviewKBEvidence] = Field(default_factory=list)
+    confidence: ReviewKBConfidence = "structural"
+    tags: List[str] = Field(default_factory=list)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class ReviewKBManifest(BaseModel):
+    schema_version: str = "1"
+    run_id: str = ""
+    repo_path: str = ""
+    counts: Dict[str, int] = Field(default_factory=dict)
+    coverage: Dict[str, int] = Field(default_factory=dict)
+    diagnostics: Dict[str, Any] = Field(default_factory=dict)
+
+
+class ReviewKBResult(BaseModel):
+    query: str
+    primary_records: List[ReviewKBRecord] = Field(default_factory=list)
+    related_records: List[ReviewKBRecord] = Field(default_factory=list)
+    evidence: List[ReviewKBEvidence] = Field(default_factory=list)
+    omitted_count: int = 0
+    diagnostics: Dict[str, Any] = Field(default_factory=dict)
 

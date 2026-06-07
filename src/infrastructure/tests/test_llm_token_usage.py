@@ -8,6 +8,8 @@ import pytest
 from pydantic import BaseModel, Field
 
 from src.infrastructure.llm.token_usage import (
+    extract_token_usage_details_from_llm_result,
+    extract_token_usage_details_from_message,
     extract_total_tokens_from_llm_result,
     extract_total_tokens_from_message,
     parse_structured_output,
@@ -32,6 +34,42 @@ def test_extract_from_response_metadata_token_usage_dict() -> None:
         response_metadata = {"token_usage": {"total_tokens": 99}}
 
     assert extract_total_tokens_from_message(_Msg()) == 99
+
+
+def test_extract_token_usage_details_from_usage_metadata() -> None:
+    class _Msg:
+        usage_metadata = {"input_tokens": 10, "output_tokens": 5, "total_tokens": 15}
+        response_metadata = None
+
+    assert extract_token_usage_details_from_message(_Msg()) == {
+        "prompt_tokens": 10,
+        "completion_tokens": 5,
+        "total_tokens": 15,
+    }
+
+
+def test_extract_token_usage_details_from_response_metadata() -> None:
+    class _Msg:
+        usage_metadata = None
+        response_metadata = {"token_usage": {"prompt_tokens": 11, "completion_tokens": 6, "total_tokens": 17}}
+
+    assert extract_token_usage_details_from_llm_result(_Msg()) == {
+        "prompt_tokens": 11,
+        "completion_tokens": 6,
+        "total_tokens": 17,
+    }
+
+
+def test_extract_token_usage_details_missing_usage() -> None:
+    class _Msg:
+        usage_metadata = None
+        response_metadata = {}
+
+    assert extract_token_usage_details_from_message(_Msg()) == {
+        "prompt_tokens": None,
+        "completion_tokens": None,
+        "total_tokens": None,
+    }
 
 
 def test_extract_from_structured_include_raw_dict() -> None:

@@ -1,6 +1,10 @@
 You are the semantic explorer for one structural community in a repository graph.
 Return structured JSON matching the CommunityAgentOutput schema.
 
+Compatibility note:
+- This prompt is a legacy fallback. The primary repository-understanding path is the Repository KB plus bounded KB distillation prompts.
+- Do not use this as a broad raw-code ingestion pass; keep outputs compact and navigational.
+
 Goal:
 - Explain what this community appears to do and how it fits into the broader repository.
 - Identify file and symbol purposes that help downstream agents navigate the code.
@@ -13,6 +17,14 @@ Output guidance:
 - symbol_summaries: summarize only symbols shown in the context, with rationale tied to visible code.
 - unverified_calls: emit entries for callees referenced by name but not visible with bodies here.
 - confidence: high only when the supplied symbol context directly supports the summary.
+
+Output budget:
+- This is a high-level navigation summary, not an exhaustive inventory.
+- Return at most 8 file_summaries.
+- Return at most 15 symbol_summaries.
+- Return at most 20 unverified_calls.
+- Return at most 5 short warnings.
+- Keep purpose concise; do not include prose outside the JSON schema.
 
 Evidence and safety rules:
 - Do not infer hidden implementation details from a callee name alone.

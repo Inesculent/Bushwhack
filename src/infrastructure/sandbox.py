@@ -1,215 +1,123 @@
-import io
-import os
-import tarfile
-from dataclasses import dataclass
-from uuid import uuid4
-from typing import List, Optional
+"""Sandbox factory: Docker (local) and Apptainer (remote) backends."""
 
-import docker
+from __future__ import annotations
+
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+from src.infrastructure.sandbox_apptainer import ApptainerRepoSandbox
+from src.infrastructure.sandbox_docker import DockerRepoSandbox
+from src.infrastructure.sandbox_runtime import SandboxExecResult, SandboxRuntime
+
+if TYPE_CHECKING:
+    from src.config import Settings
+
+# Backward-compatible alias
+RepoSandbox = SandboxRuntime
 
 
-@dataclass(frozen=True)
-class SandboxExecResult:
-    """Result of a container exec with exit code and split streams."""
+def resolve_sandbox_image(settings: Settings, image_name: str | None = None) -> str:
+    """Resolve Docker image name or Apptainer SIF path from settings."""
+    if image_name and str(image_name).strip():
+        candidate = str(image_name).strip()
+        if settings.sandbox_backend == "apptainer":
+            path = Path(candidate)
+            if path.suffix == ".sif" or path.is_file():
+                return str(path.expanduser())
+        return candidate
 
-    exit_code: int
-    stdout: str
-    stderr: str
+    if settings.sandbox_backend == "apptainer":
+        review_sif = (settings.apptainer_image or "").strip()
+        if review_sif:
+            return review_sif
+        return "agent-fs-sandbox.sif"
+
+    return "agent-fs-sandbox"
 
 
-class RepoSandbox:
-    def __init__(self, image_name: str = "agent-fs-sandbox"):
+def resolve_verifier_sandbox_image(
+    settings: Settings,
+    *,
+    needs_clone: bool,
+) -> str:
+    """Pick verifier artifact for mount-only vs clone workflows."""
+    if settings.sandbox_backend == "apptainer":
+        if needs_clone:
+            clone_sif = (settings.apptainer_verifier_image or settings.apptainer_image or "").strip()
+            if not clone_sif:
+                clone_sif = (settings.verifier_clone_image or "").strip()
+            if clone_sif.endswith(".sif") or Path(clone_sif).is_file():
+                return clone_sif
+            return clone_sif or "agent-fs-sandbox.sif"
+        test_sif = (settings.apptainer_verifier_image or "").strip()
+        if test_sif:
+            return test_sif
+        docker_name = (settings.verifier_image or "").strip()
+        if docker_name.endswith(".sif"):
+            return docker_name
+        return test_sif or "verifier-test-env.sif"
+
+    if needs_clone:
+        return (settings.verifier_clone_image or "agent-fs-sandbox").strip()
+    return (settings.verifier_image or "verifier-test-env:latest").strip()
+
+
+def build_repo_sandbox(
+    settings: Settings,
+    *,
+    image_name: str | None = None,
+) -> SandboxRuntime:
+    """Construct the active sandbox backend from settings."""
+    artifact = resolve_sandbox_image(settings, image_name)
+
+    if settings.sandbox_backend == "apptainer":
+        return ApptainerRepoSandbox(
+            sif_path=artifact,
+            apptainer_binary=settings.apptainer_binary,
+            instance_dir=settings.apptainer_instance_dir,
+            bind_tmpfs=settings.apptainer_bind_tmpfs,
+            extra_binds=settings.apptainer_extra_bind,
+        )
+
+    return DockerRepoSandbox(image_name=artifact)
+
+
+def sandbox_runtime_available(settings: Settings) -> bool:
+    """Return True when the configured sandbox backend is usable."""
+    if settings.sandbox_backend == "apptainer":
         try:
-            self.client = docker.from_env()
-        except Exception as e:
-            raise RuntimeError(f"Docker is not running or not accessible: {e}")
-        
-        self.image_name = image_name
-        self.container = None
+            import shutil
+            import subprocess
 
-    def create_execution_workspace(self, workspace_name: Optional[str] = None) -> str:
-        """
-        Creates a Read-Write copy of the Read-Only mounted repo 
-        so the agent can safely compile code and run tests.
-        """
-        if not self.container:
-            raise RuntimeError("Sandbox not started.")
-
-        name = workspace_name or f"exec_{uuid4().hex[:8]}"
-        workspace_path = f"/{name}"
-            
-        # 1. Create a fresh directory inside the container (not on your host)
-        self.execute(["mkdir", "-p", workspace_path], check_exit_code=True)
-
-        # 2. Copy the code from the Read-Only mount to the Ephemeral Workspace.
-        # Skip heavy ephemeral directories to keep integration tests fast.
-        copy_script = (
-            "set -e; "
-            "for p in /repo/* /repo/.[!.]* /repo/..?*; do "
-            "  [ -e \"$p\" ] || continue; "
-            "  name=\"$(basename \"$p\")\"; "
-            "  case \"$name\" in "
-            "    .|..|.git|.venv|__pycache__|.pytest_cache|.mypy_cache|.ruff_cache) continue ;; "
-            "  esac; "
-            f"  cp -a \"$p\" \"{workspace_path}/\"; "
-            "done"
-        )
-        self.execute(["sh", "-lc", copy_script], check_exit_code=True)
-        
-        return workspace_path
-
-    def start(self, local_repo_path: str):
-        """Spins up the container and mounts the repo."""
-        if self.container:
-            raise RuntimeError("Sandbox is already started.")
-
-        abs_path = os.path.abspath(local_repo_path)
-        
-        # Verify the path exists before trying to mount
-        if not os.path.exists(abs_path):
-            raise FileNotFoundError(f"Path {abs_path} does not exist.")
-
-        self.container = self.client.containers.run(
-            self.image_name,
-            detach=True,
-            volumes={abs_path: {'bind': '/repo', 'mode': 'ro'}}, # Read-only for safety
-            working_dir="/repo"
-        )
-        return self.container.id
-
-    def start_from_remote(self, repo_url: str, commit_hash: str) -> str:
-        """
-        Spins up a container and clones a remote repository inside the container
-        filesystem, then checks out a specific commit.
-        """
-        if self.container:
-            raise RuntimeError("Sandbox is already started.")
-
-        self.container = self.client.containers.run(
-            self.image_name,
-            detach=True,
-            tty=True,
-            working_dir="/",
-        )
-
-        try:
-            self.execute(["git", "clone", repo_url, "/repo"], check_exit_code=True)
-            self.execute(
-                ["git", "-C", "/repo", "checkout", "--detach", commit_hash],
-                check_exit_code=True,
+            if not shutil.which(settings.apptainer_binary):
+                return False
+            subprocess.run(
+                [settings.apptainer_binary, "version"],
+                capture_output=True,
+                check=True,
+                timeout=30,
             )
+            review_sif = resolve_sandbox_image(settings)
+            return Path(review_sif).expanduser().is_file()
         except Exception:
-            self.stop()
-            raise
+            return False
 
-        return self.container.id
+    try:
+        import docker
 
-    def start_from_remote_ref(self, repo_url: str, ref: str) -> str:
-        """
-        Spins up a container, clones a remote repository, and checks out a ref.
+        return bool(docker.from_env().ping())
+    except Exception:
+        return False
 
-        Supports normal refs/SHAs as well as GitHub pull request refs such as
-        ``pull/123/head``.
-        """
-        if self.container:
-            raise RuntimeError("Sandbox is already started.")
 
-        self.container = self.client.containers.run(
-            self.image_name,
-            detach=True,
-            tty=True,
-            working_dir="/",
-        )
-
-        try:
-            self.execute(["git", "clone", repo_url, "/repo"], check_exit_code=True)
-            if ref.startswith("pull/"):
-                local_ref = f"review-{uuid4().hex[:8]}"
-                self.execute(
-                    ["git", "-C", "/repo", "fetch", "origin", f"{ref}:{local_ref}"],
-                    check_exit_code=True,
-                )
-                self.execute(
-                    ["git", "-C", "/repo", "checkout", "--detach", local_ref],
-                    check_exit_code=True,
-                )
-            else:
-                self.execute(
-                    ["git", "-C", "/repo", "checkout", "--detach", ref],
-                    check_exit_code=True,
-                )
-        except Exception:
-            self.stop()
-            raise
-
-        return self.container.id
-
-    def execute(
-        self,
-        cmd: List[str],
-        workdir: Optional[str] = None,
-        check_exit_code: bool = False,
-    ) -> str:
-        """Runs a command inside the sandbox and returns stdout."""
-        if not self.container:
-            raise RuntimeError("Sandbox is not started.")
-        
-        exit_code, output = self.container.exec_run(cmd, workdir=workdir)
-        decoded_output = output.decode("utf-8", errors="replace")
-
-        if check_exit_code and exit_code != 0:
-            raise RuntimeError(
-                f"Sandbox command failed with exit code {exit_code}: {' '.join(cmd)}\n{decoded_output}"
-            )
-        
-        # In a real review, we'd want to handle exit_code != 0
-        return decoded_output
-
-    def execute_result(
-        self,
-        cmd: List[str],
-        workdir: Optional[str] = None,
-    ) -> SandboxExecResult:
-        """Run a command and return exit code plus stdout/stderr (demux)."""
-        if not self.container:
-            raise RuntimeError("Sandbox not started.")
-
-        exit_code, output = self.container.exec_run(cmd, workdir=workdir, demux=True)
-        if output is None:
-            stdout_b, stderr_b = b"", b""
-        else:
-            stdout_b, stderr_b = output
-            stdout_b = stdout_b or b""
-            stderr_b = stderr_b or b""
-        return SandboxExecResult(
-            exit_code=int(exit_code),
-            stdout=stdout_b.decode("utf-8", errors="replace"),
-            stderr=stderr_b.decode("utf-8", errors="replace"),
-        )
-
-    def write_file_in_container(self, dest_path: str, content: bytes) -> None:
-        """Write bytes to ``dest_path`` inside the running container (e.g. /tmp/script.py)."""
-        if not self.container:
-            raise RuntimeError("Sandbox not started.")
-
-        dest_path = dest_path.replace("\\", "/")
-        parent = os.path.dirname(dest_path) or "/"
-        base = os.path.basename(dest_path)
-
-        tar_stream = io.BytesIO()
-        with tarfile.open(fileobj=tar_stream, mode="w") as tar:
-            data = io.BytesIO(content)
-            info = tarfile.TarInfo(name=base)
-            info.size = len(content)
-            tar.addfile(info, fileobj=data)
-        tar_stream.seek(0)
-        ok = self.container.put_archive(parent, tar_stream.read())
-        if not ok:
-            raise RuntimeError(f"put_archive failed for {dest_path}")
-
-    def stop(self):
-        """Cleans up the container."""
-        if self.container:
-            self.container.stop()
-            self.container.remove()
-            self.container = None
+__all__ = [
+    "ApptainerRepoSandbox",
+    "DockerRepoSandbox",
+    "RepoSandbox",
+    "SandboxExecResult",
+    "SandboxRuntime",
+    "build_repo_sandbox",
+    "resolve_sandbox_image",
+    "resolve_verifier_sandbox_image",
+    "sandbox_runtime_available",
+]

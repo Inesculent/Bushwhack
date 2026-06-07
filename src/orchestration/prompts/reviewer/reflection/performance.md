@@ -4,6 +4,8 @@ You review **candidate findings** for performance impact. For **each** candidate
 
 ## ADVERSARIAL REVIEW & VERIFICATION PROTOCOL
 
+Repository KB context, when supplied, can identify callers, batch-size contracts, data-shape expectations, and dependency boundaries. Use it as retrieval guidance and request focused context for exact source or call-pattern evidence when it would change the verdict.
+
 **Two-Tier Verification:**
 
 - **Tier 1 (fast-track):** Clear complexity or resource issues visible in the changed code (e.g., nested loops over growing data shown in the diff, obvious accidental O(n²)). Judge without full-repo profiling.
@@ -19,6 +21,16 @@ Verdicts:
 - `reclassify` — belongs under another category; set `reclassified_category`.
 - `needs_context` — use when bounded extra **static** context is required to compare old/new complexity, query count, memory use, batch size limits, or caller behavior.
 - `needs_verification` — use when runtime execution (verifier) is needed to confirm performance characteristics not visible from the diff alone.
+
+Support scope:
+- `local` - the supplied code evidence is enough to judge the candidate.
+- `needs_context` - static repository context is required.
+- `runtime_dependent` - execution is required.
+- `unclear` - the support scope cannot be determined.
+
+Output discipline:
+- Write the rationale first (under 1200 characters; cite paths/lines—do not paste code blocks), then include a one-line self-check such as "Rationale supports verdict: yes/no", then set the verdict.
+- Emit exactly one `ReflectionReport` per input candidate. The verdict must match the rationale. If your rationale refutes the claim, do not output `accept`.
 
 Do not veto a finding merely because it is outside your specialty. Off-domain findings should usually be `not_applicable` or `reclassify`, not `reject`.
 

@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Mapping, Sequence
 
 from src.domain.interfaces import IGitHubContextProvider
 from src.domain.schemas import FocusedContextRequest, FocusedContextResult, ReflectionReport
 from src.domain.state import GraphState
+from src.orchestration.context.focused_query_sanitize import sanitize_focused_context_request
 from src.orchestration.context.review_context import BoundedReviewContextFulfiller, LazyReviewContextProvider
 
 logger = logging.getLogger(__name__)
@@ -70,6 +71,62 @@ def _pending_requests(state: GraphState) -> List[FocusedContextRequest]:
     return pending
 
 
+def _norm_path(path: str) -> str:
+    return path.strip().replace("\\", "/").lstrip("/")
+
+
+def _request_paths(request: FocusedContextRequest) -> list[str]:
+    return sorted({_norm_path(path) for path in request.file_paths if str(path).strip()})
+
+
+def _result_paths(result: FocusedContextResult) -> list[str]:
+    paths: set[str] = set()
+    paths.update(_norm_path(path) for path in result.file_snippets if path != "repository_kb_context")
+    paths.update(_norm_path(path) for path in result.file_contents_full)
+    for rows in result.search_hits.values():
+        for hit in rows or []:
+            path = hit.file_path if hasattr(hit, "file_path") else (
+                hit.get("file_path") if isinstance(hit, Mapping) else ""
+            )
+            if path:
+                paths.add(_norm_path(str(path)))
+    return sorted(path for path in paths if path)
+
+
+def _has_hits(result: FocusedContextResult) -> bool:
+    if any(str(body or "").strip() for body in result.file_snippets.values()):
+        return True
+    if any(str(body or "").strip() for body in result.file_contents_full.values()):
+        return True
+    return any(rows for rows in result.search_hits.values())
+
+
+def _queries_changed(before: FocusedContextRequest, after: FocusedContextRequest) -> bool:
+    return (
+        list(before.symbol_queries) != list(after.symbol_queries)
+        or list(before.text_queries) != list(after.text_queries)
+    )
+
+
+def _diagnostic_row(
+    request: FocusedContextRequest,
+    *,
+    outcomes: Sequence[str],
+    result: FocusedContextResult | None = None,
+    warning: str | None = None,
+) -> Dict[str, Any]:
+    requested = _request_paths(request)
+    effective = _result_paths(result) if result is not None else []
+    return {
+        "request_id": request.request_id,
+        "candidate_id": request.candidate_id,
+        "requested_paths": requested,
+        "effective_paths": effective,
+        "outcomes": list(dict.fromkeys(outcomes)),
+        "warnings": ([warning] if warning else []) + (list(result.warnings) if result is not None else []),
+    }
+
+
 def make_focused_context_node(
     context_provider: LazyReviewContextProvider,
     github_provider: IGitHubContextProvider | None = None,
@@ -85,12 +142,35 @@ def make_focused_context_node(
         existing = dict(state.get("focused_context_results", {}) or {})
         pending = _pending_requests(state)
         if not pending:
-            return {"node_history": [f"{node_name}:skipped"]}
+            metadata = dict(state.get("metadata", {}))
+            fc_meta = dict(metadata.get("focused_context", {}) or {})
+            fc_meta["dispatch_status"] = "not_dispatched"
+            metadata["focused_context"] = fc_meta
+            return {"metadata": metadata, "node_history": [f"{node_name}:skipped"]}
 
         merged: Dict[str, FocusedContextResult] = {}
         warnings: List[str] = []
+        diagnostics: List[Dict[str, Any]] = []
         for req in pending:
+            sanitized = sanitize_focused_context_request(req)
+            base_outcomes = ["sanitized_query"] if _queries_changed(req, sanitized) else []
             if req.request_id in existing:
+                existing_val = existing.get(req.request_id)
+                try:
+                    existing_model = (
+                        existing_val
+                        if isinstance(existing_val, FocusedContextResult)
+                        else FocusedContextResult.model_validate(existing_val)
+                    )
+                except Exception:
+                    existing_model = None
+                diagnostics.append(
+                    _diagnostic_row(
+                        sanitized,
+                        outcomes=[*base_outcomes, "already_fulfilled"],
+                        result=existing_model,
+                    )
+                )
                 continue
             existing_val = existing.get(req.request_id)
             existing_model: FocusedContextResult | None = None
@@ -99,13 +179,31 @@ def make_focused_context_node(
             elif isinstance(existing_val, dict):
                 existing_model = FocusedContextResult.model_validate(existing_val)
             try:
-                merged[req.request_id] = fulfiller.fulfill(
+                result = fulfiller.fulfill(
                     state,
-                    req,
+                    sanitized,
                     existing_result=existing_model,
                 )
+                merged[req.request_id] = result
+                outcomes = list(base_outcomes)
+                if not _has_hits(result):
+                    outcomes.append("no_hits")
+                requested_paths = set(_request_paths(sanitized))
+                effective_paths = set(_result_paths(result))
+                if requested_paths and effective_paths and not requested_paths.intersection(effective_paths):
+                    outcomes.append("path_mismatch")
+                if any(str(w).startswith("truncated") for w in result.warnings):
+                    outcomes.append("budget_omission")
+                diagnostics.append(_diagnostic_row(sanitized, outcomes=outcomes or ["fulfilled"], result=result))
             except Exception as exc:  # noqa: BLE001
                 warnings.append(f"fulfill_failed:{req.request_id}:{exc.__class__.__name__}: {exc}")
+                diagnostics.append(
+                    _diagnostic_row(
+                        sanitized,
+                        outcomes=[*base_outcomes, "tool_unavailable"],
+                        warning=f"{exc.__class__.__name__}: {exc}",
+                    )
+                )
                 logger.warning(
                     "focused_context fulfill failed run_id=%s request_id=%s reason=%s",
                     run_id,
@@ -125,6 +223,24 @@ def make_focused_context_node(
         fc_meta = dict(metadata.get("focused_context", {}) or {})
         fc_meta["fulfilled_ids"] = sorted(set(fc_meta.get("fulfilled_ids", [])) | set(merged.keys()))
         fc_meta["warnings"] = list(fc_meta.get("warnings", [])) + warnings
+        prev_diagnostics = fc_meta.get("diagnostics")
+        fc_meta["diagnostics"] = (list(prev_diagnostics) if isinstance(prev_diagnostics, list) else []) + diagnostics
+        effective_paths = {
+            path
+            for row in fc_meta["diagnostics"]
+            if isinstance(row, Mapping)
+            for path in row.get("effective_paths", [])
+            if isinstance(path, str) and path
+        }
+        requested_paths = {
+            path
+            for row in fc_meta["diagnostics"]
+            if isinstance(row, Mapping)
+            for path in row.get("requested_paths", [])
+            if isinstance(path, str) and path
+        }
+        fc_meta["focused_effective_path_count"] = len(effective_paths)
+        fc_meta["focused_requested_path_count"] = len(requested_paths)
         metadata["focused_context"] = fc_meta
 
         return {

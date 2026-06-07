@@ -2,7 +2,8 @@ from typing import Any, Dict, List
 from pydantic import BaseModel, Field
 from src.domain.state import GraphState
 from src.infrastructure.llm.factory import Models
-from src.infrastructure.llm.token_usage import extract_total_tokens_from_llm_result, parse_structured_output
+from src.infrastructure.llm.token_usage import parse_structured_output
+from src.infrastructure.llm.trace import trace_llm_call
 from src.orchestration.prompts.exploration_prompts import render_explorer_prompt
 
 
@@ -30,9 +31,17 @@ def explorer_node(state: GraphState) -> Dict[str, Any]:
 
 	prompt = render_explorer_prompt(repo_path=repo_path, user_goals=user_goals, git_diff=git_diff)
 
-	invoke_result = llm.invoke(prompt)
+	traced = trace_llm_call(
+		llm,
+		prompt,
+		state=state,
+		node_name="explorer",
+		schema_name="ExplorerOutput",
+		input_summary={"repo_path": repo_path},
+	)
+	invoke_result = traced.result
 	response = parse_structured_output(invoke_result, ExplorerOutput)
-	tokens = extract_total_tokens_from_llm_result(invoke_result)
+	tokens = traced.tokens
 
 	metadata = dict(state.get("metadata", {}))
 	metadata["explorer_summary"] = response.summary
@@ -46,4 +55,5 @@ def explorer_node(state: GraphState) -> Dict[str, Any]:
 		"metadata": metadata,
 		"node_history": ["explorer"],
 		"token_usage": tokens,
+		"llm_trace": traced.trace_records,
 	}

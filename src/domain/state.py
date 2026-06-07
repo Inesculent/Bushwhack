@@ -6,11 +6,15 @@ from .schemas import (
     CritiqueRevisionDigest,
     FocusedContextRequest,
     FocusedContextResult,
+    InvalidReviewCheck,
     KnowledgeGap,
     PreflightParseIssue,
     PreflightSummary,
     ReflectionReport,
     RepositoryMap,
+    SourceFact,
+    ReviewCheck,
+    ReviewCheckResult,
     ReviewTask,
     ReviewFinding,
     ReviewerWorkerReport,
@@ -19,7 +23,12 @@ from .schemas import (
     TaskStatus,
     UnverifiedCallTarget,
 )
-from .verifier_schemas import VerifierReport
+from .verifier_schemas import (
+    VerificationScope,
+    VerifierAttemptRecord,
+    VerifierReport,
+    VerifierVerdict,
+)
 
 
 def merge_graph_metadata(
@@ -71,12 +80,14 @@ class GraphState(TypedDict, total=False):
     # Context
     user_goals: NotRequired[str]
     repo_map: NotRequired[RepositoryMap]
-    next_step: NotRequired[Literal["explore", "plan", "review", "finalize"]]
+    next_step: NotRequired[Literal["explore", "plan", "review", "finalize", "blocked"]]
     global_insights: Annotated[List[str], operator.add]
 
     # Documentation pre-brief (optional, before semantic scan)
     docs_prebrief_summary: NotRequired[str]
     docs_prebrief_sources: NotRequired[List[str]]
+    repository_docs_summary: NotRequired[str]
+    repository_docs_sources: NotRequired[List[str]]
 
     # Optional references for externalized payloads (e.g., Redis-backed cache blobs)
     cache_refs: NotRequired[Dict[str, str]]
@@ -100,6 +111,18 @@ class GraphState(TypedDict, total=False):
     semantic_community_work_item: NotRequired[Dict[str, Any]]
     semantic_community_work_queue: Annotated[List[Dict[str, Any]], replace_list_reducer]
     semantic_dispatch_cursor: NotRequired[int]
+    repository_kb_summary_records: NotRequired[List[Dict[str, Any]]]
+
+    # Mental model (externalized spec; ref only — never full BehavioralSpec on state for Send payloads)
+    behavioral_spec_ref: NotRequired[str]
+    exploration_ledger: Annotated[List[Dict[str, Any]], operator.add]
+
+    # Mandate explorer ReAct loop (transient; bootstrap + targeted passes)
+    mandate_explorer_mode: NotRequired[str]
+    mandate_explorer_step_idx: NotRequired[int]
+    mandate_explorer_finished: NotRequired[bool]
+    mandate_explorer_retry_feedback: NotRequired[str]
+    mandate_explorer_last_summary: NotRequired[str]
 
     # Task state: canonical task payloads + lifecycle status by task id.
     # Dict union reducers support compact per-task updates that are cache-friendly.
@@ -113,7 +136,11 @@ class GraphState(TypedDict, total=False):
     final_findings: NotRequired[List[ReviewFinding]]
 
     # Adversarial review loop (critiquer → reflection → focused context → cleanup)
+    review_checks: Annotated[List[ReviewCheck], operator.add]
+    invalid_review_checks: Annotated[List[InvalidReviewCheck], operator.add]
+    review_check_results: Annotated[List[ReviewCheckResult], operator.add]
     candidate_findings: Annotated[List[CandidateFinding], operator.add]
+    source_facts: Annotated[List[SourceFact], operator.add]
     reflection_reports: Annotated[List[ReflectionReport], operator.add]
     focused_context_requests: Annotated[List[FocusedContextRequest], operator.add]
     focused_context_results: Annotated[Dict[str, FocusedContextResult], operator.or_]
@@ -124,9 +151,22 @@ class GraphState(TypedDict, total=False):
     verifier_candidate: NotRequired[Dict[str, Any]]
     verifier_reports: Annotated[List[VerifierReport], operator.add]
 
+    # Verifier loop state (transient)
+    verifier_attempt_idx: NotRequired[int]
+    verifier_retry_feedback: NotRequired[str]
+    verifier_last_rationale: NotRequired[str]
+    verifier_repo_root: NotRequired[str]
+    verifier_scope: NotRequired[VerificationScope]
+    verifier_verdict: NotRequired[VerifierVerdict]
+    verifier_skipped_reason: NotRequired[str]
+    verifier_current_test_code: NotRequired[str]
+    verifier_focused_context_text: NotRequired[str]
+    verifier_attempts: Annotated[List[VerifierAttemptRecord], operator.add]
+
     # Data for debugging and analysis
     current_task_id: NotRequired[str]
     metadata: Annotated[Dict[str, Any], merge_graph_metadata]
+    llm_trace: Annotated[List[Dict[str, Any]], operator.add]
     token_usage: Annotated[int, operator.add]
     node_history: Annotated[List[str], operator.add]
 

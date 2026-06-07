@@ -3,17 +3,22 @@ FROM python:3.10-slim
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
+# Required for in-container PR checkout (start_from_remote_ref).
+RUN apt-get update && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN pip install --no-cache-dir \
-    pytest==8.0.0 \
-    pytest-xdist==3.5.0 \
-    hypothesis==6.98.0 \
-    ruff==0.9.5 \
-    flake8==7.1.1 \
-    flake8-bugbear==24.12.12 \
+    pytest==9.0.3 \
+    pytest-xdist==3.8.0 \
+    hypothesis==6.152.9 \
+    ruff==0.15.14 \
+    flake8==7.3.0 \
+    flake8-bugbear==25.11.29 \
     && rm -rf /root/.cache/pip
 
 WORKDIR /workspace
 
+# Snippet-only verifier uses this empty dir when there is no host repo mount (see RepoSandbox.start_snippet_workspace).
 # Keep the container running so `docker exec` (via API exec_run) works. A one-shot CMD like
 # `python --version` exits immediately and causes: APIError 409 "container is not running".
 CMD ["sleep", "infinity"]

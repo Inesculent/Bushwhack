@@ -17,12 +17,14 @@ from src.infrastructure.redis_checkpoint import (
     assert_redis_checkpoint_writable,
     redis_checkpoint_saver,
 )
+from src.infrastructure.llm.langsmith import configure_langsmith_environment
 from src.solo_agent.worker import NODE_NAME, worker_node
 
 logger = logging.getLogger(__name__)
 
 
 def build_graph(checkpointer: Any = None):
+    configure_langsmith_environment(get_settings())
     builder = StateGraph(GraphState)
     builder.add_node(NODE_NAME, worker_node)
     builder.add_edge(START, NODE_NAME)
