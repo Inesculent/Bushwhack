@@ -184,8 +184,13 @@ def test_no_finding_requires_suppression_evidence_on_target_file() -> None:
         evidence_refs=["src/app.py:3"],
         reportable_reason="serialize_record handles an empty collection.",
         suppressing_evidence=[
-            "serialize_record proves only that joining an empty collection returns an empty output."
+            "serialize_record converts optional record fields to strings before joining and preserves every field."
         ],
+        answer_scope="exact",
+        suppression_basis=(
+            "The produced record contains the optional fields, the selected values include each field, "
+            "and the joined output consumes normalized strings for all fields."
+        ),
     )
 
     assert no_finding_has_strong_suppression(result, check)
@@ -313,9 +318,51 @@ def test_neighboring_suppression_stays_visible_for_adjudication() -> None:
         compiled_check_is_source_local=lambda _check: False,
     )
 
-    assert normalized[0].decision == "no_finding"
+    assert normalized[0].decision == "unsupported"
     assert normalized[0].suppressing_evidence
-    assert not any("executor_weak_no_finding_downgraded" in item for item in warnings)
+    assert any("executor_exact_question_mismatch" in item for item in warnings)
+
+
+def test_executor_transformation_no_finding_without_exact_scope_becomes_unsupported() -> None:
+    check = _check(
+        lens="data_shape_consistency",
+        changed_code_anchor="serialize_record",
+        owned_contract_scope="serialize_record aggregation preserves optional record fields",
+        issue_family="aggregation_cardinality",
+        affected_invariant="serialized aggregation preserves optional record fields",
+        report_criteria=[
+            "A reachable aggregation path drops optional record fields or joins non-string values."
+        ],
+        suppress_criteria=[
+            "Aggregation normalizes every optional record field before joining."
+        ],
+    )
+    result = ReviewCheckResult(
+        check_id=check.check_id,
+        patch_task_id=check.patch_task_id,
+        decision="no_finding",
+        evidence_refs=["src/app.py:3"],
+        reportable_reason="serialize_record reaches join.",
+        suppressing_evidence=["The aggregation branch calls join on the selected values."],
+        suppression_basis="The aggregation branch calls join on the selected values.",
+    )
+    state = _state()
+
+    normalized, warnings = normalize_executor_results(
+        state=state,
+        task=_task(),
+        slot=state["metadata"]["critique_pipeline"]["by_task"]["review-logic"],
+        checks=[check],
+        results=[result],
+        git_diff="",
+        check_budget_remaining=lambda _state, _check: True,
+        evidence_requirements_for_check=lambda item: list(item.required_evidence),
+        compiled_check_is_source_local=lambda _check: False,
+    )
+
+    assert normalized[0].decision == "unsupported"
+    assert "exact_question_mismatch:missing_exact_transformation_scope" in normalized[0].warnings
+    assert any("executor_exact_question_mismatch" in item for item in warnings)
 
 
 def test_executor_exact_question_mismatch_becomes_unsupported() -> None:
@@ -369,6 +416,24 @@ def test_review_check_validator_rejects_vague_checks() -> None:
 
     valid = _check()
     assert validate_review_check(valid) == []
+
+
+def test_compiler_normalization_marks_unbacked_feedback_hardening_audit_only() -> None:
+    check = _check(
+        check_id="feedback",
+        lens="error_propagation",
+        behavioral_question="Does handle provide clear user-facing error messages?",
+        affected_invariant="invalid input feedback",
+        expected_behavior="handle should return user-friendly error messages and log invalid input.",
+        required_evidence=["handle implementation lines 10-20", "try/except block"],
+        report_criteria=["Invalid input is caught without a clear error message or logging."],
+        suppress_criteria=["A user-facing error message is returned."],
+        audit_only=False,
+    )
+
+    normalized = compiler_support.normalize_compiled_checks(_state(), _task(), [check])
+
+    assert normalized[0].audit_only is True
 
 
 def test_review_check_executor_schema_generates_with_candidate_forward_ref() -> None:
@@ -2812,11 +2877,9 @@ def test_review_check_executor_downgrades_dimension_thin_no_finding(monkeypatch)
     out = make_review_check_executor_node()(_state(review_checks=[check]))  # type: ignore[arg-type]
 
     result = out["review_check_results"][0]
-    assert result.decision == "no_finding"
-    assert "weak_no_finding_requires_more_evidence" not in result.warnings
+    assert result.decision == "unsupported"
+    assert "exact_question_mismatch:missing_exact_transformation_scope" in result.warnings
     assert len(fake.prompts) == 1
-    meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
-    assert check.check_id not in meta["suppression_audits"]
 
 
 def test_review_check_executor_keeps_dimension_specific_no_finding(monkeypatch) -> None:
@@ -2837,6 +2900,11 @@ def test_review_check_executor_keeps_dimension_specific_no_finding(monkeypatch) 
                 suppressing_evidence=[
                     "Each field and slot is preserved in order during aggregation; no entries are dropped."
                 ],
+                answer_scope="exact",
+                suppression_basis=(
+                    "The produced aggregation fields and slots are selected in order and the returned value "
+                    "contains every field without truncation."
+                ),
             )
         ]
     )

@@ -229,6 +229,14 @@ def _answer_scope_is_neighboring(result: ReviewCheckResult) -> bool:
     return any(marker in scope for marker in neighboring_markers)
 
 
+def _answer_scope_is_exact(result: ReviewCheckResult) -> bool:
+    scope = result.answer_scope.strip().lower()
+    if not scope:
+        return False
+    exact_markers = ("exact", "assigned", "same contract", "direct")
+    return any(marker in scope for marker in exact_markers)
+
+
 def _suppression_basis_is_operation_only(result: ReviewCheckResult) -> bool:
     basis = " ".join(
         [
@@ -271,6 +279,47 @@ def _suppression_basis_is_empty_or_generic(result: ReviewCheckResult) -> bool:
         "not applicable",
     )
     return any(marker in basis for marker in generic_markers)
+
+
+def _check_requires_exact_transformation_suppression(check: ReviewCheck) -> bool:
+    if check.audit_only:
+        return False
+    families = {
+        check.issue_family.strip().lower(),
+        check.diff_signal_family.strip().lower(),
+        check.lens.strip().lower() if isinstance(check.lens, str) else "",
+    }
+    if families & {
+        "data_preservation_cardinality",
+        "serialization_type_closure",
+        "aggregation_cardinality",
+        "index_bounds",
+        "data_shape_consistency",
+    }:
+        return True
+    blob = " ".join(
+        [
+            check.owned_contract_scope,
+            check.behavioral_question,
+            check.affected_invariant,
+            check.expected_behavior,
+        ]
+    ).lower()
+    return any(
+        marker in blob
+        for marker in (
+            "producer",
+            "projection",
+            "selection",
+            "aggregation",
+            "serialization",
+            "type-closure",
+            "type closure",
+            "join",
+            "cardinality",
+            "payload",
+        )
+    )
 
 
 def normalize_executor_results(
@@ -376,10 +425,18 @@ def normalize_executor_results(
             else:
                 warnings.append(f"executor_candidate_dropped_by_normalizer:{cid}")
                 result = result.model_copy(update={"candidate": None, "decision": "unsupported"})
+        exact_transformation_required = _check_requires_exact_transformation_suppression(check)
         if result.decision in {"no_finding", "suppressed"} and (
             _answer_scope_is_neighboring(result)
             or _suppression_basis_is_operation_only(result)
             or (not check.audit_only and _suppression_basis_is_empty_or_generic(result))
+            or (
+                exact_transformation_required
+                and (
+                    not _answer_scope_is_exact(result)
+                    or _suppression_basis_is_empty_or_generic(result)
+                )
+            )
         ):
             reason = (
                 "neighboring_answer_scope"
@@ -387,7 +444,11 @@ def normalize_executor_results(
                 else (
                     "operation_only_suppression"
                     if _suppression_basis_is_operation_only(result)
-                    else "generic_suppression_basis"
+                    else (
+                        "missing_exact_transformation_scope"
+                        if exact_transformation_required and not _answer_scope_is_exact(result)
+                        else "generic_suppression_basis"
+                    )
                 )
             )
             warnings.append(f"executor_exact_question_mismatch:{check.check_id}:{reason}")

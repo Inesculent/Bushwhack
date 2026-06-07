@@ -298,6 +298,28 @@ def _normalize_contract_questions(
     return normalized
 
 
+def _cap_fallback_questions_per_owner(
+    questions: List[ContractQuestion],
+    *,
+    enabled: bool,
+) -> List[ContractQuestion]:
+    if not enabled:
+        return questions
+    out: List[ContractQuestion] = []
+    seen_owners: set[str] = set()
+    for question in questions:
+        owner = question.owner.strip().lower()
+        if (
+            question.source_confidence <= _LOW_CONFIDENCE_FALLBACK_QUESTION_MAX
+            and owner in seen_owners
+        ):
+            continue
+        out.append(question)
+        if question.source_confidence <= _LOW_CONFIDENCE_FALLBACK_QUESTION_MAX and owner:
+            seen_owners.add(owner)
+    return out
+
+
 def _filter_invariants_with_contract_questions(
     invariants: List[SurfaceInvariant],
     questions: List[ContractQuestion],
@@ -501,6 +523,10 @@ def make_mandate_synthesizer_node(
             )
             if question.owner.strip().lower() not in authored_question_owners
         ]
+        fallback_questions = _cap_fallback_questions_per_owner(
+            fallback_questions,
+            enabled=bool(authored_question_owners),
+        )
         contract_questions = _normalize_contract_questions(
             [*contract_questions, *fallback_questions],
             surfaces=surface_ledger,

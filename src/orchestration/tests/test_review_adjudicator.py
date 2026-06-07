@@ -378,6 +378,7 @@ def test_review_adjudicator_prompt_is_preservation_biased() -> None:
     assert "You are not a verifier" in prompt
     assert "Default to `promote`" in prompt
     assert "framework, enum, schema, caller, or runtime might prevent the trigger" in prompt
+    assert "A schema allowing a value proves that trigger can exist" in prompt
     assert "Merge only true duplicates with the same expected behavior, contract, operation, trigger, and impact" in prompt
 
 

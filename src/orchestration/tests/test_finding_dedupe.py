@@ -1011,6 +1011,8 @@ def test_cleanup_claim_cluster_refuses_incompatible_merge_suggestion() -> None:
     missing_return = data_loss.model_copy(
         update={
             "id": "missing-return",
+            "line_start": 200,
+            "line_end": 210,
             "content": "class Handler: empty mode falls through.",
             "behavioral_symptom": "missing_return",
             "root_operation": "dispatch",
@@ -2302,6 +2304,8 @@ def test_synthesizer_reconciles_adjudicator_duplicates_globally(monkeypatch) -> 
     assert [finding.id for finding in out["final_findings"]] == ["keeper"]
     meta = out["metadata"]["review_synthesizer"]
     assert meta["semantic_dedupe_duplicates"] == {"keeper": ["duplicate"]}
+    assert meta["dropped_duplicate_ids"] == ["duplicate"]
+    assert meta["claim_cluster_reconciliation"]["claim_cluster_duplicate_to_keeper"] == {"duplicate": "keeper"}
     assert meta["recall_audit"]["duplicate_equivalents"] == {"duplicate": "keeper"}
 
 

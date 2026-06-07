@@ -572,7 +572,10 @@ def build_graph(
         "mandate_explorer_targeted",
         make_mandate_explorer_targeted_node(context_provider, settings=settings),
     )
-    builder.add_node("mandate_patch", make_mandate_patch_node(settings=settings))
+    builder.add_node(
+        "mandate_patch",
+        make_mandate_patch_node(settings=settings, context_provider=context_provider),
+    )
     builder.add_node(
         "mandate_finalize",
         make_mandate_finalize_node(settings=settings, context_provider=context_provider),

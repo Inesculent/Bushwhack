@@ -13,8 +13,12 @@ from src.infrastructure.behavioral_spec_store import BehavioralSpecStore
 from src.orchestration.prompts.ledger_formatter import format_exploration_ledger_for_prompt
 from src.orchestration.routing.send_payload import payload_for_send
 from src.tools.mental_model_tools import query_mental_model
-from src.orchestration.nodes.mental_model import _normalize_contract_questions
-from src.orchestration.nodes.mandate_patch_node import MandatePatchOutput, _apply_patch_to_spec
+from src.orchestration.nodes.mental_model import _cap_fallback_questions_per_owner, _normalize_contract_questions
+from src.orchestration.nodes.mandate_patch_node import (
+    MandatePatchOutput,
+    _apply_patch_to_spec,
+    make_mandate_patch_node,
+)
 from src.orchestration.context.surface_ledger import build_contract_questions_from_ledger
 
 
@@ -267,6 +271,27 @@ def test_contract_question_fallback_skips_dimensions_with_existing_questions() -
     assert any(question.dimension == "serialization_type_closure" for question in questions)
 
 
+def test_partial_llm_success_caps_fallback_questions_per_owner() -> None:
+    surface = ReviewSurface(
+        surface_id="surface:extract-execute",
+        name="RecordExtract.execute",
+        kind="method",
+        file_path="src/app.py",
+        line_start=10,
+        line_end=30,
+        confidence=0.95,
+    )
+    fallback = build_contract_questions_from_ledger(
+        [surface],
+        risk_hypotheses="Preserve every grouped record field during extraction.",
+    )
+
+    capped = _cap_fallback_questions_per_owner(fallback, enabled=True)
+
+    assert len(capped) == 1
+    assert capped[0].owner == "RecordExtract.execute"
+
+
 def test_mandate_patch_adds_contract_questions_when_prior_has_none() -> None:
     surface = ReviewSurface(
         surface_id="surface:handle",
@@ -306,6 +331,77 @@ def test_mandate_patch_adds_contract_questions_when_prior_has_none() -> None:
         question.breach_question == "Can fallback path exit without the declared output?"
         for question in spec.contract_questions
     )
+
+
+class _FakePatchScaffoldProvider:
+    def __init__(self, files: dict[str, str]) -> None:
+        self.files = files
+        self.started = False
+
+    def get_sandbox(self, state: GraphState) -> object:
+        self.started = True
+        return object()
+
+    def read_full_file(self, file_path: str, *, max_chars: int | None = None) -> str:
+        text = self.files.get(file_path, "")
+        return text[:max_chars] if max_chars is not None else text
+
+
+def test_mandate_patch_uses_owner_contract_scaffold_from_provider(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    surface = ReviewSurface(
+        surface_id="surface:execute",
+        name="Example.execute",
+        kind="method",
+        file_path="pkg/node.py",
+        line_start=2,
+        line_end=3,
+        source="diff",
+        confidence=0.95,
+    )
+    provider = _FakePatchScaffoldProvider(
+        {"pkg/node.py": "class Example:\n    def execute(self):\n        return ('ok',)\n"}
+    )
+    captured: dict[str, str] = {}
+
+    def capture_render(role_prompt_path: str, sections: dict[str, str]) -> str:
+        captured.update(sections)
+        raise RuntimeError("stop after prompt assembly")
+
+    monkeypatch.setattr(
+        "src.orchestration.nodes.mandate_patch_node.render_reviewer_prompt",
+        capture_render,
+    )
+
+    settings = Settings(snapshot_base_path=str(tmp_path))
+    node = make_mandate_patch_node(settings=settings, context_provider=provider)
+    state: GraphState = {  # type: ignore[assignment]
+        "run_id": "run-patch-scaffold",
+        "repo_path": "https://example.test/repo.git",
+        "git_diff": (
+            "diff --git a/pkg/node.py b/pkg/node.py\n"
+            "+++ b/pkg/node.py\n"
+            "@@ -2,1 +2,1 @@\n"
+            "+        return ('ok',)\n"
+        ),
+        "metadata": {
+            "mental_model": {
+                "intent_extractor": {"intent_summary": "Add Example node."},
+                "surface_ledger": [surface.model_dump(mode="json")],
+            }
+        },
+    }
+
+    out = node(state)
+    scaffold_meta = out["metadata"]["mental_model"]["owner_contract_scaffold"]
+
+    assert provider.started
+    assert "owner_contract_scaffold" in captured
+    assert "return ('ok',)" in captured["owner_contract_scaffold"]
+    assert scaffold_meta["primary_owner_count"] == 1
+    assert scaffold_meta["owner_snippets"][0]["source_status"] == "sandbox_provider"
 
 
 def test_reviewer_graph_compiles_legacy_planner_mode(monkeypatch: pytest.MonkeyPatch) -> None:

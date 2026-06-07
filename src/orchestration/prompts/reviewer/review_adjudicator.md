@@ -30,6 +30,7 @@ Drop standard:
 - When dropping for contradiction, the rationale must name the exact packet evidence that contradicts the same contract, trigger, operation, and impact.
 - Drop purely stylistic, preference-only, or resolution-only comments.
 - Do not drop merely because an upstream framework, enum, schema, caller, or runtime might prevent the trigger. Drop for that reason only when the packet contains concrete evidence proving that guarantee for the reviewed entrypoint.
+- A schema allowing a value proves that trigger can exist; it does not by itself prove the changed operation satisfies the semantic contract for that value. Treat schema/framework evidence as a drop-worthy contradiction only when the packet includes explicit contradiction facts or rejecting reflection/verifier evidence that addresses the same contract, trigger, operation, and impact.
 - If the packet shows a concrete local failure mode but leaves policy or framework intent uncertain, promote with careful wording rather than dropping.
 
 Merge standard:

@@ -1146,7 +1146,11 @@ def _merge_compatible_claims(left: ReviewFinding, right: ReviewFinding) -> bool:
     right_digest = _finding_claim_digest(right)
     if left.file_path != right.file_path:
         return False
-    same_subject = _claim_subject_from_digest(left_digest) == _claim_subject_from_digest(right_digest)
+    left_subject = _claim_subject_from_digest(left_digest)
+    right_subject = _claim_subject_from_digest(right_digest)
+    same_subject = bool(left_subject and left_subject == right_subject)
+    if same_subject and _lines_overlap_or_close(left, right, distance=60):
+        return True
     left_family = _claim_family_from_digest(left_digest)
     right_family = _claim_family_from_digest(right_digest)
     sibling_overlap = (

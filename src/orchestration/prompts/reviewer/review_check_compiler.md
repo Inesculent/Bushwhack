@@ -40,6 +40,7 @@ When mental-model or KB material names a contract, convention, expected return s
 Reject generic checklist thinking: do not emit checks like "look for security bugs", "review edge cases", or "check error handling".
 
 Reject generic hardening and optimization checks unless the assigned task or evidence names a changed boundary, hot path, lifecycle path, or data contract. If the best wording is "consider adding" a safeguard, cache, timeout, limit, or similar improvement, it is audit context rather than an executable review check.
+Likewise, do not make "add clearer/user-facing error messages", logging, or graceful-feedback checks promotable unless repository docs, tests, callers, prior behavior, or explicit changed-source contract evidence shows that feedback is part of the contract. Otherwise keep that direction audit-only.
 
 Use only the provided lenses when they fit:
 permission_boundary, api_compatibility, state_transition, input_validation, error_propagation, resource_lifecycle, data_shape_consistency, concurrency_ordering, test_oracle_strength.

@@ -193,6 +193,75 @@ def test_owner_contract_scaffold_preserves_complete_ast_span(tmp_path) -> None:
     assert diagnostics["owner_snippets"][0]["snippet_status"] == "full_ast_span_over_soft"
 
 
+def test_owner_contract_scaffold_attaches_only_same_owner_companions(tmp_path) -> None:
+    source = "\n".join(
+        [
+            "class Node:",
+            "    @classmethod",
+            "    def INPUT_TYPES(cls):",
+            "        return {'required': {'value': ('STRING',)}}",
+            "    def execute(self, value):",
+            "        return (value,)",
+            "",
+            "class Other:",
+            "    @classmethod",
+            "    def INPUT_TYPES(cls):",
+            "        return {'required': {'mode': ('STRING',)}}",
+        ]
+    )
+    path = tmp_path / "pkg" / "node.py"
+    path.parent.mkdir()
+    path.write_text(source)
+    execute = ReviewSurface(
+        surface_id="surface:execute",
+        name="Node.execute",
+        kind="method",
+        file_path="pkg/node.py",
+        line_start=5,
+        line_end=6,
+        source="ast_enclosing_diff_hunk",
+        confidence=0.95,
+    )
+    node_inputs = ReviewSurface(
+        surface_id="surface:node-inputs",
+        name="Node.INPUT_TYPES",
+        kind="method",
+        file_path="pkg/node.py",
+        line_start=2,
+        line_end=4,
+        source="ast_enclosing_diff_hunk",
+        confidence=0.95,
+    )
+    other_inputs = ReviewSurface(
+        surface_id="surface:other-inputs",
+        name="Other.INPUT_TYPES",
+        kind="method",
+        file_path="pkg/node.py",
+        line_start=9,
+        line_end=11,
+        source="ast_enclosing_diff_hunk",
+        confidence=0.95,
+    )
+    state = _minimal_state(
+        repo_path=str(tmp_path),
+        metadata={
+            "mental_model": {
+                "surface_ledger": [
+                    execute.model_dump(mode="json"),
+                    node_inputs.model_dump(mode="json"),
+                    other_inputs.model_dump(mode="json"),
+                ]
+            }
+        },
+    )
+
+    text, diagnostics = build_owner_contract_scaffold(state, max_chars=4000)
+
+    assert "Node.INPUT_TYPES" in text
+    assert "Other.INPUT_TYPES" not in text
+    assert diagnostics["owner_snippets"][0]["companion_count"] == 1
+
+
 def test_owner_contract_scaffold_reads_remote_sandbox_provider_and_expands_anchor() -> None:
     source = "\n".join(
         [
@@ -314,7 +383,9 @@ def test_owner_contract_scaffold_preserves_late_primary_owners_under_budget() ->
     assert "Owner0.execute" in text
     assert "Owner5.execute" in text
     assert "owners_dropped_for_budget" not in diagnostics
-    assert diagnostics["owners_compacted_for_budget"]
+    assert len(text) <= 700
+    assert "budget_overflow_chars" not in diagnostics
+    assert diagnostics.get("owners_compacted_for_budget") or diagnostics.get("owner_rows_compacted_for_budget")
 
 
 def test_owner_contract_scaffold_degrades_without_mid_function_truncation(tmp_path) -> None:

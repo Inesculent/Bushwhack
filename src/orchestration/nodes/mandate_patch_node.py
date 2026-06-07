@@ -23,6 +23,7 @@ from src.orchestration.context.mandate_loop_context import (
     patch_seq,
     spec_excerpt_for_prompt,
 )
+from src.orchestration.context.owner_contract_scaffold import build_owner_contract_scaffold
 from src.orchestration.nodes.application.planner import _target_files
 from src.orchestration.context.mandate_loop_context import mm_meta
 from src.orchestration.context.surface_ledger import (
@@ -32,7 +33,11 @@ from src.orchestration.context.surface_ledger import (
     surface_inventory_names,
     surface_ledger_from_state,
 )
-from src.orchestration.nodes.mental_model import _normalize_contract_questions
+from src.orchestration.nodes.mental_model import (
+    _LOW_CONFIDENCE_FALLBACK_QUESTION_MAX,
+    _cap_fallback_questions_per_owner,
+    _normalize_contract_questions,
+)
 from src.orchestration.prompts.renderer import render_reviewer_prompt
 from src.orchestration.review_principles import DECLARED_INPUT_CONTRACT_GUIDANCE
 
@@ -71,14 +76,30 @@ def _apply_patch_to_spec(
             refs.append(BehavioralEvidenceRef(kind="file", ref=fp, note="Changed in this PR"))
             seen.add(fp)
     merged_surfaces = surfaces or (prior.surfaces if prior else [])
+    authored_question_owners = {
+        question.owner.strip().lower()
+        for question in [*(prior.contract_questions if prior else []), *patch.contract_questions]
+        if question.owner.strip()
+        and question.breach_question.strip()
+        and question.source_confidence > _LOW_CONFIDENCE_FALLBACK_QUESTION_MAX
+    }
+    fallback_questions = [
+        question
+        for question in build_contract_questions_from_ledger(
+            merged_surfaces,
+            risk_hypotheses=patch.risk_hypotheses,
+        )
+        if question.owner.strip().lower() not in authored_question_owners
+    ]
+    fallback_questions = _cap_fallback_questions_per_owner(
+        fallback_questions,
+        enabled=bool(authored_question_owners),
+    )
     contract_questions: List[ContractQuestion] = _normalize_contract_questions(
         [
             *(prior.contract_questions if prior else []),
             *patch.contract_questions,
-            *build_contract_questions_from_ledger(
-                merged_surfaces,
-                risk_hypotheses=patch.risk_hypotheses,
-            ),
+            *fallback_questions,
         ],
         surfaces=merged_surfaces,
     )
@@ -137,7 +158,12 @@ def _merge_surface_invariants(invariants: List[SurfaceInvariant]) -> List[Surfac
     return list(merged.values())
 
 
-def make_mandate_patch_node(settings: Settings | None = None, *, use_llm: bool = True):
+def make_mandate_patch_node(
+    settings: Settings | None = None,
+    *,
+    use_llm: bool = True,
+    context_provider: Any | None = None,
+):
     node_name = "mandate_patch"
 
     def mandate_patch_node(state: GraphState) -> Dict[str, Any]:
@@ -160,6 +186,14 @@ def make_mandate_patch_node(settings: Settings | None = None, *, use_llm: bool =
 
         delta_text = format_delta_ledger_for_patch(state)
         repo_context = build_repository_contract_context(state, max_chars=1200)
+        scaffold_text, scaffold_diagnostics = build_owner_contract_scaffold(
+            {**state, "metadata": meta},
+            context_provider=context_provider,
+            max_chars=min(
+                5200,
+                max(1800, int(resolved.reviewer_context_mandate_synth_max_chars) // 2),
+            ),
+        )
         spec_excerpt = spec_excerpt_for_prompt(ref_str, resolved)
         llm_tokens = 0
         llm_trace: List[Dict[str, Any]] = []
@@ -174,6 +208,9 @@ def make_mandate_patch_node(settings: Settings | None = None, *, use_llm: bool =
                         "patch_mode": patch_mode,
                         "intent_summary": intent_summary[:4000],
                         "repository_contract_context": repo_context,
+                        "owner_contract_scaffold": (
+                            scaffold_text if scaffold_text.strip() != "[]" else ""
+                        ),
                         "spec_excerpt": spec_excerpt,
                         "delta_ledger": delta_text[:14000],
                     },
@@ -191,6 +228,8 @@ def make_mandate_patch_node(settings: Settings | None = None, *, use_llm: bool =
                         "patch_mode": patch_mode,
                         "delta_entries": len(ledger_since_last_patch(state)),
                         "repository_contract_context_chars": len(repo_context),
+                        "owner_contract_scaffold_chars": len(scaffold_text),
+                        "owner_contract_scaffold_status": scaffold_diagnostics.get("status"),
                     },
                 )
                 invoke_result = traced.result
@@ -234,6 +273,7 @@ def make_mandate_patch_node(settings: Settings | None = None, *, use_llm: bool =
         if surface_ledger:
             slot["surface_ledger"] = [s.model_dump(mode="json") for s in surface_ledger]
             slot["diff_surface_inventory"] = surface_inventory_names(surface_ledger)
+        slot["owner_contract_scaffold"] = scaffold_diagnostics
 
         spec = _apply_patch_to_spec(
             prior=prior,

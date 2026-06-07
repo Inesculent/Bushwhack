@@ -119,14 +119,29 @@ def build_owner_contract_scaffold(
     }
     text = json.dumps(payload, indent=2, ensure_ascii=False)
     if len(text) > max_chars:
+        payload["repo_convention_hints"] = ""
+        diagnostics["repo_convention_status"] = "dropped_for_budget"
+        text = json.dumps(payload, indent=2, ensure_ascii=False)
+    if len(text) > max_chars:
         stripped = _strip_companion_snippets(payload["owners"])
         if stripped:
             diagnostics["companion_snippets_dropped_for_budget"] = stripped
             text = json.dumps(payload, indent=2, ensure_ascii=False)
     if len(text) > max_chars:
-        payload["repo_convention_hints"] = ""
-        diagnostics["repo_convention_status"] = "dropped_for_budget"
-        text = json.dumps(payload, indent=2, ensure_ascii=False)
+        removed = _drop_companion_rows(payload["owners"])
+        if removed:
+            diagnostics["companion_rows_dropped_for_budget"] = removed
+            text = json.dumps(payload, indent=2, ensure_ascii=False)
+    if len(text) > max_chars:
+        stripped = _strip_structural_hints(payload["owners"])
+        if stripped:
+            diagnostics["structural_hints_dropped_for_budget"] = stripped
+            text = json.dumps(payload, indent=2, ensure_ascii=False)
+    if len(text) > max_chars:
+        stripped = _strip_declaration_facts(payload["owners"])
+        if stripped:
+            diagnostics["declaration_facts_dropped_for_budget"] = stripped
+            text = json.dumps(payload, indent=2, ensure_ascii=False)
     if len(text) > max_chars:
         compacted = _compact_primary_snippets(payload["owners"])
         if compacted:
@@ -138,8 +153,19 @@ def build_owner_contract_scaffold(
             diagnostics["owner_snippets_omitted_for_budget"] = omitted
             text = json.dumps(payload, indent=2, ensure_ascii=False)
     if len(text) > max_chars:
+        compacted = _compact_owner_rows(payload["owners"])
+        if compacted:
+            diagnostics["owner_rows_compacted_for_budget"] = compacted
+            text = json.dumps(payload, indent=2, ensure_ascii=False)
+    if len(text) > max_chars:
+        text = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+    if len(text) > max_chars:
+        stringified = _stringify_compact_owner_rows(payload["owners"])
+        if stringified:
+            diagnostics["owner_rows_stringified_for_budget"] = stringified
+            text = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+    if len(text) > max_chars:
         diagnostics["budget_overflow_chars"] = len(text) - max_chars
-        text = json.dumps(payload, indent=2, ensure_ascii=False)
     diagnostics["char_len"] = len(text)
     diagnostics["max_chars"] = max_chars
     diagnostics["owner_soft_chars"] = owner_soft_chars
@@ -159,6 +185,39 @@ def _strip_companion_snippets(owners: Sequence[Dict[str, Any]]) -> List[str]:
             companion["snippet"] = ""
             companion["snippet_status"] = "omitted_for_budget"
             stripped.append(str(companion.get("owner") or "unknown"))
+    return stripped
+
+
+def _drop_companion_rows(owners: Sequence[Dict[str, Any]]) -> List[str]:
+    dropped: List[str] = []
+    for owner in reversed(owners):
+        companions = owner.get("companion_surfaces")
+        if not isinstance(companions, list) or not companions:
+            continue
+        for companion in companions:
+            if isinstance(companion, dict):
+                dropped.append(str(companion.get("owner") or "unknown"))
+        owner["companion_surfaces"] = []
+    return dropped
+
+
+def _strip_structural_hints(owners: Sequence[Dict[str, Any]]) -> List[str]:
+    stripped: List[str] = []
+    for owner in reversed(owners):
+        if not isinstance(owner, dict) or not owner.get("structural_hints"):
+            continue
+        owner["structural_hints"] = []
+        stripped.append(str(owner.get("owner") or "unknown"))
+    return stripped
+
+
+def _strip_declaration_facts(owners: Sequence[Dict[str, Any]]) -> List[str]:
+    stripped: List[str] = []
+    for owner in reversed(owners):
+        if not isinstance(owner, dict) or not owner.get("declaration_facts"):
+            continue
+        owner["declaration_facts"] = []
+        stripped.append(str(owner.get("owner") or "unknown"))
     return stripped
 
 
@@ -185,6 +244,54 @@ def _omit_primary_snippets(owners: Sequence[Dict[str, Any]]) -> List[str]:
         owner["snippet_status"] = f"omitted_for_budget_from_{owner.get('snippet_status') or 'unknown'}"
         omitted.append(str(owner.get("owner") or "unknown"))
     return omitted
+
+
+def _compact_owner_rows(owners: Sequence[Dict[str, Any]]) -> List[str]:
+    compacted: List[str] = []
+    for index in range(len(owners) - 1, -1, -1):
+        owner = owners[index]
+        if not isinstance(owner, dict):
+            continue
+        compacted_owner = {
+            "owner": owner.get("owner") or "",
+            "file": owner.get("file_path") or "",
+            "lines": [owner.get("line_start") or 1, owner.get("line_end") or owner.get("line_start") or 1],
+            "source": owner.get("source_status") or "",
+            "span": owner.get("span_status") or "",
+            "snippet_status": f"compact_row_from_{owner.get('snippet_status') or 'unknown'}",
+        }
+        owners[index].clear()
+        owners[index].update(compacted_owner)
+        compacted.append(str(compacted_owner["owner"] or "unknown"))
+    return compacted
+
+
+def _stringify_compact_owner_rows(owners: Sequence[Dict[str, Any]]) -> List[str]:
+    stringified: List[str] = []
+    for index, owner in enumerate(list(owners)):
+        if not isinstance(owner, dict):
+            continue
+        line_start, line_end = 1, 1
+        lines = owner.get("lines")
+        if isinstance(lines, list) and len(lines) >= 2:
+            line_start, line_end = int(lines[0] or 1), int(lines[1] or lines[0] or 1)
+        source = str(owner.get("source") or "")
+        if source == "sandbox_provider":
+            source = "sandbox"
+        span = str(owner.get("span") or "")
+        if span == "expanded_ast":
+            span = "ast"
+        snippet = "compact" if str(owner.get("snippet_status") or "") else ""
+        row = (
+            f"{owner.get('owner') or ''} "
+            f"{owner.get('file') or ''}:{line_start}-{line_end} "
+            f"source={source} "
+            f"span={span} "
+            f"snippet={snippet}"
+        ).strip()
+        owners[index] = row  # type: ignore[index]
+        stringified.append(str(owner.get("owner") or "unknown"))
+    return stringified
 
 
 def _primary_surfaces(
@@ -236,7 +343,7 @@ def _companion_surfaces_by_primary(
             if surface.surface_id in primary_ids or surface.file_path != primary.file_path:
                 continue
             same_class = prefix and (surface.name == prefix or surface.name.startswith(f"{prefix}."))
-            if same_class or _is_schema_helper(surface):
+            if same_class:
                 companions.append(surface)
         out[primary.surface_id] = sorted(
             companions,
