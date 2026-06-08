@@ -3821,6 +3821,52 @@ def test_review_check_executor_retries_length_limit_batch_as_single_checks(monke
     assert "executor_length_limit_batch_retry:1" in meta["executor_warnings"]
 
 
+def test_review_check_executor_splits_oversized_batch_before_llm(monkeypatch) -> None:
+    checks = [_check(check_id=f"review-logic:check:{idx}") for idx in range(1, 4)]
+    state = _state(review_checks=checks)
+    slot = state["metadata"]["critique_pipeline"]["by_task"]["review-logic"]
+    slot["direct_context"] = "def handle():\n    return None\n" + ("# expanded evidence\n" * 4000)
+    prompts: list[str] = []
+    actions: list[Any] = [
+        ReviewCheckExecutorOutput(
+            results=[
+                ReviewCheckResult(
+                    check_id=check.check_id,
+                    patch_task_id="review-logic",
+                    decision="unsupported",
+                    missing_evidence=["declared return contract"],
+                )
+            ]
+        )
+        for check in checks
+    ]
+    monkeypatch.setattr(
+        "src.orchestration.nodes.application.review_checks.Models.worker",
+        lambda *_args, **_kwargs: _SequencedLLM(actions, prompts),
+    )
+
+    out = make_review_check_executor_node()(state)  # type: ignore[arg-type]
+
+    assert len(prompts) == 3
+    assert checks[0].check_id in prompts[0]
+    assert checks[1].check_id not in prompts[0]
+    assert checks[2].check_id not in prompts[0]
+    meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
+    assert meta["executor_batch_count"] == 3
+    assert meta["executor_oversized_batch_splits"] == [
+        {
+            "batch_index": 1,
+            "check_ids": [check.check_id for check in checks],
+            "prompt_chars": meta["executor_oversized_batch_splits"][0]["prompt_chars"],
+        }
+    ]
+    assert meta["executor_oversized_batch_splits"][0]["prompt_chars"] > meta[
+        "executor_max_multi_check_prompt_chars"
+    ]
+    assert "executor_oversized_batch_split:1" in meta["executor_warnings"]
+    assert meta["executor_length_limit_retry_count"] == 0
+
+
 def test_review_check_executor_length_limit_retry_can_stage_candidate(monkeypatch) -> None:
     class LengthFinishReasonError(Exception):
         pass

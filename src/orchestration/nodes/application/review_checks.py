@@ -110,6 +110,7 @@ _EXECUTOR_FOCUSED_EVIDENCE_CHARS = 40000
 _EXECUTOR_COMPACT_CODE_EVIDENCE_CHARS = 4000
 _EXECUTOR_COMPACT_FOCUSED_EVIDENCE_CHARS = 3000
 _EXECUTOR_COMPACT_CONTEXT_CHARS = 8000
+_EXECUTOR_MAX_MULTI_CHECK_PROMPT_CHARS = 44000
 _EXECUTOR_COMPACT_RETRY_APPENDIX = (
     "\n\n## OUTPUT BUDGET (retry - required)\n"
     "Your previous response exceeded the length limit. This retry contains exactly one input check. "
@@ -1326,6 +1327,31 @@ def _check_batches(checks: Sequence[ReviewCheck]) -> List[List[ReviewCheck]]:
     return [list(checks[index : index + _EXECUTOR_BATCH_SIZE]) for index in range(0, len(checks), _EXECUTOR_BATCH_SIZE)]
 
 
+def _executor_prompt_batches(
+    state: GraphState,
+    task: ReviewTask,
+    checks: Sequence[ReviewCheck],
+    slot: Mapping[str, Any],
+) -> tuple[List[List[ReviewCheck]], List[Dict[str, Any]]]:
+    batches: List[List[ReviewCheck]] = []
+    split_events: List[Dict[str, Any]] = []
+    for batch_index, batch in enumerate(_check_batches(checks), start=1):
+        if len(batch) > 1:
+            prompt = _render_executor_prompt(state, task, batch, slot)
+            if len(prompt) > _EXECUTOR_MAX_MULTI_CHECK_PROMPT_CHARS:
+                split_events.append(
+                    {
+                        "batch_index": batch_index,
+                        "check_ids": [check.check_id for check in batch],
+                        "prompt_chars": len(prompt),
+                    }
+                )
+                batches.extend([[check] for check in batch])
+                continue
+        batches.append(batch)
+    return batches, split_events
+
+
 def _executor_result_rank(result: ReviewCheckResult) -> int:
     if result.decision == "candidate" and result.candidate is not None:
         return 50
@@ -1521,6 +1547,16 @@ def make_review_check_executor_node(
         executor_continuation_count = 0
         executor_continuation_revised_check_ids: List[str] = []
         executor_continuation_failed_batches: List[int] = []
+        executor_batches, executor_oversized_batch_splits = _executor_prompt_batches(
+            state,
+            task,
+            checks,
+            slot,
+        )
+        warnings.extend(
+            f"executor_oversized_batch_split:{event['batch_index']}"
+            for event in executor_oversized_batch_splits
+        )
 
         if use_llm:
             selected_model = model_key or resolved.reviewer_worker_model_key
@@ -1627,7 +1663,7 @@ def make_review_check_executor_node(
                         )
                     ], False
 
-            for batch_index, batch in enumerate(_check_batches(checks), start=1):
+            for batch_index, batch in enumerate(executor_batches, start=1):
                 try:
                     llm = Models.worker(
                         ReviewCheckExecutorOutput,
@@ -1899,7 +1935,9 @@ def make_review_check_executor_node(
                 "executor_claim_digest_count": len(executor_claim_digests),
                 "executor_warnings": warnings,
                 "executor_batch_size": _EXECUTOR_BATCH_SIZE,
-                "executor_batch_count": len(_check_batches(checks)),
+                "executor_batch_count": len(executor_batches),
+                "executor_max_multi_check_prompt_chars": _EXECUTOR_MAX_MULTI_CHECK_PROMPT_CHARS,
+                "executor_oversized_batch_splits": executor_oversized_batch_splits,
                 "executor_missing_result_check_ids": list(dict.fromkeys(missing_result_check_ids)),
                 "executor_duplicate_result_check_ids": list(dict.fromkeys(duplicate_result_check_ids)),
                 "executor_result_count_before_canonicalization": result_count_before_canonicalization,
