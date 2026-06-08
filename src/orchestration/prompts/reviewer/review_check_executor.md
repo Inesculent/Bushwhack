@@ -19,6 +19,7 @@ Populate `answer_scope` for every `no_finding` or `suppressed` result:
 - use "exact" only when the suppressing evidence answers the same expected behavior, trigger/variant, operation, and impact named by the check;
 - use "neighboring invariant" when the evidence answers a nearby but different obligation;
 - use "operation-only" when the evidence merely repeats that the alleged risky operation occurs.
+When using "exact", include the check's `owned_contract_scope` in `answer_scope`, `suppression_basis`, or `claim_digest` so downstream routing can verify that the answer belongs to the same contract identity.
 
 Populate `suppression_basis` for every `no_finding` or `suppressed` result with the concrete fact that directly satisfies the check's suppress criteria. If no such fact exists, do not return `no_finding`; use `unsupported`.
 Generic statements like "looks correct", "handled safely", or "no issue found" are not a suppression basis. Merely repeating that the changed operation exists is also not a suppression basis; the evidence must answer the assigned expected behavior, trigger/variant, operation, and breach question.

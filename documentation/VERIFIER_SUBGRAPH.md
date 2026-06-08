@@ -33,7 +33,7 @@ This document summarizes the **external verifier** work: runtime proof attempts 
 
 ## Reviewer graph flow (adversarial path)
 
-The verifier sits **after** focused context gathering and **before** critique revision digest/reduce when enabled and eligible. A **post-reflection bridge** ensures verifier/critique routing still runs when reflectors return `needs_context` **without** embedding a `focused_request` (previously the graph jumped straight to cleanup and never hit verifier/critique).
+The verifier sits **after** focused context gathering and **before** critique revision digest/reduce when enabled and eligible. A **post-reflection bridge** ensures verifier/critique routing still runs when reflectors return `needs_context` **without** embedding a `focused_request`.
 
 ```mermaid
 flowchart TB
@@ -46,20 +46,20 @@ flowchart TB
     VS[verifier_subgraph]
     CRD[critique_revision_digest]
     CRR[critique_revision_reduce]
-    AC[adversarial_cleanup]
+    RA[review_adjudicator]
     GC --> IFC --> AR
     AR -->|embedded_focus_request| FC
     AR -->|needs_revision_ids| PEP
-    AR -->|no_revision_work| AC
+    AR -->|no_revision_work| RA
     FC --> RVC[_route_after_focused_context]
     PEP --> RVC
     RVC -->|Send_per_candidate| VS
-    RVC -->|digest_shards_or_cleanup| CRD
-    RVC -->|no_work| AC
+    RVC -->|digest_shards| CRD
+    RVC -->|no_work| RA
     VS --> RVC2[_route_critique_revision]
     RVC2 --> CRD
-    RVC2 --> AC
-    CRD --> CRR --> AC
+    RVC2 --> RA
+    CRD --> CRR --> RA
   end
 ```
 

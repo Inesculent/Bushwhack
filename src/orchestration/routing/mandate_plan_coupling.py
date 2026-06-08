@@ -25,11 +25,6 @@ class JointPlanCritiqueOutput(BaseModel):
 
 def route_after_intent(state: GraphState) -> str:
     """Bootstrap explorer or skip to patch when resuming."""
-    settings = get_settings()
-    if settings.reviewer_legacy_planner_mode:
-        return "snapshot_pin"
-    if not settings.reviewer_mandate_explorer_enabled:
-        return "mandate_patch"
     if should_skip_bootstrap_explorer(state):
         return "mandate_patch"
     return "mandate_explorer"
@@ -48,8 +43,7 @@ def route_joint_critic(state: GraphState) -> str:
         return "mandate_finalize"
     reqs = ac.get("exploration_requests") or []
     if (
-        settings.reviewer_mandate_explorer_enabled
-        and reqs
+        reqs
         and _targeted_budget_remaining(state, settings)
     ):
         return "mandate_explorer_targeted"

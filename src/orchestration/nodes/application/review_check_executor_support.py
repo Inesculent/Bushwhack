@@ -322,6 +322,80 @@ def _check_requires_exact_transformation_suppression(check: ReviewCheck) -> bool
     )
 
 
+def _suppression_basis_has_value_flow(result: ReviewCheckResult) -> bool:
+    basis = " ".join(
+        [
+            result.suppression_basis,
+            " ".join(result.suppressing_evidence),
+            result.reportable_reason,
+        ]
+    ).lower()
+    if not basis.strip():
+        return False
+    produced = any(marker in basis for marker in ("produced", "input shape", "source value", "before the operation"))
+    selected = any(marker in basis for marker in ("selected", "transformed", "projected", "extracted", "normalized"))
+    consumed = any(marker in basis for marker in ("returned", "joined", "serialized", "consumed", "output shape"))
+    intentional = "intentionally narrowed" in basis or "documented projection" in basis
+    return intentional or (produced and selected and consumed)
+
+
+def _normalize_contract_identity(text: str) -> str:
+    chars = [char.lower() if char.isalnum() else " " for char in text]
+    return " ".join("".join(chars).split())
+
+
+def _suppression_omits_scope_variant(result: ReviewCheckResult, check: ReviewCheck) -> bool:
+    if not _answer_scope_is_exact(result):
+        return False
+    scope = check.owned_contract_scope.strip()
+    if not scope:
+        return False
+    basis = " ".join(
+        [
+            result.answer_scope,
+            result.claim_digest,
+            result.suppression_basis,
+            " ".join(result.suppressing_evidence),
+            result.reportable_reason,
+        ]
+    )
+    normalized_basis = _normalize_contract_identity(basis)
+    if not normalized_basis:
+        return True
+    normalized_scope = _normalize_contract_identity(scope)
+    if normalized_scope and normalized_scope in normalized_basis:
+        return False
+    parts = [_normalize_contract_identity(part) for part in scope.split(":")]
+    parts = [part for part in parts if len(part) >= 3]
+    if parts and all(part in normalized_basis for part in parts):
+        return False
+    return True
+
+
+def _focused_context_degraded_for_check(state: GraphState, check: ReviewCheck) -> list[str]:
+    metadata = state.get("metadata", {}) or {}
+    fc = metadata.get("focused_context", {}) if isinstance(metadata, Mapping) else {}
+    diagnostics = fc.get("diagnostics", []) if isinstance(fc, Mapping) else []
+    reasons: list[str] = []
+    for row in diagnostics if isinstance(diagnostics, list) else []:
+        if not isinstance(row, Mapping):
+            continue
+        if str(row.get("candidate_id") or "") != check.check_id:
+            continue
+        outcomes = {str(item) for item in row.get("outcomes", []) or []}
+        reason = str(row.get("reason") or "")
+        if reason:
+            outcomes.add(reason)
+        for outcome, reason in (
+            ("no_hits", "focused_context_no_hits"),
+            ("tool_unavailable", "focused_context_tool_unavailable"),
+            ("path_mismatch", "focused_context_path_mismatch"),
+        ):
+            if outcome in outcomes:
+                reasons.append(reason)
+    return list(dict.fromkeys(reasons))
+
+
 def normalize_executor_results(
     *,
     state: GraphState,
@@ -426,28 +500,43 @@ def normalize_executor_results(
                 warnings.append(f"executor_candidate_dropped_by_normalizer:{cid}")
                 result = result.model_copy(update={"candidate": None, "decision": "unsupported"})
         exact_transformation_required = _check_requires_exact_transformation_suppression(check)
+        exact_transformation_mismatch = exact_transformation_required and (
+            not _answer_scope_is_exact(result)
+            or _suppression_basis_is_empty_or_generic(result)
+            or not _suppression_basis_has_value_flow(result)
+        )
+        omitted_scope_variant = _suppression_omits_scope_variant(result, check)
+        focused_degradation = _focused_context_degraded_for_check(state, check)
         if result.decision in {"no_finding", "suppressed"} and (
             _answer_scope_is_neighboring(result)
             or _suppression_basis_is_operation_only(result)
             or (not check.audit_only and _suppression_basis_is_empty_or_generic(result))
-            or (
-                exact_transformation_required
-                and (
-                    not _answer_scope_is_exact(result)
-                    or _suppression_basis_is_empty_or_generic(result)
-                )
-            )
+            or omitted_scope_variant
+            or bool(focused_degradation)
+            or exact_transformation_mismatch
         ):
             reason = (
                 "neighboring_answer_scope"
                 if _answer_scope_is_neighboring(result)
                 else (
-                    "operation_only_suppression"
-                    if _suppression_basis_is_operation_only(result)
+                    focused_degradation[0]
+                    if focused_degradation
                     else (
-                        "missing_exact_transformation_scope"
-                        if exact_transformation_required and not _answer_scope_is_exact(result)
-                        else "generic_suppression_basis"
+                        "operation_only_suppression"
+                        if _suppression_basis_is_operation_only(result)
+                        else (
+                            "generic_suppression_basis"
+                            if not check.audit_only and _suppression_basis_is_empty_or_generic(result)
+                            else (
+                                "missing_exact_transformation_scope"
+                                if exact_transformation_mismatch and not _answer_scope_is_exact(result)
+                                else (
+                                    "missing_owned_scope_variant"
+                                    if omitted_scope_variant
+                                    else "missing_exact_transformation_scope"
+                                )
+                            )
+                        )
                     )
                 )
             )

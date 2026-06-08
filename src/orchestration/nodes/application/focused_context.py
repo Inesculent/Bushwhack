@@ -241,6 +241,18 @@ def make_focused_context_node(
         }
         fc_meta["focused_effective_path_count"] = len(effective_paths)
         fc_meta["focused_requested_path_count"] = len(requested_paths)
+        health_warnings: List[str] = []
+        for row in fc_meta["diagnostics"]:
+            if not isinstance(row, Mapping):
+                continue
+            outcomes = {str(item) for item in row.get("outcomes", []) or []}
+            if "no_hits" in outcomes:
+                health_warnings.append("focused_context_no_hits")
+            if "tool_unavailable" in outcomes:
+                health_warnings.append("focused_context_tool_unavailable")
+            if "path_mismatch" in outcomes:
+                health_warnings.append("focused_context_path_mismatch")
+        fc_meta["health_warnings"] = sorted(set(health_warnings))
         metadata["focused_context"] = fc_meta
 
         return {

@@ -135,11 +135,6 @@ def parse_args() -> argparse.Namespace:
         help="Emit reviewer graph tracing logs for planning, worker dispatch, and synthesis.",
     )
     parser.add_argument(
-        "--basic-graph",
-        action="store_true",
-        help="Use the basic reviewer graph without adversarial critique/reflection nodes.",
-    )
-    parser.add_argument(
         "--review-check-mode",
         choices=["off", "log_only", "enforced"],
         default=None,
@@ -187,7 +182,6 @@ def _cli_flags_for_run_meta(args: argparse.Namespace) -> dict[str, Any]:
         "output_root": str(args.output_root) if args.output_root is not None else None,
         "repo_root": str(args.repo_root) if args.repo_root is not None else None,
         "trace": args.trace,
-        "basic_graph": args.basic_graph,
         "review_check_mode": args.review_check_mode,
         "llm_timeout": args.llm_timeout,
         "llm_max_retries": args.llm_max_retries,
@@ -234,7 +228,6 @@ def main() -> None:
         output_root=args.output_root,
         repo_root=args.repo_root,
         trace=args.trace,
-        use_basic_graph=args.basic_graph,
         cli_flags=_cli_flags_for_run_meta(args),
         snapshot_id=args.snapshot_id,
     )

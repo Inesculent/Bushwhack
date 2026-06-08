@@ -28,11 +28,9 @@ from src.infrastructure.mcp.client import MCPClient
 from src.infrastructure.redis_checkpoint import delete_checkpoint_thread
 from src.infrastructure.snapshot_loader import SnapshotLoader
 from src.orchestration.reviewer_graph import run_reviewer
-from src.orchestration.reviewer_graph_basic import run_reviewer_basic
 
 DEFAULT_AACR_PROCESSED_PATH: Path = PROCESSED_DIR / "aacr_bench_graph_ready.csv"
 EXPERIMENT_TAG = "reviewer_graph_parallel"
-BASIC_EXPERIMENT_TAG = "reviewer_graph_basic"
 DEFAULT_POSITIVE_SAMPLES_PATH = Path(__file__).resolve().parents[3] / "documentation" / "dataset" / "positive_samples.json"
 
 
@@ -90,6 +88,18 @@ def _graph_thread_id(run_id: str, pr_url: str, snapshot_data: Optional[Dict[str,
         short = sid[:8] if len(sid) >= 8 else sid
         return f"{run_id}:{slug}_from_snapshot_{short}"
     return f"{run_id}:{slug}"
+
+
+def _effective_reviewer_mode(settings: Any, *, snapshot_resume: bool) -> dict[str, Any]:
+    return {
+        "graph": "full",
+        "planner": "mental_model",
+        "mandate_explorer": "enabled",
+        "worker_path": "adversarial",
+        "check_mode": settings.reviewer_check_mode,
+        "snapshot_resume": snapshot_resume,
+        "final_review": "review_adjudicator",
+    }
 
 
 def _prepare_output_dirs(output_root: Path, run_id: str) -> tuple[Path, Path, Path]:
@@ -579,7 +589,43 @@ def _review_check_metrics(result: dict[str, Any]) -> dict[str, Any]:
     invalid_reason_counts: Counter[str] = Counter()
     health_warnings: List[str] = []
     metadata = result.get("metadata", {}) or {}
+    mcp = metadata.get("mcp_preflight", {}) if isinstance(metadata, dict) else {}
+    if isinstance(mcp, dict):
+        status = str(mcp.get("status") or "")
+        if status and status not in {"ok", "disabled"}:
+            health_warnings.append(f"mcp_preflight_{status}")
+        missing_tools = mcp.get("missing_required_tools")
+        if isinstance(missing_tools, list) and missing_tools:
+            health_warnings.append("mcp_preflight_missing_required_tools")
+    semantic = metadata.get("semantic_phase2", {}) if isinstance(metadata, dict) else {}
+    if isinstance(semantic, dict):
+        summary_status = str(semantic.get("global_summary_llm_status") or "")
+        if summary_status.startswith(("failed", "timeout_failed")):
+            health_warnings.append("global_summary_degraded")
+    planner = metadata.get("review_planner", {}) if isinstance(metadata, dict) else {}
+    if isinstance(planner, dict):
+        planner_warnings = " ".join(str(item) for item in planner.get("warnings", []) or [])
+        if "plan_critic_misaligned_after_budget" in planner_warnings:
+            health_warnings.append("plan_critic_misaligned_after_budget")
+    fc = metadata.get("focused_context", {}) if isinstance(metadata, dict) else {}
+    if isinstance(fc, dict):
+        diagnostics = fc.get("diagnostics", [])
+        for row in diagnostics if isinstance(diagnostics, list) else []:
+            if not isinstance(row, dict):
+                continue
+            outcomes = {str(item) for item in row.get("outcomes", []) or []}
+            reason = str(row.get("reason") or "")
+            if reason:
+                outcomes.add(reason)
+            if "no_hits" in outcomes:
+                health_warnings.append("focused_context_no_hits")
+            if "tool_unavailable" in outcomes:
+                health_warnings.append("focused_context_tool_unavailable")
+            if "path_mismatch" in outcomes:
+                health_warnings.append("focused_context_path_mismatch")
     block = metadata.get("review_checks", {}) if isinstance(metadata, dict) else {}
+    if isinstance(block, dict):
+        health_warnings.extend(str(item) for item in block.get("health_warnings", []) or [])
     by_task = block.get("by_task", {}) if isinstance(block, dict) else {}
     if isinstance(by_task, dict):
         for task_meta in by_task.values():
@@ -851,6 +897,7 @@ def _invoke_for_pr(
     logger: logging.Logger,
     snapshot_data: Optional[Dict[str, Any]] = None,
     mcp_preflight: Optional[dict[str, Any]] = None,
+    effective_reviewer_mode: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     # Determine repo_path and graph_run_id
     graph_run_id = _graph_thread_id(run_id, pr_url, snapshot_data)
@@ -944,6 +991,7 @@ def _invoke_for_pr(
             "review_pr_number": context.number,
             "review_trace_enabled": trace,
             "mcp_preflight": dict(mcp_preflight or {}),
+            "effective_reviewer_mode": dict(effective_reviewer_mode or {}),
         },
     }
     
@@ -1031,7 +1079,6 @@ def run_aacr_reviewer(
     output_root: Optional[Path] = None,
     repo_root: Optional[Path] = None,
     trace: bool = False,
-    use_basic_graph: bool = False,
     cli_flags: Optional[dict[str, Any]] = None,
     snapshot_id: Optional[str] = None,
 ) -> ReviewerRunArtifacts:
@@ -1044,8 +1091,6 @@ def run_aacr_reviewer(
     run_dir, raw_dir, findings_dir = _prepare_output_dirs(Path(resolved_output_root), resolved_run_id)
     run_started_at = _utc_now_iso()
 
-    experiment_tag = BASIC_EXPERIMENT_TAG if use_basic_graph else EXPERIMENT_TAG
-    run_reviewer_fn = run_reviewer_basic if use_basic_graph else run_reviewer
     mcp_preflight = _github_mcp_preflight(settings)
     logger.info("GitHub MCP preflight status=%s", mcp_preflight.get("status"))
 
@@ -1054,14 +1099,15 @@ def run_aacr_reviewer(
     if snapshot_id:
         snapshot_data = _load_snapshot_for_resume(snapshot_id, logger)
         logger.info("Snapshot repo for validation: %s", snapshot_data["repo_path"])
+    effective_reviewer_mode = _effective_reviewer_mode(settings, snapshot_resume=bool(snapshot_data))
 
     logger.info(
-        "Starting reviewer-graph AACR run run_id=%s dataset=%s output=%s trace=%s basic=%s",
+        "Starting reviewer-graph AACR run run_id=%s dataset=%s output=%s trace=%s mode=%s",
         resolved_run_id,
         dataset_path,
         run_dir,
         trace,
-        use_basic_graph,
+        effective_reviewer_mode,
     )
 
     selected_pr_urls = _load_pr_urls(
@@ -1182,11 +1228,12 @@ def run_aacr_reviewer(
                 repo_root=repo_root,
                 trace=trace,
                 started_at=pr_started_at,
-                run_reviewer_fn=run_reviewer_fn,
-                experiment_tag=experiment_tag,
+                run_reviewer_fn=run_reviewer,
+                experiment_tag=EXPERIMENT_TAG,
                 logger=logger,
                 snapshot_data=snapshot_data,
                 mcp_preflight=mcp_preflight,
+                effective_reviewer_mode=effective_reviewer_mode,
             )
         except Exception as exc:  # noqa: BLE001 - per-PR isolation; harness continues
             elapsed_ms = int((time.perf_counter() - started) * 1000)
@@ -1285,7 +1332,7 @@ def run_aacr_reviewer(
     run_meta_path = run_dir / "run_meta.json"
     run_finished_at = _utc_now_iso()
     run_meta = {
-        "experiment": experiment_tag,
+        "experiment": EXPERIMENT_TAG,
         "run_id": resolved_run_id,
         "started_at": run_started_at,
         "finished_at": run_finished_at,
@@ -1293,8 +1340,8 @@ def run_aacr_reviewer(
         "dataset_path": str(dataset_path),
         "planner_model_key": settings.reviewer_planner_model_key,
         "worker_model_key": settings.reviewer_worker_model_key,
-        "reviewer_use_legacy_specialist_workers": settings.reviewer_use_legacy_specialist_workers,
         "reviewer_check_mode": settings.reviewer_check_mode,
+        "effective_reviewer_mode": effective_reviewer_mode,
         "pr_url_filter": pr_url_filter_for_meta,
         "dataset_range": (
             {"start": dataset_range.start, "end": dataset_range.end}
@@ -1303,7 +1350,6 @@ def run_aacr_reviewer(
         ),
         "repo_root": str(repo_root) if repo_root is not None else "",
         "trace": trace,
-        "basic_graph": use_basic_graph,
         "cli_flags": dict(cli_flags) if cli_flags else {},
         "mcp_preflight": mcp_preflight,
         "coverage_audit_path": str(coverage_audit_path.relative_to(run_dir)),

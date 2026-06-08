@@ -14,12 +14,12 @@ flowchart TD
     RouteInitial -->|"local repo_path"| StructuralExtractor[structural_extractor]
     RouteInitial -->|"remote PR sandbox"| SandboxStructuralExtractor[sandbox_structural_extractor]
     RouteInitial -->|"precomputed graph + no snapshot"| SemanticDispatch[semantic_dispatch]
-    RouteInitial -->|"precomputed snapshot or semantic disabled"| ReviewPlanner[review_planner]
+    RouteInitial -->|"precomputed snapshot or semantic disabled"| IntentExtractor[intent_extractor]
 
     StructuralExtractor --> RouteAfterStructural{_route_after_structural}
     SandboxStructuralExtractor --> RouteAfterStructural
     RouteAfterStructural -->|"semantic enabled + topology exists + no snapshot_root"| SemanticDispatch
-    RouteAfterStructural -->|"semantic disabled or missing topology"| ReviewPlanner
+    RouteAfterStructural -->|"semantic disabled or missing topology"| IntentExtractor
 
     subgraph phase2 [Phase 2: Agentic Semantic Bubble-Up]
         SemanticDispatch --> RouteSemanticDispatch{route_semantic_dispatch}
@@ -29,24 +29,34 @@ flowchart TD
         RouteSemanticDispatch -->|"queue exhausted"| UnverifiedResolver[unverified_call_resolver]
         UnverifiedResolver -->|"new targets, capped rounds"| UnverifiedResolver
         UnverifiedResolver -->|"resolved or exhausted"| SemanticMerge[semantic_merge]
-        SemanticMerge --> SnapshotPin[snapshot_pin]
+        SemanticMerge --> IntentExtractor
     end
 
-    SnapshotPin --> ReviewPlanner
+    IntentExtractor --> MandateExplorer[mandate_explorer]
+    MandateExplorer --> MandatePatch[mandate_patch]
+    MandatePatch --> DraftPlanner[draft_planner]
+    DraftPlanner --> PlanCritic[plan_critic]
+    PlanCritic --> PlanEmit[plan_emit]
+    PlanEmit --> SnapshotPin[snapshot_pin]
+    SnapshotPin --> ReviewDispatch{task dispatch}
 
     subgraph review [Review Planning and Adversarial Review]
-        ReviewPlanner --> DispatchReview{review task dispatch}
-        DispatchReview --> GeneralCritiquer[general_critiquer]
+        ReviewDispatch --> MentalModelEnricher[mental_model_context_enricher]
+        MentalModelEnricher -->|"review-check-mode off"| GeneralCritiquer[general_critiquer]
+        MentalModelEnricher -->|"default check-first"| ReviewCheckCompiler[review_check_compiler]
+        ReviewCheckCompiler --> ReviewCheckExecutor[review_check_executor]
+        ReviewCheckExecutor --> EvidenceGate[review_check_evidence_gate]
+        EvidenceGate --> InitialFocusedContext[initial_focused_context]
         GeneralCritiquer --> InitialFocusedContext[initial_focused_context]
         InitialFocusedContext --> Reflection[adversarial_reflection]
         Reflection -->|"needs more context"| FocusedContext[focused_context]
-        Reflection -->|"ready for cleanup"| Cleanup[adversarial_cleanup]
+        Reflection -->|"ready for adjudication"| Adjudicator[review_adjudicator]
         FocusedContext --> CritiqueRevisionRoute{critique revision route}
         CritiqueRevisionRoute -->|"revision shards"| CritiqueDigest[critique_revision_digest]
         CritiqueDigest --> CritiqueReduce[critique_revision_reduce]
-        CritiqueReduce --> Cleanup
-        CritiqueRevisionRoute -->|"no revision needed"| Cleanup
-        Cleanup --> Synthesizer[review_synthesizer]
+        CritiqueReduce --> Adjudicator
+        CritiqueRevisionRoute -->|"no revision needed"| Adjudicator
+        Adjudicator --> Synthesizer[review_synthesizer]
     end
 
     Synthesizer --> End([END])
@@ -61,8 +71,13 @@ sequenceDiagram
     participant CA as community_semantic_agent
     participant UCR as unverified_call_resolver
     participant SM as semantic_merge
+    participant IE as intent_extractor
+    participant ME as mandate_explorer
+    participant MP as mandate_patch
+    participant DP as draft_planner
+    participant PC as plan_critic
     participant SP as snapshot_pin
-    participant RP as review_planner
+    participant RC as review_check_compiler
 
     SE->>SD: structural_graph_node_link + structural_topology
     SD->>SD: build community work queue once
@@ -76,9 +91,14 @@ sequenceDiagram
     UCR->>UCR: resolve UNVERIFIED_CALL_TARGET entries
     UCR->>SM: resolved calls + knowledge gaps
     SM->>SM: global synthesis + graph diagnostics
-    SM->>SP: enriched graph + summaries + diagnostics
-    SP->>SP: write snapshot tree and Redis pointer
-    SP->>RP: snapshot_root + snapshot_id
+    SM->>IE: enriched graph + summaries + diagnostics
+    IE->>ME: intent + surface ledger
+    ME->>MP: bounded tool observations
+    MP->>DP: BehavioralSpec ref + contract questions
+    DP->>PC: draft review tasks
+    PC->>SP: aligned plan via plan_emit
+    SP->>SP: write snapshot tree or loaded-snapshot passthrough
+    SP->>RC: task fan-out enters check-first chain by default
 ```
 
 ## Important Settings

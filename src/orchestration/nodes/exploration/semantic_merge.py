@@ -490,6 +490,7 @@ def make_semantic_merge_node(
                 llm_tokens += call_tokens
                 sp2 = dict(meta.get("semantic_phase2", {}))
                 sp2["global_summary_llm_status"] = "ok_retry" if retried else "ok"
+                sp2["global_summary_degraded"] = False
                 sp2["semantic_merge_tokens_used"] = call_tokens
                 meta["semantic_phase2"] = sp2
             except Exception as exc:  # noqa: BLE001
@@ -499,6 +500,7 @@ def make_semantic_merge_node(
                 sp2["global_summary_llm_status"] = (
                     "timeout_failed" if is_timeout_exception(exc) else f"failed:{exc.__class__.__name__}"
                 )
+                sp2["global_summary_degraded"] = True
                 sp2["semantic_merge_tokens_used"] = 0
                 meta["semantic_phase2"] = sp2
         else:
@@ -511,6 +513,9 @@ def make_semantic_merge_node(
                 sp2["global_summary_llm_status"] = "skipped_no_packet"
             elif repo_summary is not None and repo_summary.confidence == "llm_synthesized":
                 sp2["global_summary_llm_status"] = "reused_repo_summary"
+            sp2["global_summary_degraded"] = str(sp2.get("global_summary_llm_status") or "").startswith(
+                ("failed", "timeout_failed")
+            )
             meta["semantic_phase2"] = sp2
 
         enriched_payload = StructuralGraphBuilder.serialize(graph)

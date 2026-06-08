@@ -17,7 +17,7 @@ This document provides detailed documentation on all available command-line flag
 
 ## CLI Entry Points
 
-Bushwhack provides three main entry points for running research:
+Bushwhack provides these main entry points for running research:
 
 ### 1. `reviewer-agent` (Primary Research Entry Point)
 **Package:** `src.reviewer_agent.main:main`
@@ -41,6 +41,25 @@ remote-review-workflow [OPTIONS]
 - `python -m src.main [OPTIONS]` - Baseline one-node LangGraph flow
 - `python scripts/cli.py --review` - Git-staged changes review
 
+### 4. Cluster Check-First Wrapper
+**Script:** `scripts/cluster/submit_batch2_review_checks.sh`
+
+Convenience wrapper for the current check-first mental-model benchmark path. It submits
+`scripts/cluster/run_bushwhack_custom_urls_2.sbatch` with `--review-check-mode`
+set to `enforced` by default.
+
+```bash
+scripts/cluster/submit_batch2_review_checks.sh enforced
+```
+
+The full-suite Slurm launcher also defaults to the same current path. With no
+extra reviewer flags, it runs the full dataset with `--trace`; check-first
+execution is the reviewer default:
+
+```bash
+sbatch scripts/cluster/run_bushwhack_full_suite.sbatch
+```
+
 ---
 
 ## Command Flags
@@ -56,6 +75,8 @@ The primary research command with comprehensive options for dataset-driven analy
 | `--dataset` | choice | `aacr` | Which benchmark harness to use. Currently only `aacr` is fully wired. |
 | `--dataset-path` | path | `data/processed/aacr_bench_graph_ready.csv` | Path to the processed dataset CSV file. |
 | `--pr-url` | string | `None` | Optional exact PR URL to run from the processed dataset before applying `--limit`. Useful for targeted single-PR analysis. |
+| `--pr-urls` | list | `None` | Optional explicit PR URL list to run instead of scanning the dataset. Used by the custom cluster launchers. |
+| `--snapshot-id` | string | `None` | Load an existing exploration snapshot and skip Phase 2 semantic enrichment for matching PRs. In the modern default planner this still runs the mental-model/mandate path. |
 
 #### Run Management
 
@@ -71,8 +92,7 @@ The primary research command with comprehensive options for dataset-driven analy
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--trace` | boolean | `False` | Emit reviewer graph tracing logs, including bounded LLM request/response summaries and per-call token usage. Verbose output for debugging agent behavior. |
-| `--basic-graph` | boolean | `False` | Use the basic reviewer graph without adversarial critique/reflection nodes. |
-| `--review-check-mode` | choice | settings default | Check-first reviewer ablation mode: `off`, `log_only`, or `enforced`. |
+| `--review-check-mode` | choice | `enforced` | Debug override for check-first reviewer mode: `off`, `log_only`, or `enforced`. Omit it for the current contract-question/check-first path. |
 
 #### LLM Configuration Overrides
 
@@ -94,6 +114,17 @@ reviewer-agent --limit 5 --trace
 
 # Single PR analysis
 reviewer-agent --pr-url "https://github.com/infiniflow/ragflow/pull/6553"
+
+# Current mental-model/check-first path on a single PR
+reviewer-agent \
+  --pr-url "https://github.com/infiniflow/ragflow/pull/6553" \
+  --trace
+
+# Snapshot resume with the same current path
+reviewer-agent \
+  --snapshot-id 28d358fa3aaf_comfyanonymous__ComfyUI__pr7952 \
+  --pr-url "https://github.com/comfyanonymous/ComfyUI/pull/8000" \
+  --trace
 
 # Custom output directory
 reviewer-agent --output-root /custom/path/logs
@@ -333,8 +364,13 @@ These settings are mirrored to the `LANGSMITH_*` / `LANGCHAIN_CALLBACKS_BACKGROU
 
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
-| `REVIEW_REVIEWER_USE_LEGACY_SPECIALIST_WORKERS` | boolean | `false` | Route review_planner tasks to legacy specialist workers instead of adversarial critiquer loop. |
-| `REVIEW_REVIEWER_CHECK_MODE` | choice | `off` | Check-first reviewer ablation mode: `off` preserves candidate-first review, `log_only` compiles and validates checks before the current critiquer, and `enforced` uses evidence-backed checks instead of direct candidate generation. |
+| `REVIEW_REVIEWER_CHECK_MODE` | choice | `enforced` | Debug override for reviewer check mode: `enforced` uses evidence-backed checks, `log_only` compiles and validates checks before the current critiquer, and `off` preserves candidate-first review for comparison. |
+
+Current reviewer path:
+
+- Full graph with mental-model planning, mandate explorer, adversarial workers, and review adjudication is the only live implementation.
+- Check-first execution is the default. Use `--review-check-mode off` or `REVIEW_REVIEWER_CHECK_MODE=off` only for short-term debugging comparisons.
+- `run_meta.json` and each raw PR artifact include `effective_reviewer_mode` so hidden environment state cannot make two artifacts look identical while taking different reviewer paths.
 
 Check-first AACR runs also write health artifacts:
 
@@ -426,7 +462,22 @@ reviewer-agent \
   --output-root /results/single_pr
 ```
 
-#### 4. **Performance Tuning (Fast Iteration)**
+#### 4. **Current Check-First Mental-Model Run**
+
+```bash
+# Local or direct invocation
+reviewer-agent \
+  --pr-url "https://github.com/infiniflow/ragflow/pull/6553" \
+  --trace
+
+# Cluster full-suite launcher; no reviewer-mode flags required
+sbatch scripts/cluster/run_bushwhack_full_suite.sbatch
+```
+
+This routes each task through `review_check_compiler` / validator / executor /
+evidence gate instead of relying on direct candidate generation.
+
+#### 5. **Performance Tuning (Fast Iteration)**
 
 ```bash
 # .env file
@@ -440,7 +491,7 @@ REVIEW_AST_CACHE_TTL_SECONDS=7200
 reviewer-agent --limit 5 --llm-timeout 120 --llm-max-retries 2
 ```
 
-#### 5. **Cloud LLM with OpenAI**
+#### 6. **Cloud LLM with OpenAI**
 
 ```bash
 # .env file
@@ -483,7 +534,23 @@ reviewer-agent \
   --output-root logs/reviewer_agent/aacr_full_run_$(date +%Y%m%d_%H%M%S)
 ```
 
-### Example 3: Smoke Test with Local Repo
+### Example 3: Check-First Contract-Question Run
+
+```bash
+# Run the current mental-model path on the custom cluster PR list
+scripts/cluster/submit_batch2_review_checks.sh enforced
+```
+
+Equivalent direct shape:
+
+```bash
+python -m src.reviewer_agent.main \
+  --remote \
+  --trace \
+  --pr-urls "https://github.com/example/repo/pull/123"
+```
+
+### Example 4: Smoke Test with Local Repo
 
 ```bash
 # Test on a local repository with first 3 PRs worth of data
@@ -493,7 +560,7 @@ reviewer-agent \
   --trace
 ```
 
-### Example 4: Baseline Analysis
+### Example 5: Baseline Analysis
 
 ```bash
 # Run simple baseline model without graph orchestration
@@ -503,7 +570,7 @@ python -m src.main \
   --user-goals "Performance review: identify N+1 queries and inefficient database operations"
 ```
 
-### Example 5: Git Pre-Commit Integration
+### Example 6: Git Pre-Commit Integration
 
 ```bash
 # Stage your changes

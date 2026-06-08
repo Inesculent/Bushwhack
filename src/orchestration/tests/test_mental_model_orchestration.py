@@ -607,24 +607,6 @@ def test_mandate_patch_writes_owner_agent_questions(
     assert out["metadata"]["mental_model"]["owner_contract_agentic"]["partition_count"] == 1
 
 
-def test_reviewer_graph_compiles_legacy_planner_mode(monkeypatch: pytest.MonkeyPatch) -> None:
-    pytest.importorskip("langgraph")
-    try:
-        from src.config import get_settings
-        from src.orchestration.reviewer_graph import build_graph
-    except ImportError as exc:
-        pytest.skip(f"reviewer graph import unavailable ({exc})")
-
-    monkeypatch.setenv("REVIEW_REVIEWER_LEGACY_PLANNER_MODE", "true")
-    get_settings.cache_clear()
-    try:
-        g = build_graph()
-        assert g is not None
-    finally:
-        monkeypatch.delenv("REVIEW_REVIEWER_LEGACY_PLANNER_MODE", raising=False)
-        get_settings.cache_clear()
-
-
 def test_snapshot_pin_skips_write_when_snapshot_source_loaded() -> None:
     import sys
     import types

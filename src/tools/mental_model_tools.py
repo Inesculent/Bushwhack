@@ -131,12 +131,12 @@ def query_mental_model(
             "dedupe_key": dk,
         }
 
-    if settings.reviewer_legacy_planner_mode or not ref:
+    if not ref:
         return {
             "answer": "",
             "exploration_ledger": [],
             "skipped": True,
-            "skip_reason": "no_behavioral_spec_ref_or_legacy_mode",
+            "skip_reason": "no_behavioral_spec_ref",
             "dedupe_key": dk,
         }
 

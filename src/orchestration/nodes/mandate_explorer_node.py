@@ -312,10 +312,6 @@ def make_mandate_explorer_bootstrap_node(
             meta["mental_model"] = slot
             return {"metadata": meta, "node_history": ["mandate_explorer_bootstrap:skipped"]}
 
-        resolved = settings or get_settings()
-        if not resolved.reviewer_mandate_explorer_enabled:
-            return {"node_history": ["mandate_explorer_bootstrap:disabled"]}
-
         result = run_mandate_explorer_subgraph(state, context_provider, mode="bootstrap")
         merged: Dict[str, Any] = {"node_history": ["mandate_explorer_bootstrap"]}
         merged.update(result)
@@ -343,7 +339,7 @@ def make_mandate_explorer_targeted_node(
         meta["mental_model"] = slot
         inner = {**state, "metadata": meta}
 
-        if not use_llm or not (settings or get_settings()).reviewer_mandate_explorer_enabled:
+        if not use_llm:
             return {"metadata": meta, "node_history": ["mandate_explorer_targeted:skipped"]}
 
         result = run_mandate_explorer_subgraph(inner, context_provider, mode="targeted")

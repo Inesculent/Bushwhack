@@ -74,9 +74,6 @@ def _mental_model_query_for_task(task: ReviewTask) -> str:
 
 
 def _should_skip_mental_model(state: GraphState) -> tuple[bool, str]:
-    settings = get_settings()
-    if settings.reviewer_legacy_planner_mode:
-        return True, "legacy_planner_mode"
     if not state.get("behavioral_spec_ref"):
         return True, "no_behavioral_spec_ref"
     return False, ""

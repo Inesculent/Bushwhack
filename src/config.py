@@ -469,23 +469,11 @@ class Settings(BaseSettings):
 			"(enables AST and local ripgrep). Set REVIEW_REVIEWER_ALLOW_HOST_PR_WORKTREE=false to use Docker sandbox only."
 		),
 	)
-	reviewer_use_legacy_specialist_workers: bool = Field(
-		default=False,
-		description="When true, route review_planner tasks to legacy specialist workers instead of the adversarial critiquer loop.",
-	)
-	reviewer_legacy_planner_mode: bool = Field(
-		default=False,
-		description=(
-			"When true, skip Phase 0 mental-model formulation and actor-critic planning; use the monolithic review_planner. "
-			"Orthogonal to reviewer_use_legacy_specialist_workers."
-		),
-	)
 	reviewer_check_mode: Literal["off", "log_only", "enforced"] = Field(
-		default="off",
+		default="enforced",
 		description=(
-			"Check-first reviewer ablation mode for the non-legacy adversarial critique path. "
-			"off preserves candidate-first review, log_only compiles/validates checks before running the "
-			"current critiquer, and enforced skips direct candidate generation in favor of evidence-backed checks."
+			"Check-first reviewer mode. enforced is the default current path, off preserves candidate-first "
+			"review for debugging, and log_only compiles/validates checks before running the current critiquer."
 		),
 	)
 	reviewer_actor_critic_max_plan_revisions: int = Field(
@@ -505,10 +493,6 @@ class Settings(BaseSettings):
 		ge=200,
 		le=16000,
 		description="Max characters returned from query_mental_model (excerpt of BehavioralSpec).",
-	)
-	reviewer_mandate_explorer_enabled: bool = Field(
-		default=True,
-		description="When true, run mandate_explorer (bootstrap + critic-targeted) before/during coupled planning.",
 	)
 	reviewer_mandate_bootstrap_max_steps: int = Field(
 		default=8,
@@ -616,13 +600,6 @@ class Settings(BaseSettings):
 			"ReflectionReport (strict quorum). When false (default), missing specialties abstain: if at least one "
 			"relevant report exists and none of them reject, promotion uses only the reports that arrived "
 			"(e.g. logic timed out but general accepted — avoids losing findings to graph/LLM timeouts)."
-		),
-	)
-	reviewer_use_legacy_adversarial_cleanup: bool = Field(
-		default=False,
-		description=(
-			"When true, use the legacy deterministic adversarial_cleanup promotion/dedupe node. "
-			"Default false routes final candidate judgment through review_adjudicator."
 		),
 	)
 	reviewer_triage_max_batch_chars: int = Field(

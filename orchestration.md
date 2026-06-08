@@ -4,21 +4,43 @@ This document describes the current reviewer graph as implemented in `src/orches
 
 ## High-Level Flow
 
-The default graph is an adversarial review pipeline:
+The reviewer graph has one current implementation path. It builds or loads
+structural/semantic repository context, synthesizes a `BehavioralSpec`, plans
+review tasks against that spec, then runs the adversarial check-first review path
+by default.
 
 ```mermaid
 flowchart TD
     start([START]) --> routeInitial{Initial context route}
     routeInitial -->|local repo_path| structuralExtractor[structural_extractor]
     routeInitial -->|remote repo URL| sandboxStructuralExtractor[sandbox_structural_extractor]
-    routeInitial -->|preflight + structural graph already present| reviewPlanner[review_planner]
+    routeInitial -->|preflight + structural graph already present| intentExtractor[intent_extractor]
 
-    structuralExtractor --> reviewPlanner
-    sandboxStructuralExtractor --> reviewPlanner
+    structuralExtractor --> semanticMerge[semantic_merge]
+    sandboxStructuralExtractor --> semanticMerge
+    semanticMerge --> intentExtractor
+    intentExtractor --> mandateExplorer[mandate_explorer]
+    mandateExplorer --> mandatePatch[mandate_patch]
+    mandatePatch --> draftPlanner[draft_planner]
+    draftPlanner --> planCritic[plan_critic]
+    planCritic -->|aligned| planEmit[plan_emit]
+    planCritic -->|needs more mandate evidence| targetedExplorer[mandate_explorer_targeted]
+    targetedExplorer --> mandatePatch
+    planCritic -->|revise plan| planRevision[plan_revision]
+    planRevision --> planCritic
+    planEmit --> snapshotPin[snapshot_pin]
 
-    reviewPlanner --> routeCritiqueTasks{Fan out planned tasks}
-    routeCritiqueTasks -->|Send per task| generalCritiquer[general_critiquer]
-    generalCritiquer --> initialFocusedContext[initial_focused_context]
+    snapshotPin --> routeCritiqueTasks{Fan out planned tasks}
+    routeCritiqueTasks -->|Send per task| critiqueProbe[critique_context_probe]
+    critiqueProbe --> mentalEnricher[mental_model_context_enricher]
+    mentalEnricher -->|reviewer_check_mode=off| generalCritiquer[general_critiquer]
+    mentalEnricher -->|log_only or enforced| reviewCheckCompiler[review_check_compiler]
+    reviewCheckCompiler --> reviewCheckValidator[review_check_validator]
+    reviewCheckValidator -->|log_only| generalCritiquer
+    reviewCheckValidator -->|enforced| reviewCheckExecutor[review_check_executor]
+    reviewCheckExecutor --> evidenceGate[review_check_evidence_gate]
+    evidenceGate --> initialFocusedContext[initial_focused_context]
+    generalCritiquer --> initialFocusedContext
     initialFocusedContext --> adversarialReflection[adversarial_reflection]
 
     adversarialReflection --> needsContext{Any routed reflection needs context?}
@@ -26,41 +48,62 @@ flowchart TD
     focusedContext --> routeCritiqueRevision{Route critique revision}
     routeCritiqueRevision -->|Send per shard| critiqueRevisionDigest[critique_revision_digest]
     critiqueRevisionDigest --> critiqueRevisionReduce[critique_revision_reduce]
-    critiqueRevisionReduce --> adversarialCleanup[adversarial_cleanup]
-    routeCritiqueRevision -->|skip| adversarialCleanup
-    needsContext -->|no| adversarialCleanup
+    critiqueRevisionReduce --> reviewAdjudicator[review_adjudicator]
+    routeCritiqueRevision -->|skip| reviewAdjudicator
+    needsContext -->|no| reviewAdjudicator
 
-    adversarialCleanup --> reviewSynthesizer[review_synthesizer]
+    reviewAdjudicator --> reviewSynthesizer[review_synthesizer]
     reviewSynthesizer --> graphEnd([END])
 ```
 
-There is also a legacy worker path behind `Settings.reviewer_use_legacy_specialist_workers`. When enabled, `review_planner` fans out directly to `security_worker`, `logic_worker`, `performance_worker`, and `general_worker`, then joins at `review_synthesizer`. The default is the adversarial path.
+## Mental Model And Planner Path
 
-## Mental model and planner modes (default vs legacy)
+After Phase 2 `semantic_merge`, or when resuming from a loaded exploration
+snapshot (`snapshot_source: "loaded"`), the graph runs the same mental-model path:
+`intent_extractor`, `mandate_explorer`, `mandate_patch`, actor-critic planning
+(`draft_planner`, `plan_critic`, `plan_revision`, `plan_emit`), then
+`snapshot_pin`. The full `BehavioralSpec` is written to disk via
+`BehavioralSpecStore`; only `behavioral_spec_ref` and `cache_refs` appear on
+`GraphState`.
 
-Orthogonal flags:
+- `Settings.reviewer_check_mode` / CLI `--review-check-mode`:
+  - **`enforced` (default):** The current check-first path. After `mental_model_context_enricher`, the graph runs `review_check_compiler`, validates and executes checks, gates evidence-backed candidates, then continues through reflection and adjudication.
+  - **`log_only`:** Compiles and validates review checks from the mental model, then still runs `general_critiquer`.
+  - **`off`:** Candidate-first debug comparison after `mental_model_context_enricher`; the task proceeds to `general_critiquer`.
 
-- `Settings.reviewer_legacy_planner_mode` (`REVIEW_REVIEWER_LEGACY_PLANNER_MODE`, default `false`):
-  - **`false` (default):** After Phase 2 `semantic_merge`, **or** when resuming from a loaded exploration snapshot (`snapshot_source: "loaded"`), the graph runs Phase 0 mental-model nodes (`intent_extractor` → `contract_inspector` → `historical_miner` → `mandate_synthesizer`), then `snapshot_pin`, then **actor–critic planning** (`draft_planner` → `plan_critic` ↔ `plan_revision` → `plan_emit`). The full `BehavioralSpec` is written to disk via `BehavioralSpecStore`; only `behavioral_spec_ref` and `cache_refs` appear on `GraphState`.
-  - **`true` (legacy):** Skips Phase 0 and actor–critic; `semantic_merge` goes straight to `snapshot_pin`, then the monolithic `review_planner`.
+For current check-first benchmark runs, use:
 
-- `Settings.reviewer_use_legacy_specialist_workers` (unchanged): switches adversarial critique vs legacy specialist workers after tasks exist.
+```bash
+scripts/cluster/submit_batch2_review_checks.sh enforced
+```
 
-### Adversarial critique pipeline (double node)
+or directly:
 
-When adversarial mode is on and legacy planner mode is off, each planned task runs the compiled subgraph `critique_review_subgraph`:
+```bash
+python -m src.reviewer_agent.main --remote --trace --pr-urls <url> [<url> ...]
+```
 
-`critique_context_probe` → `mental_model_context_enricher` → `general_critiquer`
+For snapshot-resume runs using the same design:
 
-This ensures direct code context is gathered **before** optional `query_mental_model` calls. Parallel `Send` payloads use `payload_for_send` to avoid copying forbidden large keys.
+```bash
+python -m src.reviewer_agent.main --snapshot-id <snapshot-id> --pr-url <pr-url> --trace
+```
 
-### Exploration ledger
+### Adversarial Critique Pipeline
+
+Each planned task runs the compiled subgraph `critique_review_subgraph`:
+
+`critique_context_probe` -> `mental_model_context_enricher` -> either `general_critiquer` or the check-first review-check chain, depending on `reviewer_check_mode`.
+
+This ensures direct code context is gathered **before** optional `query_mental_model` calls. In `enforced` mode, contract questions and surface invariants from the `BehavioralSpec` are converted into concrete review checks before any candidate can be promoted. Parallel `Send` payloads use `payload_for_send` to avoid copying forbidden large keys.
+
+### Exploration Ledger
 
 `exploration_ledger` is append-only (`operator.add`). Prompts include only a **bounded** digest via `format_exploration_ledger_for_prompt` in `src/orchestration/prompts/ledger_formatter.py` so reflection and critiquer prompts do not inline the full ledger.
 
-### Snapshot resume (`snapshot_source: "loaded"`)
+### Snapshot Resume (`snapshot_source: "loaded"`)
 
-When the harness loads a prior exploration snapshot (for example `reviewer_agent --snapshot-id`), Phase 2 community agents still do not re-run. With **`reviewer_legacy_planner_mode=false`** (default), the graph still runs **Phase 0** from `intent_extractor` through `mandate_synthesizer`, then `snapshot_pin`, then actor–critic planning. For loaded snapshots, **`snapshot_pin` does not call `SnapshotWriter.write_snapshot` again** (no duplicate tree); it merges `behavioral_spec_ref` (and ids) into `metadata["exploration_snapshot"]` and logs `snapshot_pin:loaded_passthrough`. With **`reviewer_legacy_planner_mode=true`**, resume routes straight to `review_planner` as before. The **basic** graph (`reviewer_graph_basic`) unchanged: snapshot resume still enters `review_planner` directly.
+When the harness loads a prior exploration snapshot (for example `reviewer-agent --snapshot-id`), Phase 2 community agents still do not re-run. The graph still routes through `intent_extractor`, `mandate_explorer`, `mandate_patch`, actor-critic planning, and `snapshot_pin`. For loaded snapshots, **`snapshot_pin` does not call `SnapshotWriter.write_snapshot` again** (no duplicate tree); it merges `behavioral_spec_ref` (and ids) into `metadata["exploration_snapshot"]` and logs `snapshot_pin:loaded_passthrough`.
 
 ## Routing And State
 
@@ -119,9 +162,9 @@ If `repo_path` is not a local directory, `_route_initial_context` sends the run 
 
 For remote runs, `RunMetadata.base_sha` is currently set to `"unknown"` and `head_sha` to `run_id` in the extraction node. The harness has PR metadata and commits in the dataset, but that commit metadata is not yet wired into preflight run metadata in this path.
 
-## Review Planner
+## Task Planning
 
-`review_planner` converts diff and structural context into executable `ReviewTask` objects.
+The graph drafts and critiques tasks with `draft_planner`, `plan_critic`, `plan_revision`, and `plan_emit`, using the `BehavioralSpec` as the main contract source.
 
 Inputs:
 
@@ -141,21 +184,22 @@ Important behavior:
 
 The planner no longer passes raw `structural_topology.model_dump()` into the prompt, because that can include thousands of node IDs and blow up model context. Instead, it uses planner-specific `Structural Routing Hints` derived from changed file neighborhoods.
 
-## General Critiquer Fan-Out
+## Task Review Fan-Out
 
-`_route_critique_tasks` reads `task_registry` and emits one LangGraph `Send("general_critiquer", payload)` per pending leaf task, excluding `root_task_id`.
+`_route_critique_tasks` reads `task_registry` and emits one LangGraph `Send("critique_review_subgraph", payload)` per pending leaf task, excluding `root_task_id`.
 
-Each `general_critiquer`:
+Each subgraph branch:
 
 1. Loads the task identified by `current_task_id`.
-2. Collects direct context with `LazyReviewContextProvider.collect_for_task(...)`.
-3. Prompts the general critiquer to produce `CandidateFinding` objects.
-4. Normalizes `candidate_id` and `patch_task_id`.
-5. Marks the task completed in `task_status_by_id`.
+2. Collects direct context with `critique_context_probe`.
+3. Pulls task-scoped BehavioralSpec and Review KB excerpts in `mental_model_context_enricher`.
+4. In the default `reviewer_check_mode=enforced`, compiles and executes concrete review checks, then promotes only evidence-gated candidates.
+5. If `reviewer_check_mode=off`, prompts `general_critiquer` to produce `CandidateFinding` objects for debug comparison.
+6. Marks the task completed in `task_status_by_id`.
 
 Execution continues through `initial_focused_context` (same bounded fulfiller as post-reflection focused context) before `adversarial_reflection`.
 
-The general critiquer is also responsible for routing each candidate to one or more reflector domains through `CandidateFinding.reflection_specialties`. Most findings should route to exactly one domain. Cross-domain findings can route to multiple domains.
+In candidate-first debug mode, the general critiquer is also responsible for routing each candidate to one or more reflector domains through `CandidateFinding.reflection_specialties`. Most findings should route to exactly one domain. Cross-domain findings can route to multiple domains. In the default check-first mode, candidates are produced by the review-check executor and then pass through the same downstream reflection/adjudication stages.
 
 Current limitation: `CritiquerOutput.initial_focus_requests` are recorded in metadata but are not emitted into `focused_context_requests`. The active focused-context cycle is driven by reflection reports, not by initial critiquer requests.
 
@@ -211,7 +255,7 @@ Post-reflection revision is intentionally split so prompts cannot concatenate **
 
 `_route_critique_revision` runs immediately after `focused_context`:
 
-- If there are no reflection `needs_context` candidates, or there is no usable focused evidence for those candidates, it routes straight to `adversarial_cleanup` (same skip behavior as before).
+- If there are no reflection `needs_context` candidates, or there is no usable focused evidence for those candidates, it routes straight to `review_adjudicator`.
 - Otherwise it builds deterministic **shards**: each shard is one `CandidateFinding` plus a character-budgeted subset of that candidate's `FocusedContextResult` rows. Shard ids are stable (`{candidate_id}:{shard_index}`) so parallel digest updates merge safely via `critique_revision_digests` using dict union.
 - For each shard, the graph issues `Send("critique_revision_digest", payload)`, passing a transient `critique_revision_shard` payload for that invocation only.
 
@@ -227,9 +271,9 @@ Settings (`Settings` in `src/config.py`) tune shard sizing:
 
 This is still a **single** focused-context cycle after reflection (no recursion back through reflection).
 
-## Cleanup And Synthesis
+## Adjudication And Synthesis
 
-`adversarial_cleanup` promotes `CandidateFinding` objects into clean `ReviewFinding` objects.
+`review_adjudicator` makes the final candidate judgment and promotes supported `CandidateFinding` objects into clean `ReviewFinding` objects.
 
 Current promotion rules:
 
@@ -299,4 +343,3 @@ The harness writes candidates, reflections, focused requests, focused results, c
 - The same `LazyReviewContextProvider` is shared across the graph run and is stopped by the wrapper around `review_synthesizer`.
 - Local LLM model keys come from `Settings.reviewer_planner_model_key` and `Settings.reviewer_worker_model_key` (used by critiquer, reflection, digest, and reduce nodes).
 - Critique revision shard sizing uses `Settings.reviewer_critique_revision_max_shard_chars` and `Settings.reviewer_critique_revision_max_candidate_chars`.
-- `reviewer_use_legacy_specialist_workers` can be enabled to bypass the adversarial critiquer/reflection path and use the older specialist worker fan-out.

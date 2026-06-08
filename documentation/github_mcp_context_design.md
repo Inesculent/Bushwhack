@@ -61,7 +61,7 @@ flowchart TD
     InitialRoute --> StructuralExtractor[structural_extractor]
     InitialRoute --> SandboxStructuralExtractor[sandbox_structural_extractor]
     InitialRoute --> SemanticDispatch[semantic_dispatch]
-    InitialRoute --> ReviewPlanner[review_planner]
+    InitialRoute --> IntentExtractor[intent_extractor]
 ```
 
 Sources:

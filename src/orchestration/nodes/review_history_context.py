@@ -143,10 +143,6 @@ def make_review_history_context_node(
         metadata = dict(state.get("metadata", {}) or {})
         slot: Dict[str, Any] = {"status": "skipped"}
 
-        if resolved.reviewer_legacy_planner_mode:
-            slot["skip_reason"] = "legacy_planner_mode"
-            metadata[node_name] = slot
-            return {"metadata": metadata, "node_history": [f"{node_name}:skipped"]}
         if not resolved.github_mcp_review_history_enabled:
             slot["skip_reason"] = "disabled"
             metadata[node_name] = slot

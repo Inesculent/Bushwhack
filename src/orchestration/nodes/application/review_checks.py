@@ -33,6 +33,7 @@ from src.orchestration.context.context_packets import focused_snippets_for_candi
 from src.orchestration.context.surface_ledger import (
     changed_files_from_diff,
     changed_file_sources_from_state,
+    compact_surface_ledger_json,
     surface_by_id,
     surface_ledger_from_state,
 )
@@ -104,11 +105,11 @@ _AFFECTED_PATH_MARKERS = (
 )
 _GENERIC_QUERY_TOKENS = {"changed", "code", "behavior", "repository", "evidence", "context"}
 _EXECUTOR_BATCH_SIZE = 3
-_EXECUTOR_CODE_EVIDENCE_CHARS = 16000
-_EXECUTOR_FOCUSED_EVIDENCE_CHARS = 10000
+_EXECUTOR_CODE_EVIDENCE_CHARS = 60000
+_EXECUTOR_FOCUSED_EVIDENCE_CHARS = 40000
 _EXECUTOR_COMPACT_CODE_EVIDENCE_CHARS = 4000
 _EXECUTOR_COMPACT_FOCUSED_EVIDENCE_CHARS = 3000
-_EXECUTOR_COMPACT_CONTEXT_CHARS = 1500
+_EXECUTOR_COMPACT_CONTEXT_CHARS = 8000
 _EXECUTOR_COMPACT_RETRY_APPENDIX = (
     "\n\n## OUTPUT BUDGET (retry - required)\n"
     "Your previous response exceeded the length limit. This retry contains exactly one input check. "
@@ -203,6 +204,61 @@ def _json_for_prompt(value: Any, *, max_chars: int = 8000) -> str:
     if len(text) > max_chars:
         return text[: max_chars - 24].rstrip() + "\n... [truncated]"
     return text
+
+
+def _text_contains_recursive(value: Any, needle: str) -> bool:
+    if isinstance(value, Mapping):
+        return any(_text_contains_recursive(item, needle) for item in value.values())
+    if isinstance(value, (list, tuple, set)):
+        return any(_text_contains_recursive(item, needle) for item in value)
+    return needle in str(value)
+
+
+def _coverage_critic_should_run(state: GraphState, checks: Sequence[ReviewCheck]) -> tuple[bool, str]:
+    metadata = state.get("metadata", {}) or {}
+    if _text_contains_recursive(metadata, "plan_critic_misaligned_after_budget"):
+        return True, "plan_critic_misaligned_after_budget"
+    if not checks:
+        return True, "no_initial_checks"
+    return False, ""
+
+
+def _render_coverage_critic_prompt(
+    state: GraphState,
+    task: ReviewTask,
+    slot: Mapping[str, Any],
+    checks: Sequence[ReviewCheck],
+) -> str:
+    ledger = surface_ledger_from_state(state)
+    sections = {
+        "Assigned Task": (
+            f"Task ID: {task.id}\n"
+            f"Title: {task.title}\n"
+            f"Description: {task.description[:2000]}\n"
+            f"Target files: {task.target_files}\n"
+            f"Specialty: {task.specialty}"
+        ),
+        "Changed Code And Direct Context": str(slot.get("direct_context") or "")[:60000],
+        "Mental Model Excerpt": str(slot.get("mental_model_excerpt") or "")[:12000],
+        "Review KB Context": str(slot.get("review_kb_excerpt") or "")[:12000],
+        "Surface Ledger": compact_surface_ledger_json(ledger, max_records=60) if ledger else "[]",
+        "Compiled Checks": _json_for_prompt(
+            [check.model_dump(mode="json") for check in checks],
+            max_chars=30000,
+        ),
+    }
+    body = render_reviewer_prompt("review_check_compiler.md", sections)
+    return (
+        f"{body}\n\n"
+        "## COVERAGE CRITIC MODE\n"
+        "You are not looking for memorized bug classes. Identify missing contract variants in the existing checks.\n"
+        "For each changed owner, compare the compiled checks against the changed code and contract context. "
+        "If a materially distinct trigger/default/boundary/empty/null/optional/multi-item/error/fallback/"
+        "return/serialization path is not represented, emit one additional ReviewCheck for that variant.\n"
+        "Only emit checks tied to changed code, concrete expected behavior, a trigger variant, an operation, "
+        "and a possible impact. Put the trigger and operation into owned_contract_scope. "
+        "If the current checks cover the material variants, return an empty checks list."
+    )
 
 
 
@@ -360,6 +416,79 @@ def make_review_check_compiler_node(
                 warnings.append(f"{node_name}_llm_fallback:{exc.__class__.__name__}: {exc}")
                 logger.warning("%s failed for task_id=%s: %s", node_name, task.id, exc)
 
+        coverage_critic_meta: Dict[str, Any] = {"status": "not_run"}
+        run_critic, critic_reason = _coverage_critic_should_run(state, checks)
+        if use_llm and run_critic:
+            selected_model = model_key or resolved.reviewer_worker_model_key
+            try:
+                critic_llm = Models.worker(
+                    ReviewCheckCompilerOutput,
+                    model_key=selected_model,
+                    max_completion_tokens=resolved.reviewer_critiquer_max_completion_tokens,
+                )
+                critic_prompt = _render_coverage_critic_prompt(state, task, slot, checks)
+                critic_traced = trace_llm_call(
+                    critic_llm,
+                    critic_prompt,
+                    state=state,
+                    node_name=node_name,
+                    model_key=selected_model,
+                    schema_name="ReviewCheckCompilerOutput",
+                    request_label="coverage_critic",
+                    input_summary={"task_id": task.id, "reason": critic_reason},
+                )
+                critic_response = parse_structured_output(
+                    critic_traced.result,
+                    ReviewCheckCompilerOutput,
+                )
+                llm_tokens += critic_traced.tokens
+                llm_trace.extend(critic_traced.trace_records)
+                critic_checks = compiler_support.normalize_compiled_checks(
+                    state,
+                    task,
+                    critic_response.checks,
+                )
+                critic_checks = compiler_support.enrich_checks_with_completeness_contracts(
+                    critic_checks,
+                    slot=slot,
+                )
+                critic_origins = compiler_support.origins_for_checks(
+                    critic_checks,
+                    "coverage_critic",
+                    f"coverage_critic_missing_contract_variants:{critic_reason}",
+                )
+                checks = compiler_support.prioritize_compiled_checks(
+                    compiler_support.dedupe_checks([*checks, *critic_checks]),
+                    task=task,
+                    slot=slot,
+                )
+                check_origins = {
+                    **check_origins,
+                    **{
+                        check.check_id: critic_origins.get(check.check_id)
+                        for check in critic_checks
+                        if check.check_id in critic_origins
+                    },
+                }
+                warnings.extend(critic_response.warnings)
+                coverage_critic_meta = {
+                    "status": "ok",
+                    "reason": critic_reason,
+                    "emitted_count": len(critic_checks),
+                    "emitted_check_ids": [check.check_id for check in critic_checks],
+                    "warnings": list(critic_response.warnings),
+                }
+                if critic_checks:
+                    warnings.append(f"coverage_critic_checks_added:{len(critic_checks)}")
+            except Exception as exc:  # noqa: BLE001
+                llm_trace.extend(trace_from_exception(exc))
+                warnings.append(f"coverage_critic_failed:{exc.__class__.__name__}: {exc}")
+                coverage_critic_meta = {
+                    "status": "failed",
+                    "reason": critic_reason,
+                    "error": f"{exc.__class__.__name__}: {exc}",
+                }
+
         if not checks:
             checks = compiler_support.fallback_checks(state, task, slot)
             check_origins = compiler_support.origins_for_checks(
@@ -389,6 +518,7 @@ def make_review_check_compiler_node(
                 "compiled_check_origins": check_origins,
                 "compiled_count": len(checks),
                 "compiler_coverage_floor": coverage_floor,
+                "coverage_critic": coverage_critic_meta,
                 "compiler_warnings": warnings,
                 "contract_lens_selection": lens_selection,
             },
@@ -676,8 +806,126 @@ def _missing_evidence_for_check(
     return list(requirements[:3])
 
 
+def _planned_context_request_for_check(
+    *,
+    state: GraphState,
+    task: ReviewTask,
+    check: ReviewCheck,
+    slot: Mapping[str, Any],
+    latest: ReviewCheckResult | None = None,
+    existing_ids: set[str] | None = None,
+    existing_signatures: set[tuple[Any, ...]] | None = None,
+    scope: frozenset[str] | None = None,
+) -> FocusedContextRequest | None:
+    if latest is not None:
+        if not _allows_focused_retrieval(check):
+            return None
+        missing_evidence = [item for item in latest.missing_evidence if str(item).strip()]
+    else:
+        missing_evidence = _missing_evidence_for_check(
+            state=state,
+            task_id=task.id,
+            check=check,
+            slot=slot,
+        )
+    if not missing_evidence:
+        return None
+    if not _check_budget_remaining(state, check):
+        return None
+
+    if existing_ids is None:
+        existing_ids = {
+            getattr(req, "request_id", None) if isinstance(req, FocusedContextRequest) else req.get("request_id")
+            for req in (state.get("focused_context_requests", []) or [])
+            if isinstance(req, (FocusedContextRequest, dict))
+        }
+    if existing_signatures is None:
+        existing_signatures = {
+            _focused_request_signature(req)
+            for req in (state.get("focused_context_requests", []) or [])
+            if isinstance(req, (FocusedContextRequest, dict))
+        }
+    if scope is None:
+        scope = allowed_review_paths(state, task_target_files=task.target_files)
+
+    request_id = _next_request_id_for_check(state, check)
+    if request_id in existing_ids:
+        return None
+    file_read_mode = "full" if _should_retry_full_file_for_check(state, check, latest) else "slice"
+    req = FocusedContextRequest(
+        request_id=request_id,
+        candidate_id=check.check_id,
+        requested_by_specialty=task.specialty,
+        file_read_mode=file_read_mode,
+        file_paths=[check.file_path] if check.file_path else task.target_files[:1],
+        symbol_queries=[check.changed_code_anchor] if check.changed_code_anchor else [],
+        text_queries=[
+            _query_for_requirement(req_text, check)
+            for req_text in missing_evidence[:3]
+            if str(req_text).strip()
+        ],
+        reason=(
+            f"Gather missing evidence for review check {check.check_id} "
+            f"at {check.file_path}:{check.line_start}-{check.line_end}; "
+            f"anchor={check.changed_code_anchor}; invariant={check.affected_invariant}; "
+            f"missing={', '.join(missing_evidence[:2])}"
+        ),
+    )
+    clamped = clamp_focused_context_request(
+        req,
+        scope,
+        fallback_path=check.file_path or (task.target_files[0] if task.target_files else None),
+    )
+    if _focused_request_signature(clamped) in existing_signatures:
+        return None
+    return clamped
+
+
+def _terminalize_unretryable_results(
+    *,
+    state: GraphState,
+    task: ReviewTask,
+    slot: Mapping[str, Any],
+    checks: Sequence[ReviewCheck],
+    results: Sequence[ReviewCheckResult],
+) -> tuple[List[ReviewCheckResult], List[str]]:
+    by_check = {check.check_id: check for check in checks}
+    terminalized: List[ReviewCheckResult] = []
+    warnings: List[str] = []
+    for result in results:
+        check = by_check.get(result.check_id)
+        if (
+            check is None
+            or result.decision != "unsupported"
+            or not result.missing_evidence
+            or _planned_context_request_for_check(
+                state=state,
+                task=task,
+                check=check,
+                slot=slot,
+                latest=result,
+            )
+            is not None
+        ):
+            terminalized.append(result)
+            continue
+        warnings.append(f"executor_no_retry_path_budget_exhausted:{result.check_id}")
+        terminalized.append(
+            result.model_copy(
+                update={
+                    "decision": "budget_exhausted",
+                    "warnings": list(result.warnings)
+                    + ["review_check_budget_exhausted", "review_check_no_retry_path"],
+                }
+            )
+        )
+    return terminalized, warnings
+
+
 def _executable_checks_for_task(state: GraphState, task_id: str) -> List[ReviewCheck]:
     latest = _latest_result_by_check(state, task_id)
+    task = _task_from_state(state)
+    slot = _pipeline_slot(state, task_id)
     checks: List[ReviewCheck] = []
     for check in _checks_for_task(state, task_id):
         result = latest.get(check.check_id)
@@ -686,7 +934,18 @@ def _executable_checks_for_task(state: GraphState, task_id: str) -> List[ReviewC
             continue
         if result.decision in _TERMINAL_CHECK_DECISIONS:
             continue
-        if result.missing_evidence and _check_budget_remaining(state, check):
+        if (
+            task is not None
+            and result.missing_evidence
+            and _planned_context_request_for_check(
+                state=state,
+                task=task,
+                check=check,
+                slot=slot,
+                latest=result,
+            )
+            is not None
+        ):
             checks.append(check)
     return checks
 
@@ -703,7 +962,16 @@ def should_continue_review_check_loop(state: GraphState) -> bool:
             continue
         if result.decision in _TERMINAL_CHECK_DECISIONS:
             continue
-        if result.missing_evidence and _check_budget_remaining(state, check):
+        if not result.missing_evidence:
+            continue
+        slot = _pipeline_slot(state, task.id)
+        if _planned_context_request_for_check(
+            state=state,
+            task=task,
+            check=check,
+            slot=slot,
+            latest=result,
+        ) is not None:
             return True
     return False
 
@@ -875,39 +1143,22 @@ def make_review_check_context_planner_node():
             if not missing_evidence:
                 continue
             missing_by_check[check.check_id] = missing_evidence
-            if not _check_budget_remaining(state, check):
-                continue
-            request_id = _next_request_id_for_check(state, check)
-            if request_id in existing_ids:
-                continue
-            file_read_mode = "full" if _should_retry_full_file_for_check(state, check, latest) else "slice"
-            req = FocusedContextRequest(
-                request_id=request_id,
-                candidate_id=check.check_id,
-                requested_by_specialty=task.specialty,
-                file_read_mode=file_read_mode,
-                file_paths=[check.file_path] if check.file_path else task.target_files[:1],
-                symbol_queries=[check.changed_code_anchor] if check.changed_code_anchor else [],
-                text_queries=[
-                    _query_for_requirement(req_text, check)
-                    for req_text in missing_evidence[:3]
-                    if str(req_text).strip()
-                ],
-                reason=(
-                    f"Gather missing evidence for review check {check.check_id} "
-                    f"at {check.file_path}:{check.line_start}-{check.line_end}; "
-                    f"anchor={check.changed_code_anchor}; invariant={check.affected_invariant}; "
-                    f"missing={', '.join(missing_evidence[:2])}"
-                ),
+            clamped = _planned_context_request_for_check(
+                state=state,
+                task=task,
+                check=check,
+                slot=slot,
+                latest=latest,
+                existing_ids=existing_ids,
+                existing_signatures=existing_signatures,
+                scope=scope,
             )
-            clamped = clamp_focused_context_request(
-                req,
-                scope,
-                fallback_path=check.file_path or (task.target_files[0] if task.target_files else None),
-            )
+            if clamped is None:
+                continue
             signature = _focused_request_signature(clamped)
             if signature in existing_signatures:
                 continue
+            existing_ids.add(clamped.request_id)
             existing_signatures.add(signature)
             requests.append(clamped)
 
@@ -940,7 +1191,7 @@ def make_review_check_context_planner_node():
 
 def _focused_context_for_check(state: GraphState, check_id: str) -> str:
     chunks: List[str] = []
-    focused = focused_snippets_for_candidate(state, check_id, max_chars=8000)
+    focused = focused_snippets_for_candidate(state, check_id, max_chars=30000)
     if focused.strip():
         chunks.append(focused)
     for request_id, raw in (state.get("focused_context_results", {}) or {}).items():
@@ -954,6 +1205,29 @@ def _focused_context_for_check(state: GraphState, check_id: str) -> str:
             continue
         chunks.append(str(raw)[:4000])
     return "\n\n".join(chunk for chunk in chunks if chunk.strip())
+
+
+def _focused_context_degraded_for_check(state: GraphState, check: ReviewCheck) -> List[str]:
+    metadata = state.get("metadata", {}) or {}
+    fc = metadata.get("focused_context", {}) if isinstance(metadata, Mapping) else {}
+    diagnostics = fc.get("diagnostics", []) if isinstance(fc, Mapping) else []
+    reasons: List[str] = []
+    for row in diagnostics if isinstance(diagnostics, list) else []:
+        if not isinstance(row, Mapping):
+            continue
+        if str(row.get("candidate_id") or "") != check.check_id:
+            continue
+        outcomes = {str(item) for item in row.get("outcomes", []) or []}
+        reason = str(row.get("reason") or "")
+        if reason:
+            outcomes.add(reason)
+        if "no_hits" in outcomes:
+            reasons.append("focused_context_no_hits")
+        if "tool_unavailable" in outcomes:
+            reasons.append("focused_context_tool_unavailable")
+        if "path_mismatch" in outcomes:
+            reasons.append("focused_context_path_mismatch")
+    return list(dict.fromkeys(reasons))
 
 
 def _seen_claim_digests_for_task(state: GraphState, task_id: str) -> List[Dict[str, str]]:
@@ -1025,7 +1299,7 @@ def _render_executor_prompt(
         ),
         "Check Contract Packets": _json_for_prompt(
             [_contract_packet_for_check(check) for check in checks],
-            max_chars=7000,
+            max_chars=20000,
         ),
         "Already Seen Claim Digests": _json_for_prompt(
             _seen_claim_digests_for_task(state, task.id),
@@ -1566,6 +1840,14 @@ def make_review_check_executor_node(
                 result_count_before_canonicalization = len(results)
             results, final_duplicate_ids = _canonicalize_executor_results(results)
             duplicate_result_check_ids.extend(final_duplicate_ids)
+        results, terminal_warnings = _terminalize_unretryable_results(
+            state=state,
+            task=task,
+            slot=slot,
+            checks=checks,
+            results=results,
+        )
+        warnings.extend(terminal_warnings)
         synthesized_candidate_check_ids = [
             warning.split(":", 1)[1]
             for warning in warnings
@@ -1753,6 +2035,7 @@ def _candidate_passes_gate(
     candidate: CandidateFinding,
     result: ReviewCheckResult,
     check: ReviewCheck,
+    state: GraphState,
 ) -> tuple[bool, str]:
     if check.audit_only:
         return False, "audit_only_check_not_promotable"
@@ -1812,6 +2095,9 @@ def _candidate_passes_gate(
         return False, "missing_reportable_reason"
     if result.suppressing_evidence:
         return False, "suppressing_evidence_present"
+    focused_degradation = _focused_context_degraded_for_check(state, check)
+    if focused_degradation:
+        return False, focused_degradation[0]
     if _candidate_speculative(candidate, result):
         return False, "speculative_or_uncertain_claim"
     if not (candidate.recommendation or "").strip():
@@ -1854,7 +2140,7 @@ def make_review_check_evidence_gate_node():
                 continue
             if result.decision != "candidate" or check is None:
                 continue
-            passed, reason = _candidate_passes_gate(candidate, result, check)
+            passed, reason = _candidate_passes_gate(candidate, result, check, state)
             if passed:
                 promoted.append(candidate)
                 gated_results.append(
@@ -1894,6 +2180,25 @@ def make_review_check_evidence_gate_node():
                 health_warnings.append("no_executor_candidates_for_valid_checks")
         if checks and not gated_results:
             health_warnings.append("evidence_gate_not_exercised")
+        focused_health = []
+        metadata = state.get("metadata", {}) or {}
+        fc = metadata.get("focused_context", {}) if isinstance(metadata, Mapping) else {}
+        diagnostics = fc.get("diagnostics", []) if isinstance(fc, Mapping) else []
+        for row in diagnostics if isinstance(diagnostics, list) else []:
+            if not isinstance(row, Mapping):
+                continue
+            candidate_id = str(row.get("candidate_id") or "")
+            if candidate_id not in checks:
+                continue
+            outcomes = {str(item) for item in row.get("outcomes", []) or []}
+            for outcome, warning in (
+                ("no_hits", "focused_context_no_hits"),
+                ("tool_unavailable", "focused_context_tool_unavailable"),
+                ("path_mismatch", "focused_context_path_mismatch"),
+            ):
+                if outcome in outcomes:
+                    focused_health.append(warning)
+        health_warnings.extend(sorted(set(focused_health)))
         ledger = surface_ledger_from_state(state)
         by_id = surface_by_id(ledger)
         high_confidence_unsupported_surfaces = sorted(

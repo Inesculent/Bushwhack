@@ -253,20 +253,6 @@ def test_reviewer_graph_compiles_adversarial_path() -> None:
     assert graph is not None
 
 
-def test_reviewer_graph_compiles_legacy_workers(monkeypatch: pytest.MonkeyPatch) -> None:
-    pytest.importorskip("langgraph")
-    from src.orchestration.reviewer_graph import build_graph
-
-    monkeypatch.setenv("REVIEW_REVIEWER_USE_LEGACY_SPECIALIST_WORKERS", "true")
-    get_settings.cache_clear()
-    try:
-        graph = build_graph()
-        assert graph is not None
-    finally:
-        monkeypatch.delenv("REVIEW_REVIEWER_USE_LEGACY_SPECIALIST_WORKERS", raising=False)
-        get_settings.cache_clear()
-
-
 def test_bounded_fulfiller_respects_file_cap() -> None:
     try:
         from src.orchestration.context.review_context import BoundedReviewContextFulfiller

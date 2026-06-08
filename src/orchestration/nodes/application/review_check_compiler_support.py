@@ -1214,54 +1214,6 @@ def _expected_behavior_is_implementation_shaped(check: ReviewCheck) -> bool:
     return bool(_IMPLEMENTATION_EXPECTATION_RE.search(text))
 
 
-def _check_is_unbacked_feedback_hardening(check: ReviewCheck) -> bool:
-    if check.diff_signal_family == "contract_question":
-        return False
-    claim_blob = " ".join(
-        [
-            check.expected_behavior,
-            check.behavioral_question,
-            check.affected_invariant,
-            " ".join(check.report_criteria),
-        ]
-    ).lower()
-    if not any(
-        marker in claim_blob
-        for marker in (
-            "user-friendly",
-            "user facing",
-            "user-facing",
-            "clear feedback",
-            "clear error",
-            "error message",
-            "logging",
-            "log ",
-            "handle gracefully",
-            "gracefully handle",
-        )
-    ):
-        return False
-    evidence_blob = " ".join(check.required_evidence).lower()
-    if any(
-        marker in evidence_blob
-        for marker in (
-            "documentation",
-            "doc ",
-            "docs",
-            "test",
-            "caller",
-            "call site",
-            "repository convention",
-            "repo convention",
-            "existing behavior",
-            "old behavior",
-            "previous behavior",
-        )
-    ):
-        return False
-    return True
-
-
 def check_is_broad_surface_invariant(check: ReviewCheck) -> bool:
     blob = " ".join(
         [
@@ -2368,7 +2320,7 @@ def normalize_compiled_checks(
                 anchor_update.get("changed_code_anchor") or check.changed_code_anchor
             ),
         }
-        if _expected_behavior_is_implementation_shaped(check) or _check_is_unbacked_feedback_hardening(check):
+        if _expected_behavior_is_implementation_shaped(check):
             updates["audit_only"] = True
         normalized.append(check.model_copy(update=updates))
         if not normalized[-1].owned_contract_scope.strip():
@@ -2405,7 +2357,7 @@ def render_compiler_prompt(state: GraphState, task: ReviewTask, slot: Mapping[st
             f"Surface IDs: {task_surface_ids}"
         ),
         "Surface Ledger": compact_surface_ledger_json(ledger, max_records=40) if ledger else "[]",
-        "Repository Code Evidence": str(slot.get("direct_context") or "")[:12000],
+        "Repository Code Evidence": str(slot.get("direct_context") or "")[:60000],
         "Prompt File Scope": json_for_prompt(
             {
                 "primary_files": primary_files,
@@ -2414,9 +2366,9 @@ def render_compiler_prompt(state: GraphState, task: ReviewTask, slot: Mapping[st
             },
             max_chars=2000,
         ),
-        "Mental Model Excerpt": str(slot.get("mental_model_excerpt") or "")[:4000],
-        "Mental Model Contract Questions": json_for_prompt(contract_questions, max_chars=6000),
-        "Review KB Context": str(slot.get("review_kb_excerpt") or "")[:4000],
+        "Mental Model Excerpt": str(slot.get("mental_model_excerpt") or "")[:12000],
+        "Mental Model Contract Questions": json_for_prompt(contract_questions, max_chars=20000),
+        "Review KB Context": str(slot.get("review_kb_excerpt") or "")[:12000],
         "Mental Model Contract Material": "\n".join(
             f"- {line}" for line in mental_model_contract_lines(slot)
         ),
@@ -2431,7 +2383,7 @@ def render_compiler_prompt(state: GraphState, task: ReviewTask, slot: Mapping[st
                 max_cards=4,
             )
         ),
-        "Ranked Coverage Obligations": json_for_prompt(ranked_obligations, max_chars=5000),
+        "Ranked Coverage Obligations": json_for_prompt(ranked_obligations, max_chars=15000),
         "Available Lenses": ", ".join(REVIEW_CHECK_LENSES),
     }
     return render_reviewer_prompt("review_check_compiler.md", sections)

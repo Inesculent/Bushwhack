@@ -2,15 +2,12 @@
 
 from __future__ import annotations
 
-from src.config import get_settings
 from src.domain.schemas import ReflectionReport
 from src.domain.state import GraphState
 from src.orchestration.nodes.application.critique_revision import _needs_revision_candidates
 
 
 def final_adversarial_review_node() -> str:
-    if get_settings().reviewer_use_legacy_adversarial_cleanup:
-        return "adversarial_cleanup"
     return "review_adjudicator"
 
 

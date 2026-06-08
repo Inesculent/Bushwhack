@@ -1,6 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=vllm_qwen
-#SBATCH --qos=ayadavally
+#SBATCH --account=ayadavally
+#SBATCH --qos=normal
 #SBATCH --gres=gpu:2
 #SBATCH -C h100
 #SBATCH --nodes=1
@@ -128,5 +129,8 @@ ARGS=("$@")
 if [ ${#ARGS[@]} -eq 0 ]; then
   ARGS=("--limit" "1" "--trace")
 fi
+
+echo "Reviewer mode: full graph, mental-model planner, mandate explorer, adversarial workers, check-first default"
+echo "Reviewer args: --remote ${ARGS[*]}"
 
 PYTHONUNBUFFERED=1 python3 -u src/reviewer_agent/main.py --remote "${ARGS[@]}"

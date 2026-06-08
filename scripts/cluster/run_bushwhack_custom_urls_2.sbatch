@@ -135,4 +135,6 @@ PR_URLS=(
 
 # Run the reviewer agent on the custom list. Extra sbatch args are forwarded
 # before --pr-urls so argparse does not treat them as URLs.
+echo "Reviewer mode: full graph, mental-model planner, mandate explorer, adversarial workers, check-first default"
+echo "Reviewer args: --remote --trace $* --pr-urls ${PR_URLS[*]}"
 PYTHONUNBUFFERED=1 python3 -u src/reviewer_agent/main.py --remote --trace "$@" --pr-urls "${PR_URLS[@]}"

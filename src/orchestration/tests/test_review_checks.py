@@ -28,6 +28,7 @@ from src.orchestration.nodes.application.review_checks import (
     make_review_check_executor_node,
     make_review_check_scout_node,
     make_review_check_validator_node,
+    should_continue_review_check_loop,
     should_run_review_check_scout,
     validate_review_check,
 )
@@ -453,6 +454,88 @@ def test_executor_exact_question_mismatch_becomes_unsupported() -> None:
     assert any("executor_exact_question_mismatch" in item for item in warnings)
 
 
+def test_executor_scope_variant_omission_becomes_unsupported() -> None:
+    check = _check(
+        lens="data_shape_consistency",
+        changed_code_anchor="extract_group",
+        owned_contract_scope="extract_group:first group:group_index=0",
+        issue_family="index_bounds",
+        affected_invariant="group_index=0 returns the full match when requested",
+        expected_behavior="extract_group returns the requested group, including group_index=0.",
+        report_criteria=["group_index=0 is skipped or misinterpreted."],
+        suppress_criteria=["group_index=0 is explicitly handled as the full match."],
+    )
+    result = ReviewCheckResult(
+        check_id=check.check_id,
+        patch_task_id=check.patch_task_id,
+        decision="no_finding",
+        evidence_refs=["src/app.py:3"],
+        suppressing_evidence=["The default group_index=1 path checks the number of groups."],
+        answer_scope="exact",
+        suppression_basis="The default group_index=1 path checks the number of groups.",
+    )
+
+    normalized, warnings = normalize_executor_results(
+        state=_state(),
+        task=_task(),
+        slot=_state()["metadata"]["critique_pipeline"]["by_task"]["review-logic"],
+        checks=[check],
+        results=[result],
+        git_diff="",
+        check_budget_remaining=lambda _state, _check: True,
+        evidence_requirements_for_check=lambda item: list(item.required_evidence),
+        compiled_check_is_source_local=lambda _check: False,
+    )
+
+    assert normalized[0].decision == "unsupported"
+    assert "exact_question_mismatch:missing_owned_scope_variant" in normalized[0].warnings
+    assert any("missing_owned_scope_variant" in item for item in warnings)
+
+
+def test_executor_focused_context_no_hits_blocks_exact_suppression() -> None:
+    check = _check()
+    result = ReviewCheckResult(
+        check_id=check.check_id,
+        patch_task_id=check.patch_task_id,
+        decision="no_finding",
+        evidence_refs=["src/app.py:1"],
+        suppressing_evidence=["All changed paths return the declared result."],
+        answer_scope="exact",
+        suppression_basis="All changed paths return the declared result.",
+    )
+    state = _state(
+        metadata={
+            **_state()["metadata"],
+            "focused_context": {
+                "diagnostics": [
+                    {
+                        "candidate_id": check.check_id,
+                        "outcomes": ["no_hits"],
+                        "requested_paths": ["src/app.py"],
+                        "effective_paths": [],
+                    }
+                ]
+            },
+        }
+    )
+
+    normalized, warnings = normalize_executor_results(
+        state=state,
+        task=_task(),
+        slot=state["metadata"]["critique_pipeline"]["by_task"]["review-logic"],
+        checks=[check],
+        results=[result],
+        git_diff="",
+        check_budget_remaining=lambda _state, _check: True,
+        evidence_requirements_for_check=lambda item: list(item.required_evidence),
+        compiled_check_is_source_local=lambda _check: False,
+    )
+
+    assert normalized[0].decision == "unsupported"
+    assert "exact_question_mismatch:focused_context_no_hits" in normalized[0].warnings
+    assert any("focused_context_no_hits" in item for item in warnings)
+
+
 def test_review_check_validator_rejects_vague_checks() -> None:
     vague = _check(behavioral_question="Look for security bugs")
     assert "vague_behavioral_question" in validate_review_check(vague)
@@ -461,7 +544,19 @@ def test_review_check_validator_rejects_vague_checks() -> None:
     assert validate_review_check(valid) == []
 
 
-def test_compiler_normalization_marks_unbacked_feedback_hardening_audit_only() -> None:
+def test_compiler_prompt_keeps_unbacked_hardening_audit_only() -> None:
+    prompt = compiler_support.render_compiler_prompt(
+        _state(),
+        _task(),
+        _state()["metadata"]["critique_pipeline"]["by_task"]["review-logic"],
+    )
+
+    assert "Reject generic hardening and optimization checks" in prompt
+    assert "audit-only" in prompt
+    assert "repository docs, tests, callers, prior behavior" in prompt
+
+
+def test_compiler_normalization_does_not_keyword_demote_hardening_claims() -> None:
     check = _check(
         check_id="feedback",
         lens="error_propagation",
@@ -476,7 +571,7 @@ def test_compiler_normalization_marks_unbacked_feedback_hardening_audit_only() -
 
     normalized = compiler_support.normalize_compiled_checks(_state(), _task(), [check])
 
-    assert normalized[0].audit_only is True
+    assert normalized[0].audit_only is False
 
 
 def test_review_check_executor_schema_generates_with_candidate_forward_ref() -> None:
@@ -526,6 +621,48 @@ def test_review_check_compiler_records_checks_and_trace(monkeypatch) -> None:
     assert "scores" in task_meta["contract_lens_selection"]
     assert out["token_usage"] == 7
     assert any(record["node"] == "review_check_compiler" for record in out["llm_trace"])
+
+
+def test_review_check_compiler_coverage_critic_runs_after_planner_misalignment(monkeypatch) -> None:
+    primary = ReviewCheckCompilerOutput(summary="compiled", checks=[_check()])
+    critic_check = _check(
+        check_id="review-logic:critic:1",
+        behavioral_question="Does handle preserve the fallback trigger variant?",
+        owned_contract_scope="handle:return_output_totality:fallback trigger",
+        affected_invariant="fallback return contract",
+        expected_behavior="handle returns the declared result for the fallback trigger.",
+        required_evidence=["changed handle implementation", "fallback trigger variant"],
+        report_criteria=["Fallback trigger returns None."],
+        suppress_criteria=["Fallback trigger returns the declared result."],
+    )
+    critic = ReviewCheckCompilerOutput(summary="critic", checks=[critic_check])
+    fake = _FakeLLM([
+        {"parsed": primary, "raw": _Raw()},
+        {"parsed": critic, "raw": _Raw()},
+    ])
+    monkeypatch.setattr(
+        "src.orchestration.nodes.application.review_checks.Models.worker",
+        lambda *_args, **_kwargs: fake,
+    )
+    base = _state()
+    state = _state(
+        metadata={
+            **base["metadata"],
+            "review_planner": {"warnings": ["plan_critic_misaligned_after_budget"]},
+        }
+    )
+
+    out = make_review_check_compiler_node()(state)  # type: ignore[arg-type]
+
+    task_meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
+    assert task_meta["coverage_critic"]["status"] == "ok"
+    assert task_meta["coverage_critic"]["emitted_count"] == 1
+    assert any(
+        check["owned_contract_scope"] == "handle:return_output_totality:fallback trigger"
+        for check in task_meta["compiled_checks"]
+    )
+    assert len(fake.prompts) == 2
+    assert "COVERAGE CRITIC MODE" in fake.prompts[1]
 
 
 def test_review_check_compiler_adds_coverage_floor_for_unchecked_changed_file(monkeypatch) -> None:
@@ -2805,6 +2942,58 @@ def test_review_check_loop_stops_when_budget_exhausted() -> None:
     assert critique_pipeline._route_after_review_check_executor(state) == "review_check_evidence_gate"
 
 
+def test_review_check_loop_stops_when_no_context_retry_path() -> None:
+    check = _check(
+        allowed_retrieval=["task_evidence"],
+        required_evidence=["full implementation of handle"],
+        budget=1,
+    )
+    state = _state(
+        review_checks=[check],
+        review_check_results=[
+            ReviewCheckResult(
+                check_id=check.check_id,
+                patch_task_id=check.patch_task_id,
+                decision="unsupported",
+                missing_evidence=["full implementation of handle"],
+            )
+        ],
+    )
+
+    assert should_continue_review_check_loop(state) is False  # type: ignore[arg-type]
+    assert critique_pipeline._route_after_review_check_executor(state) == "review_check_evidence_gate"
+
+
+def test_review_check_loop_stops_when_planner_has_only_duplicate_request() -> None:
+    check = _check(required_evidence=["caller authorization guard"], budget=2)
+    request = FocusedContextRequest(
+        request_id="check:review-logic:check:1:1",
+        candidate_id=check.check_id,
+        requested_by_specialty="logic",
+        file_paths=["src/app.py"],
+        symbol_queries=["handle"],
+        text_queries=["src/app.py handle caller authorization guard"],
+        reason="existing equivalent request",
+    )
+    state = _state(
+        review_checks=[check],
+        focused_context_requests=[request],
+        review_check_results=[
+            ReviewCheckResult(
+                check_id=check.check_id,
+                patch_task_id=check.patch_task_id,
+                decision="unsupported",
+                missing_evidence=["caller authorization guard"],
+            )
+        ],
+    )
+
+    out = make_review_check_context_planner_node()(state)  # type: ignore[arg-type]
+
+    assert out["focused_context_requests"] == []
+    assert should_continue_review_check_loop(state) is False  # type: ignore[arg-type]
+
+
 def test_review_check_executor_marks_budget_exhausted(monkeypatch) -> None:
     check = _check(required_evidence=["other guard still enforces the rule"], budget=1)
     request = FocusedContextRequest(
@@ -2837,6 +3026,36 @@ def test_review_check_executor_marks_budget_exhausted(monkeypatch) -> None:
     result = out["review_check_results"][0]
     assert result.decision == "budget_exhausted"
     assert "review_check_budget_exhausted" in result.warnings
+
+
+def test_review_check_executor_marks_no_retry_path_budget_exhausted(monkeypatch) -> None:
+    check = _check(
+        allowed_retrieval=["task_evidence"],
+        required_evidence=["full implementation of handle"],
+        budget=1,
+    )
+    output = ReviewCheckExecutorOutput(
+        results=[
+            ReviewCheckResult(
+                check_id=check.check_id,
+                patch_task_id=check.patch_task_id,
+                decision="unsupported",
+                missing_evidence=["full implementation of handle"],
+            )
+        ]
+    )
+    monkeypatch.setattr(
+        "src.orchestration.nodes.application.review_checks.Models.worker",
+        lambda *_args, **_kwargs: _FakeLLM({"parsed": output, "raw": _Raw()}),
+    )
+
+    out = make_review_check_executor_node()(_state(review_checks=[check]))  # type: ignore[arg-type]
+
+    result = out["review_check_results"][0]
+    assert result.decision == "budget_exhausted"
+    assert "review_check_no_retry_path" in result.warnings
+    meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
+    assert f"executor_no_retry_path_budget_exhausted:{check.check_id}" in meta["executor_warnings"]
 
 
 def test_review_check_executor_downgrades_weak_no_finding(monkeypatch) -> None:
@@ -4044,6 +4263,58 @@ def test_review_check_evidence_gate_drops_audit_only_check_candidates() -> None:
     assert result.gate_reason == "audit_only_check_not_promotable"
 
 
+def test_review_check_evidence_gate_drops_partial_context_uncertainty() -> None:
+    candidate = CandidateFinding(
+        candidate_id="review-logic:check:1:candidate",
+        patch_task_id="review-logic",
+        file_path="src/app.py",
+        line_start=1,
+        line_end=2,
+        content="The changed handler may return a list on the requested path.",
+        claim_type="defect",
+        expected_behavior="handle returns the declared result on every changed path.",
+        failure_mode="handler returns the wrong shape",
+        evidence_summary="Focused context could not retrieve the requested path evidence.",
+        evidence_for_contract="The declared return contract requires a value.",
+        counterexample="The requested path returns a list instead of the declared result.",
+        rejection_check="The focused context request for this exact check produced no source hits.",
+        recommendation="Inspect the full source before reporting.",
+        suspected_category="logic",
+        reflection_specialties=["logic"],
+    )
+    out = make_review_check_evidence_gate_node()(
+        _state(
+            metadata={
+                **_state()["metadata"],
+                "focused_context": {
+                    "diagnostics": [
+                        {
+                            "candidate_id": "review-logic:check:1",
+                            "reason": "no_hits",
+                            "requested_paths": ["src/app.py"],
+                            "effective_paths": [],
+                        }
+                    ]
+                },
+            },
+            review_checks=[_check()],
+            review_check_results=[
+                ReviewCheckResult(
+                    check_id="review-logic:check:1",
+                    patch_task_id="review-logic",
+                    decision="candidate",
+                    evidence_refs=["src/app.py:1"],
+                    reportable_reason="Focused context returned no hits for the requested exact path.",
+                    candidate=candidate,
+                )
+            ],
+        )
+    )  # type: ignore[arg-type]
+
+    assert out["candidate_findings"] == []
+    assert out["review_check_results"][0].gate_reason == "focused_context_no_hits"
+
+
 def test_review_check_scout_emits_bounded_concrete_obligation_checks() -> None:
     state = _state(
         review_checks=[_check()],
@@ -4337,6 +4608,10 @@ def test_review_check_evidence_gate_drops_self_doubting_contract_proof() -> None
 
 
 def test_check_mode_routing(monkeypatch) -> None:
+    monkeypatch.setattr(critique_pipeline, "get_settings", lambda: Settings())
+    assert critique_pipeline._route_after_mental_model_enricher({}) == "review_check_compiler"
+    assert critique_pipeline._route_after_review_check_validator({}) == "review_check_context_planner"
+
     monkeypatch.setattr(
         critique_pipeline,
         "get_settings",
@@ -4476,6 +4751,59 @@ def test_review_check_metrics_reports_invalid_reason_health() -> None:
     assert "dominant_invalid_reason:anchor_not_in_changed_code" in json.loads(
         metrics["review_check_health_warnings"]
     )
+
+
+def test_review_check_metrics_reports_tooling_degradation_health() -> None:
+    result = {
+        "metadata": {
+            "mcp_preflight": {
+                "status": "tool_discovery_error",
+                "missing_required_tools": ["get_commits_for_path"],
+                "fallback_context_sufficient": False,
+            },
+            "semantic_phase2": {
+                "global_summary_llm_status": "failed",
+                "global_summary_degraded": True,
+            },
+            "review_planner": {
+                "warnings": ["plan_critic_misaligned_after_budget"],
+            },
+            "focused_context": {
+                "diagnostics": [
+                    {
+                        "candidate_id": "review-logic:check:1",
+                        "reason": "no_hits",
+                    },
+                    {
+                        "candidate_id": "review-logic:check:2",
+                        "reason": "path_mismatch",
+                    },
+                ],
+            },
+            "review_checks": {
+                "health_warnings": [
+                    "evidence_gate_not_exercised",
+                    "no_executor_candidates_for_valid_checks",
+                ],
+            },
+        },
+        "review_checks": [],
+        "invalid_review_checks": [],
+        "review_check_results": [],
+        "candidate_findings": [],
+    }
+
+    metrics = _review_check_metrics(result)
+    warnings = set(json.loads(metrics["review_check_health_warnings"]))
+
+    assert "mcp_preflight_tool_discovery_error" in warnings
+    assert "mcp_preflight_missing_required_tools" in warnings
+    assert "global_summary_degraded" in warnings
+    assert "plan_critic_misaligned_after_budget" in warnings
+    assert "focused_context_no_hits" in warnings
+    assert "focused_context_path_mismatch" in warnings
+    assert "evidence_gate_not_exercised" in warnings
+    assert "no_executor_candidates_for_valid_checks" in warnings
 
 
 def test_github_mcp_preflight_records_present_and_missing_tools(monkeypatch) -> None:

@@ -31,7 +31,6 @@ LangGraph orchestration logic:
 
 - `context_graph.py` runs `explorer` and `structural_extractor` for baseline context building.
 - `reviewer_graph.py` runs a full planner/worker/synthesizer flow with critique + reflection nodes.
-- `reviewer_graph_basic.py` runs a simpler parallel reviewer flow without critique/reflection.
 
 This layer uses dependency injection and interfaces from `src/domain`, not direct infrastructure clients.
 
@@ -150,9 +149,16 @@ Use `--local` (Docker sandbox, compose Redis, LLM via SSH port-forward) or `--re
 
 Useful flags:
 
-- `--basic-graph` to skip critique/reflection nodes.
 - `--trace` to emit review-trace logs, including bounded LLM I/O summaries and per-call token usage.
 - `--limit 10` for smoke runs.
+- `--review-check-mode off|log_only|enforced` to override the default check-first mode for debugging.
+- `--snapshot-id <id>` to reuse a prior exploration snapshot while still running the modern mental-model planner by default.
+
+Cluster full-suite runs use the current check-first path without reviewer-mode flags:
+
+```powershell
+sbatch scripts/cluster/run_bushwhack_full_suite.sbatch
+```
 
 LangSmith tracing is separate from `--trace`: set `REVIEW_LANGSMITH_TRACING=true`, `REVIEW_LANGSMITH_API_KEY`, and optionally `REVIEW_LANGSMITH_PROJECT` in `.env`. Local OpenAI-compatible models are still created with `langchain-openai`; the factory adds LangSmith metadata so local model IDs show clearly in traces. `REVIEW_LANGSMITH_HIDE_OUTPUTS` defaults to `true` because full LangGraph states can exceed LangSmith upload limits.
 

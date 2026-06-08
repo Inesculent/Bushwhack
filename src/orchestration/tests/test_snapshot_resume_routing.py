@@ -15,7 +15,6 @@ from src.orchestration.reviewer_graph import (
     _route_after_snapshot_pin as route_after_snapshot_pin,
     _route_start as route_reviewer_start,
 )
-from src.orchestration.reviewer_graph_basic import _route_start as route_basic_start
 from src.reviewer_agent.harness.aacr import _invoke_for_pr
 
 
@@ -63,6 +62,15 @@ def test_snapshot_resume_marks_docs_prebrief_done(tmp_path: Path) -> None:
         experiment_tag="test",
         logger=logging.getLogger("test_snapshot_resume"),
         snapshot_data=snapshot_data,
+        effective_reviewer_mode={
+            "graph": "full",
+            "planner": "mental_model",
+            "mandate_explorer": "enabled",
+            "worker_path": "adversarial",
+            "check_mode": "enforced",
+            "snapshot_resume": True,
+            "final_review": "review_adjudicator",
+        },
     )
 
     docs_meta = captured["state"]["metadata"]["docs_prebrief"]
@@ -79,11 +87,18 @@ def test_snapshot_resume_marks_docs_prebrief_done(tmp_path: Path) -> None:
         "community_count": 0,
         "has_global_summary": True,
     }
+    assert captured["state"]["metadata"]["effective_reviewer_mode"] == {
+        "graph": "full",
+        "planner": "mental_model",
+        "mandate_explorer": "enabled",
+        "worker_path": "adversarial",
+        "check_mode": "enforced",
+        "snapshot_resume": True,
+        "final_review": "review_adjudicator",
+    }
 
 
-def test_snapshot_resume_start_routes_to_mental_model_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
-    from src.config import get_settings
-
+def test_snapshot_resume_start_routes_to_mental_model_by_default() -> None:
     state = {
         "run_id": "run1:repo__pr1_from_snapshot_abc123",
         "repo_path": "https://github.com/comfyanonymous/ComfyUI",
@@ -100,19 +115,10 @@ def test_snapshot_resume_start_routes_to_mental_model_by_default(monkeypatch: py
         },
     }
 
-    monkeypatch.setenv("REVIEW_REVIEWER_LEGACY_PLANNER_MODE", "false")
-    get_settings.cache_clear()
-    try:
-        assert route_reviewer_start(state) == "intent_extractor"
-        assert route_basic_start(state) == "review_planner"
-    finally:
-        monkeypatch.delenv("REVIEW_REVIEWER_LEGACY_PLANNER_MODE", raising=False)
-        get_settings.cache_clear()
+    assert route_reviewer_start(state) == "intent_extractor"
 
 
-def test_live_post_snapshot_start_routes_like_loaded_snapshot(monkeypatch: pytest.MonkeyPatch) -> None:
-    from src.config import get_settings
-
+def test_live_post_snapshot_start_routes_like_loaded_snapshot() -> None:
     base_state = {
         "run_id": "run1",
         "repo_path": "https://github.com/comfyanonymous/ComfyUI",
@@ -128,31 +134,17 @@ def test_live_post_snapshot_start_routes_like_loaded_snapshot(monkeypatch: pytes
         },
     }
 
-    monkeypatch.setenv("REVIEW_REVIEWER_LEGACY_PLANNER_MODE", "false")
-    get_settings.cache_clear()
-    try:
-        loaded_state = {**base_state, "snapshot_source": "loaded"}
-        live_state = {**base_state, "snapshot_source": "explore"}
-        assert route_reviewer_start(loaded_state) == "intent_extractor"
-        assert route_reviewer_start(live_state) == "intent_extractor"
-    finally:
-        monkeypatch.delenv("REVIEW_REVIEWER_LEGACY_PLANNER_MODE", raising=False)
-        get_settings.cache_clear()
+    loaded_state = {**base_state, "snapshot_source": "loaded"}
+    live_state = {**base_state, "snapshot_source": "explore"}
+    assert route_reviewer_start(loaded_state) == "intent_extractor"
+    assert route_reviewer_start(live_state) == "intent_extractor"
 
 
-def test_loaded_and_live_snapshot_pin_route_to_same_reviewer_path(monkeypatch: pytest.MonkeyPatch) -> None:
-    from src.config import get_settings
-
-    monkeypatch.setenv("REVIEW_REVIEWER_LEGACY_PLANNER_MODE", "false")
-    get_settings.cache_clear()
-    try:
-        loaded_state = {"run_id": "run1", "snapshot_source": "loaded", "metadata": {}}
-        live_state = {"run_id": "run1", "snapshot_source": "explore", "metadata": {}}
-        assert route_after_snapshot_pin(loaded_state) == "review_evidence_triage"
-        assert route_after_snapshot_pin(live_state) == "review_evidence_triage"
-    finally:
-        monkeypatch.delenv("REVIEW_REVIEWER_LEGACY_PLANNER_MODE", raising=False)
-        get_settings.cache_clear()
+def test_loaded_and_live_snapshot_pin_route_to_same_reviewer_path() -> None:
+    loaded_state = {"run_id": "run1", "snapshot_source": "loaded", "metadata": {}}
+    live_state = {"run_id": "run1", "snapshot_source": "explore", "metadata": {}}
+    assert route_after_snapshot_pin(loaded_state) == "review_evidence_triage"
+    assert route_after_snapshot_pin(live_state) == "review_evidence_triage"
 
 
 def test_actor_critic_plan_emit_dispatches_only_after_snapshot_pin(
@@ -160,8 +152,6 @@ def test_actor_critic_plan_emit_dispatches_only_after_snapshot_pin(
 ) -> None:
     from src.config import get_settings
 
-    monkeypatch.setenv("REVIEW_REVIEWER_LEGACY_PLANNER_MODE", "false")
-    monkeypatch.setenv("REVIEW_REVIEWER_USE_LEGACY_SPECIALIST_WORKERS", "false")
     get_settings.cache_clear()
     try:
         graph = build_graph()
@@ -169,34 +159,12 @@ def test_actor_critic_plan_emit_dispatches_only_after_snapshot_pin(
 
         assert "plan_emit" not in graph.builder.branches
         assert snapshot_branch.ends["review_evidence_triage"] == "review_evidence_triage"
+        assert snapshot_branch.ends["critique_review_subgraph"] == "critique_review_subgraph"
     finally:
-        monkeypatch.delenv("REVIEW_REVIEWER_LEGACY_PLANNER_MODE", raising=False)
-        monkeypatch.delenv("REVIEW_REVIEWER_USE_LEGACY_SPECIALIST_WORKERS", raising=False)
         get_settings.cache_clear()
 
 
-def test_snapshot_pin_no_task_route_matches_legacy_worker_mode(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from src.config import get_settings
-
-    monkeypatch.setenv("REVIEW_REVIEWER_LEGACY_PLANNER_MODE", "false")
-    monkeypatch.setenv("REVIEW_REVIEWER_USE_LEGACY_SPECIALIST_WORKERS", "true")
-    get_settings.cache_clear()
-    try:
-        graph = build_graph()
-        snapshot_branch = next(iter(graph.builder.branches["snapshot_pin"].values()))
-
-        assert snapshot_branch.ends["review_synthesizer"] == "review_synthesizer"
-    finally:
-        monkeypatch.delenv("REVIEW_REVIEWER_LEGACY_PLANNER_MODE", raising=False)
-        monkeypatch.delenv("REVIEW_REVIEWER_USE_LEGACY_SPECIALIST_WORKERS", raising=False)
-        get_settings.cache_clear()
-
-
-def test_snapshot_resume_start_routes_to_planner_when_legacy_planner(monkeypatch: pytest.MonkeyPatch) -> None:
-    from src.config import get_settings
-
+def test_snapshot_resume_cannot_route_to_legacy_planner() -> None:
     state = {
         "run_id": "run1",
         "repo_path": "https://github.com/comfyanonymous/ComfyUI",
@@ -213,13 +181,7 @@ def test_snapshot_resume_start_routes_to_planner_when_legacy_planner(monkeypatch
         },
     }
 
-    monkeypatch.setenv("REVIEW_REVIEWER_LEGACY_PLANNER_MODE", "true")
-    get_settings.cache_clear()
-    try:
-        assert route_reviewer_start(state) == "review_planner"
-    finally:
-        monkeypatch.delenv("REVIEW_REVIEWER_LEGACY_PLANNER_MODE", raising=False)
-        get_settings.cache_clear()
+    assert route_reviewer_start(state) == "intent_extractor"
 
 
 def test_review_context_degrades_when_sandbox_startup_fails(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -39,6 +39,9 @@ python -m src.reviewer_agent.main --snapshot-id 28d358fa3aaf_comfyanonymous__Com
 
 # Load snapshot, run on range of PRs with trace logging
 python -m src.reviewer_agent.main --snapshot-id 28d358fa3aaf_comfyanonymous__ComfyUI__pr7952 --range 1:5 --trace
+
+# Load snapshot and use the current check-first mental-model path
+python -m src.reviewer_agent.main --snapshot-id 28d358fa3aaf_comfyanonymous__ComfyUI__pr7952 --pr-url https://github.com/comfyanonymous/ComfyUI/pull/8000 --trace
 ```
 
 ## Behavior
@@ -53,8 +56,9 @@ python -m src.reviewer_agent.main --snapshot-id 28d358fa3aaf_comfyanonymous__Com
      - Existing Phase 2 outputs from snapshot
      - NEW diff from current PR
      - NEW run_id with `_from_snapshot_{id[:8]}` suffix
-   - Skip Phase 2 (routing sees `snapshot_root`)
-   - Run review planning + adversarial loop
+   - Skip Phase 2 community semantic fan-out
+   - Run the mental-model path: `intent_extractor`, `mandate_explorer`, `mandate_patch`, actor-critic planning, and `snapshot_pin`
+   - By default, route each task through the contract-question/check-first chain (`review_check_compiler`, validator, executor, evidence gate) before reflection/adjudication
 
 ### Output Structure:
 - Run ID format: `{run_id}:{pr_slug}_from_snapshot_{snapshot_id[:8]}`
@@ -85,7 +89,11 @@ python -m src.reviewer_agent.main --snapshot-id 28d358fa3aaf_comfyanonymous__Com
 
 # Verify Phase 2 is skipped with trace logging
 python -m src.reviewer_agent.main --snapshot-id 28d358fa3aaf_comfyanonymous__ComfyUI__pr7952 --limit 1 --trace
-# Check logs for: route=review_planner (not semantic_dispatch)
+# Check logs for: route=intent_extractor (modern default; not semantic_dispatch)
+
+# Verify the current check-first path
+python -m src.reviewer_agent.main --snapshot-id 28d358fa3aaf_comfyanonymous__ComfyUI__pr7952 --limit 1 --trace
+# Check node history / raw metadata for: mandate_explorer, mandate_patch, review_check_compiler
 ```
 
 ## Files Modified

@@ -425,24 +425,7 @@ def test_adjudication_reduce_prompt_includes_candidate_comparison_roster() -> No
     assert "c1" in prompt and "c2" in prompt
 
 
-def test_post_reflection_default_routes_to_review_adjudicator(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_post_reflection_default_routes_to_review_adjudicator() -> None:
     from src.orchestration.routing.adversarial_after_reflection import route_focused_after_reflection
 
-    monkeypatch.delenv("REVIEW_REVIEWER_USE_LEGACY_ADVERSARIAL_CLEANUP", raising=False)
-    get_settings.cache_clear()
-    try:
-        assert route_focused_after_reflection({"reflection_reports": []}) == "review_adjudicator"
-    finally:
-        get_settings.cache_clear()
-
-
-def test_post_reflection_legacy_setting_routes_to_cleanup(monkeypatch: pytest.MonkeyPatch) -> None:
-    from src.orchestration.routing.adversarial_after_reflection import route_focused_after_reflection
-
-    monkeypatch.setenv("REVIEW_REVIEWER_USE_LEGACY_ADVERSARIAL_CLEANUP", "true")
-    get_settings.cache_clear()
-    try:
-        assert route_focused_after_reflection({"reflection_reports": []}) == "adversarial_cleanup"
-    finally:
-        monkeypatch.delenv("REVIEW_REVIEWER_USE_LEGACY_ADVERSARIAL_CLEANUP", raising=False)
-        get_settings.cache_clear()
+    assert route_focused_after_reflection({"reflection_reports": []}) == "review_adjudicator"

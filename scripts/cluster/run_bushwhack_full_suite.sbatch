@@ -130,4 +130,7 @@ if [ ${#ARGS[@]} -eq 0 ]; then
   ARGS=("--trace")
 fi
 
-python3 src/reviewer_agent/main.py --remote "${ARGS[@]}"
+echo "Reviewer mode: full graph, mental-model planner, mandate explorer, adversarial workers, check-first default"
+echo "Reviewer args: --remote ${ARGS[*]}"
+
+PYTHONUNBUFFERED=1 python3 -u src/reviewer_agent/main.py --remote "${ARGS[@]}"
