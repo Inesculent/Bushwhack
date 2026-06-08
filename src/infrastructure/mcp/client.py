@@ -93,7 +93,7 @@ class MCPClient:
                 read_timeout_seconds=timeout,
             ) as session:
                 await session.initialize()
-                result = await session.list_tools(read_timeout_seconds=timeout)
+                result = await session.list_tools()
 
         tools = getattr(result, "tools", []) or []
         return [
@@ -181,12 +181,25 @@ class MCPClient:
 
     @staticmethod
     def _describe_exception(exc: Exception) -> str:
+        def _flatten(current: BaseException, seen: set[int]) -> List[str]:
+            if id(current) in seen:
+                return []
+            seen.add(id(current))
+            rows = [f"{current.__class__.__name__}: {current}"]
+            for child in list(getattr(current, "exceptions", []) or [])[:3]:
+                rows.extend(_flatten(child, seen))
+            for attr in ("__cause__", "__context__"):
+                inner = getattr(current, attr, None)
+                if inner is not None:
+                    rows.extend(_flatten(inner, seen))
+            return rows
+
         nested = getattr(exc, "exceptions", None)
         if not nested:
             return str(exc)
-        details = [
-            f"{item.__class__.__name__}: {item}"
-            for item in list(nested)[:3]
-        ]
+        details = []
+        seen: set[int] = {id(exc)}
+        for item in list(nested)[:3]:
+            details.extend(_flatten(item, seen))
         suffix = "" if len(nested) <= 3 else f"; +{len(nested) - 3} more"
-        return f"{exc} ({'; '.join(details)}{suffix})"
+        return f"{exc} ({'; '.join(dict.fromkeys(details))}{suffix})"

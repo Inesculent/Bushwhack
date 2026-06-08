@@ -1,4 +1,6 @@
 import asyncio
+import os
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -64,10 +66,28 @@ def test_sync_methods_reject_active_event_loop() -> None:
 def test_describe_exception_includes_exception_group_children() -> None:
     exc = ExceptionGroup(
         "unhandled errors in a TaskGroup",
-        [RuntimeError("server process exited before initialize")],
+        [
+            ExceptionGroup(
+                "unhandled errors in a TaskGroup",
+                [TypeError("ClientSession.list_tools() got an unexpected keyword argument 'read_timeout_seconds'")],
+            )
+        ],
     )
 
     description = MCPClient._describe_exception(exc)
 
     assert "unhandled errors in a TaskGroup" in description
-    assert "RuntimeError: server process exited before initialize" in description
+    assert "TypeError: ClientSession.list_tools() got an unexpected keyword argument" in description
+
+
+def test_github_mcp_server_lists_tools_with_dummy_token() -> None:
+    client = MCPClient(
+        command=sys.executable,
+        args=["docker_mcp/github-mcp/server.py"],
+        env={**os.environ, "GITHUB_PERSONAL_ACCESS_TOKEN": "dummy-token"},
+        timeout_seconds=10,
+    )
+
+    tools = client.list_tools()
+
+    assert "get_commits_for_path" in tools

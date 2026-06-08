@@ -623,23 +623,9 @@ def test_review_check_compiler_records_checks_and_trace(monkeypatch) -> None:
     assert any(record["node"] == "review_check_compiler" for record in out["llm_trace"])
 
 
-def test_review_check_compiler_coverage_critic_runs_after_planner_misalignment(monkeypatch) -> None:
+def test_review_check_compiler_planner_misalignment_does_not_fan_out_coverage_critic(monkeypatch) -> None:
     primary = ReviewCheckCompilerOutput(summary="compiled", checks=[_check()])
-    critic_check = _check(
-        check_id="review-logic:critic:1",
-        behavioral_question="Does handle preserve the fallback trigger variant?",
-        owned_contract_scope="handle:return_output_totality:fallback trigger",
-        affected_invariant="fallback return contract",
-        expected_behavior="handle returns the declared result for the fallback trigger.",
-        required_evidence=["changed handle implementation", "fallback trigger variant"],
-        report_criteria=["Fallback trigger returns None."],
-        suppress_criteria=["Fallback trigger returns the declared result."],
-    )
-    critic = ReviewCheckCompilerOutput(summary="critic", checks=[critic_check])
-    fake = _FakeLLM([
-        {"parsed": primary, "raw": _Raw()},
-        {"parsed": critic, "raw": _Raw()},
-    ])
+    fake = _FakeLLM({"parsed": primary, "raw": _Raw()})
     monkeypatch.setattr(
         "src.orchestration.nodes.application.review_checks.Models.worker",
         lambda *_args, **_kwargs: fake,
@@ -655,14 +641,42 @@ def test_review_check_compiler_coverage_critic_runs_after_planner_misalignment(m
     out = make_review_check_compiler_node()(state)  # type: ignore[arg-type]
 
     task_meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
-    assert task_meta["coverage_critic"]["status"] == "ok"
-    assert task_meta["coverage_critic"]["emitted_count"] == 1
-    assert any(
-        check["owned_contract_scope"] == "handle:return_output_totality:fallback trigger"
-        for check in task_meta["compiled_checks"]
+    assert task_meta["coverage_critic"]["status"] == "not_run"
+    assert len(fake.prompts) == 1
+
+
+def test_review_check_compiler_coverage_critic_degrades_after_compact_length_retry(monkeypatch) -> None:
+    class LengthFinishReasonError(Exception):
+        pass
+
+    prompts: list[str] = []
+    fake = _SequencedLLM(
+        [
+            ReviewCheckCompilerOutput(summary="compiled", checks=[]),
+            LengthFinishReasonError("length limit was reached"),
+            LengthFinishReasonError("length limit was reached again"),
+        ],
+        prompts,
     )
-    assert len(fake.prompts) == 2
-    assert "COVERAGE CRITIC MODE" in fake.prompts[1]
+    monkeypatch.setattr(
+        "src.orchestration.nodes.application.review_checks.Models.worker",
+        lambda *_args, **_kwargs: fake,
+    )
+    state = _state()
+    slot = state["metadata"]["critique_pipeline"]["by_task"]["review-logic"]
+    slot["direct_context"] = "def handle():\n    return None\n" + ("# expanded evidence\n" * 4000)
+    slot["mental_model_excerpt"] = "contract detail\n" * 2000
+
+    out = make_review_check_compiler_node()(state)  # type: ignore[arg-type]
+
+    task_meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
+    assert task_meta["coverage_critic"]["status"] == "degraded_length"
+    assert task_meta["coverage_critic"]["emitted_count"] == 0
+    assert task_meta["coverage_critic"]["compact_retry"] is True
+    assert len(prompts) == 3
+    assert "COVERAGE CRITIC MODE" in prompts[1]
+    assert len(prompts[2]) < len(prompts[1])
+    assert "coverage_critic_degraded_length" in task_meta["compiler_warnings"]
 
 
 def test_review_check_compiler_adds_coverage_floor_for_unchecked_changed_file(monkeypatch) -> None:
@@ -4455,7 +4469,7 @@ def test_review_check_scout_accepts_generic_contract_delta_obligations() -> None
     assert check.audit_only is False
 
 
-def test_review_check_evidence_gate_records_candidate_liveness_warning() -> None:
+def test_review_check_evidence_gate_does_not_warn_when_no_candidate_decisions_exist() -> None:
     out = make_review_check_evidence_gate_node()(
         _state(
             review_checks=[_check()],
@@ -4470,7 +4484,51 @@ def test_review_check_evidence_gate_records_candidate_liveness_warning() -> None
     )  # type: ignore[arg-type]
 
     gate = out["metadata"]["review_checks"]["by_task"]["review-logic"]["gate"]
-    assert "no_executor_candidates_for_valid_checks" in gate["health_warnings"]
+    assert gate["candidate_decision_count"] == 0
+    assert gate["gate_expected_count"] == 0
+    assert gate["gate_evaluated_count"] == 0
+    assert "no_executor_candidates_for_valid_checks" not in gate["health_warnings"]
+    assert "evidence_gate_not_exercised" not in gate["health_warnings"]
+
+
+def test_review_check_evidence_gate_warns_when_candidate_decisions_are_not_evaluated() -> None:
+    candidate = CandidateFinding(
+        candidate_id="unknown:candidate",
+        patch_task_id="review-logic",
+        file_path="src/app.py",
+        line_start=1,
+        line_end=1,
+        content="Issue",
+        expected_behavior="handle returns a value.",
+        evidence_for_contract="RETURN_TYPES declares a value.",
+        counterexample="handle returns None.",
+        rejection_check="No suppressor is present.",
+        failure_mode="missing return",
+        evidence_summary="Source shows missing return.",
+        recommendation="Return the value.",
+        suspected_category="logic",
+        reflection_specialties=["logic"],
+    )
+    out = make_review_check_evidence_gate_node()(
+        _state(
+            review_checks=[_check()],
+            review_check_results=[
+                ReviewCheckResult(
+                    check_id="review-logic:unknown",
+                    patch_task_id="review-logic",
+                    decision="candidate",
+                    evidence_refs=["src/app.py:1"],
+                    reportable_reason="The changed path returns None.",
+                    candidate=candidate,
+                )
+            ],
+        )
+    )  # type: ignore[arg-type]
+
+    gate = out["metadata"]["review_checks"]["by_task"]["review-logic"]["gate"]
+    assert gate["candidate_decision_count"] == 1
+    assert gate["gate_expected_count"] == 1
+    assert gate["gate_evaluated_count"] == 0
     assert "evidence_gate_not_exercised" in gate["health_warnings"]
 
 
@@ -4829,7 +4887,6 @@ def test_review_check_metrics_reports_tooling_degradation_health() -> None:
             "review_checks": {
                 "health_warnings": [
                     "evidence_gate_not_exercised",
-                    "no_executor_candidates_for_valid_checks",
                 ],
             },
         },
@@ -4849,7 +4906,37 @@ def test_review_check_metrics_reports_tooling_degradation_health() -> None:
     assert "focused_context_no_hits" in warnings
     assert "focused_context_path_mismatch" in warnings
     assert "evidence_gate_not_exercised" in warnings
-    assert "no_executor_candidates_for_valid_checks" in warnings
+
+
+def test_review_check_metrics_no_candidate_warning_is_run_level() -> None:
+    result = {
+        "metadata": {"review_checks": {"by_task": {}}},
+        "review_checks": [_check()],
+        "invalid_review_checks": [],
+        "review_check_results": [
+            ReviewCheckResult(
+                check_id="review-logic:check:1",
+                patch_task_id="review-logic",
+                decision="unsupported",
+            )
+        ],
+        "candidate_findings": [
+            CandidateFinding(
+                candidate_id="c1",
+                patch_task_id="review-logic",
+                file_path="src/app.py",
+                line_start=1,
+                line_end=1,
+                content="Issue",
+            )
+        ],
+    }
+
+    metrics = _review_check_metrics(result)
+
+    assert "no_executor_candidates_for_valid_checks" not in json.loads(
+        metrics["review_check_health_warnings"]
+    )
 
 
 def test_github_mcp_preflight_records_present_and_missing_tools(monkeypatch) -> None:
@@ -4862,7 +4949,9 @@ def test_github_mcp_preflight_records_present_and_missing_tools(monkeypatch) -> 
 
     monkeypatch.setattr(aacr, "MCPClient", PresentClient)
 
-    healthy = _github_mcp_preflight(Settings(github_mcp_enabled=True))
+    healthy = _github_mcp_preflight(
+        Settings(github_mcp_enabled=True, github_personal_access_token="token")
+    )
 
     assert healthy["status"] == "ok"
     assert healthy["tool_discovery_available"] is True
@@ -4874,7 +4963,9 @@ def test_github_mcp_preflight_records_present_and_missing_tools(monkeypatch) -> 
 
     monkeypatch.setattr(aacr, "MCPClient", MissingClient)
 
-    degraded = _github_mcp_preflight(Settings(github_mcp_enabled=True))
+    degraded = _github_mcp_preflight(
+        Settings(github_mcp_enabled=True, github_personal_access_token="token")
+    )
 
     assert degraded["status"] == "degraded"
     assert degraded["tool_discovery_available"] is True
@@ -4886,12 +4977,32 @@ def test_github_mcp_preflight_records_present_and_missing_tools(monkeypatch) -> 
 
     monkeypatch.setattr(aacr, "MCPClient", FailingDiscoveryClient)
 
-    discovery_error = _github_mcp_preflight(Settings(github_mcp_enabled=True))
+    discovery_error = _github_mcp_preflight(
+        Settings(github_mcp_enabled=True, github_personal_access_token="token")
+    )
 
     assert discovery_error["status"] == "tool_discovery_error"
     assert discovery_error["tool_discovery_available"] is False
-    assert discovery_error["missing_required_tools"] == []
+    assert discovery_error["missing_required_tools"] == ["get_commits_for_path"]
     assert "TaskGroup" in discovery_error["error"]
+
+
+def test_github_mcp_preflight_missing_token_does_not_spawn_server(monkeypatch) -> None:
+    class MissingTokenSettings:
+        github_mcp_enabled = True
+        github_personal_access_token = ""
+
+    class ExplodingClient:
+        def __init__(self, **_kwargs: object) -> None:
+            raise AssertionError("MCPClient should not be constructed without a token")
+
+    monkeypatch.setattr(aacr, "MCPClient", ExplodingClient)
+
+    out = _github_mcp_preflight(MissingTokenSettings())
+
+    assert out["status"] == "disabled_missing_token"
+    assert out["reason"] == "github_token_missing"
+    assert out["missing_required_tools"] == ["get_commits_for_path"]
 
 
 def test_coverage_audit_reports_stage_coverage_and_writes_json(tmp_path) -> None:

@@ -111,6 +111,8 @@ _EXECUTOR_COMPACT_CODE_EVIDENCE_CHARS = 4000
 _EXECUTOR_COMPACT_FOCUSED_EVIDENCE_CHARS = 3000
 _EXECUTOR_COMPACT_CONTEXT_CHARS = 8000
 _EXECUTOR_MAX_MULTI_CHECK_PROMPT_CHARS = 44000
+_COVERAGE_CRITIC_MAX_EMITTED_CHECKS = 3
+_COVERAGE_CRITIC_MAX_WARNINGS = 5
 _EXECUTOR_COMPACT_RETRY_APPENDIX = (
     "\n\n## OUTPUT BUDGET (retry - required)\n"
     "Your previous response exceeded the length limit. This retry contains exactly one input check. "
@@ -215,12 +217,46 @@ def _text_contains_recursive(value: Any, needle: str) -> bool:
     return needle in str(value)
 
 
-def _coverage_critic_should_run(state: GraphState, checks: Sequence[ReviewCheck]) -> tuple[bool, str]:
-    metadata = state.get("metadata", {}) or {}
-    if _text_contains_recursive(metadata, "plan_critic_misaligned_after_budget"):
-        return True, "plan_critic_misaligned_after_budget"
+def _coverage_critic_should_run(
+    state: GraphState,
+    task: ReviewTask,
+    slot: Mapping[str, Any],
+    checks: Sequence[ReviewCheck],
+) -> tuple[bool, str]:
     if not checks:
         return True, "no_initial_checks"
+    if all(check.audit_only for check in checks):
+        return True, "all_checks_audit_only"
+    non_audit_paths = {
+        check.file_path.strip().replace("\\", "/")
+        for check in checks
+        if not check.audit_only and check.file_path.strip()
+    }
+    task_paths = {
+        path.strip().replace("\\", "/")
+        for path in (_changed_task_files(state, task) or task.target_files)
+        if str(path).strip()
+    }
+    if task_paths and not task_paths.issubset(non_audit_paths):
+        return True, "missing_changed_surface_check"
+    metadata = state.get("metadata", {}) or {}
+    fc = metadata.get("focused_context", {}) if isinstance(metadata, Mapping) else {}
+    diagnostics = fc.get("diagnostics", []) if isinstance(fc, Mapping) else []
+    check_ids = {check.check_id for check in checks}
+    for row in diagnostics if isinstance(diagnostics, list) else []:
+        if not isinstance(row, Mapping):
+            continue
+        if str(row.get("candidate_id") or "") not in check_ids:
+            continue
+        outcomes = {str(item) for item in row.get("outcomes", []) or []}
+        reason = str(row.get("reason") or "")
+        if reason:
+            outcomes.add(reason)
+        if outcomes & {"no_hits", "tool_unavailable", "path_mismatch"}:
+            return True, "focused_context_evidence_gap"
+    previous_missing = slot.get("missing_evidence_by_check")
+    if isinstance(previous_missing, Mapping) and any(previous_missing.values()):
+        return True, "explicit_evidence_gap"
     return False, ""
 
 
@@ -229,23 +265,30 @@ def _render_coverage_critic_prompt(
     task: ReviewTask,
     slot: Mapping[str, Any],
     checks: Sequence[ReviewCheck],
+    *,
+    compact_retry: bool = False,
 ) -> str:
     ledger = surface_ledger_from_state(state)
+    direct_limit = 12000 if compact_retry else 60000
+    mental_limit = 4000 if compact_retry else 12000
+    kb_limit = 4000 if compact_retry else 12000
+    check_limit = 12000 if compact_retry else 30000
+    max_records = 24 if compact_retry else 60
     sections = {
         "Assigned Task": (
             f"Task ID: {task.id}\n"
             f"Title: {task.title}\n"
-            f"Description: {task.description[:2000]}\n"
+            f"Description: {task.description[:1000 if compact_retry else 2000]}\n"
             f"Target files: {task.target_files}\n"
             f"Specialty: {task.specialty}"
         ),
-        "Changed Code And Direct Context": str(slot.get("direct_context") or "")[:60000],
-        "Mental Model Excerpt": str(slot.get("mental_model_excerpt") or "")[:12000],
-        "Review KB Context": str(slot.get("review_kb_excerpt") or "")[:12000],
-        "Surface Ledger": compact_surface_ledger_json(ledger, max_records=60) if ledger else "[]",
+        "Changed Code And Direct Context": str(slot.get("direct_context") or "")[:direct_limit],
+        "Mental Model Excerpt": str(slot.get("mental_model_excerpt") or "")[:mental_limit],
+        "Review KB Context": str(slot.get("review_kb_excerpt") or "")[:kb_limit],
+        "Surface Ledger": compact_surface_ledger_json(ledger, max_records=max_records) if ledger else "[]",
         "Compiled Checks": _json_for_prompt(
             [check.model_dump(mode="json") for check in checks],
-            max_chars=30000,
+            max_chars=check_limit,
         ),
     }
     body = render_reviewer_prompt("review_check_compiler.md", sections)
@@ -258,7 +301,9 @@ def _render_coverage_critic_prompt(
         "return/serialization path is not represented, emit one additional ReviewCheck for that variant.\n"
         "Only emit checks tied to changed code, concrete expected behavior, a trigger variant, an operation, "
         "and a possible impact. Put the trigger and operation into owned_contract_scope. "
-        "If the current checks cover the material variants, return an empty checks list."
+        "If the current checks cover the material variants, return an empty checks list. "
+        f"Emit at most {_COVERAGE_CRITIC_MAX_EMITTED_CHECKS} checks and at most "
+        f"{_COVERAGE_CRITIC_MAX_WARNINGS} concise warnings."
     )
 
 
@@ -418,16 +463,22 @@ def make_review_check_compiler_node(
                 logger.warning("%s failed for task_id=%s: %s", node_name, task.id, exc)
 
         coverage_critic_meta: Dict[str, Any] = {"status": "not_run"}
-        run_critic, critic_reason = _coverage_critic_should_run(state, checks)
+        run_critic, critic_reason = _coverage_critic_should_run(state, task, slot, checks)
         if use_llm and run_critic:
             selected_model = model_key or resolved.reviewer_worker_model_key
-            try:
+            def _invoke_coverage_critic(*, compact_retry: bool = False) -> tuple[ReviewCheckCompilerOutput, Any]:
                 critic_llm = Models.worker(
                     ReviewCheckCompilerOutput,
                     model_key=selected_model,
                     max_completion_tokens=resolved.reviewer_critiquer_max_completion_tokens,
                 )
-                critic_prompt = _render_coverage_critic_prompt(state, task, slot, checks)
+                critic_prompt = _render_coverage_critic_prompt(
+                    state,
+                    task,
+                    slot,
+                    checks,
+                    compact_retry=compact_retry,
+                )
                 critic_traced = trace_llm_call(
                     critic_llm,
                     critic_prompt,
@@ -435,19 +486,51 @@ def make_review_check_compiler_node(
                     node_name=node_name,
                     model_key=selected_model,
                     schema_name="ReviewCheckCompilerOutput",
-                    request_label="coverage_critic",
-                    input_summary={"task_id": task.id, "reason": critic_reason},
+                    request_label="coverage_critic_compact_retry" if compact_retry else "coverage_critic",
+                    input_summary={
+                        "task_id": task.id,
+                        "reason": critic_reason,
+                        "compact_retry": compact_retry,
+                    },
                 )
                 critic_response = parse_structured_output(
                     critic_traced.result,
                     ReviewCheckCompilerOutput,
                 )
+                return critic_response, critic_traced
+
+            try:
+                compact_retry_used = False
+                try:
+                    critic_response, critic_traced = _invoke_coverage_critic()
+                except Exception as exc:  # noqa: BLE001
+                    if not _is_length_finish_error(exc):
+                        raise
+                    llm_trace.extend(trace_from_exception(exc))
+                    warnings.append("coverage_critic_length_retry")
+                    compact_retry_used = True
+                    try:
+                        critic_response, critic_traced = _invoke_coverage_critic(compact_retry=True)
+                    except Exception as retry_exc:  # noqa: BLE001
+                        if _is_length_finish_error(retry_exc):
+                            llm_trace.extend(trace_from_exception(retry_exc))
+                            warnings.append("coverage_critic_degraded_length")
+                            coverage_critic_meta = {
+                                "status": "degraded_length",
+                                "reason": critic_reason,
+                                "emitted_count": 0,
+                                "emitted_check_ids": [],
+                                "compact_retry": True,
+                                "error": f"{retry_exc.__class__.__name__}: {retry_exc}",
+                            }
+                            raise RuntimeError("coverage_critic_degraded_length") from retry_exc
+                        raise
                 llm_tokens += critic_traced.tokens
                 llm_trace.extend(critic_traced.trace_records)
                 critic_checks = compiler_support.normalize_compiled_checks(
                     state,
                     task,
-                    critic_response.checks,
+                    critic_response.checks[:_COVERAGE_CRITIC_MAX_EMITTED_CHECKS],
                 )
                 critic_checks = compiler_support.enrich_checks_with_completeness_contracts(
                     critic_checks,
@@ -471,24 +554,31 @@ def make_review_check_compiler_node(
                         if check.check_id in critic_origins
                     },
                 }
-                warnings.extend(critic_response.warnings)
+                critic_warnings = list(critic_response.warnings)[:_COVERAGE_CRITIC_MAX_WARNINGS]
+                if len(critic_response.warnings) > len(critic_warnings):
+                    critic_warnings.append(
+                        f"coverage_critic_warnings_truncated:{len(critic_response.warnings) - len(critic_warnings)}"
+                    )
+                warnings.extend(critic_warnings)
                 coverage_critic_meta = {
                     "status": "ok",
                     "reason": critic_reason,
                     "emitted_count": len(critic_checks),
                     "emitted_check_ids": [check.check_id for check in critic_checks],
-                    "warnings": list(critic_response.warnings),
+                    "warnings": critic_warnings,
+                    "compact_retry": compact_retry_used,
                 }
                 if critic_checks:
                     warnings.append(f"coverage_critic_checks_added:{len(critic_checks)}")
             except Exception as exc:  # noqa: BLE001
                 llm_trace.extend(trace_from_exception(exc))
-                warnings.append(f"coverage_critic_failed:{exc.__class__.__name__}: {exc}")
-                coverage_critic_meta = {
-                    "status": "failed",
-                    "reason": critic_reason,
-                    "error": f"{exc.__class__.__name__}: {exc}",
-                }
+                if coverage_critic_meta.get("status") != "degraded_length":
+                    warnings.append(f"coverage_critic_failed:{exc.__class__.__name__}: {exc}")
+                    coverage_critic_meta = {
+                        "status": "failed",
+                        "reason": critic_reason,
+                        "error": f"{exc.__class__.__name__}: {exc}",
+                    }
 
         if not checks:
             checks = compiler_support.fallback_checks(state, task, slot)
@@ -2211,12 +2301,11 @@ def make_review_check_evidence_gate_node():
             gate_reason_counts[reason] = gate_reason_counts.get(reason, 0) + 1
 
         latest_results = list(_latest_result_by_check(state, task.id).values())
+        candidate_decision_count = sum(1 for result in latest_results if result.decision == "candidate")
+        gate_expected_count = candidate_decision_count
+        gate_evaluated_count = len(gated_results)
         health_warnings: List[str] = []
-        if checks and latest_results and not any(result.candidate is not None for result in latest_results):
-            decisions = {result.decision for result in latest_results}
-            if decisions.issubset({"no_finding", "unsupported", "suppressed", "budget_exhausted"}):
-                health_warnings.append("no_executor_candidates_for_valid_checks")
-        if checks and not gated_results:
+        if checks and candidate_decision_count and not gated_results:
             health_warnings.append("evidence_gate_not_exercised")
         focused_health = []
         metadata = state.get("metadata", {}) or {}
@@ -2245,9 +2334,17 @@ def make_review_check_evidence_gate_node():
                 for result in latest_results
                 if result.decision in {"unsupported", "budget_exhausted"}
                 for sid in (checks.get(result.check_id).surface_ids if checks.get(result.check_id) else [])
-                if sid in by_id and by_id[sid].confidence >= 0.75
+                if sid in by_id
+                and by_id[sid].confidence >= 0.75
+                and checks.get(result.check_id) is not None
+                and not checks[result.check_id].audit_only
             }
         )
+        if (
+            high_confidence_unsupported_surfaces
+            and not any(result.candidate is not None for result in latest_results)
+        ):
+            health_warnings.append("no_executor_candidates_for_high_confidence_non_audit_checks")
 
         metadata = _set_task_review_checks_meta(
             state,
@@ -2257,6 +2354,9 @@ def make_review_check_evidence_gate_node():
                     "promoted_count": len(promoted),
                     "dropped_count": dropped,
                     "evaluated_count": len(gated_results),
+                    "candidate_decision_count": candidate_decision_count,
+                    "gate_expected_count": gate_expected_count,
+                    "gate_evaluated_count": gate_evaluated_count,
                     "reason_counts": gate_reason_counts,
                     "candidate_lifecycle": lifecycle,
                     "malformed_candidate_result_check_ids": malformed_candidate_result_check_ids,

@@ -180,8 +180,19 @@ def _write_manifest(manifest_path: Path, rows: List[dict[str, Any]]) -> pd.DataF
 
 
 def _github_mcp_preflight(settings: Any) -> dict[str, Any]:
+    required_tools = ["get_commits_for_path"]
     if not getattr(settings, "github_mcp_enabled", False):
-        return {"status": "disabled", "required_tools": ["get_commits_for_path"]}
+        return {"status": "disabled", "required_tools": required_tools}
+
+    if not str(getattr(settings, "github_personal_access_token", "") or "").strip():
+        return {
+            "status": "disabled_missing_token",
+            "required_tools": required_tools,
+            "available_tools": [],
+            "missing_required_tools": required_tools,
+            "tool_discovery_available": False,
+            "reason": "github_token_missing",
+        }
 
     env = None
     if getattr(settings, "github_personal_access_token", ""):
@@ -200,17 +211,17 @@ def _github_mcp_preflight(settings: Any) -> dict[str, Any]:
     except Exception as exc:  # noqa: BLE001 - benchmark runs should record MCP degradation, not fail
         return {
             "status": "tool_discovery_error",
-            "required_tools": ["get_commits_for_path"],
+            "required_tools": required_tools,
             "available_tools": [],
-            "missing_required_tools": [],
+            "missing_required_tools": required_tools,
             "tool_discovery_available": False,
             "error": f"{exc.__class__.__name__}: {exc}",
         }
 
-    missing = [name for name in ("get_commits_for_path",) if name not in tools]
+    missing = [name for name in required_tools if name not in tools]
     return {
         "status": "ok" if not missing else "degraded",
-        "required_tools": ["get_commits_for_path"],
+        "required_tools": required_tools,
         "available_tools": tools,
         "missing_required_tools": missing,
         "tool_discovery_available": True,
@@ -653,7 +664,7 @@ def _review_check_metrics(result: dict[str, Any]) -> dict[str, Any]:
         dominant_invalid_reason = reason
         if invalid_reason_total and count / invalid_reason_total >= 0.5:
             health_warnings.append(f"dominant_invalid_reason:{reason}")
-    if checks and latest_results and not latest_by_candidate:
+    if checks and latest_results and not latest_by_candidate and not candidates:
         health_warnings.append("no_executor_candidates_for_valid_checks")
     return {
         "compiled_check_count": len(checks) + len(invalid),
