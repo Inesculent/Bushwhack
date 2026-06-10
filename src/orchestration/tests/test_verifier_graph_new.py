@@ -165,7 +165,10 @@ def test_verifier_finalize_product_verified_false_when_any_harness_attempt() -> 
     )
     with patch("src.orchestration.routing.verifier_fanout._lint_advisory_from_report", return_value=""):
         res = verifier_finalize_node(state)
+    report = res["verifier_reports"][0]
+    assert report.verdict == "inconclusive"
     hint = res["metadata"]["verifier_hints"]["c1"]
+    assert hint["verdict"] == "inconclusive"
     assert hint["harness_error"] is True
     assert hint["product_verified"] is False
 

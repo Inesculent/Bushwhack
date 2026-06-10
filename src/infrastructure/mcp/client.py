@@ -184,8 +184,17 @@ class MCPClient:
         nested = getattr(exc, "exceptions", None)
         if not nested:
             return str(exc)
+
+        def _describe_child(item: BaseException) -> str:
+            child_nested = getattr(item, "exceptions", None)
+            if not child_nested:
+                return f"{item.__class__.__name__}: {item}"
+            child_details = "; ".join(_describe_child(child) for child in list(child_nested)[:3])
+            suffix = "" if len(child_nested) <= 3 else f"; +{len(child_nested) - 3} more"
+            return f"{item.__class__.__name__}: {item} ({child_details}{suffix})"
+
         details = [
-            f"{item.__class__.__name__}: {item}"
+            _describe_child(item)
             for item in list(nested)[:3]
         ]
         suffix = "" if len(nested) <= 3 else f"; +{len(nested) - 3} more"

@@ -22,6 +22,8 @@ logger = logging.getLogger(__name__)
 
 _MAX_PARTITIONS = 16
 _MAX_RETRY_OWNERS = 3
+_MAX_QUESTIONS_PER_PARTITION = 6
+_MAX_PRIMARY_OWNERS_PER_PARTITION = 1
 _SIMPLE_OWNER_CHARS = 4_000
 _COMPLEX_OWNER_CHARS = 10_000
 
@@ -254,10 +256,12 @@ def _questions_for_partition(
             question
             for question in out.contract_questions
             if question.owner.strip().lower() in valid_owners
-        ]
+        ][:_MAX_QUESTIONS_PER_PARTITION]
         warnings.extend([f"owner_question:{item}" for item in out.warnings])
         if len(questions) < len(out.contract_questions):
             warnings.append(f"owner_question_cross_owner_filtered:{partition.owner_group_id}")
+        if len(out.contract_questions) > _MAX_QUESTIONS_PER_PARTITION:
+            warnings.append(f"owner_question_partition_capped:{partition.owner_group_id}")
         return questions, traced.tokens, llm_trace, warnings
     except Exception as exc:  # noqa: BLE001
         llm_trace.extend(trace_from_exception(exc))
@@ -335,19 +339,33 @@ def _normalize_partitions(
         key = tuple(sorted(name.lower() for name in primary))
         if any(set(key) == {owner.lower() for owner in item.primary_owners} for item in out):
             continue
-        covered.update(name.lower() for name in primary)
-        out.append(
-            partition.model_copy(
-                update={
-                    "owner_group_id": partition.owner_group_id.strip() or f"owner-group-{index}",
-                    "primary_owners": primary,
-                    "companion_owners": [
-                        name for name in partition.companion_owners if name.strip().lower() in owner_set
-                    ],
-                    "complexity": partition.complexity.strip().lower() or "simple",
-                }
+        for offset in range(0, len(primary), _MAX_PRIMARY_OWNERS_PER_PARTITION):
+            chunk = primary[offset : offset + _MAX_PRIMARY_OWNERS_PER_PARTITION]
+            if not chunk:
+                continue
+            covered.update(name.lower() for name in chunk)
+            base_group_id = partition.owner_group_id.strip()
+            group_id = (
+                f"{base_group_id}-{offset + 1}"
+                if base_group_id and len(primary) > _MAX_PRIMARY_OWNERS_PER_PARTITION
+                else base_group_id or f"owner-group-{index}-{offset + 1}"
             )
-        )
+            out.append(
+                partition.model_copy(
+                    update={
+                        "owner_group_id": group_id,
+                        "primary_owners": chunk,
+                        "companion_owners": [
+                            name for name in partition.companion_owners if name.strip().lower() in owner_set
+                        ],
+                        "complexity": partition.complexity.strip().lower() or "simple",
+                    }
+                )
+            )
+            if len(out) >= _MAX_PARTITIONS:
+                break
+        if len(out) >= _MAX_PARTITIONS:
+            break
     for name in owner_names:
         if name.lower() not in covered:
             out.append(_default_partition(name, len(out) + 1))

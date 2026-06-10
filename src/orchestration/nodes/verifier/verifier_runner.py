@@ -164,18 +164,28 @@ def invoke_verifier_for_candidate(
         attempts.append(record)
 
         if verdict != "inconclusive":
+            metadata = _report_metadata(verdict)
+            report_verdict = verdict
+            report_rationale = rationale
+            if verdict == "verified" and not metadata.get("product_verified"):
+                report_verdict = "inconclusive"
+                report_rationale = (
+                    f"{rationale} Harness/setup errors were present or product proof was not clean; "
+                    "treating verifier signal as advisory, not product verification."
+                )
             summary = (
-                f"Runtime verifier: {verdict} ({rationale}) scope={scope} attempts={attempt_idx}"
+                f"Runtime verifier: {report_verdict} ({report_rationale}) "
+                f"scope={scope} attempts={attempt_idx}"
             )
             return VerifierReport(
                 run_id=run_id,
                 candidate_id=candidate_id,
-                verdict=verdict,
+                verdict=report_verdict,
                 verification_scope=scope,
-                final_rationale=rationale,
+                final_rationale=report_rationale,
                 updated_evidence_summary=summary,
                 attempts=attempts,
-                metadata=_report_metadata(verdict),
+                metadata=metadata,
             )
 
         retry_feedback = build_retry_feedback(

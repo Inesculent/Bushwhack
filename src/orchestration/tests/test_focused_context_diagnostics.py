@@ -68,6 +68,21 @@ def test_focused_context_records_sanitized_query_and_no_hits() -> None:
     assert out["metadata"]["focused_context"]["focused_effective_path_count"] == 0
 
 
+def test_focused_context_keys_duplicate_request_ids_by_candidate() -> None:
+    node = make_focused_context_node(_Provider())  # type: ignore[arg-type]
+    first = _request(request_id="focus-001", candidate_id="c1", text_queries=["needle one"])
+    second = _request(request_id="focus-001", candidate_id="c2", text_queries=["needle two"])
+
+    out = node({"focused_context_requests": [first, second], "focused_context_results": {}})
+
+    assert set(out["focused_context_results"]) == {"c1:focus-001", "c2:focus-001"}
+    rows = out["metadata"]["focused_context"]["diagnostics"]
+    assert {(row["candidate_id"], row["request_id"]) for row in rows} == {
+        ("c1", "focus-001"),
+        ("c2", "focus-001"),
+    }
+
+
 def test_focused_context_records_path_mismatch_and_tool_unavailable() -> None:
     mismatch = make_focused_context_node(_PathMismatchProvider())(  # type: ignore[arg-type]
         {

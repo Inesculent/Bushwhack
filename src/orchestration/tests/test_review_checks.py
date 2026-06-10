@@ -1109,6 +1109,35 @@ def test_contract_question_expected_behavior_can_name_contract_terms() -> None:
     assert normalized[0].audit_only is False
 
 
+def test_contract_question_implementation_shaped_expected_behavior_becomes_audit_only() -> None:
+    surface = ReviewSurface(
+        surface_id="surface:handle",
+        name="handle",
+        kind="function",
+        file_path="src/app.py",
+        line_start=1,
+        line_end=5,
+        confidence=0.95,
+    )
+    task = _task().model_copy(update={"surface_ids": [surface.surface_id]})
+    state = _state(
+        task_registry={task.id: task},
+        metadata={
+            **_state()["metadata"],
+            "mental_model": {"surface_ledger": [surface.model_dump(mode="json")]},
+        },
+    )
+    check = _check(
+        surface_ids=[surface.surface_id],
+        expected_behavior="Before calling project(record), the code checks len(records) >= index.",
+        diff_signal_family="contract_question",
+    )
+
+    normalized = compiler_support.normalize_compiled_checks(state, task, [check])  # type: ignore[arg-type]
+
+    assert normalized[0].audit_only is True
+
+
 def test_generic_coverage_obligation_becomes_audit_only() -> None:
     check = compiler_support.coverage_check_for_obligation(
         _state(),  # type: ignore[arg-type]
@@ -4360,6 +4389,26 @@ def test_check_mode_routing(monkeypatch) -> None:
     assert critique_pipeline._route_after_review_check_validator({}) == "review_check_context_planner"
 
 
+def test_aacr_default_check_mode_is_log_only(monkeypatch) -> None:
+    monkeypatch.delenv("REVIEW_REVIEWER_CHECK_MODE", raising=False)
+
+    info = aacr._resolve_aacr_review_check_mode(None)
+
+    assert info == {"mode": "log_only", "source": "harness_default"}
+    assert aacr.get_settings().reviewer_check_mode == "log_only"
+    aacr.get_settings.cache_clear()
+
+
+def test_aacr_check_mode_prefers_cli_over_harness_default(monkeypatch) -> None:
+    monkeypatch.delenv("REVIEW_REVIEWER_CHECK_MODE", raising=False)
+
+    info = aacr._resolve_aacr_review_check_mode({"review_check_mode": "enforced"})
+
+    assert info == {"mode": "enforced", "source": "cli"}
+    assert aacr.get_settings().reviewer_check_mode == "enforced"
+    aacr.get_settings.cache_clear()
+
+
 def test_review_check_scout_routes_to_executor_only_when_new_checks_emitted() -> None:
     state = _state()
     task = _task()
@@ -4488,11 +4537,15 @@ def test_github_mcp_preflight_records_present_and_missing_tools(monkeypatch) -> 
 
     monkeypatch.setattr(aacr, "MCPClient", PresentClient)
 
-    healthy = _github_mcp_preflight(Settings(github_mcp_enabled=True))
+    healthy = _github_mcp_preflight(
+        Settings(github_mcp_enabled=True, github_personal_access_token="token")
+    )
 
     assert healthy["status"] == "ok"
     assert healthy["tool_discovery_available"] is True
     assert healthy["missing_required_tools"] == []
+    assert healthy["token_present"] is True
+    assert healthy["cwd"]
 
     class MissingClient(PresentClient):
         def list_tools(self) -> list[str]:
@@ -4500,7 +4553,9 @@ def test_github_mcp_preflight_records_present_and_missing_tools(monkeypatch) -> 
 
     monkeypatch.setattr(aacr, "MCPClient", MissingClient)
 
-    degraded = _github_mcp_preflight(Settings(github_mcp_enabled=True))
+    degraded = _github_mcp_preflight(
+        Settings(github_mcp_enabled=True, github_personal_access_token="token")
+    )
 
     assert degraded["status"] == "degraded"
     assert degraded["tool_discovery_available"] is True
@@ -4512,12 +4567,47 @@ def test_github_mcp_preflight_records_present_and_missing_tools(monkeypatch) -> 
 
     monkeypatch.setattr(aacr, "MCPClient", FailingDiscoveryClient)
 
-    discovery_error = _github_mcp_preflight(Settings(github_mcp_enabled=True))
+    discovery_error = _github_mcp_preflight(
+        Settings(github_mcp_enabled=True, github_personal_access_token="token")
+    )
 
-    assert discovery_error["status"] == "tool_discovery_error"
+    assert discovery_error["status"] == "server_startup_failed"
     assert discovery_error["tool_discovery_available"] is False
     assert discovery_error["missing_required_tools"] == []
     assert "TaskGroup" in discovery_error["error"]
+    assert "TaskGroup" in discovery_error["error_details"]
+
+
+def test_github_mcp_preflight_reports_missing_token(monkeypatch) -> None:
+    monkeypatch.delenv("GITHUB_PERSONAL_ACCESS_TOKEN", raising=False)
+    monkeypatch.delenv("REVIEW_GITHUB_PERSONAL_ACCESS_TOKEN", raising=False)
+
+    class NoTokenSettings:
+        github_mcp_enabled = True
+        github_personal_access_token = None
+        github_mcp_cwd = None
+        github_mcp_args = ["docker_mcp/github-mcp/server.py"]
+        github_mcp_command = "python"
+        github_mcp_timeout_seconds = 30
+
+    result = _github_mcp_preflight(NoTokenSettings())
+
+    assert result["status"] == "missing_token"
+    assert result["tool_discovery_available"] is False
+    assert result["token_present"] is False
+
+
+def test_github_mcp_preflight_reports_missing_server_file() -> None:
+    result = _github_mcp_preflight(
+        Settings(
+            github_mcp_enabled=True,
+            github_personal_access_token="token",
+            github_mcp_args=["missing/server.py"],
+        )
+    )
+
+    assert result["status"] == "server_file_missing"
+    assert result["tool_discovery_available"] is False
 
 
 def test_coverage_audit_reports_stage_coverage_and_writes_json(tmp_path) -> None:
@@ -4542,8 +4632,9 @@ def test_coverage_audit_reports_stage_coverage_and_writes_json(tmp_path) -> None
             ).model_dump(mode="json")
         ],
         "focused_context_results": {
-            "check:review-logic:check:1:1": {
+            "c1:check:review-logic:check:1:1": {
                 "file_snippets": {"src/app.py": "def handle(): ..."},
+                "file_contents_full": {"src/app.py": "def handle():\n    return 1\n"},
                 "search_hits": {},
             }
         },
@@ -4576,6 +4667,7 @@ def test_coverage_audit_reports_stage_coverage_and_writes_json(tmp_path) -> None
 
     assert record["summary"]["positive_path_count"] == 2
     assert record["summary"]["compiled_path_count"] == 1
+    assert record["summary"]["focused_result_path_count"] == 1
     assert record["summary"]["candidate_path_count"] == 1
     paths = {item["path"]: item for item in record["paths"]}
     assert paths["src/app.py"]["reason_state"] == "dropped_by_cleanup"

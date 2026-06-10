@@ -44,15 +44,16 @@ def _coerce_reflection(raw: Any) -> ReflectionReport | None:
 
 def _pending_requests(state: GraphState) -> List[FocusedContextRequest]:
     """Collect deduped requests from reducer list and embedded reflection reports."""
-    seen: set[str] = set()
+    seen: set[tuple[str, str]] = set()
     pending: List[FocusedContextRequest] = []
     for req in state.get("focused_context_requests", []) or []:
         coerced = _coerce_focus_request(req)
         if coerced is None:
             continue
-        if coerced.request_id in seen:
+        key = _request_result_key(coerced)
+        if key in seen:
             continue
-        seen.add(coerced.request_id)
+        seen.add(key)
         pending.append(coerced)
     for raw in state.get("reflection_reports", []) or []:
         report = _coerce_reflection(raw)
@@ -63,12 +64,41 @@ def _pending_requests(state: GraphState) -> List[FocusedContextRequest]:
         nested = _coerce_focus_request(report.focused_request)
         if nested is None:
             continue
-        rid = nested.request_id
-        if rid in seen:
+        key = _request_result_key(nested)
+        if key in seen:
             continue
-        seen.add(rid)
+        seen.add(key)
         pending.append(nested)
     return pending
+
+
+def _request_result_key(request: FocusedContextRequest) -> tuple[str, str]:
+    return (str(request.candidate_id or ""), str(request.request_id or ""))
+
+
+def _result_storage_key(request: FocusedContextRequest) -> str:
+    candidate_id, request_id = _request_result_key(request)
+    return f"{candidate_id}:{request_id}" if candidate_id else request_id
+
+
+def _existing_result_for_request(
+    existing: Mapping[str, Any],
+    request: FocusedContextRequest,
+) -> FocusedContextResult | None:
+    storage_key = _result_storage_key(request)
+    candidates = [existing.get(storage_key), existing.get(request.request_id)]
+    for raw in existing.values():
+        candidates.append(raw)
+    for raw in candidates:
+        if raw is None:
+            continue
+        try:
+            result = raw if isinstance(raw, FocusedContextResult) else FocusedContextResult.model_validate(raw)
+        except Exception:
+            continue
+        if result.candidate_id == request.candidate_id and result.request_id == request.request_id:
+            return result
+    return None
 
 
 def _norm_path(path: str) -> str:
@@ -154,16 +184,9 @@ def make_focused_context_node(
         for req in pending:
             sanitized = sanitize_focused_context_request(req)
             base_outcomes = ["sanitized_query"] if _queries_changed(req, sanitized) else []
-            if req.request_id in existing:
-                existing_val = existing.get(req.request_id)
-                try:
-                    existing_model = (
-                        existing_val
-                        if isinstance(existing_val, FocusedContextResult)
-                        else FocusedContextResult.model_validate(existing_val)
-                    )
-                except Exception:
-                    existing_model = None
+            storage_key = _result_storage_key(sanitized)
+            existing_model = _existing_result_for_request(existing, sanitized)
+            if existing_model is not None:
                 diagnostics.append(
                     _diagnostic_row(
                         sanitized,
@@ -172,19 +195,13 @@ def make_focused_context_node(
                     )
                 )
                 continue
-            existing_val = existing.get(req.request_id)
-            existing_model: FocusedContextResult | None = None
-            if isinstance(existing_val, FocusedContextResult):
-                existing_model = existing_val
-            elif isinstance(existing_val, dict):
-                existing_model = FocusedContextResult.model_validate(existing_val)
             try:
                 result = fulfiller.fulfill(
                     state,
                     sanitized,
                     existing_result=existing_model,
                 )
-                merged[req.request_id] = result
+                merged[storage_key] = result
                 outcomes = list(base_outcomes)
                 if not _has_hits(result):
                     outcomes.append("no_hits")

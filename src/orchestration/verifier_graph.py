@@ -236,6 +236,16 @@ def verifier_finalize_node(state: GraphState) -> Dict[str, Any]:
     )
     harness_error = hint_flags["harness_error"]
     product_verified = hint_flags["product_verified"]
+    if report.verdict == "verified" and not product_verified:
+        report.verdict = "inconclusive"
+        report.final_rationale = (
+            f"{report.final_rationale} Harness/setup errors were present or product proof was not clean; "
+            "treating verifier signal as advisory, not product verification."
+        ).strip()
+        report.updated_evidence_summary = (
+            f"Runtime verifier: inconclusive after {len(report.attempts)} attempt(s). "
+            f"{report.final_rationale}"
+        )
     last_attempt = report.attempts[-1] if report.attempts else None
     confidence = verifier_confidence_label(
         cand_dict,

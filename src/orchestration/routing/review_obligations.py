@@ -373,14 +373,56 @@ def _operation_markers(body: str) -> list[str]:
         "join",
         "import",
         "raise",
+        "append",
+        "filter",
     ):
         if marker in lowered:
             markers.append(marker)
-    if any(marker in lowered for marker in ("findall", "finditer", "matchall", "captures", "groups()", "group(")):
-        markers.append("grouped_result")
+    if _has_projection_operation(body):
+        markers.append("projection")
     if any(marker in lowered for marker in ("[0]", "[1]", ".at(", ".get(")):
         markers.append("element_selection")
+    if _has_filter_operation(body):
+        markers.append("filtering")
     return markers[:8]
+
+
+def _has_projection_operation(body: str) -> bool:
+    return bool(
+        re.search(r"\[[^\]\n]+\]\s+for\s+\w+\s+in\b", body)
+        or re.search(r"\bfor\s+\w+\s+in\b[^\n]+(?:\[[^\]\n]+\]|\.get\s*\()", body)
+        or re.search(r"\b\w+\s*=\s*\w+(?:\[[^\]\n]+\]|\.\w+)", body)
+        or re.search(r"\breturn\s+\w+(?:\[[^\]\n]+\]|\.\w+)", body)
+    )
+
+
+def _has_filter_operation(body: str) -> bool:
+    return bool(
+        re.search(r"\bfilter\s*\(", body)
+        or re.search(r"\bif\b[^\n]+\bfor\s+\w+\s+in\b", body)
+        or re.search(r"\bfor\s+\w+\s+in\b[^\n]+\bif\b", body)
+    )
+
+
+def _has_structured_value_signal(body: str) -> bool:
+    lowered = body.lower()
+    return bool(
+        any(marker in lowered for marker in ("tuple", "row", "record", "structured"))
+        or _has_projection_operation(body)
+        or _has_filter_operation(body)
+        or re.search(r"\[[\"'][^\"'\]]+[\"']\]", body)
+    )
+
+
+def _has_aggregation_or_serialization(body: str) -> bool:
+    return bool(
+        re.search(r"\.join\s*\(", body)
+        or re.search(r"\bjson\.", body)
+        or re.search(r"\bserialize", body, re.IGNORECASE)
+        or re.search(r"\bformat\s*\(", body)
+        or re.search(r"\b(sum|min|max|sorted|list|tuple|set|dict)\s*\(", body)
+        or re.search(r"\.append\s*\(", body)
+    )
 
 
 def derive_review_obligations(
@@ -452,8 +494,16 @@ def derive_review_obligations(
                 line_start=line_no,
                 operation_markers=_operation_markers(body),
             )
-        if any(marker in blob for marker in ("tuple", "row", "record", "findall", "groups()", "structured")):
-            line_no, signal = _first_line_matching(body, r"\btuple\b", r"\bfindall\s*\(", r"\.groups\s*\(", r"\[0\]")
+        if _has_structured_value_signal(body):
+            line_no, signal = _first_line_matching(
+                body,
+                r"\btuple\b",
+                r"\brow\b",
+                r"\brecord\b",
+                r"\[[^\]\n]+\]\s+for\s+\w+\s+in\b",
+                r"\bfor\s+\w+\s+in\b[^\n]+(?:\[[^\]\n]+\]|\.get\s*\()",
+                r"\[[\"'][^\"'\]]+[\"']\]",
+            )
             _add_obligation(
                 obligations,
                 task_id=task.id,
@@ -467,8 +517,16 @@ def derive_review_obligations(
                 line_start=line_no,
                 operation_markers=_operation_markers(body),
             )
-        if any(marker in blob for marker in (".join(", "json.", "serialize", "format(")):
-            line_no, signal = _first_line_matching(body, r"\.join\s*\(", r"json\.", r"serialize", r"\bformat\s*\(")
+        if _has_aggregation_or_serialization(body):
+            line_no, signal = _first_line_matching(
+                body,
+                r"\.join\s*\(",
+                r"json\.",
+                r"serialize",
+                r"\bformat\s*\(",
+                r"\b(sum|min|max|sorted|list|tuple|set|dict)\s*\(",
+                r"\.append\s*\(",
+            )
             _add_obligation(
                 obligations,
                 task_id=task.id,
@@ -497,10 +555,10 @@ def derive_review_obligations(
                 line_start=line_no,
                 operation_markers=_operation_markers(body),
             )
-        if any(marker in blob for marker in ("regex", "re.", "while ", "for ")) and any(
+        if any(marker in blob for marker in ("while ", "for ")) and any(
             marker in blob for marker in ("user", "pattern", "external", "unbounded", "loop")
         ):
-            line_no, signal = _first_line_matching(body, r"\bre\.", r"\bfor\b", r"\bwhile\b", r"pattern")
+            line_no, signal = _first_line_matching(body, r"\bfor\b", r"\bwhile\b", r"pattern")
             _add_obligation(
                 obligations,
                 task_id=task.id,

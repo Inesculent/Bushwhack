@@ -1193,7 +1193,24 @@ _BROAD_SURFACE_INVARIANTS = (
 
 
 _IMPLEMENTATION_EXPECTATION_RE = re.compile(
-    r"(`[^`]+`|\bif\b|\belif\b|\belse\b|\bfor\b|\bwhile\b|[A-Za-z_][A-Za-z0-9_]*\s*\(|[=!<>]=|:=|\[[^\]]*\])"
+    r"(`[^`]+`|\bif\b|\belif\b|\belse\b|\bfor\b|\bwhile\b|"
+    r"[A-Za-z_][A-Za-z0-9_]*\s*\(|[=!<>]=|:=|\[[^\]]*\])"
+)
+_IMPLEMENTATION_EXPECTATION_PHRASES = (
+    "before calling",
+    "after calling",
+    "the code checks",
+    "checks len(",
+    "uses ",
+    "calls ",
+    "iterates ",
+    "loops ",
+    "indexes ",
+    "accesses ",
+    "returns m[",
+    "returns row[",
+    "extracts m[",
+    "extracts row[",
 )
 
 
@@ -1206,11 +1223,12 @@ def _invariant_check_is_audit_only(invariant: Any) -> bool:
 
 
 def _expected_behavior_is_implementation_shaped(check: ReviewCheck) -> bool:
-    if check.diff_signal_family == "contract_question":
-        return False
     text = check.expected_behavior.strip()
     if not text:
         return False
+    lowered = text.lower()
+    if any(phrase in lowered for phrase in _IMPLEMENTATION_EXPECTATION_PHRASES):
+        return True
     return bool(_IMPLEMENTATION_EXPECTATION_RE.search(text))
 
 

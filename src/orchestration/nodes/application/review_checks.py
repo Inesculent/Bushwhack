@@ -1797,6 +1797,21 @@ def _candidate_passes_gate(
             "could be intentional",
             "may not align with user expectations",
             "clarify whether",
+            "document the behavior",
+            "document this behavior",
+            "could surprise",
+            "may surprise",
+            "might surprise",
+            "users may expect",
+            "users might expect",
+            "user might expect",
+            "user expectation",
+            "standard library behavior",
+            "stdlib behavior",
+            "python semantics",
+            "python's standard",
+            "language-defined",
+            "language defined",
         )
     ):
         return False, "weak_contract_proof"

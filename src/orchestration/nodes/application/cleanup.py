@@ -1431,6 +1431,76 @@ def _missing_contract_proof_fields(candidate: CandidateFinding) -> List[str]:
 def _contract_proof_is_weak(candidate: CandidateFinding) -> bool:
     blob = " ".join(
         [
+            candidate.expected_behavior,
+            candidate.evidence_for_contract,
+            candidate.counterexample,
+            candidate.rejection_check,
+        ]
+    ).lower()
+    if any(
+        marker in blob
+        for marker in (
+            "may be intentional",
+            "might be intentional",
+            "could be intentional",
+            "may not align with user expectations",
+            "clarify whether",
+            "document the behavior",
+            "document this behavior",
+            "could surprise",
+            "may surprise",
+            "might surprise",
+            "users may expect",
+            "users might expect",
+            "user might expect",
+            "user expectation",
+            "standard library behavior",
+            "stdlib behavior",
+            "python semantics",
+            "python's standard",
+            "language-defined",
+            "language defined",
+        )
+    ):
+        return True
+    if candidate_has_local_defect_signature(candidate):
+        return False
+    if candidate.claim_type == "performance_regression" and any(
+        marker in blob
+        for marker in (
+            "optimization",
+            "micro-optimization",
+            "overhead",
+            "compile on every call",
+            "compiles regex patterns on every call",
+            "should be cached",
+            "hot-path",
+        )
+    ):
+        return True
+    if candidate.claim_type == "security_risk" and not security_boundary_is_concrete(candidate):
+        return True
+    if any(
+        marker in blob
+        for marker in (
+            "generic security risk",
+            "known security risk",
+            "resource exhaustion is a known risk",
+            "potential redos",
+            "potential re dos",
+            "could exhaust",
+            "could produce an unbounded",
+        )
+    ):
+        return True
+    return False
+
+
+def _candidate_self_contradicts(candidate: CandidateFinding) -> bool:
+    blob = " ".join(
+        [
+            candidate.content,
+            candidate.evidence_summary,
             candidate.evidence_for_contract,
             candidate.counterexample,
             candidate.rejection_check,
@@ -1439,11 +1509,53 @@ def _contract_proof_is_weak(candidate: CandidateFinding) -> bool:
     return any(
         marker in blob
         for marker in (
-            "may be intentional",
-            "might be intentional",
-            "could be intentional",
-            "may not align with user expectations",
-            "clarify whether",
+            "wait, let me re-check",
+            "wait, let me recheck",
+            "actually, this works",
+            "actually this works",
+            "this works",
+            "that's correct",
+            "that is correct",
+            "need to verify edge case",
+            "where is the bug",
+        )
+    )
+
+
+def _candidate_is_group_index_theory(candidate: CandidateFinding) -> bool:
+    blob = " ".join(
+        [
+            candidate.content,
+            candidate.evidence_summary,
+            candidate.evidence_for_contract,
+            candidate.counterexample,
+        ]
+    ).lower()
+    return "group_index" in blob and ("match.groups" in blob or "match.group" in blob)
+
+
+def _candidate_has_distinct_group_index_failure(candidate: CandidateFinding) -> bool:
+    blob = " ".join(
+        [
+            candidate.content,
+            candidate.evidence_summary,
+            candidate.evidence_for_contract,
+            candidate.counterexample,
+            candidate.behavioral_symptom,
+        ]
+    ).lower()
+    return any(
+        marker in blob
+        for marker in (
+            "match.groups() and",
+            "optional group",
+            "none",
+            "typeerror",
+            "join(",
+            "join_delimiter",
+            "uncaught exception",
+            "crash",
+            "data loss",
         )
     )
 
@@ -1507,6 +1619,17 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
         metadata["claim_tiering"] = {"by_candidate": claim_tiering}
 
         by_cand = _reports_by_candidate(reports)
+        group_index_rejected_by_reflection = any(
+            report.verdict == "reject"
+            and "group_index" in report.rationale.lower()
+            and (
+                "no concrete" in report.rationale.lower()
+                or "correctly prevents" in report.rationale.lower()
+                or "logic seems correct" in report.rationale.lower()
+            )
+            for reports_for_candidate in raw_by_cand.values()
+            for report in reports_for_candidate
+        )
         cleanup_settings = settings or get_settings()
         promoted: List[ReviewFinding] = []
         dropped: List[str] = []
@@ -1566,6 +1689,16 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
             ):
                 drop(candidate, "resolution_only_not_promotable")
                 continue
+            if _candidate_self_contradicts(candidate):
+                drop(candidate, "self_contradictory_claim")
+                continue
+            if (
+                group_index_rejected_by_reflection
+                and _candidate_is_group_index_theory(candidate)
+                and not _candidate_has_distinct_group_index_failure(candidate)
+            ):
+                drop(candidate, "group_index_duplicate_rejected_theory")
+                continue
             if is_required_upstream_none_guard_claim(candidate):
                 drop(candidate, "required_param_none_guard_out_of_scope")
                 continue
@@ -1583,7 +1716,6 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
             if not verifier_verified_early and _incomplete_claim_contradicted_by_code_evidence(state, candidate):
                 drop(candidate, "incomplete_claim_contradicted_by_code_evidence")
                 continue
-            early_harness_error = _verifier_harness_error(candidate.candidate_id, verifier_hints)
             early_revision_accepted = _revision_accepts(candidate.candidate_id, revisions)
             if (
                 claim_tier == "coverage_gap"
@@ -1604,13 +1736,6 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
                 continue
             if (
                 _broad_risk_without_impact_path(candidate)
-                and not (
-                    candidate.claim_type == "security_risk"
-                    and early_harness_error
-                    and not _verifier_concrete_behavior_verified(candidate.candidate_id, verifier_hints)
-                    and not _focused_hits_for_candidate(state, candidate.candidate_id)
-                    and not early_revision_accepted
-                )
             ):
                 drop(candidate, "broad_risk_without_concrete_impact_path")
                 continue
@@ -2167,10 +2292,6 @@ def make_adversarial_cleanup_node(settings: Settings | None = None):
                 elif verifier_satisfies_context:
                     lifecycle[candidate.candidate_id]["context_requirement_overridden"] = (
                         "runtime_verifier_concrete_behavior"
-                    )
-                elif harness_error:
-                    lifecycle[candidate.candidate_id]["context_requirement_overridden"] = (
-                        "verifier_harness_error"
                     )
                 else:
                     lifecycle[candidate.candidate_id]["context_requirement_overridden"] = (

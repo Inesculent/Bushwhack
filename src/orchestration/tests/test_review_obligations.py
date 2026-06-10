@@ -69,6 +69,45 @@ def test_obligation_evaluation_marks_candidate_audit_and_context_gap() -> None:
     assert statuses["aggregation/serialization safety"] == "needs_context"
 
 
+def test_operation_agnostic_projection_filter_join_obligations() -> None:
+    task = ReviewTask(
+        id="logic-value-flow",
+        title="Value flow review",
+        description="Audit projection, filtering, aggregation, dispatch, and return behavior.",
+        target_files=["pkg/transform.py"],
+        specialty="logic",
+    )
+    evidence = {
+        "file_contents": {
+            "pkg/transform.py": "\n".join(
+                [
+                    "def convert(mode, records):",
+                    "    if mode == 'names':",
+                    "        selected = [item['name'] for item in records if item.get('enabled')]",
+                    "        return ','.join(selected)",
+                    "    values = []",
+                    "    for item in records:",
+                    "        values.append(item.value)",
+                    "    return values",
+                ]
+            )
+        },
+        "files_complete": {"pkg/transform.py": True},
+    }
+
+    obligations = derive_review_obligations(task, evidence)
+    dims = [str(row["dimension"]) for row in obligations]
+
+    assert "contract completeness" in dims
+    assert "branch exhaustiveness" in dims
+    assert "structured data preservation" in dims
+    assert "aggregation/serialization safety" in dims
+    structured = next(row for row in obligations if row["dimension"] == "structured data preservation")
+    aggregate = next(row for row in obligations if row["dimension"] == "aggregation/serialization safety")
+    assert {"projection", "filtering"} <= set(structured["operation_markers"])
+    assert "join" in set(aggregate["operation_markers"])
+
+
 def test_signature_obligation_requires_task_intent_and_code_evidence() -> None:
     evidence = {
         "file_contents": {

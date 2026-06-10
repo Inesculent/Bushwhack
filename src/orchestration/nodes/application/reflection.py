@@ -57,6 +57,11 @@ _REFLECTION_COMPACT_RETRY_APPENDIX = (
     "Keep each rationale under 500 characters with path/line citations only—no code pastes. "
     "Omit focused_request unless essential. No prose outside schema fields."
 )
+_REFLECTION_STRICT_RETRY_APPENDIX = (
+    "\n\n## OUTPUT BUDGET (final retry — required)\n"
+    "Return exactly one report per input candidate with rationale under 220 characters. "
+    "Use terse path/line evidence only. No warnings unless essential. No prose outside schema fields."
+)
 trace_logger = logging.getLogger("research_pipeline.reviewer_trace")
 
 REFLECTOR_SPECIALTIES = ("security", "logic", "performance", "general")
@@ -137,6 +142,7 @@ def _render_reflection_prompt(
     *,
     mental_model_ledger_snippet: str = "",
     compact: bool = False,
+    strict: bool = False,
 ) -> str:
     packet = build_reflection_packet(
         state,
@@ -149,6 +155,8 @@ def _render_reflection_prompt(
     prompt = f"{prompt}{_REFLECTION_OUTPUT_BUDGET}"
     if compact:
         prompt = f"{prompt}{_REFLECTION_COMPACT_RETRY_APPENDIX}"
+    if strict:
+        prompt = f"{prompt}{_REFLECTION_STRICT_RETRY_APPENDIX}"
     return prompt
 
 
@@ -225,6 +233,7 @@ def _reflect_specialty_batches(
         )
         attempt = 0
         compact = False
+        strict = False
         while True:
             attempt += 1
             try:
@@ -235,6 +244,7 @@ def _reflect_specialty_batches(
                     batch,
                     mental_model_ledger_snippet=mental_model_ledger_snippet,
                     compact=compact,
+                    strict=strict,
                 )
                 traced = trace_llm_call(
                     llm,
@@ -284,6 +294,11 @@ def _reflect_specialty_batches(
                     compact = True
                     if "reflection_llm_retry:reason=length" not in warnings:
                         warnings.append("reflection_llm_retry:reason=length")
+                    continue
+                if compact and not strict and _is_length_finish_error(exc):
+                    strict = True
+                    if "reflection_llm_retry:reason=length_strict" not in warnings:
+                        warnings.append("reflection_llm_retry:reason=length_strict")
                     continue
                 warnings.append(f"reflection_failed:{specialty}:{exc.__class__.__name__}: {exc}")
                 logger.warning(

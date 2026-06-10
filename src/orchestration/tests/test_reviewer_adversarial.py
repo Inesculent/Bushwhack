@@ -1230,6 +1230,60 @@ def test_adversarial_cleanup_harness_error_does_not_skip_incomplete_contradictio
     }
 
 
+def test_adversarial_cleanup_harness_error_is_neutral_for_static_supported_defect() -> None:
+    node = make_adversarial_cleanup_node()
+    cand = _recall_candidate()
+    report = ReflectionReport(
+        candidate_id=cand.candidate_id,
+        reflector_specialty="logic",
+        verdict="accept",
+        rationale="The source-local return contract failure is visible in the changed code.",
+        support_scope="local",
+    )
+
+    out = node(
+        {
+            "run_id": "t",
+            "candidate_findings": [cand],
+            "reflection_reports": [report],
+            "metadata": {
+                "critique_pipeline": {
+                    "by_task": {
+                        cand.patch_task_id: {
+                            "task_evidence": {
+                                "file_contents": {
+                                    "src/app.py": (
+                                        "def execute(mode):\n"
+                                        "    if mode == 'known':\n"
+                                        "        return True\n"
+                                    )
+                                }
+                            }
+                        }
+                    }
+                },
+                "verifier_hints": {
+                    cand.candidate_id: {
+                        "verdict": "verified",
+                        "verification_scope": "concrete_behavior",
+                        "harness_error": True,
+                        "product_verified": False,
+                        "updated_evidence_summary": "Runtime verifier reported mismatch after an import failure.",
+                    }
+                },
+            },
+        }
+    )
+
+    assert len(out["findings"]) == 1
+    assert "Runtime verifier evidence" not in out["findings"][0].content
+    life = out["metadata"]["adversarial_cleanup"]["candidate_lifecycle"][cand.candidate_id]
+    assert life["decision"] == "promoted"
+    assert life["reason"] == "accepted_by_relevant_reflectors"
+    assert life["verifier_advisory"]["harness_error"] is True
+    assert life["verifier_advisory"]["product_verified"] is False
+
+
 def test_adversarial_cleanup_drops_resource_risk_without_concrete_support() -> None:
     node = make_adversarial_cleanup_node()
     cand = CandidateFinding(
@@ -1604,6 +1658,167 @@ def test_adversarial_cleanup_drops_positive_observation() -> None:
         "reason"
     ]
     assert reason in ("non_promotable_claim_type", "resolution_only_not_promotable")
+
+
+def test_adversarial_cleanup_drops_user_expectation_only_contract_proof() -> None:
+    node = make_adversarial_cleanup_node()
+    cand = _recall_candidate(
+        content="The operation follows language behavior that may surprise users.",
+        failure_mode="Output may not align with user expectations.",
+        evidence_summary="The implementation uses a standard library operation.",
+        behavioral_symptom="wrong_output",
+        root_operation="contract",
+    ).model_copy(
+        update={
+            "candidate_id": "review-logic:weak-proof",
+            "expected_behavior": "Users may expect the operation to preserve the original casing.",
+            "evidence_for_contract": "This may not align with user expectations.",
+            "counterexample": "A mixed-case value could surprise users.",
+            "rejection_check": "Clarify whether this standard library behavior is intentional.",
+        }
+    )
+    report = ReflectionReport(
+        candidate_id=cand.candidate_id,
+        reflector_specialty="logic",
+        verdict="accept",
+        rationale="The behavior may surprise users.",
+    )
+
+    out = node(
+        {
+            "run_id": "t",
+            "candidate_findings": [cand],
+            "reflection_reports": [report],
+            "metadata": {},
+        }
+    )
+
+    assert out["findings"] == []
+    life = out["metadata"]["adversarial_cleanup"]["candidate_lifecycle"][cand.candidate_id]
+    assert life["reason"] == "weak_contract_proof"
+
+
+def test_adversarial_cleanup_drops_generic_performance_advice() -> None:
+    node = make_adversarial_cleanup_node()
+    cand = _recall_candidate(
+        claim_type="performance_regression",
+        content="Regex patterns compile on every call instead of being cached.",
+        failure_mode="Repeated compilation overhead.",
+        evidence_summary="The code calls the standard library regex function directly.",
+        behavioral_symptom="other",
+        root_operation="other",
+    ).model_copy(
+        update={
+            "candidate_id": "review-performance:cache",
+            "suspected_category": "performance",
+            "reflection_specialties": ["performance"],
+            "evidence_for_contract": "Python regex compilation overhead means this should be cached.",
+            "counterexample": "A hot-path workflow may call this 1000 times.",
+            "rejection_check": "This is an optimization opportunity, not a concrete wrong output.",
+        }
+    )
+    report = ReflectionReport(
+        candidate_id=cand.candidate_id,
+        reflector_specialty="performance",
+        verdict="accept",
+        rationale="Caching could reduce overhead.",
+    )
+
+    out = node(
+        {
+            "run_id": "t",
+            "candidate_findings": [cand],
+            "reflection_reports": [report],
+            "metadata": {},
+        }
+    )
+
+    assert out["findings"] == []
+    life = out["metadata"]["adversarial_cleanup"]["candidate_lifecycle"][cand.candidate_id]
+    assert life["reason"] in {
+        "weak_contract_proof",
+        "optimization_without_concrete_impact",
+        "broad_risk_without_concrete_impact_path",
+    }
+
+
+def test_adversarial_cleanup_drops_group_index_duplicate_rejected_theory() -> None:
+    node = make_adversarial_cleanup_node()
+    duplicate = _recall_candidate(
+        content="group_index validation compares match.groups() length to match.group(group_index).",
+        failure_mode="Possible group_index validation issue.",
+        evidence_summary="The code compares len(match.groups()) with group_index.",
+        behavioral_symptom="wrong_output",
+        root_operation="indexing",
+    ).model_copy(update={"candidate_id": "review-logic:group-duplicate"})
+    reports = [
+        ReflectionReport(
+            candidate_id="review-logic:group-rejected",
+            reflector_specialty="logic",
+            verdict="reject",
+            rationale="The group_index check correctly prevents out-of-bounds access; no concrete failure exists.",
+        ),
+        ReflectionReport(
+            candidate_id=duplicate.candidate_id,
+            reflector_specialty="logic",
+            verdict="accept",
+            rationale="This appears related to the same group_index theory.",
+        ),
+    ]
+
+    out = node(
+        {
+            "run_id": "t",
+            "candidate_findings": [duplicate],
+            "reflection_reports": reports,
+            "metadata": {},
+        }
+    )
+
+    assert out["findings"] == []
+    life = out["metadata"]["adversarial_cleanup"]["candidate_lifecycle"][duplicate.candidate_id]
+    assert life["reason"] == "group_index_duplicate_rejected_theory"
+
+
+def test_adversarial_cleanup_keeps_concrete_contract_backed_local_defect() -> None:
+    node = make_adversarial_cleanup_node()
+    cand = _recall_candidate()
+    report = ReflectionReport(
+        candidate_id=cand.candidate_id,
+        reflector_specialty="logic",
+        verdict="accept",
+        rationale="The return contract failure is source-local and concrete.",
+        support_scope="local",
+    )
+
+    out = node(
+        {
+            "run_id": "t",
+            "candidate_findings": [cand],
+            "reflection_reports": [report],
+            "metadata": {
+                "critique_pipeline": {
+                    "by_task": {
+                        cand.patch_task_id: {
+                            "task_evidence": {
+                                "file_contents": {
+                                    "src/app.py": (
+                                        "def execute(mode):\n"
+                                        "    if mode == 'known':\n"
+                                        "        return True\n"
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+        }
+    )
+
+    assert len(out["findings"]) == 1
+    life = out["metadata"]["adversarial_cleanup"]["candidate_lifecycle"][cand.candidate_id]
+    assert life["decision"] == "promoted"
 
 
 def test_auto_focus_request_created_for_security_claim_needing_context() -> None:

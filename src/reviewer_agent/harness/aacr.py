@@ -9,6 +9,7 @@ import subprocess
 import sys
 import time
 import uuid
+import hashlib
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -34,6 +35,15 @@ DEFAULT_AACR_PROCESSED_PATH: Path = PROCESSED_DIR / "aacr_bench_graph_ready.csv"
 EXPERIMENT_TAG = "reviewer_graph_parallel"
 BASIC_EXPERIMENT_TAG = "reviewer_graph_basic"
 DEFAULT_POSITIVE_SAMPLES_PATH = Path(__file__).resolve().parents[3] / "documentation" / "dataset" / "positive_samples.json"
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_REVIEW_CHECK_MODE_ENV = "REVIEW_REVIEWER_CHECK_MODE"
+_AACR_DEFAULT_REVIEW_CHECK_MODE = "log_only"
+_PROVENANCE_FILES = (
+    Path("src/reviewer_agent/harness/aacr.py"),
+    Path("src/infrastructure/mcp/client.py"),
+    Path("src/orchestration/nodes/application/critique_pipeline.py"),
+    Path("src/orchestration/nodes/verifier/verifier_runner.py"),
+)
 
 
 def _utc_now_iso() -> str:
@@ -80,6 +90,75 @@ def _canonical_pr_key(pr_url: str) -> str:
     if not repo or number is None:
         return pr_url.strip().rstrip("/").lower()
     return f"{repo}#{number}"
+
+
+def _resolve_aacr_review_check_mode(cli_flags: Optional[dict[str, Any]]) -> dict[str, str]:
+    cli_mode = str((cli_flags or {}).get("review_check_mode") or "").strip()
+    if cli_mode:
+        os.environ[_REVIEW_CHECK_MODE_ENV] = cli_mode
+        get_settings.cache_clear()
+        return {"mode": cli_mode, "source": "cli"}
+
+    env_mode = os.environ.get(_REVIEW_CHECK_MODE_ENV, "").strip()
+    if env_mode:
+        return {"mode": env_mode, "source": "env"}
+
+    os.environ[_REVIEW_CHECK_MODE_ENV] = _AACR_DEFAULT_REVIEW_CHECK_MODE
+    get_settings.cache_clear()
+    return {"mode": _AACR_DEFAULT_REVIEW_CHECK_MODE, "source": "harness_default"}
+
+
+def _run_git(args: list[str]) -> str:
+    try:
+        proc = subprocess.run(
+            ["git", *args],
+            cwd=_REPO_ROOT,
+            check=False,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=5,
+        )
+    except Exception:
+        return ""
+    if proc.returncode != 0:
+        return ""
+    return proc.stdout.strip()
+
+
+def _code_provenance() -> dict[str, Any]:
+    commit = _run_git(["rev-parse", "HEAD"])
+    branch = _run_git(["rev-parse", "--abbrev-ref", "HEAD"])
+    dirty = bool(_run_git(["status", "--porcelain"]))
+    files: dict[str, Any] = {}
+    for rel in _PROVENANCE_FILES:
+        path = _REPO_ROOT / rel
+        item: dict[str, Any] = {"exists": path.exists()}
+        if path.exists():
+            data = path.read_bytes()
+            item.update(
+                {
+                    "mtime_ns": path.stat().st_mtime_ns,
+                    "sha256": hashlib.sha256(data).hexdigest(),
+                }
+            )
+        files[str(rel).replace("\\", "/")] = item
+    return {
+        "git_commit": commit,
+        "git_branch": branch,
+        "git_dirty": dirty,
+        "files": files,
+        "available": bool(commit),
+    }
+
+
+def _code_provenance_warnings(provenance: dict[str, Any]) -> list[str]:
+    warnings: list[str] = []
+    if not provenance.get("available"):
+        warnings.append("code_provenance_unavailable")
+    if provenance.get("git_dirty"):
+        warnings.append("code_provenance_dirty_worktree")
+    return warnings
 
 
 def _graph_thread_id(run_id: str, pr_url: str, snapshot_data: Optional[Dict[str, Any]]) -> str:
@@ -170,37 +249,95 @@ def _write_manifest(manifest_path: Path, rows: List[dict[str, Any]]) -> pd.DataF
 
 
 def _github_mcp_preflight(settings: Any) -> dict[str, Any]:
+    required_tools = ["get_commits_for_path"]
     if not getattr(settings, "github_mcp_enabled", False):
-        return {"status": "disabled", "required_tools": ["get_commits_for_path"]}
+        return {"status": "disabled", "required_tools": required_tools}
+
+    token = (
+        getattr(settings, "github_personal_access_token", None)
+        or os.environ.get("GITHUB_PERSONAL_ACCESS_TOKEN")
+        or os.environ.get("REVIEW_GITHUB_PERSONAL_ACCESS_TOKEN")
+    )
+    cwd = str(getattr(settings, "github_mcp_cwd", "") or _REPO_ROOT)
+    args = [str(item) for item in (getattr(settings, "github_mcp_args", []) or [])]
+    resolved_args = list(args)
+    server_file_missing = ""
+    if resolved_args:
+        first = Path(resolved_args[0])
+        if first.suffix == ".py" and not first.is_absolute():
+            resolved = (Path(cwd) / first).resolve()
+            if resolved.exists():
+                resolved_args[0] = str(resolved)
+            else:
+                server_file_missing = str(resolved)
+
+    diagnostics = {
+        "required_tools": required_tools,
+        "command": str(getattr(settings, "github_mcp_command", "")),
+        "args": resolved_args,
+        "cwd": cwd,
+        "token_present": bool(token),
+        "timeout_seconds": int(getattr(settings, "github_mcp_timeout_seconds", 0) or 0),
+    }
+
+    if not token:
+        return {
+            "status": "missing_token",
+            **diagnostics,
+            "available_tools": [],
+            "missing_required_tools": [],
+            "tool_discovery_available": False,
+            "error": "GITHUB_PERSONAL_ACCESS_TOKEN is required by docker_mcp/github-mcp/server.py.",
+        }
+
+    if server_file_missing:
+        return {
+            "status": "server_file_missing",
+            **diagnostics,
+            "available_tools": [],
+            "missing_required_tools": [],
+            "tool_discovery_available": False,
+            "error": f"GitHub MCP server file not found: {server_file_missing}",
+        }
 
     env = None
-    if getattr(settings, "github_personal_access_token", ""):
+    if token:
         env = dict(os.environ)
-        env["GITHUB_PERSONAL_ACCESS_TOKEN"] = settings.github_personal_access_token
+        env["GITHUB_PERSONAL_ACCESS_TOKEN"] = str(token)
 
     client = MCPClient(
         command=settings.github_mcp_command,
-        args=settings.github_mcp_args,
-        cwd=settings.github_mcp_cwd,
+        args=resolved_args,
+        cwd=cwd,
         env=env,
         timeout_seconds=settings.github_mcp_timeout_seconds,
     )
     try:
         tools = sorted(client.list_tools())
     except Exception as exc:  # noqa: BLE001 - benchmark runs should record MCP degradation, not fail
+        detail = (
+            MCPClient._describe_exception(exc)  # noqa: SLF001 - diagnostics wrapper for benchmark harness
+            if hasattr(MCPClient, "_describe_exception")
+            else str(exc)
+        )
+        lower = detail.lower()
+        status = "tool_discovery_error"
+        if "exited before initialize" in lower or "server process" in lower or "taskgroup" in lower:
+            status = "server_startup_failed"
         return {
-            "status": "tool_discovery_error",
-            "required_tools": ["get_commits_for_path"],
+            "status": status,
+            **diagnostics,
             "available_tools": [],
             "missing_required_tools": [],
             "tool_discovery_available": False,
             "error": f"{exc.__class__.__name__}: {exc}",
+            "error_details": detail,
         }
 
-    missing = [name for name in ("get_commits_for_path",) if name not in tools]
+    missing = [name for name in required_tools if name not in tools]
     return {
         "status": "ok" if not missing else "degraded",
-        "required_tools": ["get_commits_for_path"],
+        **diagnostics,
         "available_tools": tools,
         "missing_required_tools": missing,
         "tool_discovery_available": True,
@@ -217,6 +354,36 @@ def _path_from_mapping_or_model(item: Any) -> str:
     if isinstance(item, dict):
         return _normalize_repo_path(str(item.get("file_path") or item.get("path") or ""))
     return _normalize_repo_path(str(getattr(item, "file_path", "") or getattr(item, "path", "") or ""))
+
+
+def _review_check_nodes_reached(result: dict[str, Any]) -> dict[str, bool]:
+    history = {str(item) for item in result.get("node_history", []) or []}
+    metadata = result.get("metadata", {}) if isinstance(result.get("metadata"), dict) else {}
+    review_meta = metadata.get("review_checks", {}) if isinstance(metadata.get("review_checks"), dict) else {}
+    by_task = review_meta.get("by_task", {}) if isinstance(review_meta.get("by_task"), dict) else {}
+    task_slots = [slot for slot in by_task.values() if isinstance(slot, dict)]
+    return {
+        "compiler": "review_check_compiler" in history
+        or any("compiled_checks" in slot for slot in task_slots)
+        or bool(result.get("review_checks") or result.get("invalid_review_checks")),
+        "validator": "review_check_validator" in history
+        or any("validation" in slot for slot in task_slots)
+        or bool(result.get("review_checks") or result.get("invalid_review_checks")),
+        "executor": "review_check_executor" in history or bool(result.get("review_check_results")),
+        "evidence_gate": "review_check_evidence_gate" in history
+        or any("gate" in slot for slot in task_slots),
+    }
+
+
+def _focused_result_has_context(focused_results: Any) -> bool:
+    if not isinstance(focused_results, dict):
+        return False
+    for result in focused_results.values():
+        if not isinstance(result, dict):
+            continue
+        if result.get("file_snippets") or result.get("file_contents_full") or result.get("search_hits"):
+            return True
+    return False
 
 
 def _candidate_from_result(item: Any) -> Any:
@@ -380,6 +547,9 @@ def _coverage_audit_for_pr(
     labels: list[dict[str, Any]],
 ) -> dict[str, Any]:
     stage_paths = _paths_from_raw_stage(raw, final_findings)
+    warnings: list[str] = []
+    if not stage_paths["focused_result"] and _focused_result_has_context(raw.get("focused_context_results", {})):
+        warnings.append("coverage_parser_shape_mismatch")
     metadata = raw.get("metadata", {}) if isinstance(raw.get("metadata"), dict) else {}
     checks_by_id: dict[str, Any] = {}
     path_obligation_families: dict[str, set[str]] = defaultdict(set)
@@ -530,7 +700,7 @@ def _coverage_audit_for_pr(
         "candidate_path_count": sum(1 for item in records if item["candidate"]),
         "final_path_count": sum(1 for item in records if item["final"]),
     }
-    return {"pr_url": pr_url, "slug": slug, "summary": summary, "paths": records}
+    return {"pr_url": pr_url, "slug": slug, "summary": summary, "paths": records, "warnings": warnings}
 
 
 def _write_coverage_audit(path: Path, records: List[dict[str, Any]]) -> dict[str, Any]:
@@ -546,7 +716,10 @@ def _write_coverage_audit(path: Path, records: List[dict[str, Any]]) -> dict[str
         "candidate_path_count": sum(item["summary"]["candidate_path_count"] for item in records),
         "final_path_count": sum(item["summary"]["final_path_count"] for item in records),
     }
-    payload = {"schema_version": "1", "summary": totals, "prs": records}
+    warnings = sorted({warning for item in records for warning in item.get("warnings", [])})
+    if warnings:
+        totals["warnings"] = warnings
+    payload = {"schema_version": "1", "summary": totals, "prs": records, "warnings": warnings}
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
     return payload
 
@@ -1035,9 +1208,12 @@ def run_aacr_reviewer(
     cli_flags: Optional[dict[str, Any]] = None,
     snapshot_id: Optional[str] = None,
 ) -> ReviewerRunArtifacts:
+    check_mode_info = _resolve_aacr_review_check_mode(cli_flags)
     settings = get_settings()
     ensure_directories([LOG_DIR])
     logger = configure_logger(LOG_DIR / "reviewer_agent_aacr.log")
+    code_provenance = _code_provenance()
+    run_warnings = _code_provenance_warnings(code_provenance)
 
     resolved_run_id = run_id or uuid.uuid4().hex[:12]
     resolved_output_root = output_root or settings.reviewer_agent_output_dir
@@ -1220,6 +1396,14 @@ def run_aacr_reviewer(
         metadata = dict(result.get("metadata", {}))
         metadata["pr_finished_at"] = pr_finished_at
         metadata["llm_total_tokens"] = pr_tokens
+        metadata["review_check_mode"] = {
+            "effective": settings.reviewer_check_mode,
+            "source": check_mode_info["source"],
+            "nodes_reached": _review_check_nodes_reached(result),
+        }
+        metadata["code_provenance"] = code_provenance
+        if run_warnings:
+            metadata["run_warnings"] = sorted({*metadata.get("run_warnings", []), *run_warnings})
         result["metadata"] = metadata
         findings = result.get("final_findings") or result.get("findings", []) or []
         raw_path = _write_raw(raw_dir, slug, result)
@@ -1295,6 +1479,7 @@ def run_aacr_reviewer(
         "worker_model_key": settings.reviewer_worker_model_key,
         "reviewer_use_legacy_specialist_workers": settings.reviewer_use_legacy_specialist_workers,
         "reviewer_check_mode": settings.reviewer_check_mode,
+        "reviewer_check_mode_source": check_mode_info["source"],
         "pr_url_filter": pr_url_filter_for_meta,
         "dataset_range": (
             {"start": dataset_range.start, "end": dataset_range.end}
@@ -1306,6 +1491,8 @@ def run_aacr_reviewer(
         "basic_graph": use_basic_graph,
         "cli_flags": dict(cli_flags) if cli_flags else {},
         "mcp_preflight": mcp_preflight,
+        "code_provenance": code_provenance,
+        "run_warnings": run_warnings,
         "coverage_audit_path": str(coverage_audit_path.relative_to(run_dir)),
         "coverage_audit_summary": coverage_audit["summary"],
         "redis_checkpoint_cleanup_enabled": (
