@@ -91,15 +91,36 @@ def _graph_thread_id(run_id: str, pr_url: str, snapshot_data: Optional[Dict[str,
 
 
 def _effective_reviewer_mode(settings: Any, *, snapshot_resume: bool) -> dict[str, Any]:
+    check_mode = settings.reviewer_check_mode
     return {
         "graph": "full",
         "planner": "mental_model",
         "mandate_explorer": "enabled",
         "worker_path": "adversarial",
-        "check_mode": settings.reviewer_check_mode,
+        "check_mode": check_mode,
+        "check_nodes_reached": {
+            "compiler": check_mode in {"log_only", "enforced"},
+            "validator": check_mode in {"log_only", "enforced"},
+            "executor": check_mode == "enforced",
+            "evidence_gate": check_mode == "enforced",
+        },
         "snapshot_resume": snapshot_resume,
         "final_review": "review_adjudicator",
     }
+
+
+def _review_check_mode_source(cli_flags: Optional[dict[str, Any]]) -> str:
+    if cli_flags and cli_flags.get("review_check_mode") is not None:
+        return "cli"
+    if "REVIEW_REVIEWER_CHECK_MODE" in os.environ:
+        return "env"
+    return "settings_default"
+
+
+def _add_review_check_health_warning(row: dict[str, Any], warning: str) -> None:
+    warnings = set(json.loads(str(row.get("review_check_health_warnings") or "[]")))
+    warnings.add(warning)
+    row["review_check_health_warnings"] = json.dumps(sorted(warnings))
 
 
 def _prepare_output_dirs(output_root: Path, run_id: str) -> tuple[Path, Path, Path]:
@@ -1111,6 +1132,7 @@ def run_aacr_reviewer(
         snapshot_data = _load_snapshot_for_resume(snapshot_id, logger)
         logger.info("Snapshot repo for validation: %s", snapshot_data["repo_path"])
     effective_reviewer_mode = _effective_reviewer_mode(settings, snapshot_resume=bool(snapshot_data))
+    review_check_mode_source = _review_check_mode_source(cli_flags)
 
     logger.info(
         "Starting reviewer-graph AACR run run_id=%s dataset=%s output=%s trace=%s mode=%s",
@@ -1133,6 +1155,15 @@ def run_aacr_reviewer(
     pr_url_filter_for_meta = pr_url.strip() if pr_url else ""
     logger.info("Reviewer-graph AACR run will process %s unique PR URLs", len(selected_pr_urls))
     positive_samples_by_pr = _load_positive_samples_by_pr(DEFAULT_POSITIVE_SAMPLES_PATH)
+    run_warnings: set[str] = set()
+    if settings.reviewer_check_mode == "log_only" and any(
+        _positive_labels_for_pr(positive_samples_by_pr, url) for url in selected_pr_urls
+    ):
+        run_warnings.add("positive_eval_check_mode_log_only")
+        logger.warning(
+            "Positive-label evaluation is running with reviewer_check_mode=log_only; "
+            "review-check executor and evidence gate will not emit check candidates."
+        )
 
     enricher = GitHubPullRequestEnricher(
         logger=logger,
@@ -1311,9 +1342,9 @@ def run_aacr_reviewer(
         row["positive_candidate_path_count"] = coverage_record["summary"]["candidate_path_count"]
         row["positive_final_path_count"] = coverage_record["summary"]["final_path_count"]
         if positive_labels and int(row.get("check_candidate_count") or 0) == 0:
-            warnings = set(json.loads(str(row.get("review_check_health_warnings") or "[]")))
-            warnings.add("known_positive_no_draft_candidate")
-            row["review_check_health_warnings"] = json.dumps(sorted(warnings))
+            _add_review_check_health_warning(row, "known_positive_no_draft_candidate")
+        if positive_labels and settings.reviewer_check_mode == "log_only":
+            _add_review_check_health_warning(row, "positive_eval_check_mode_log_only")
         row["final_finding_count"] = len(findings)
         row["elapsed_ms"] = elapsed_ms
         row["token_usage"] = pr_tokens
@@ -1352,6 +1383,7 @@ def run_aacr_reviewer(
         "planner_model_key": settings.reviewer_planner_model_key,
         "worker_model_key": settings.reviewer_worker_model_key,
         "reviewer_check_mode": settings.reviewer_check_mode,
+        "reviewer_check_mode_source": review_check_mode_source,
         "effective_reviewer_mode": effective_reviewer_mode,
         "pr_url_filter": pr_url_filter_for_meta,
         "dataset_range": (
@@ -1363,6 +1395,7 @@ def run_aacr_reviewer(
         "trace": trace,
         "cli_flags": dict(cli_flags) if cli_flags else {},
         "mcp_preflight": mcp_preflight,
+        "run_warnings": sorted(run_warnings),
         "coverage_audit_path": str(coverage_audit_path.relative_to(run_dir)),
         "coverage_audit_summary": coverage_audit["summary"],
         "redis_checkpoint_cleanup_enabled": (

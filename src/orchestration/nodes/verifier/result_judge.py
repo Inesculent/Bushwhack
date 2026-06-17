@@ -450,6 +450,30 @@ def verifier_hint_flags_for_attempts(
     }
 
 
+def effective_verifier_verdict_for_attempts(
+    *,
+    verdict: VerifierVerdict,
+    rationale: str,
+    attempts: Sequence[VerifierAttemptRecord],
+    target_file_path: str = "",
+) -> Tuple[VerifierVerdict, str]:
+    """Downgrade refutations when setup failures made the harness untrustworthy."""
+    flags = verifier_hint_flags_for_attempts(
+        verdict=verdict,
+        attempts=attempts,
+        target_file_path=target_file_path,
+    )
+    if verdict == "refuted" and flags["harness_error"] and not flags["product_verified"]:
+        return (
+            "inconclusive",
+            (
+                f"{rationale} Runtime refutation ignored because at least one verifier "
+                "attempt had a harness/setup error."
+            ).strip(),
+        )
+    return verdict, rationale
+
+
 def build_retry_feedback(
     record: VerifierAttemptRecord,
     *,

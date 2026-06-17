@@ -140,7 +140,7 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help=(
             "Check-first reviewer ablation mode. Defaults to REVIEW_REVIEWER_CHECK_MODE "
-            "or 'off' from settings."
+            "or the configured settings default."
         ),
     )
     parser.add_argument(

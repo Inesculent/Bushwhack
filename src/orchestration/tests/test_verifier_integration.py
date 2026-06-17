@@ -1166,6 +1166,53 @@ def test_invoke_verifier_runner_records_env_repair_metadata() -> None:
     assert report.metadata["verifier_unrepaired_missing_modules"] == ["missing_dep", "heavy_dep"]
 
 
+def test_invoke_verifier_runner_downgrades_refuted_after_harness_error() -> None:
+    from src.orchestration.nodes.verifier.verifier_runner import invoke_verifier_for_candidate
+
+    harness = VerifierAttemptRecord(
+        attempt_number=1,
+        test_code="x",
+        exit_code=2,
+        stdout="STATUS: HARNESS_ERROR | import failed",
+        stderr="ModuleNotFoundError: No module named 'missing_dep'",
+    )
+    safe = VerifierAttemptRecord(
+        attempt_number=2,
+        test_code="x",
+        exit_code=0,
+        stdout="STATUS: SAFE | not reproduced",
+        stderr="",
+    )
+    with patch("src.orchestration.nodes.verifier.verifier_runner._sandbox_ok", return_value=True), \
+         patch("src.orchestration.nodes.verifier.verifier_runner.generate_test_script", return_value=("code", 0)), \
+         patch("src.orchestration.nodes.verifier.verifier_runner.execute_test_script", side_effect=[harness, safe]), \
+         patch("src.orchestration.nodes.verifier.verifier_runner.get_settings") as gs:
+        m = MagicMock()
+        m.verifier_enabled = True
+        m.verifier_skip_if_no_sandbox = True
+        m.verifier_max_attempts = 2
+        gs.return_value = m
+        report = invoke_verifier_for_candidate(
+            run_id="r1",
+            repo_path="/tmp/repo",
+            candidate={
+                "candidate_id": "c1",
+                "file_path": "pkg/mod.py",
+                "line_start": 1,
+                "line_end": 2,
+                "failure_mode": "crash",
+            },
+            focused_context_snippets="",
+            git_diff_excerpt="",
+            use_llm=False,
+        )
+
+    assert report.verdict == "inconclusive"
+    assert report.metadata["harness_error"] is True
+    assert report.metadata["product_verified"] is False
+    assert "harness/setup error" in report.final_rationale
+
+
 def test_verifier_advisory_omits_test_code() -> None:
     huge_code = "x = 1\n" * 5000
     vr = VerifierReport(

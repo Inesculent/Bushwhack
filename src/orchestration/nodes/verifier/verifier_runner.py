@@ -13,6 +13,7 @@ from src.domain.state import GraphState
 from src.domain.verifier_schemas import VerifierReport, VerifierVerdict
 from src.orchestration.nodes.verifier.result_judge import (
     build_retry_feedback,
+    effective_verifier_verdict_for_attempts,
     infer_verification_scope,
     judge_attempt,
     verifier_env_diagnostics_for_attempts,
@@ -164,6 +165,12 @@ def invoke_verifier_for_candidate(
         attempts.append(record)
 
         if verdict != "inconclusive":
+            verdict, rationale = effective_verifier_verdict_for_attempts(
+                verdict=verdict,
+                rationale=rationale,
+                attempts=attempts,
+                target_file_path=target_file_path,
+            )
             summary = (
                 f"Runtime verifier: {verdict} ({rationale}) scope={scope} attempts={attempt_idx}"
             )

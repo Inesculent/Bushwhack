@@ -5,6 +5,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
+from src.config import Settings
 from src.domain.state import GraphState
 from src.domain.verifier_schemas import VerifierAttemptRecord, VerifierReport
 from src.orchestration.nodes.verifier.result_judge import verifier_hint_flags_for_attempts
@@ -262,11 +263,11 @@ def test_verifier_graph_retries_after_harness_failure() -> None:
         return ("print('ok')", 10)
 
     with patch("src.orchestration.verifier_graph.get_settings") as gs:
-        m = MagicMock()
-        m.verifier_enabled = True
-        m.verifier_skip_if_no_sandbox = False
-        m.verifier_max_attempts = 3
-        gs.return_value = m
+        gs.return_value = Settings(
+            verifier_enabled=True,
+            verifier_skip_if_no_sandbox=False,
+            verifier_max_attempts=3,
+        )
 
         with patch("src.orchestration.verifier_graph._sandbox_ok", return_value=True), \
              patch("src.orchestration.verifier_graph._infer_verifier_repo_root", return_value="/repo"), \
@@ -282,9 +283,11 @@ def test_verifier_graph_retries_after_harness_failure() -> None:
     assert "signature_mismatch" in generate_calls[1]["retry_feedback"] or "harness_error" in generate_calls[1]["retry_feedback"] or "syntax_error" in generate_calls[1]["retry_feedback"]
     assert "Missing modules seen: missing_dep, heavy_dep" in generate_calls[1]["retry_feedback"]
     assert "Failed target import probes: pkg.mod" in generate_calls[1]["retry_feedback"]
-    assert final_state["verifier_verdict"] == "refuted"
+    assert final_state["verifier_verdict"] == "inconclusive"
+    assert "harness/setup error" in final_state["verifier_last_rationale"]
     hint = final_state["metadata"]["verifier_hints"]["c1"]
     assert hint["harness_error"] is True
+    assert hint["verdict"] == "inconclusive"
 
 
 def test_compiled_verifier_graph_integration() -> None:
@@ -292,11 +295,11 @@ def test_compiled_verifier_graph_integration() -> None:
     state = _minimal_state()
     
     with patch("src.orchestration.verifier_graph.get_settings") as gs:
-        m = MagicMock()
-        m.verifier_enabled = True
-        m.verifier_skip_if_no_sandbox = False
-        m.verifier_max_attempts = 1
-        gs.return_value = m
+        gs.return_value = Settings(
+            verifier_enabled=True,
+            verifier_skip_if_no_sandbox=False,
+            verifier_max_attempts=1,
+        )
         
         with patch("src.orchestration.verifier_graph._sandbox_ok", return_value=True), \
              patch("src.orchestration.verifier_graph._infer_verifier_repo_root", return_value="/repo"), \

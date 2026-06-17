@@ -124,10 +124,9 @@ def test_repairs_overlapping_class_range_when_claimed_branch_is_outside_slice() 
     fixed, reason = anchor_candidate_lines(cand, file_text=_STRING_COMPARE_TAIL)
     assert reason is None
     assert fixed is not None
-    assert (fixed.line_start, fixed.line_end) == class_line_range_in_file(
-        _STRING_COMPARE_TAIL,
-        "StringCompare",
-    )
+    assert (fixed.line_start, fixed.line_end) == (6, 13)
+    assert fixed.content == "StringCompare.execute lacks a terminal fallback return for unexpected mode values."
+    assert fixed.failure_mode == "Unexpected mode values fall through without returning the declared output shape."
 
 
 def test_drops_when_class_absent_and_lines_far_from_diff_anchor() -> None:

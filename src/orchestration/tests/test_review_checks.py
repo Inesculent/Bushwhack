@@ -42,10 +42,13 @@ from src.orchestration.context.surface_ledger import (
 )
 from src.reviewer_agent.harness import aacr
 from src.reviewer_agent.harness.aacr import (
+    _add_review_check_health_warning,
     _coverage_audit_for_pr,
+    _effective_reviewer_mode,
     _github_mcp_preflight,
     _load_positive_samples_by_pr,
     _positive_labels_for_pr,
+    _review_check_mode_source,
     _review_check_metrics,
     _write_coverage_audit,
     _write_raw,
@@ -4737,6 +4740,39 @@ def test_check_mode_routing(monkeypatch) -> None:
         lambda: Settings(reviewer_check_mode="enforced"),
     )
     assert critique_pipeline._route_after_review_check_validator({}) == "review_check_context_planner"
+
+
+def test_effective_reviewer_mode_default_reaches_executor() -> None:
+    mode = _effective_reviewer_mode(Settings(), snapshot_resume=False)
+
+    assert mode["check_mode"] == "enforced"
+    assert mode["check_nodes_reached"] == {
+        "compiler": True,
+        "validator": True,
+        "executor": True,
+        "evidence_gate": True,
+    }
+
+
+def test_review_check_mode_source_precedence(monkeypatch) -> None:
+    monkeypatch.delenv("REVIEW_REVIEWER_CHECK_MODE", raising=False)
+    assert _review_check_mode_source({}) == "settings_default"
+
+    monkeypatch.setenv("REVIEW_REVIEWER_CHECK_MODE", "log_only")
+    assert _review_check_mode_source({}) == "env"
+    assert _review_check_mode_source({"review_check_mode": "enforced"}) == "cli"
+
+
+def test_add_review_check_health_warning_deduplicates() -> None:
+    row = {"review_check_health_warnings": '["known_positive_no_draft_candidate"]'}
+
+    _add_review_check_health_warning(row, "positive_eval_check_mode_log_only")
+    _add_review_check_health_warning(row, "positive_eval_check_mode_log_only")
+
+    assert json.loads(row["review_check_health_warnings"]) == [
+        "known_positive_no_draft_candidate",
+        "positive_eval_check_mode_log_only",
+    ]
 
 
 def test_review_check_scout_routes_to_executor_only_when_new_checks_emitted() -> None:

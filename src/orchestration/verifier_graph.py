@@ -20,6 +20,7 @@ from src.infrastructure.llm.langsmith import configure_langsmith_environment
 from src.orchestration.nodes.verifier.result_judge import (
     build_retry_feedback,
     classify_attempt_failure,
+    effective_verifier_verdict_for_attempts,
     infer_verification_scope,
     judge_attempt,
     missing_modules_from_attempts,
@@ -191,6 +192,12 @@ def verifier_finalize_node(state: GraphState) -> Dict[str, Any]:
     rationale = state.get("verifier_last_rationale", "")
     scope = state.get("verifier_scope", "concrete_behavior")
     attempts = state.get("verifier_attempts", [])
+    verdict, rationale = effective_verifier_verdict_for_attempts(
+        verdict=verdict,
+        rationale=rationale,
+        attempts=attempts,
+        target_file_path=str(cand_dict.get("file_path") or ""),
+    )
 
     if state.get("verifier_skipped_reason"):
         summary = f"Verifier skipped: {state.get('verifier_skipped_reason')}"
@@ -321,6 +328,8 @@ def verifier_finalize_node(state: GraphState) -> Dict[str, Any]:
 
     return {
         "verifier_reports": [report],
+        "verifier_verdict": verdict,
+        "verifier_last_rationale": rationale,
         "metadata": meta,
         "node_history": ["verifier_finalize"],
     }

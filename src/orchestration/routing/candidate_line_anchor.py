@@ -165,6 +165,93 @@ def _candidate_range_misses_claimed_branch(
     return any(term.lower() in class_body and term.lower() not in current for term in terms)
 
 
+def _branch_block_for_term(file_text: str, scope_start: int, scope_end: int, term: str) -> str:
+    lines = file_text.splitlines()
+    term_lower = term.lower()
+    start: Optional[int] = None
+    start_indent = 0
+    for idx in range(max(1, scope_start), min(len(lines), scope_end) + 1):
+        raw = lines[idx - 1]
+        if term_lower not in raw.lower():
+            continue
+        if not _MODE_COMPARISON_RE.search(raw):
+            continue
+        start = idx
+        start_indent = len(raw) - len(raw.lstrip(" "))
+        break
+    if start is None:
+        return ""
+    end = scope_end
+    for idx in range(start + 1, min(len(lines), scope_end) + 1):
+        raw = lines[idx - 1]
+        stripped = raw.strip()
+        if not stripped:
+            continue
+        indent = len(raw) - len(raw.lstrip(" "))
+        if indent <= start_indent and (
+            stripped.startswith(("elif ", "else:"))
+            or _FUNC_DEF_RE.match(stripped)
+            or _CLASS_DEF_RE.match(stripped)
+        ):
+            end = idx - 1
+            break
+    return _line_slice(file_text, start, end)
+
+
+def _method_lacks_terminal_fallback(file_text: str, method_start: int, method_end: int) -> bool:
+    body = _line_slice(file_text, method_start, method_end)
+    has_branch_chain = bool(re.search(r"^\s*elif\s+", body, flags=re.MULTILINE))
+    has_terminal_else = bool(re.search(r"^\s*else\s*:", body, flags=re.MULTILINE))
+    return has_branch_chain and not has_terminal_else
+
+
+def _branch_fallthrough_claim_repair(
+    file_text: str,
+    candidate: CandidateFinding,
+    *,
+    class_name: str,
+    method_name: str,
+    method_start: int,
+    method_end: int,
+) -> dict[str, object]:
+    blob = " ".join(
+        part
+        for part in (
+            candidate.content,
+            candidate.failure_mode,
+            candidate.evidence_summary,
+            candidate.recommendation,
+            candidate.counterexample,
+        )
+        if part
+    ).lower()
+    if not any(marker in blob for marker in ("fall through", "falls through", "fallthrough", "missing return", "missing_return", "implicit none")):
+        return {}
+    terms = _branch_terms_from_claim(
+        candidate.content or "",
+        candidate.failure_mode or "",
+        candidate.evidence_summary or "",
+        candidate.recommendation or "",
+        candidate.counterexample or "",
+    )
+    if not terms or not _method_lacks_terminal_fallback(file_text, method_start, method_end):
+        return {}
+    returning_terms = [
+        term
+        for term in terms
+        if "return" in _branch_block_for_term(file_text, method_start, method_end, term)
+    ]
+    if not returning_terms:
+        return {}
+    subject = f"{class_name}.{method_name}"
+    return {
+        "line_start": method_start,
+        "line_end": method_end,
+        "content": f"{subject} lacks a terminal fallback return for unexpected mode values.",
+        "failure_mode": "Unexpected mode values fall through without returning the declared output shape.",
+    }
+
+
 def anchor_candidate_lines(
     candidate: CandidateFinding,
     *,
@@ -203,11 +290,21 @@ def anchor_candidate_lines(
         )
         if _ranges_overlap(ls, le, c_start, c_end):
             updates: dict[str, object] = {}
+            fallback_updates: dict[str, object] = {}
             if method_range is not None:
                 m_start, m_end = method_range
                 if not _ranges_overlap(ls, le, m_start, m_end) or (le - ls) > (m_end - m_start + 20):
                     updates.update({"line_start": m_start, "line_end": m_end})
-            if _candidate_range_misses_claimed_branch(file_text, candidate, c_start, c_end):
+                fallback_updates = _branch_fallthrough_claim_repair(
+                    file_text,
+                    candidate,
+                    class_name=subject,
+                    method_name=method or "",
+                    method_start=m_start,
+                    method_end=m_end,
+                )
+                updates.update(fallback_updates)
+            if not fallback_updates and _candidate_range_misses_claimed_branch(file_text, candidate, c_start, c_end):
                 updates.update({"line_start": c_start, "line_end": c_end})
             if subject.lower() not in (candidate.content or "").lower():
                 updates["content"] = f"class {subject}:"
