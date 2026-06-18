@@ -369,7 +369,12 @@ def make_review_check_compiler_node(
 
         resolved = settings or get_settings()
         slot = _pipeline_slot(state, task.id)
-        lens_selection = compiler_support.compiler_lens_selection_diagnostics(task, slot)
+        lens_selection = compiler_support.compiler_lens_selection_diagnostics(
+            task,
+            slot,
+            state=state,
+            settings=resolved,
+        )
         warnings: List[str] = []
         llm_tokens = 0
         llm_trace: List[Dict[str, Any]] = []
@@ -415,7 +420,12 @@ def make_review_check_compiler_node(
                     model_key=selected_model,
                     max_completion_tokens=resolved.reviewer_critiquer_max_completion_tokens,
                 )
-                prompt = compiler_support.render_compiler_prompt(state, task, slot)
+                prompt = compiler_support.render_compiler_prompt(
+                    state,
+                    task,
+                    slot,
+                    settings=resolved,
+                )
                 traced = trace_llm_call(
                     llm,
                     prompt,
@@ -599,6 +609,10 @@ def make_review_check_compiler_node(
             check_origins=check_origins,
         )
         warnings.extend(coverage_floor.get("warnings", []))
+        lens_counts = compiler_support.checks_per_selected_lens(
+            checks,
+            lens_selection.get("selected_keys", []) if isinstance(lens_selection, dict) else [],
+        )
 
         metadata = _set_task_review_checks_meta(
             state,
@@ -612,6 +626,7 @@ def make_review_check_compiler_node(
                 "coverage_critic": coverage_critic_meta,
                 "compiler_warnings": warnings,
                 "contract_lens_selection": lens_selection,
+                "checks_per_selected_lens": lens_counts,
             },
         )
         if _trace_enabled(state):

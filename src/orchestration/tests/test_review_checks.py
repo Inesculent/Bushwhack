@@ -622,8 +622,34 @@ def test_review_check_compiler_records_checks_and_trace(monkeypatch) -> None:
     assert task_meta["compiled_count"] == 1
     assert task_meta["contract_lens_selection"]["selected_keys"]
     assert "scores" in task_meta["contract_lens_selection"]
+    assert "checks_per_selected_lens" in task_meta
     assert out["token_usage"] == 7
     assert any(record["node"] == "review_check_compiler" for record in out["llm_trace"])
+
+
+def test_checks_per_selected_lens_uses_open_metadata() -> None:
+    checks = [
+        _check(
+            check_id="shape",
+            owned_contract_scope="lens:shape_cardinality:record-output",
+            issue_family="lens:shape_cardinality",
+        ),
+        _check(
+            check_id="mode",
+            diff_signal_family="lens:mode_variant_completeness",
+        ),
+    ]
+
+    counts = compiler_support.checks_per_selected_lens(
+        checks,
+        ["shape_cardinality", "mode_variant_completeness", "work_amplification"],
+    )
+
+    assert counts == {
+        "shape_cardinality": 1,
+        "mode_variant_completeness": 1,
+        "work_amplification": 0,
+    }
 
 
 def test_review_check_compiler_planner_misalignment_does_not_fan_out_coverage_critic(monkeypatch) -> None:
@@ -2105,6 +2131,126 @@ def test_review_check_compiler_prompt_includes_ranked_obligation_reasons(monkeyp
     assert "relevance_reasons" in prompt
     assert "## Mental Model Contract Material" in prompt
     assert "RETURN_TYPES requires a string result" in prompt
+
+
+def test_compiler_lens_selection_uses_contract_question_text(tmp_path) -> None:
+    settings = Settings(snapshot_base_path=str(tmp_path))
+    surface = ReviewSurface(
+        surface_id="surface:refresh",
+        name="RefreshState.execute",
+        kind="method",
+        file_path="src/app.py",
+        line_start=1,
+        line_end=10,
+        confidence=0.95,
+    )
+    spec = BehavioralSpec(
+        intent_summary="refresh state",
+        surfaces=[surface],
+        contract_questions=[
+            ContractQuestion(
+                owner="RefreshState.execute",
+                surface_id=surface.surface_id,
+                dimension="lifecycle_state_ordering",
+                expected_behavior="RefreshState.execute consumes the current cached state after async refresh.",
+                contract_evidence="The owner name and caller contract require fresh state.",
+                trigger_variant="stale cached snapshot after await",
+                operation="capture cached state, await refresh, consume state",
+                breach_question="Can the changed path use a stale captured state after async refresh?",
+                direct_suppressor="The code reloads state after the await before consumption.",
+                source_confidence=0.9,
+            )
+        ],
+    )
+    ref, _ = BehavioralSpecStore(settings).write("r1", spec)
+    task = _task().model_copy(update={"surface_ids": [surface.surface_id]})
+    state = _state(
+        behavioral_spec_ref=ref,
+        task_registry={task.id: task},
+        metadata={
+            **_state()["metadata"],
+            "mental_model": {"surface_ledger": [surface.model_dump(mode="json")]},
+            "critique_pipeline": {
+                "by_task": {
+                    task.id: {
+                        "direct_context": "def execute():\n    pass\n",
+                        "coverage_obligations": [],
+                    }
+                }
+            },
+        },
+    )
+    slot = state["metadata"]["critique_pipeline"]["by_task"][task.id]
+
+    diagnostics = compiler_support.compiler_lens_selection_diagnostics(
+        task,
+        slot,
+        state=state,  # type: ignore[arg-type]
+        settings=settings,
+    )
+
+    assert "time_state_freshness" in diagnostics["selected_keys"]
+
+
+def test_compiler_prompt_renders_lens_metadata_and_provenance_instruction(tmp_path) -> None:
+    settings = Settings(snapshot_base_path=str(tmp_path))
+    surface = ReviewSurface(
+        surface_id="surface:emit",
+        name="EmitRecord.execute",
+        kind="method",
+        file_path="src/app.py",
+        line_start=1,
+        line_end=12,
+        confidence=0.95,
+    )
+    spec = BehavioralSpec(
+        intent_summary="emit records",
+        surfaces=[surface],
+        contract_questions=[
+            ContractQuestion(
+                owner="EmitRecord.execute",
+                surface_id=surface.surface_id,
+                dimension="data_preservation_cardinality",
+                expected_behavior="EmitRecord.execute preserves every field in each emitted record.",
+                contract_evidence="The output schema names a full record payload.",
+                trigger_variant="multi-field emitted record",
+                operation="select record fields and serialize output",
+                breach_question="Can the changed path serialize only part of each record?",
+                source_confidence=0.9,
+            )
+        ],
+    )
+    ref, _ = BehavioralSpecStore(settings).write("r1", spec)
+    task = _task().model_copy(update={"surface_ids": [surface.surface_id]})
+    state = _state(
+        behavioral_spec_ref=ref,
+        task_registry={task.id: task},
+        metadata={
+            **_state()["metadata"],
+            "mental_model": {"surface_ledger": [surface.model_dump(mode="json")]},
+            "critique_pipeline": {
+                "by_task": {
+                    task.id: {
+                        "direct_context": "def execute(records):\n    return records\n",
+                        "coverage_obligations": [],
+                    }
+                }
+            },
+        },
+    )
+    slot = state["metadata"]["critique_pipeline"]["by_task"][task.id]
+
+    prompt = compiler_support.render_compiler_prompt(
+        state,
+        task,
+        slot,
+        settings=settings,
+    )  # type: ignore[arg-type]
+
+    assert "## Selected Contract Lens Metadata" in prompt
+    assert '"key": "shape_cardinality"' in prompt
+    assert "One selected lens may produce multiple checks" in prompt
+    assert "Preserve lens-card provenance" in prompt
 
 
 def test_review_check_compiler_coverage_floor_respects_cap(monkeypatch) -> None:

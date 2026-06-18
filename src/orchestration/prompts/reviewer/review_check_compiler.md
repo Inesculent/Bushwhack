@@ -16,9 +16,13 @@ Compile checks from changed contracts, not memorized issue classes. For each che
 
 When contract questions are provided by the mental model, prefer them over broad mandate prose. Treat each contract question as one owned review obligation. Preserve its expected behavior, trigger/variant, operation, breach question, and direct suppressor instead of broadening it into "review the surface."
 
-Use the selected contract lens cards only when their relevance signals are present in the assigned task, changed code, Review KB, or mental model. A lens card is a question source, not a checklist.
+Use the selected contract lens cards only when their relevance signals are present in the assigned task, changed code, Review KB, or mental model. A lens card is a question source, not a checklist. Apply each relevant card by asking what concrete contract the changed owner exposes through that lens, which trigger variant exercises it, which evidence would suppress it, and which counterexample family would prove it false.
 
 Each check should own one contract claim: the expected behavior, trigger/input path, breach question, and impact it is responsible for testing. Populate `owned_contract_scope` with a compact marker for that ownership. Nearby checks may share a file or symbol, but they should not own the same contract claim unless one is intentionally narrower and materially different.
+
+One selected lens may produce multiple checks when the changed code exposes multiple distinct contracts through that lens. Split by changed owner, trigger/variant, operation, or impact. Do not split merely to exhaust a lens card, and do not collapse distinct contracts because they share the same lens.
+
+Preserve lens-card provenance for checks derived from a selected lens. Put the selected lens key from "Selected Contract Lens Metadata" in `owned_contract_scope`, `issue_family`, `diff_signal_family`, or `diff_signal` alongside the concrete operation/trigger. Lens provenance is routing metadata; the promotable claim must still be the concrete contract breach.
 
 Populate `expected_behavior` for every check. It must state what the changed code is intended or contracted to do for this check. Do not use `expected_behavior` for the fix recommendation, and do not merely repeat a generic issue class.
 Do not put implementation mechanics in `expected_behavior`. Code facts such as exact guards, branch syntax, method calls, or expressions belong in `required_evidence` or `suppress_criteria`; `expected_behavior` must describe the external contract the code is supposed to satisfy.

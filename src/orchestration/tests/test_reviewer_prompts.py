@@ -22,6 +22,7 @@ def test_reviewer_prompt_files_exist_for_all_roles():
         "workers/general.md",
         "mental_model/intent_extractor.md",
         "mental_model/mandate_synthesizer.md",
+        "mental_model/owner_contract_questions.md",
         "mental_model/mandate_explorer.md",
         "mental_model/mandate_patch.md",
         "mental_model/joint_plan_critic.md",
@@ -217,6 +218,22 @@ def test_action_contract_prompts_preserve_value_flow_focus() -> None:
     assert "produced value, selected/transformed value" in patch
     assert "Treat `expected_behavior` as the action contract" in executor
     assert "use `unsupported`" in executor
+
+
+def test_lens_driven_prompts_preserve_general_contract_discovery() -> None:
+    compiler = load_reviewer_prompt("review_check_compiler.md")
+    owner_questions = load_reviewer_prompt("mental_model/owner_contract_questions.md")
+    adjudicator = load_reviewer_prompt("review_adjudicator.md")
+
+    assert "question source, not a checklist" in compiler
+    assert "One selected lens may produce multiple checks" in compiler
+    assert "Preserve lens-card provenance" in compiler
+    assert "Through each relevant review lens" in owner_questions
+    assert "Use lenses to discover contracts" in owner_questions
+    assert "Prefer concrete lens-backed behavioral defects" in adjudicator
+    for text in (compiler, owner_questions, adjudicator):
+        for token in _BENCHMARK_SPECIFIC_TOKENS + _NAMED_VULNERABILITY_TOKENS:
+            assert token not in text
 
 
 def test_high_volume_structured_prompts_include_output_budget() -> None:

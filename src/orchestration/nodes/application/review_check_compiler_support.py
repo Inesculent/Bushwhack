@@ -15,6 +15,7 @@ from src.orchestration.context.contract_vocabulary import (
     has_any_contract_term,
 )
 from src.orchestration.context.lens_cards import (
+    LensCard,
     format_lens_cards,
     lens_card_selection_diagnostics,
     select_lens_cards,
@@ -323,6 +324,72 @@ def json_for_prompt(value: Any, *, max_chars: int = 8000) -> str:
     if len(text) > max_chars:
         return text[: max_chars - 24].rstrip() + "\n... [truncated]"
     return text
+
+
+def _lens_text_from_slot(
+    slot: Mapping[str, Any],
+    contract_questions: Sequence[Mapping[str, Any]] = (),
+) -> str:
+    question_text = "\n".join(
+        " ".join(
+            str(question.get(key) or "")
+            for key in (
+                "owner",
+                "dimension",
+                "expected_behavior",
+                "trigger_variant",
+                "operation",
+                "breach_question",
+                "direct_suppressor",
+            )
+        )
+        for question in contract_questions
+        if isinstance(question, Mapping)
+    )
+    return "\n".join(
+        part
+        for part in (
+            str(slot.get("direct_context") or ""),
+            str(slot.get("mental_model_excerpt") or ""),
+            str(slot.get("review_kb_excerpt") or ""),
+            question_text,
+        )
+        if part.strip()
+    )
+
+
+def _lens_metadata(cards: Sequence[LensCard]) -> List[Dict[str, Any]]:
+    return [
+        {
+            "key": card.key,
+            "question": card.question,
+            "contract_question_count": len(card.contract_questions),
+            "counterexample_families": list(card.counterexample_families),
+        }
+        for card in cards
+    ]
+
+
+def checks_per_selected_lens(
+    checks: Sequence[ReviewCheck],
+    selected_keys: Sequence[str],
+) -> Dict[str, int]:
+    counts = {str(key): 0 for key in selected_keys if str(key).strip()}
+    if not counts:
+        return {}
+    for check in checks:
+        blob = " ".join(
+            [
+                check.owned_contract_scope,
+                check.issue_family,
+                check.diff_signal_family,
+                check.diff_signal,
+            ]
+        ).lower()
+        for key in counts:
+            if key.lower() in blob:
+                counts[key] += 1
+    return counts
 
 
 def dimension_to_lens(dimension: str) -> str:
@@ -2330,11 +2397,17 @@ def normalize_compiled_checks(
     return normalized
 
 
-def render_compiler_prompt(state: GraphState, task: ReviewTask, slot: Mapping[str, Any]) -> str:
+def render_compiler_prompt(
+    state: GraphState,
+    task: ReviewTask,
+    slot: Mapping[str, Any],
+    *,
+    settings: Settings | None = None,
+) -> str:
     ranked_obligations = ranked_coverage_obligations(task, slot)
     ledger = surface_ledger_from_state(state)
     task_surface_ids = surface_ids_for_task(task, ledger) if ledger else task.surface_ids
-    spec = behavioral_spec_from_state(state, get_settings())
+    spec = behavioral_spec_from_state(state, settings or get_settings())
     contract_questions = []
     if spec is not None and spec.contract_questions:
         task_surface_id_set = set(task_surface_ids)
@@ -2344,6 +2417,13 @@ def render_compiler_prompt(state: GraphState, task: ReviewTask, slot: Mapping[st
             if question.surface_id in task_surface_id_set
             and _task_owns_contract_question(state, task, question, ledger)
         ][:12]
+    lens_text = _lens_text_from_slot(slot, contract_questions)
+    selected_lens_cards = select_lens_cards(
+        task=task,
+        text=lens_text,
+        obligations=ranked_obligations,
+        max_cards=4,
+    )
     te = slot.get("task_evidence") if isinstance(slot.get("task_evidence"), dict) else {}
     omitted_prompt_files = te.get("omitted_prompt_files") if isinstance(te.get("omitted_prompt_files"), list) else []
     primary_files = te.get("primary_files") if isinstance(te.get("primary_files"), list) else []
@@ -2373,15 +2453,11 @@ def render_compiler_prompt(state: GraphState, task: ReviewTask, slot: Mapping[st
             f"- {line}" for line in mental_model_contract_lines(slot)
         ),
         "Selected Contract Lens Cards": format_lens_cards(
-            select_lens_cards(
-                task=task,
-                text="\n".join(
-                    str(slot.get(key) or "")
-                    for key in ("direct_context", "mental_model_excerpt", "review_kb_excerpt")
-                ),
-                obligations=ranked_obligations,
-                max_cards=4,
-            )
+            selected_lens_cards
+        ),
+        "Selected Contract Lens Metadata": json_for_prompt(
+            _lens_metadata(selected_lens_cards),
+            max_chars=5000,
         ),
         "Ranked Coverage Obligations": json_for_prompt(ranked_obligations, max_chars=15000),
         "Available Lenses": ", ".join(REVIEW_CHECK_LENSES),
@@ -2392,12 +2468,25 @@ def render_compiler_prompt(state: GraphState, task: ReviewTask, slot: Mapping[st
 def compiler_lens_selection_diagnostics(
     task: ReviewTask,
     slot: Mapping[str, Any],
+    *,
+    state: GraphState | None = None,
+    settings: Settings | None = None,
 ) -> Dict[str, Any]:
     ranked_obligations = ranked_coverage_obligations(task, slot)
-    text = "\n".join(
-        str(slot.get(key) or "")
-        for key in ("direct_context", "mental_model_excerpt", "review_kb_excerpt")
-    )
+    contract_questions: list[dict[str, Any]] = []
+    if state is not None:
+        ledger = surface_ledger_from_state(state)
+        task_surface_ids = surface_ids_for_task(task, ledger) if ledger else task.surface_ids
+        spec = behavioral_spec_from_state(state, settings or get_settings())
+        if spec is not None and spec.contract_questions:
+            task_surface_id_set = set(task_surface_ids)
+            contract_questions = [
+                question.model_dump(mode="json")
+                for question in spec.contract_questions
+                if question.surface_id in task_surface_id_set
+                and _task_owns_contract_question(state, task, question, ledger)
+            ][:12]
+    text = _lens_text_from_slot(slot, contract_questions)
     return lens_card_selection_diagnostics(
         task=task,
         text=text,

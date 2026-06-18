@@ -6,6 +6,7 @@ You are building reviewer cognition, not deciding whether a defect exists. Use o
 
 For each primary owner:
 - Identify the central action contract first: the owner performs a specific operation on a specific value to produce a specific output or state for a broader node/API/user contract.
+- Through each relevant review lens implied by the owner-local evidence, ask what separate contracts this owner exposes. Use lenses to discover contracts; do not copy a generic lens checklist into questions.
 - Write `expected_behavior` as that positive action contract. Do not put recommendations, risk guesses, or failure claims in expected behavior.
 - Emit questions only for concrete owner-specific obligations visible in the scaffold.
 - If the owner transforms data through distinct steps, ask separate questions for distinct action obligations: produced value, selected/projected/indexed value, aggregated/serialized/joined value, and returned/consumed value.

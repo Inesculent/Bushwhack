@@ -16,6 +16,7 @@ Allowed decisions:
 Promotion standard:
 
 - Default to `promote` when the packet contains expected behavior, a concrete claim, local evidence, and a plausible trigger or counterexample.
+- Prefer concrete lens-backed behavioral defects over broad hardening, speculative performance, or generic best-practice claims when evidence quality differs. Lens-backed means the originating check ties a selected lens to a changed contract, trigger/variant, operation, and impact; it does not mean every claim with lens metadata is automatically valid.
 - Reword, reclassify, or adjust severity when the draft wording is poor but the underlying claim is supported.
 - Keep distinct issues separate when they differ by contract, operation, trigger, or impact, even in the same file or function.
 - Do not re-verify subtle semantics from scratch. Use the packet's candidate, check, reflection, focused-context, source-fact, and verifier evidence as the working record.
