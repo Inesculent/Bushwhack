@@ -11,7 +11,10 @@ by default.
 
 ```mermaid
 flowchart TD
-    start([START]) --> routeInitial{Initial context route}
+    start([START]) --> docsPrebrief{Docs pre-brief enabled and not done?}
+    docsPrebrief -->|yes| docsPrebriefNode[docs_prebrief]
+    docsPrebrief -->|no| routeInitial{Initial context route}
+    docsPrebriefNode --> routeInitial
     routeInitial -->|local repo_path| structuralExtractor[structural_extractor]
     routeInitial -->|remote repo URL| sandboxStructuralExtractor[sandbox_structural_extractor]
     routeInitial -->|preflight + structural graph already present| intentExtractor[intent_extractor]
@@ -19,15 +22,19 @@ flowchart TD
     structuralExtractor --> semanticMerge[semantic_merge]
     sandboxStructuralExtractor --> semanticMerge
     semanticMerge --> intentExtractor
-    intentExtractor --> mandateExplorer[mandate_explorer]
+    intentExtractor --> reviewHistoryContext[review_history_context]
+    reviewHistoryContext -->|history enabled / enough context| mandateExplorer[mandate_explorer]
+    reviewHistoryContext -->|skip bootstrap| mandatePatch[mandate_patch]
     mandateExplorer --> mandatePatch[mandate_patch]
     mandatePatch --> draftPlanner[draft_planner]
+    mandatePatch -->|plan revision requested| planRevision
     draftPlanner --> planCritic[plan_critic]
-    planCritic -->|aligned| planEmit[plan_emit]
+    planCritic -->|aligned| mandateFinalize[mandate_finalize]
     planCritic -->|needs more mandate evidence| targetedExplorer[mandate_explorer_targeted]
     targetedExplorer --> mandatePatch
     planCritic -->|revise plan| planRevision[plan_revision]
     planRevision --> planCritic
+    mandateFinalize --> planEmit[plan_emit]
     planEmit --> snapshotPin[snapshot_pin]
 
     snapshotPin --> routeCritiqueTasks{Fan out planned tasks}
@@ -37,15 +44,28 @@ flowchart TD
     mentalEnricher -->|log_only or enforced| reviewCheckCompiler[review_check_compiler]
     reviewCheckCompiler --> reviewCheckValidator[review_check_validator]
     reviewCheckValidator -->|log_only| generalCritiquer
-    reviewCheckValidator -->|enforced| reviewCheckExecutor[review_check_executor]
+    reviewCheckValidator -->|enforced| reviewCheckContextPlanner[review_check_context_planner]
+    reviewCheckContextPlanner --> reviewCheckFocusedContext[review_check_focused_context]
+    reviewCheckFocusedContext --> reviewCheckExecutor[review_check_executor]
+    reviewCheckExecutor -->|more context needed| reviewCheckContextPlanner
     reviewCheckExecutor --> evidenceGate[review_check_evidence_gate]
+    evidenceGate -->|optional scout| reviewCheckScout[review_check_scout]
+    reviewCheckScout -->|emitted checks| reviewCheckExecutor
+    reviewCheckScout -->|done| initialFocusedContext
     evidenceGate --> initialFocusedContext[initial_focused_context]
     generalCritiquer --> initialFocusedContext
-    initialFocusedContext --> adversarialReflection[adversarial_reflection]
+    initialFocusedContext --> reviewEvidenceTriage[review_evidence_triage]
+    reviewEvidenceTriage --> adversarialReflection[adversarial_reflection]
 
     adversarialReflection --> needsContext{Any routed reflection needs context?}
-    needsContext -->|yes| focusedContext[focused_context]
-    focusedContext --> routeCritiqueRevision{Route critique revision}
+    needsContext -->|focused request| focusedContext[focused_context]
+    needsContext -->|verification/revision needed| postReflectionEvidence[post_reflection_evidence_pass]
+    focusedContext --> routeAfterFocused{Verifier or critique revision}
+    postReflectionEvidence --> routeAfterFocused
+    routeAfterFocused -->|Send eligible candidates| verifierSubgraph[verifier_subgraph]
+    verifierSubgraph --> postVerifierGate[post_verifier_gate]
+    postVerifierGate --> routeCritiqueRevision{Route critique revision}
+    routeAfterFocused -->|no verifier work| routeCritiqueRevision
     routeCritiqueRevision -->|Send per shard| critiqueRevisionDigest[critique_revision_digest]
     critiqueRevisionDigest --> critiqueRevisionReduce[critique_revision_reduce]
     critiqueRevisionReduce --> reviewAdjudicator[review_adjudicator]
@@ -60,14 +80,14 @@ flowchart TD
 
 After Phase 2 `semantic_merge`, or when resuming from a loaded exploration
 snapshot (`snapshot_source: "loaded"`), the graph runs the same mental-model path:
-`intent_extractor`, `mandate_explorer`, `mandate_patch`, actor-critic planning
-(`draft_planner`, `plan_critic`, `plan_revision`, `plan_emit`), then
-`snapshot_pin`. The full `BehavioralSpec` is written to disk via
+`intent_extractor`, `review_history_context`, `mandate_explorer`, `mandate_patch`,
+actor-critic planning (`draft_planner`, `plan_critic`, `plan_revision`,
+`mandate_finalize`, `plan_emit`), then `snapshot_pin`. The full `BehavioralSpec` is written to disk via
 `BehavioralSpecStore`; only `behavioral_spec_ref` and `cache_refs` appear on
 `GraphState`.
 
 - `Settings.reviewer_check_mode` / CLI `--review-check-mode`:
-  - **`enforced` (default):** The current check-first path. After `mental_model_context_enricher`, the graph runs `review_check_compiler`, validates and executes checks, gates evidence-backed candidates, then continues through reflection and adjudication.
+  - **`enforced` (default):** The current check-first path. After `mental_model_context_enricher`, the graph runs `review_check_compiler`, validates checks, gathers check-focused context, executes checks, gates evidence-backed candidates, then continues through evidence triage, reflection, optional verifier, critique revision, and adjudication.
   - **`log_only`:** Compiles and validates review checks from the mental model, then still runs `general_critiquer`.
   - **`off`:** Candidate-first debug comparison after `mental_model_context_enricher`; the task proceeds to `general_critiquer`.
 
@@ -95,7 +115,7 @@ Each planned task runs the compiled subgraph `critique_review_subgraph`:
 
 `critique_context_probe` -> `mental_model_context_enricher` -> either `general_critiquer` or the check-first review-check chain, depending on `reviewer_check_mode`.
 
-This ensures direct code context is gathered **before** optional `query_mental_model` calls. In `enforced` mode, contract questions and surface invariants from the `BehavioralSpec` are converted into concrete review checks before any candidate can be promoted. Parallel `Send` payloads use `payload_for_send` to avoid copying forbidden large keys.
+This ensures direct code context is gathered **before** optional `query_mental_model` calls. In `enforced` mode, contract questions and surface invariants from the `BehavioralSpec` are converted into concrete review checks; the validator routes through `review_check_context_planner` and `review_check_focused_context` before execution, and the evidence gate can run a bounded `review_check_scout` loop before ending the branch. Parallel `Send` payloads use `payload_for_send` to avoid copying forbidden large keys.
 
 ### Exploration Ledger
 
@@ -110,9 +130,11 @@ When the harness loads a prior exploration snapshot (for example `reviewer-agent
 The graph state type is `GraphState` in `src/domain/state.py`. Important channels:
 
 - Inputs: `run_id`, `repo_path`, `git_diff`.
+- Documentation pre-brief: `docs_prebrief_summary`, `docs_prebrief_sources`.
 - Preflight and structural context: `diff_manifest_ref`, `preflight_summary`, `preflight_errors`, `preflight_warnings`, `structural_graph_node_link`, `structural_topology`, `structural_extraction_gaps`.
 - Planning state: `root_task_id`, `task_registry`, `task_status_by_id`.
-- Adversarial review state: `candidate_findings`, `reflection_reports`, `focused_context_requests`, `focused_context_results`, `critique_revision_digests` (map-step outputs merged by shard id).
+- Adversarial review state: `candidate_findings`, `review_checks`, `review_check_results`, `invalid_review_checks`, `reflection_reports`, `focused_context_requests`, `focused_context_results`, `critique_revision_digests` (map-step outputs merged by shard id).
+- Runtime verifier: `source_facts`, `verifier_candidate`, `verifier_reports`.
 - Mental model: `behavioral_spec_ref` (pointer only), `exploration_ledger` (bounded entries for `query_mental_model` and metrics).
 - Outputs: `findings` and `final_findings`.
 - Debugging: `metadata`, `node_history`, `token_usage`.
@@ -194,10 +216,11 @@ Each subgraph branch:
 2. Collects direct context with `critique_context_probe`.
 3. Pulls task-scoped BehavioralSpec and Review KB excerpts in `mental_model_context_enricher`.
 4. In the default `reviewer_check_mode=enforced`, compiles and executes concrete review checks, then promotes only evidence-gated candidates.
-5. If `reviewer_check_mode=off`, prompts `general_critiquer` to produce `CandidateFinding` objects for debug comparison.
-6. Marks the task completed in `task_status_by_id`.
+5. Optionally asks `review_check_scout` for more checks when evidence suggests a gap.
+6. If `reviewer_check_mode=off`, prompts `general_critiquer` to produce `CandidateFinding` objects for debug comparison.
+7. Marks the task completed in `task_status_by_id`.
 
-Execution continues through `initial_focused_context` (same bounded fulfiller as post-reflection focused context) before `adversarial_reflection`.
+Execution continues through `initial_focused_context` (same bounded fulfiller as post-reflection focused context), then `review_evidence_triage`, before `adversarial_reflection`.
 
 In candidate-first debug mode, the general critiquer is also responsible for routing each candidate to one or more reflector domains through `CandidateFinding.reflection_specialties`. Most findings should route to exactly one domain. Cross-domain findings can route to multiple domains. In the default check-first mode, candidates are produced by the review-check executor and then pass through the same downstream reflection/adjudication stages.
 
@@ -237,7 +260,8 @@ After reflection, `_route_focused_after_reflection` checks for any `ReflectionRe
 - `verdict == "needs_context"`
 - a non-null `focused_request`
 
-If none exist, the graph goes directly to cleanup.
+If none exist, the graph goes directly to `review_adjudicator`.
+If any report asks for `needs_verification`, or if revision candidates exist without a second focused request, the graph routes through `post_reflection_evidence_pass` so source-only verifier facts, runtime verifier fan-out, and critique revision can still run.
 
 If any exist:
 
@@ -270,6 +294,19 @@ Settings (`Settings` in `src/config.py`) tune shard sizing:
 - `reviewer_critique_revision_max_candidate_chars` — truncation guard when inlining candidate JSON into prompts.
 
 This is still a **single** focused-context cycle after reflection (no recursion back through reflection).
+
+## Review Evidence Triage And Verifier
+
+`review_evidence_triage` runs after initial focused context and before adversarial reflection. It normalizes each candidate's claim family, recommended reflector specialties, source-fact requests, runtime-verification usefulness, and additional needed context. If the triage LLM is unavailable, deterministic fallback triage uses the candidate's declared fields.
+
+Verifier routing sits after post-reflection focused context or the `post_reflection_evidence_pass` bridge. It can:
+
+- collect cheap source-only facts when enabled,
+- fan out eligible candidates through `verifier_subgraph`,
+- merge `verifier_reports` at `post_verifier_gate`,
+- pass verifier advisories into critique revision and adjudication metadata.
+
+The verifier remains advisory. Promotion is still decided by reflection, critique revision, and `review_adjudicator`; verifier data can strengthen or weaken the evidence packet but does not independently publish findings.
 
 ## Adjudication And Synthesis
 
@@ -340,6 +377,8 @@ The harness writes candidates, reflections, focused requests, focused results, c
 ## Operational Notes
 
 - Redis checkpointing is used when `redis_enabled` is true. If Redis checkpointing fails, `run_reviewer` falls back to an in-memory graph run.
+- `docs_prebrief` runs before initial structural routing when enabled and not already marked done.
+- `review_history_context` can add bounded prior PR review/comment history before mandate planning when GitHub MCP review history is enabled.
 - The same `LazyReviewContextProvider` is shared across the graph run and is stopped by the wrapper around `review_synthesizer`.
 - Local LLM model keys come from `Settings.reviewer_planner_model_key` and `Settings.reviewer_worker_model_key` (used by critiquer, reflection, digest, and reduce nodes).
 - Critique revision shard sizing uses `Settings.reviewer_critique_revision_max_shard_chars` and `Settings.reviewer_critique_revision_max_candidate_chars`.

@@ -34,17 +34,15 @@ Current implementation pieces already present:
 - `IGitHubContextProvider` exists in `src/domain/interfaces.py` and covers repository docs, pull request context, issue context, and issue comments.
 - GitHub context schemas exist in `src/domain/schemas.py`: `RepoDocument`, `RepoDocsBundle`, `GitHubPullRequestContext`, `GitHubIssueContext`, and `GitHubIssueComment`.
 - `GitHubMCPContextProvider` exists in `src/infrastructure/mcp/github_context.py` and is built through `build_github_context_provider(...)` in `src/infrastructure/factory.py`.
-- `BoundedReviewContextFulfiller` accepts an optional `IGitHubContextProvider` and attempts GitHub docs fallback after local file and search retrieval.
+- `BoundedReviewContextFulfiller` accepts an optional `IGitHubContextProvider`. Focused-context GitHub documentation fallback is guarded by `REVIEW_GITHUB_MCP_FOCUSED_CONTEXT_DOC_FALLBACK` and defaults off, so code search stays in the cloned sandbox unless explicitly enabled.
 - `build_graph(...)` injects the GitHub provider into `docs_prebrief`, `initial_focused_context`, and `focused_context`.
 
 Incomplete or still rough areas:
 
-- `FLAGS_DOCUMENTATION.md` does not yet document the GitHub MCP and docs pre-brief settings.
-- The architecture needs one consolidated design document that explains placement, data flow, cache keys, caps, failure modes, and rollout.
-- Focused-context fallback behavior should remain narrowly described as supplemental, not a second primary retrieval path.
-- Future implementation should consider adding tests for pre-brief routing, provider fail-open behavior, cache-hit behavior, and fallback merge rules.
+- Focused-context fallback behavior remains supplemental, not a second primary retrieval path, and is disabled by default.
+- Future implementation should consider additional tests for provider cache-hit behavior, fallback merge rules, and schema-versioned cache keys.
 
-## Proposed Changes
+## Implemented Design
 
 ### 1. Documentation Pre-Brief
 
@@ -102,6 +100,7 @@ Primary retrieval ladder remains:
 GitHub MCP fallback is allowed only when:
 
 - `Settings.github_mcp_enabled` is true.
+- `Settings.github_mcp_focused_context_doc_fallback` is true.
 - An `IGitHubContextProvider` was injected.
 - A GitHub repo identity can be resolved from metadata or `repo_path`.
 - Requested files were missing locally, or one or more symbol/text queries returned no local search hits.
@@ -317,7 +316,7 @@ Existing settings to document and preserve:
 
 - `REVIEW_GITHUB_MCP_ENABLED` default `true`: enables GitHub MCP provider construction and fallback.
 - `REVIEW_GITHUB_MCP_COMMAND` default `python`: command used to launch the GitHub MCP server.
-- `REVIEW_GITHUB_MCP_ARGS` default `["mcp/github-mcp/server.py"]`: MCP server arguments.
+- `REVIEW_GITHUB_MCP_ARGS` default `["docker_mcp/github-mcp/server.py"]`: MCP server arguments.
 - `REVIEW_GITHUB_MCP_CWD` default `None`: optional server working directory.
 - `REVIEW_GITHUB_MCP_TIMEOUT_SECONDS` default `30`: timeout per MCP call.
 - `REVIEW_GITHUB_MCP_CACHE_TTL_SECONDS` default `3600`: cache TTL.
@@ -325,7 +324,10 @@ Existing settings to document and preserve:
 - `REVIEW_GITHUB_MCP_DOC_MAX_TOTAL_CHARS` default `40000`: bundle cap.
 - `REVIEW_GITHUB_MCP_PR_MAX_COMMENTS` default `20`: comment count cap.
 - `REVIEW_GITHUB_MCP_PR_COMMENT_MAX_CHARS` default `2000`: per-comment cap.
+- `REVIEW_GITHUB_MCP_REVIEW_HISTORY_ENABLED` default `true`: enables bounded prior PR review/comment history for changed files.
 - `REVIEW_GITHUB_MCP_DOC_PATHS`: ordered doc paths for pre-brief and fallback docs lookup.
+- `REVIEW_GITHUB_MCP_FOCUSED_CONTEXT_DOC_FALLBACK` default `false`: enables docs fallback for focused-context symbol/text misses.
+- `REVIEW_GITHUB_MCP_DOC_DISCOVERY_ENABLED` default `true`: discover markdown docs before falling back to static paths.
 - `REVIEW_DOCS_PREBRIEF_ENABLED` default `true`: enables the graph pre-brief node.
 - `REVIEW_DOCS_PREBRIEF_MODEL_KEY` default matches the local Qwen stack: model for the pre-brief summary.
 - `REVIEW_GITHUB_PERSONAL_ACCESS_TOKEN` or `GITHUB_PERSONAL_ACCESS_TOKEN`: optional token passed through to the GitHub MCP server.
@@ -371,17 +373,16 @@ Use `structlog` for new production code paths that emit structured events. Exist
 
 ## Rollout Plan
 
-1. Land the design doc and flag documentation.
-2. Keep GitHub MCP optional with default on, but ensure local-only behavior works when the provider is absent.
-3. Add unit tests around provider cache behavior and schema normalization.
-4. Add graph tests for:
+1. Keep GitHub MCP optional with default on, but ensure local-only behavior works when the provider is absent.
+2. Add or maintain unit tests around provider cache behavior and schema normalization.
+3. Add or maintain graph tests for:
    - docs pre-brief routes before structural extraction,
    - skipped pre-brief still routes to the normal local/sandbox path,
    - focused context does not call GitHub MCP when local results satisfy the request,
    - focused context adds GitHub docs only for missing files or empty query results.
-5. Run a local repo smoke test with `REVIEW_GITHUB_MCP_ENABLED=false`.
-6. Run a remote PR smoke test with GitHub MCP enabled and trace logging.
-7. Inspect artifacts for bounded source refs and absence of raw unbounded docs/comments in state.
+4. Run a local repo smoke test with `REVIEW_GITHUB_MCP_ENABLED=false`.
+5. Run a remote PR smoke test with GitHub MCP enabled and trace logging.
+6. Inspect artifacts for bounded source refs and absence of raw unbounded docs/comments in state.
 
 ## Verification
 
@@ -426,7 +427,6 @@ Finished in the current branch:
 
 Still needed or recommended:
 
-- Update `FLAGS_DOCUMENTATION.md` for the new settings.
 - Add tests for the two integration points and fail-open paths.
 - Add more structured trace logging for provider cache hits/misses and fallback decisions.
 - Consider schema-versioned cache keys before using a shared long-lived Redis cache.

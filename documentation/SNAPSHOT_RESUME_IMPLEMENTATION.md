@@ -1,82 +1,74 @@
-# Snapshot Resume Feature Implementation Summary
+# Snapshot Resume
 
-## Overview
-Added `--snapshot-id` flag to `src/reviewer_agent/main.py` to load exploration snapshots and skip Phase 2 semantic enrichment, allowing reviewers to run on new PRs using existing code analysis.
+Snapshot resume lets `reviewer-agent` load an existing exploration snapshot and review one or more PRs without rebuilding Phase 2 semantic context for the same repository.
 
-## Changes Made
+## Entry Point
 
-### 1. `src/reviewer_agent/main.py`
-- Added `--snapshot-id` argument (line ~103)
-- Updated `_cli_flags_for_run_meta()` to include `snapshot_id`
-- Passed `snapshot_id=args.snapshot_id` to `run_aacr_reviewer()`
+```bash
+python -m src.reviewer_agent.main --snapshot-id <snapshot-folder-name> [selector flags]
+```
 
-### 2. `src/reviewer_agent/harness/aacr.py`
-- Added import: `from src.infrastructure.snapshot_loader import SnapshotLoader`
-- Added `_load_snapshot_for_resume()` helper function to load snapshot data
-- Snapshot resume **repo_path**: when metadata holds an `https://` URL (typical), host `git` can populate `<snapshot_root>/_reviewer_worktree` via `git fetch origin pull/<n>/head` so downstream nodes match a full run’s on-disk repo (still skips preflight clone into the read sandbox when routing bypasses that phase).
-- Updated `_invoke_for_pr()` to:
-  - Accept `snapshot_data` and `logger` parameters
-  - Inject snapshot data into GraphState when provided
-  - Generate run_id with `_from_snapshot_{id[:8]}` suffix
-  - Add trace logging when snapshot is loaded (includes resolved `repo_path`)
-- Updated `run_aacr_reviewer()` to:
-  - Accept `snapshot_id` parameter
-  - Load snapshot once before the PR loop
-  - Validate repo match per-PR (error if mismatch)
-  - Pass `snapshot_data` to `_invoke_for_pr()`
+Useful selectors:
 
-### 3. `src/infrastructure/snapshot_loader.py`
-- Fixed `load_snapshot_pointer()` to correctly extract `exploration_snapshot` from nested JSON structure
+- `--limit <n>`: process the first `n` de-duplicated PRs from the dataset.
+- `--range 1:5`, `--range 11-`, or `--range 7`: process a 1-based inclusive range after de-duplication.
+- `--pr-url <url>`: process one exact PR from the dataset.
+- `--pr-urls <url> ...`: process an explicit ordered URL list.
+- `--repo-root <path>`: use a local checkout instead of letting the harness prepare a host worktree.
 
-## Usage Examples
+Examples:
 
 ```bash
 # Load snapshot, run on first PR in dataset
 python -m src.reviewer_agent.main --snapshot-id 28d358fa3aaf_comfyanonymous__ComfyUI__pr7952 --limit 1
 
-# Load snapshot, run on specific PR
+# Load snapshot, run on a specific PR
 python -m src.reviewer_agent.main --snapshot-id 28d358fa3aaf_comfyanonymous__ComfyUI__pr7952 --pr-url https://github.com/comfyanonymous/ComfyUI/pull/8000
 
-# Load snapshot, run on range of PRs with trace logging
+# Load snapshot, run on a range of PRs with trace logging
 python -m src.reviewer_agent.main --snapshot-id 28d358fa3aaf_comfyanonymous__ComfyUI__pr7952 --range 1:5 --trace
-
-# Load snapshot and use the current check-first mental-model path
-python -m src.reviewer_agent.main --snapshot-id 28d358fa3aaf_comfyanonymous__ComfyUI__pr7952 --pr-url https://github.com/comfyanonymous/ComfyUI/pull/8000 --trace
 ```
 
 ## Behavior
 
-### When `--snapshot-id` is provided:
-1. Load snapshot data (graph, topology, community summaries, global summary)
-2. For each PR in dataset:
-   - Fetch PR context from GitHub API (including diff)
-   - Validate snapshot repo matches PR repo (error if mismatch)
-   - **Resolve `repo_path` for on-disk features** (review sandbox, verifier bind-mount, AST): snapshot metadata often stores the canonical GitHub URL. Without `--repo-root`, if host `git` is available, the harness fetches `pull/<pr>/head` into `<snapshot_root>/_reviewer_worktree` (reused when a marker file matches URL + PR). With `--repo-root`, that path is used instead. Skipping preflight still means you need a real directory for anything that reads files from disk—snapshot resume only skips graph building and semantic fan-out/summarize, not repo checkout semantics.
-   - Construct GraphState with:
-     - Existing Phase 2 outputs from snapshot
-     - NEW diff from current PR
-     - NEW run_id with `_from_snapshot_{id[:8]}` suffix
-   - Skip Phase 2 community semantic fan-out
-   - Run the mental-model path: `intent_extractor`, `mandate_explorer`, `mandate_patch`, actor-critic planning, and `snapshot_pin`
-   - By default, route each task through the contract-question/check-first chain (`review_check_compiler`, validator, executor, evidence gate) before reflection/adjudication
+When `--snapshot-id` is provided:
 
-### Output Structure:
-- Run ID format: `{run_id}:{pr_slug}_from_snapshot_{snapshot_id[:8]}`
-- Example: `abc123:comfyanonymous__ComfyUI__pr7952_from_snapshot_55d7a9ed`
-- Output files (unchanged structure):
-  - `output/{run_id}/raw/{run_id}.json`
-  - `output/{run_id}/findings/{run_id}.json`
-  - `output/{run_id}/run_meta.json` (includes `snapshot_loaded: true`)
-  - `logs/reviewer_agent_aacr.log`
+1. The harness loads snapshot data from `REVIEW_SNAPSHOT_BASE_PATH` / `snapshot_base_path`.
+2. For each selected PR, it fetches current PR context and diff from GitHub.
+3. It validates that the snapshot repository matches the PR repository.
+4. It resolves `repo_path` for on-disk features such as review sandbox reads, verifier bind-mounts, AST, and ripgrep:
+   - with `--repo-root`, the provided checkout is used;
+   - without `--repo-root`, if snapshot metadata stores an `https://` GitHub URL and host `git` is available, the harness can fetch `pull/<pr>/head` into `<snapshot_root>/_reviewer_worktree`.
+5. It builds `GraphState` with the existing snapshot context and the new PR diff.
+6. It skips structural extraction and Phase 2 community semantic fan-out for loaded snapshots.
+7. It still runs the modern mental-model path: `intent_extractor`, `review_history_context`, `mandate_explorer`, `mandate_patch`, actor-critic planning, `mandate_finalize`, and `snapshot_pin`.
+8. It then runs the current check-first review path by default: review-check compiler/validator/context/executor/evidence gate, initial focused context, evidence triage, reflection, optional verifier, critique revision, adjudication, and synthesis.
 
-## Error Handling
+Skipping Phase 2 does not remove the need for a real repository checkout. Any downstream step that reads files still needs `repo_path` to resolve to a local directory or to a prepared sandbox/worktree.
+
+## Output
+
+Run IDs include the snapshot suffix:
+
+```text
+{run_id}:{pr_slug}_from_snapshot_{snapshot_id[:8]}
+```
+
+Typical artifacts:
+
+- `raw/{run_id}.json`
+- `findings/{run_id}.json`
+- `run_meta.json` with `snapshot_loaded: true`
+- `manifest.csv`
+
+## Errors
 
 | Scenario | Behavior |
 |----------|----------|
-| Snapshot not found | `sys.exit(1)` with error log |
-| Invalid snapshot JSON | `sys.exit(1)` with error log |
-| Snapshot repo ≠ PR repo | Per-PR error, skip that PR, continue with others |
-| Empty dataset with `--snapshot-id` | Normal behavior (no PRs to process) |
+| Snapshot not found | Log error and exit for the run. |
+| Invalid snapshot JSON | Log error and exit for the run. |
+| Snapshot repo does not match PR repo | Per-PR error; skip that PR and continue with others. |
+| Empty dataset with `--snapshot-id` | Normal no-work behavior. |
 
 ## Verification
 
@@ -84,24 +76,10 @@ python -m src.reviewer_agent.main --snapshot-id 28d358fa3aaf_comfyanonymous__Com
 # Check flag appears in help
 python -m src.reviewer_agent.main --help
 
-# Test with existing snapshot (will fail without GitHub token, but should load snapshot)
-python -m src.reviewer_agent.main --snapshot-id 28d358fa3aaf_comfyanonymous__ComfyUI__pr7952 --limit 1
-
 # Verify Phase 2 is skipped with trace logging
-python -m src.reviewer_agent.main --snapshot-id 28d358fa3aaf_comfyanonymous__ComfyUI__pr7952 --limit 1 --trace
-# Check logs for: route=intent_extractor (modern default; not semantic_dispatch)
+python -m src.reviewer_agent.main --snapshot-id <snapshot-id> --limit 1 --trace
 
-# Verify the current check-first path
-python -m src.reviewer_agent.main --snapshot-id 28d358fa3aaf_comfyanonymous__ComfyUI__pr7952 --limit 1 --trace
-# Check node history / raw metadata for: mandate_explorer, mandate_patch, review_check_compiler
+# Check node history / raw metadata for the modern path
+# Expected nodes include: intent_extractor, review_history_context, mandate_explorer,
+# mandate_patch, mandate_finalize, review_check_compiler
 ```
-
-## Files Modified
-1. `src/reviewer_agent/main.py` - Added `--snapshot-id` flag
-2. `src/reviewer_agent/harness/aacr.py` - Added snapshot loading logic
-3. `src/infrastructure/snapshot_loader.py` - Fixed nested JSON parsing
-
-## Files NOT Modified (already supported this)
-- `src/orchestration/nodes/exploration/phase2_routing.py` - Already skips Phase 2 when `snapshot_root` exists
-- `src/domain/state.py` - Already has `snapshot_source` field
-- `src/infrastructure/snapshot_loader.py` - All methods existed (just fixed a bug)

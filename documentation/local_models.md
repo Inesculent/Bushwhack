@@ -21,6 +21,7 @@ These are the environment values we set (loaded by src/config.py with the REVIEW
 - REVIEW_LOCAL_LLM_BASE_URL
 - REVIEW_LOCAL_LLM_API_KEY
 - REVIEW_LOCAL_LLM_TIMEOUT_SECONDS
+- REVIEW_LOCAL_LLM_STATUS_TIMEOUT_SECONDS
 - REVIEW_LOCAL_LLM_MAX_RETRIES
 
 ## Sanity check we ran

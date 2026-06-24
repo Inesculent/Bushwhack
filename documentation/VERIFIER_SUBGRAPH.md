@@ -181,7 +181,7 @@ This keeps runtime verification useful when clean, but prevents environment setu
 | `REVIEW_VERIFIER_IMAGE` | Image tag (default `verifier-test-env:latest`). |
 | `REVIEW_VERIFIER_RUN_ON_DEFECT` / `_SECURITY` / `_PERFORMANCE` | Claim-type gates (`_SECURITY` defaults **on**). |
 | `REVIEW_VERIFIER_REQUIRE_FOCUSED_EVIDENCE` | If `true`, require focused snippets/hits for that candidate; if `false`, allow diff + candidate JSON only. |
-| `REVIEW_VERIFIER_SKIP_IF_NO_DOCKER` | Skip verifier when Docker is unreachable. |
+| `REVIEW_VERIFIER_SKIP_IF_NO_SANDBOX` / `REVIEW_VERIFIER_SKIP_IF_NO_DOCKER` | Skip verifier when the active sandbox runtime is unreachable. |
 | `REVIEW_VERIFIER_PREPARE_ENV_ENABLED` | Enable best-effort venv prep and target import probes. |
 | `REVIEW_VERIFIER_PREPARE_ENV_INSTALL_DEPS` | Reserved for future targeted dependency installation; broad requirements installation is intentionally avoided. |
 

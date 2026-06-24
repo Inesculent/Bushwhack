@@ -7,11 +7,13 @@ The codebase follows Hexagonal Architecture (Ports and Adapters): domain schemas
 ## What Is Implemented Today
 
 - Baseline context graph that summarizes diffs and builds a structural graph from the repository.
-- Reviewer graphs that plan review tasks and route them to specialist worker nodes, with an optional critique/reflection loop.
+- Reviewer graph that builds or loads repository context, plans review tasks from a behavioral spec, and runs the current check-first adversarial review path.
 - AST parsing via native Tree-sitter or a local MCP server, with caching.
 - Optional Redis checkpointing for LangGraph runs.
+- Runtime verifier support for eligible findings, with Docker or Apptainer-backed sandbox execution.
+- GitHub MCP-backed documentation, PR context, and review-history enrichment as optional fail-open context.
 - Research pipelines for SWE-PRBench and AACR-Bench dataset processing and evaluation.
-- A stub HTTP API and CLI for future review submission (not yet wired to the graphs).
+- A stub HTTP API and CLI for future review submission; these are not wired to the reviewer graph yet.
 
 ## Architecture Summary
 
@@ -20,8 +22,8 @@ The codebase follows Hexagonal Architecture (Ports and Adapters): domain schemas
 Pure core contracts and schemas:
 
 - `GraphState` and reducer-safe state composition.
-- Pydantic schemas for tasks, findings, repository map, and insights.
-- Abstract interfaces (ports) for search, AST parsing, cache, and LLM services.
+- Pydantic schemas for tasks, findings, repository maps, verifier reports, and semantic/behavioral specs.
+- Abstract interfaces (ports) for search, AST parsing, cache, GitHub context, and LLM services.
 
 No direct infrastructure dependencies should live here.
 
@@ -30,7 +32,7 @@ No direct infrastructure dependencies should live here.
 LangGraph orchestration logic:
 
 - `context_graph.py` runs `explorer` and `structural_extractor` for baseline context building.
-- `reviewer_graph.py` runs a full planner/worker/synthesizer flow with critique + reflection nodes.
+- `reviewer_graph.py` runs docs pre-brief, structural/semantic context, review history, mental-model planning, check-first review, evidence triage, reflection, optional verifier, adjudication, and synthesis.
 
 This layer uses dependency injection and interfaces from `src/domain`, not direct infrastructure clients.
 
@@ -40,44 +42,49 @@ Adapter implementations for external systems:
 
 - Search adapter (`ripgrep`) for fast local search.
 - AST parsers: native Tree-sitter in-process or MCP-backed AST server.
-- Cache adapter (in-memory; Redis cache stubs exist but are not wired).
+- Cache adapters (in-memory and Redis-backed services).
 - Redis checkpointing via LangGraph in the orchestration entrypoints.
+- GitHub MCP context provider.
 - HTTP gateway stub and sandbox utilities.
 
 ## Current Repository Layout
 
 ```text
 .
-├── data/
-├── logs/
-├── docker_mcp/
-│   ├── fs-mcp/
-│   └── github-mcp/
-├── plots/
-├── scripts/
-│   ├── cli.py
-│   └── review.bat
-├── src/
-│   ├── config.py
-│   ├── main.py
-│   ├── benchmark.py
-│   ├── data/
-│   ├── domain/
-│   ├── infrastructure/
-│   ├── orchestration/
-│   ├── reviewer_agent/
-│   └── solo_agent/
-├── conftest.py
-├── pytest.ini
-├── requirements.txt
-└── readme.md
+|-- data/
+|-- docker_mcp/
+|   |-- fs-mcp/
+|   `-- github-mcp/
+|-- documentation/
+|-- logs/
+|-- plots/
+|-- scripts/
+|   |-- cli.py
+|   |-- review.bat
+|   `-- cluster/
+|-- src/
+|   |-- config.py
+|   |-- main.py
+|   |-- benchmark.py
+|   |-- data/
+|   |-- domain/
+|   |-- infrastructure/
+|   |-- orchestration/
+|   |-- reviewer_agent/
+|   `-- solo_agent/
+|-- Dockerfile.verifier
+|-- docker-compose.redis.yml
+|-- FLAGS_DOCUMENTATION.md
+|-- orchestration.md
+|-- pyproject.toml
+|-- pytest.ini
+|-- requirements.txt
+`-- readme.md
 ```
-
-## Program Usage
 
 ## 1) Environment Setup
 
-Use Python 3.12+.
+Use Python 3.12.
 
 ```powershell
 python -m venv .venv
@@ -98,20 +105,20 @@ Useful settings to get started:
 - `REVIEW_AST_MCP_ARGS=["docker_mcp/fs-mcp/server.py"]`
 - `REVIEW_REDIS_ENABLED=true`
 - `REVIEW_LOCAL_LLM_BASE_URL=http://localhost:8000/v1`
-- `REVIEW_GITHUB_PERSONAL_ACCESS_TOKEN=...` (for dataset enrichment)
-- `REVIEW_LANGSMITH_TRACING=true` and `REVIEW_LANGSMITH_API_KEY=...` to send LangGraph/LangChain traces to LangSmith.
+- `REVIEW_GITHUB_PERSONAL_ACCESS_TOKEN=...` or `GITHUB_PERSONAL_ACCESS_TOKEN=...` for GitHub enrichment
+- `REVIEW_LANGSMITH_TRACING=true` and `REVIEW_LANGSMITH_API_KEY=...` to send LangGraph/LangChain traces to LangSmith
 
-## 2.1) Run Redis For LangGraph Checkpointing (Optional)
+## 2.1) Run Redis For LangGraph Checkpointing
 
-**Local profile (`--local`, default):** start Redis from repo root:
+Local profile (`--local`, default): start Redis from repo root:
 
 ```powershell
 docker compose -f docker-compose.redis.yml up -d
 ```
 
-**Cluster profile (`--remote`):** use loopback Redis in the Slurm job — see [documentation/apptainer_cluster_guide.md](documentation/apptainer_cluster_guide.md).
+Cluster profile (`--remote`): use Apptainer plus job-local services from the Slurm launchers in `scripts/cluster/`.
 
-Stop Redis:
+Stop local Redis:
 
 ```powershell
 docker compose -f docker-compose.redis.yml down
@@ -137,7 +144,9 @@ This runs the baseline explorer + structural extractor graph.
 python -m src.main --repo-path . --diff-file path\to\diff.txt
 ```
 
-## 4) Run the Reviewer Graphs (Dataset Harness)
+The baseline entrypoint also accepts `--user-goals`, `--local`, and `--remote`.
+
+## 4) Run the Reviewer Graph
 
 Parallel reviewer graph over the processed AACR dataset:
 
@@ -145,14 +154,17 @@ Parallel reviewer graph over the processed AACR dataset:
 python -m src.reviewer_agent.main --dataset aacr
 ```
 
-Use `--local` (Docker sandbox, compose Redis, LLM via SSH port-forward) or `--remote` (Apptainer on Slurm). See [documentation/apptainer_cluster_guide.md](documentation/apptainer_cluster_guide.md).
+Use `--local` (Docker sandbox, compose Redis, LLM via SSH port-forward) or `--remote` (Apptainer on Slurm).
 
 Useful flags:
 
 - `--trace` to emit review-trace logs, including bounded LLM I/O summaries and per-call token usage.
 - `--limit 10` for smoke runs.
+- `--range 11:20` or `--range 11-` to run a 1-based inclusive range after PR de-duplication.
+- `--pr-url <url>` for one dataset PR, or `--pr-urls <url> ...` for an explicit list.
 - `--review-check-mode off|log_only|enforced` to override the default check-first mode for debugging.
 - `--snapshot-id <id>` to reuse a prior exploration snapshot while still running the modern mental-model planner by default.
+- `--keep-redis-checkpoints` to leave per-PR LangGraph checkpoints in Redis after artifact writing.
 
 Cluster full-suite runs use the current check-first path without reviewer-mode flags:
 
@@ -162,15 +174,17 @@ sbatch scripts/cluster/run_bushwhack_full_suite.sbatch
 
 LangSmith tracing is separate from `--trace`: set `REVIEW_LANGSMITH_TRACING=true`, `REVIEW_LANGSMITH_API_KEY`, and optionally `REVIEW_LANGSMITH_PROJECT` in `.env`. Local OpenAI-compatible models are still created with `langchain-openai`; the factory adds LangSmith metadata so local model IDs show clearly in traces. `REVIEW_LANGSMITH_HIDE_OUTPUTS` defaults to `true` because full LangGraph states can exceed LangSmith upload limits.
 
-## 5) Run the Solo Agent (Dataset Harness)
+## 5) Run the Solo Agent
 
 ```powershell
 python -m src.solo_agent.main --dataset aacr
 ```
 
-## 6) Run the API Gateway (Stub)
+The solo harness supports `--dataset`, `--dataset-path`, `--run-id`, `--limit`, `--output-root`, and the same `--local` / `--remote` execution profile flags.
 
-Start FastAPI (placeholder endpoint only):
+## 6) Run the API Gateway Stub
+
+Start FastAPI:
 
 ```powershell
 python -m uvicorn src.infrastructure.http.app:app --host 127.0.0.1 --port 8000 --reload
@@ -182,7 +196,7 @@ Current endpoint:
 
 Note: The handler is a stub that prints the payload and returns `{"status": "approved"}`. It does not invoke the LangGraph flows yet.
 
-## 7) Trigger a Review from CLI (Stub)
+## 7) Trigger a Review from CLI Stub
 
 The CLI sends staged git diff content to the API stub.
 
@@ -210,7 +224,7 @@ pytest src/infrastructure/tests -q
 
 ## 9) Run Research Dataset Pipeline
 
-The repository now includes a modular two-phase dataset pipeline for:
+The repository includes a modular two-phase dataset pipeline for:
 
 - `foundry-ai/swe-prbench` (PR-level macro evaluation)
 - `Alibaba-Aone/aacr-bench` (comment-level micro evaluation + GitHub enrichment)
@@ -225,7 +239,7 @@ Set a GitHub PAT in `.env` before running AACR enrichment:
 
 - `GITHUB_PERSONAL_ACCESS_TOKEN=...`
 
-(`REVIEW_GITHUB_PERSONAL_ACCESS_TOKEN` is also supported.)
+`REVIEW_GITHUB_PERSONAL_ACCESS_TOKEN` is also supported.
 
 Optional flags:
 
@@ -242,9 +256,7 @@ Outputs are generated automatically:
 - `plots/metric_distributions/`
 - `logs/research_pipeline.log`
 
-Processed CSVs now also include `repo_size_kb` (GitHub repository size in KB) for additional scaling analyses.
-
-Repository structure complexity metrics are also included:
+Processed CSVs include `repo_size_kb` (GitHub repository size in KB) plus repository structure complexity metrics:
 
 - `repo_total_files`
 - `repo_python_files`
@@ -253,7 +265,6 @@ Repository structure complexity metrics are also included:
 
 ## Development Notes
 
-- `reference.md` contains the full architecture and feature plan.
-- `structure.txt` captures the intended structure baseline.
-- `orchestration.md` and `status.md` track ongoing work and research checkpoints.
-
+- `orchestration.md` describes the current reviewer graph and known limitations.
+- `FLAGS_DOCUMENTATION.md` documents the current CLI flags and `REVIEW_*` configuration surface.
+- `documentation/phase2_orchestration.md`, `documentation/VERIFIER_SUBGRAPH.md`, and `documentation/github_mcp_context_design.md` cover the deeper semantic, verifier, and GitHub MCP flows.
