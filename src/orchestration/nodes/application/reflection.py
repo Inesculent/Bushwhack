@@ -313,11 +313,12 @@ def _reflect_specialty_batches(
             ReflectionReport(
                 candidate_id=cid,
                 reflector_specialty=specialty,  # type: ignore[arg-type]
-                verdict="needs_context",
+                verdict="needs_verification",
                 rationale=(
                     "reflection_integrity: no ReflectionReport returned for this candidate "
                     f"after batched {specialty} reflection; treat as needing further review."
                 ),
+                support_scope="runtime_dependent",
             )
         )
 
@@ -341,6 +342,19 @@ def _normalize_reports(
         if warn:
             warnings.append(warn)
         reports.append(report)
+        # needs_context without a request cannot fetch static context; keep the thread alive
+        # via needs_verification (runtime path) instead of silently stalling.
+        if report.verdict == "needs_context" and report.focused_request is None:
+            report = report.model_copy(
+                update={
+                    "verdict": "needs_verification",
+                    "support_scope": report.support_scope or "runtime_dependent",
+                }
+            )
+            reports[-1] = report
+            warnings.append(
+                f"reflection_needs_context_without_request:{report.candidate_id}"
+            )
         # Only needs_context queues graph/search work; needs_verification uses the runtime verifier.
         if report.verdict == "needs_context" and report.focused_request is not None:
             normalized = _normalize_focus_request(
@@ -353,6 +367,18 @@ def _normalize_reports(
             if normalized is not None:
                 requests.append(normalized)
                 reports[-1] = report.model_copy(update={"focused_request": normalized})
+            else:
+                report = report.model_copy(
+                    update={
+                        "verdict": "needs_verification",
+                        "support_scope": report.support_scope or "runtime_dependent",
+                        "focused_request": None,
+                    }
+                )
+                reports[-1] = report
+                warnings.append(
+                    f"reflection_needs_context_request_unusable:{report.candidate_id}"
+                )
     reports, dedupe_warnings = dedupe_batch_reports_per_candidate(reports)
     warnings.extend(dedupe_warnings)
     return reports, requests, warnings

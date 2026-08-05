@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any, Callable, Iterable, List, Mapping
 
 from src.domain.schemas import CandidateFinding, ReviewCheck, ReviewCheckResult, ReviewTask
@@ -372,6 +373,80 @@ def _suppression_omits_scope_variant(result: ReviewCheckResult, check: ReviewChe
     return True
 
 
+_VARIANT_MODE_PHRASE = re.compile(
+    r"(?:"
+    r"['\"]([^'\"]{2,48})['\"]\s+mode"
+    r"|mode\s*(?:==|=|:)?\s*['\"]([^'\"]{2,48})['\"]"
+    r"|\b((?:[A-Z][A-Za-z0-9]+(?:\s+[A-Z][A-Za-z0-9]+){0,3}))\s+mode\b"
+    r")",
+    re.IGNORECASE,
+)
+_SIBLING_VARIANT_MARKERS = (
+    "other mode",
+    "another mode",
+    "different mode",
+    "alternate mode",
+    "alternative mode",
+    "sibling mode",
+    "separate mode",
+)
+
+
+def _extract_variant_mode_phrases(text: str) -> set[str]:
+    phrases: set[str] = set()
+    for match in _VARIANT_MODE_PHRASE.finditer(text or ""):
+        raw = next((group for group in match.groups() if group), "")
+        normalized = _normalize_contract_identity(raw)
+        if len(normalized) >= 3:
+            phrases.add(normalized)
+    return phrases
+
+
+def _variant_sets_overlap(left: set[str], right: set[str]) -> bool:
+    for item in left:
+        for other in right:
+            if item == other or item in other or other in item:
+                return True
+    return False
+
+
+def _suppression_displaces_owned_variant(result: ReviewCheckResult, check: ReviewCheck) -> bool:
+    """True when suppression answers via a sibling variant instead of the owned one."""
+    owned_blob = " ".join(
+        [
+            check.behavioral_question,
+            check.owned_contract_scope,
+            check.expected_behavior,
+            check.affected_invariant,
+            check.diff_signal,
+        ]
+    )
+    suppress_blob = " ".join(
+        [
+            result.suppression_basis,
+            " ".join(result.suppressing_evidence),
+            result.reportable_reason,
+            result.claim_digest,
+        ]
+    )
+    owned = _extract_variant_mode_phrases(owned_blob)
+    cited = _extract_variant_mode_phrases(suppress_blob)
+    if not owned:
+        return False
+    suppress_lower = suppress_blob.lower()
+    if any(marker in suppress_lower for marker in _SIBLING_VARIANT_MARKERS):
+        if not _variant_sets_overlap(owned, cited):
+            return True
+    if not cited:
+        return False
+    cites_owned = _variant_sets_overlap(owned, cited)
+    cites_extra = any(
+        not any(item == other or item in other or other in item for other in owned)
+        for item in cited
+    )
+    return cites_extra and not cites_owned
+
+
 def _focused_context_degraded_for_check(state: GraphState, check: ReviewCheck) -> list[str]:
     metadata = state.get("metadata", {}) or {}
     fc = metadata.get("focused_context", {}) if isinstance(metadata, Mapping) else {}
@@ -506,12 +581,14 @@ def normalize_executor_results(
             or not _suppression_basis_has_value_flow(result)
         )
         omitted_scope_variant = _suppression_omits_scope_variant(result, check)
+        displaced_owned_variant = _suppression_displaces_owned_variant(result, check)
         focused_degradation = _focused_context_degraded_for_check(state, check)
         if result.decision in {"no_finding", "suppressed"} and (
             _answer_scope_is_neighboring(result)
             or _suppression_basis_is_operation_only(result)
             or (not check.audit_only and _suppression_basis_is_empty_or_generic(result))
             or omitted_scope_variant
+            or displaced_owned_variant
             or bool(focused_degradation)
             or exact_transformation_mismatch
         ):
@@ -531,9 +608,13 @@ def normalize_executor_results(
                                 "missing_exact_transformation_scope"
                                 if exact_transformation_mismatch and not _answer_scope_is_exact(result)
                                 else (
-                                    "missing_owned_scope_variant"
-                                    if omitted_scope_variant
-                                    else "missing_exact_transformation_scope"
+                                    "cross_variant_displacement"
+                                    if displaced_owned_variant
+                                    else (
+                                        "missing_owned_scope_variant"
+                                        if omitted_scope_variant
+                                        else "missing_exact_transformation_scope"
+                                    )
                                 )
                             )
                         )

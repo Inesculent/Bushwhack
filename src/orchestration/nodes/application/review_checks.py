@@ -2180,8 +2180,8 @@ def _candidate_passes_gate(
     check: ReviewCheck,
     state: GraphState,
 ) -> tuple[bool, str]:
-    if check.audit_only:
-        return False, "audit_only_check_not_promotable"
+    # audit_only is a compile-time softness signal, not a post-execution shredder:
+    # concrete candidates still face the same evidence gates below.
     if candidate.file_path.replace("\\", "/") != check.file_path.replace("\\", "/"):
         return False, "candidate_anchor_file_mismatch"
     if candidate.line_end < candidate.line_start or candidate.line_start < 1:
@@ -2245,6 +2245,8 @@ def _candidate_passes_gate(
         return False, "speculative_or_uncertain_claim"
     if not (candidate.recommendation or "").strip():
         return False, "missing_recommendation"
+    if check.audit_only:
+        return True, "evidence_gate_passed_audit_only"
     return True, "evidence_gate_passed"
 
 

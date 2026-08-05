@@ -495,6 +495,50 @@ def test_executor_scope_variant_omission_becomes_unsupported() -> None:
     assert any("missing_owned_scope_variant" in item for item in warnings)
 
 
+def test_executor_cross_variant_displacement_becomes_unsupported() -> None:
+    check = _check(
+        lens="data_shape_consistency",
+        changed_code_anchor="extract_matches",
+        owned_contract_scope="extract_matches:All Matches",
+        issue_family="aggregation_cardinality",
+        behavioral_question=(
+            "When the pattern has capturing groups, does All Matches mode preserve full match data?"
+        ),
+        affected_invariant="All Matches mode preserves matched values without sibling-mode displacement.",
+        expected_behavior="All Matches mode returns the full matched substrings for each hit.",
+        report_criteria=["All Matches keeps only a partial group tuple element."],
+        suppress_criteria=["All Matches explicitly documents returning only the first group."],
+    )
+    result = ReviewCheckResult(
+        check_id=check.check_id,
+        patch_task_id=check.patch_task_id,
+        decision="no_finding",
+        evidence_refs=["src/app.py:3"],
+        suppressing_evidence=[
+            "Intentional design: All Groups mode exists for extracting capture groups."
+        ],
+        answer_scope="exact",
+        suppression_basis="All Groups mode covers capture-group extraction.",
+        reportable_reason="All Matches extracts m[0]; All Groups mode handles groups.",
+    )
+
+    normalized, warnings = normalize_executor_results(
+        state=_state(),
+        task=_task(),
+        slot=_state()["metadata"]["critique_pipeline"]["by_task"]["review-logic"],
+        checks=[check],
+        results=[result],
+        git_diff="",
+        check_budget_remaining=lambda _state, _check: True,
+        evidence_requirements_for_check=lambda item: list(item.required_evidence),
+        compiled_check_is_source_local=lambda _check: False,
+    )
+
+    assert normalized[0].decision == "unsupported"
+    assert "exact_question_mismatch:cross_variant_displacement" in normalized[0].warnings
+    assert any("cross_variant_displacement" in item for item in warnings)
+
+
 def test_executor_focused_context_no_hits_blocks_exact_suppression() -> None:
     check = _check()
     result = ReviewCheckResult(
@@ -4431,7 +4475,7 @@ def test_review_check_evidence_gate_promotes_only_supported_candidates_and_recor
     assert out["task_status_by_id"] == {"review-logic": "completed"}
 
 
-def test_review_check_evidence_gate_drops_audit_only_check_candidates() -> None:
+def test_review_check_evidence_gate_promotes_concrete_audit_only_candidates() -> None:
     candidate = CandidateFinding(
         candidate_id="review-logic:check:1:candidate",
         patch_task_id="review-logic",
@@ -4466,10 +4510,51 @@ def test_review_check_evidence_gate_drops_audit_only_check_candidates() -> None:
         )
     )  # type: ignore[arg-type]
 
+    assert len(out["candidate_findings"]) == 1
+    result = out["review_check_results"][0]
+    assert result.gate_decision == "passed"
+    assert result.gate_reason == "evidence_gate_passed_audit_only"
+
+
+def test_review_check_evidence_gate_still_drops_weak_audit_only_candidates() -> None:
+    candidate = CandidateFinding(
+        candidate_id="review-logic:check:1:candidate",
+        patch_task_id="review-logic",
+        file_path="src/app.py",
+        line_start=1,
+        line_end=2,
+        content="Consider validating inputs more carefully.",
+        claim_type="defect",
+        expected_behavior="Inputs should be validated.",
+        failure_mode="",
+        evidence_summary="",
+        evidence_for_contract="",
+        counterexample="",
+        rejection_check="",
+        recommendation="",
+        suspected_category="logic",
+        reflection_specialties=["logic"],
+    )
+    out = make_review_check_evidence_gate_node()(
+        _state(
+            review_checks=[_check(audit_only=True)],
+            review_check_results=[
+                ReviewCheckResult(
+                    check_id="review-logic:check:1",
+                    patch_task_id="review-logic",
+                    decision="candidate",
+                    evidence_refs=["src/app.py:1"],
+                    reportable_reason="Maybe validate.",
+                    candidate=candidate,
+                )
+            ],
+        )
+    )  # type: ignore[arg-type]
+
     assert out["candidate_findings"] == []
     result = out["review_check_results"][0]
     assert result.gate_decision == "dropped"
-    assert result.gate_reason == "audit_only_check_not_promotable"
+    assert result.gate_reason != "audit_only_check_not_promotable"
 
 
 def test_review_check_evidence_gate_drops_partial_context_uncertainty() -> None:
