@@ -1386,6 +1386,26 @@ def test_normalize_compiled_checks_narrows_non_integration_multi_surface() -> No
     assert len(normalized[0].surface_ids) == 1
 
 
+def test_normalize_compiled_checks_assigns_cross_file_evidence_paths() -> None:
+    task = _task().model_copy(
+        update={
+            "title": "Integration: registry and implementation consistency",
+            "description": "Compare registry entries across both changed files.",
+            "target_files": ["src/registry.py", "src/app.py"],
+        }
+    )
+    check = _check(
+        file_path="src/registry.py",
+        behavioral_question="Do registry entries match implementations across both changed files?",
+        required_evidence=["registry declarations and implementation signatures"],
+    )
+
+    normalized = compiler_support.normalize_compiled_checks(_state(), task, [check])
+
+    assert set(normalized[0].evidence_paths) == {"src/registry.py", "src/app.py"}
+    assert normalized[0].evidence_paths[0] == normalized[0].file_path
+
+
 def test_review_check_compiler_carries_completeness_material_without_extra_check(monkeypatch) -> None:
     output = ReviewCheckCompilerOutput(
         summary="compiled",
@@ -2948,6 +2968,28 @@ def test_review_check_context_planner_creates_check_scoped_requests() -> None:
     assert req.candidate_id == "review-logic:check:1"
 
 
+def test_review_check_context_planner_requests_all_declared_evidence_paths() -> None:
+    task = _task().model_copy(
+        update={"target_files": ["src/app.py", "src/registry.py"]}
+    )
+    check = _check(
+        evidence_paths=["src/app.py", "src/registry.py"],
+        required_evidence=["caller authorization guard"],
+    )
+    state = _state(
+        task_registry={task.id: task},
+        git_diff=(
+            "diff --git a/src/app.py b/src/app.py\n+++ b/src/app.py\n@@\n+def handle():\n"
+            "diff --git a/src/registry.py b/src/registry.py\n+++ b/src/registry.py\n@@\n+REGISTRY = {}\n"
+        ),
+        review_checks=[check],
+    )
+
+    out = make_review_check_context_planner_node()(state)  # type: ignore[arg-type]
+
+    assert out["focused_context_requests"][0].file_paths == ["src/app.py", "src/registry.py"]
+
+
 def test_review_check_context_planner_treats_descriptive_retrieval_as_focused() -> None:
     state = _state(
         review_checks=[
@@ -3782,6 +3824,29 @@ def test_review_check_executor_compact_retry_uses_smaller_context() -> None:
     assert len(compact) < len(full)
     assert "x" * 5000 in full
     assert "x" * 5000 not in compact
+
+
+def test_review_check_executor_prompt_includes_cross_file_source_evidence() -> None:
+    from src.orchestration.nodes.application.review_checks import _render_executor_prompt
+
+    task = _task().model_copy(
+        update={"target_files": ["src/app.py", "src/registry.py"]}
+    )
+    check = _check(evidence_paths=["src/app.py", "src/registry.py"])
+    slot = {
+        "direct_context": "primary rendered context",
+        "task_evidence": {
+            "file_contents": {
+                "src/app.py": "def handle():\n    return 'ok'\n",
+                "src/registry.py": "REGISTRY = {'handle': handle}\n",
+            }
+        },
+    }
+
+    prompt = _render_executor_prompt(_state(), task, [check], slot)
+
+    assert "Repository Source Evidence By Check" in prompt
+    assert "REGISTRY = {'handle': handle}" in prompt
 
 
 def test_review_check_executor_canonicalizes_duplicate_results(monkeypatch) -> None:

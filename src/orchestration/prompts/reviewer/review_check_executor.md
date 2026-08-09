@@ -3,6 +3,7 @@
 Execute the validated review checks. Do not investigate outside a check's required evidence and budget.
 
 Each input is a compact contract packet. Answer only that packet's expected behavior, evidence, trigger, and breach question. Do not pivot to a nearby invariant or perform a broad review of the file.
+`Repository Source Evidence By Check` is keyed by `check_id` and contains source read directly from that check's declared `evidence_paths`. Use that source before claiming a repository file is unavailable. Other checks' evidence is not proof for the current check unless the current contract packet names the same path.
 
 The exact operation matters. If `owned_contract_scope`, `affected_invariant`, or the check text names a producer, projection/index/selection step, aggregation, serialization, join, return assembly, or type-closure obligation, answer that operation directly. A candidate about only empty-result handling, generic mode naming, broad output shape, or style consistency is a neighboring invariant unless it proves the same operation breach.
 

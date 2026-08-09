@@ -380,6 +380,13 @@ class ReviewCheck(BaseModel):
     suppress_criteria: List[str] = Field(default_factory=list)
     report_criteria: List[str] = Field(default_factory=list)
     allowed_retrieval: List[str] = Field(default_factory=list)
+    evidence_paths: List[str] = Field(
+        default_factory=list,
+        description=(
+            "Repository-relative files required to decide this check. The anchor file is included "
+            "by default; cross-file checks must name every required changed file."
+        ),
+    )
     budget: int = Field(default=2, ge=1, le=10)
 
     @model_validator(mode="after")

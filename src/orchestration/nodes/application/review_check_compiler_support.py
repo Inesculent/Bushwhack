@@ -2334,6 +2334,67 @@ def surface_fair_cap_checks(
     }
 
 
+def evidence_paths_for_check(check: ReviewCheck, task: ReviewTask) -> List[str]:
+    """Resolve the changed files needed to execute one check.
+
+    The check anchor remains primary. Integration/cross-file checks receive all
+    task targets so the executor can inspect the repository evidence that made
+    the obligation executable.
+    """
+    task_paths = [
+        str(path).strip().replace("\\", "/")
+        for path in task.target_files
+        if str(path).strip()
+    ]
+    anchor_path = check.file_path.strip().replace("\\", "/")
+    requested = [
+        str(path).strip().replace("\\", "/")
+        for path in check.evidence_paths
+        if str(path).strip()
+    ]
+    blob = " ".join(
+        [
+            check.changed_code_anchor,
+            check.owned_contract_scope,
+            check.behavioral_question,
+            check.affected_invariant,
+            *check.required_evidence,
+            *check.suppress_criteria,
+            *check.report_criteria,
+        ]
+    ).lower()
+    cross_file = len(task_paths) > 1 and any(
+        marker in blob
+        for marker in (
+            "integration",
+            "cross-file",
+            "cross file",
+            "cross-surface",
+            "cross surface",
+            "across",
+            "registration",
+            "caller",
+            "call site",
+        )
+    )
+
+    candidates = [anchor_path, *requested]
+    for path in task_paths:
+        basename = path.rsplit("/", 1)[-1].lower()
+        if cross_file or path.lower() in blob or basename in blob:
+            candidates.append(path)
+
+    allowed = set(task_paths)
+    out: List[str] = []
+    for path in candidates:
+        if not path or path in out:
+            continue
+        if allowed and path not in allowed:
+            continue
+        out.append(path)
+    return out or ([anchor_path] if anchor_path else task_paths[:1])
+
+
 def normalize_compiled_checks(
     state: GraphState,
     task: ReviewTask,
@@ -2381,6 +2442,10 @@ def normalize_compiled_checks(
             "patch_task_id": task.id,
             "surface_ids": surface_ids,
             "file_path": path,
+            "evidence_paths": evidence_paths_for_check(
+                check.model_copy(update={"file_path": path}),
+                task,
+            ),
             "line_start": line_start,
             "line_end": line_end,
             "changed_code_anchor": str(

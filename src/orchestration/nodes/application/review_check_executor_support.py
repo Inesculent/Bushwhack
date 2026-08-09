@@ -282,6 +282,42 @@ def _suppression_basis_is_empty_or_generic(result: ReviewCheckResult) -> bool:
     return any(marker in basis for marker in generic_markers)
 
 
+def _schema_enforcement_is_exact_mode_suppression(
+    result: ReviewCheckResult,
+    check: ReviewCheck,
+) -> bool:
+    """Recognize declared-enum enforcement as exact evidence for mode reachability."""
+    check_blob = " ".join(
+        [
+            check.behavioral_question,
+            check.affected_invariant,
+            check.expected_behavior,
+            " ".join(check.suppress_criteria),
+        ]
+    ).lower()
+    if not any(marker in check_blob for marker in ("mode", "enum", "option", "fallback")):
+        return False
+    if not any(marker in check_blob for marker in ("unexpected", "invalid", "schema enforcement", "declared")):
+        return False
+    suppression_blob = " ".join(
+        [
+            result.suppression_basis,
+            " ".join(result.suppressing_evidence),
+        ]
+    ).lower()
+    return bool(result.evidence_refs) and any(
+        marker in suppression_blob
+        for marker in (
+            "declared mode enum",
+            "declared enum",
+            "schema enforces",
+            "schema restricts",
+            "only visible options",
+            "allowed options",
+        )
+    )
+
+
 def _check_requires_exact_transformation_suppression(check: ReviewCheck) -> bool:
     if check.audit_only:
         return False
@@ -574,14 +610,40 @@ def normalize_executor_results(
             else:
                 warnings.append(f"executor_candidate_dropped_by_normalizer:{cid}")
                 result = result.model_copy(update={"candidate": None, "decision": "unsupported"})
-        exact_transformation_required = _check_requires_exact_transformation_suppression(check)
+        schema_exact_suppression = (
+            result.decision in {"no_finding", "suppressed"}
+            and _schema_enforcement_is_exact_mode_suppression(result, check)
+        )
+        if schema_exact_suppression:
+            suppression_basis = result.suppression_basis.strip() or " ".join(
+                item.strip() for item in result.suppressing_evidence if str(item).strip()
+            )
+            result = result.model_copy(
+                update={
+                    "answer_scope": result.answer_scope.strip()
+                    or f"exact: {check.owned_contract_scope or check.behavioral_question}",
+                    "suppression_basis": suppression_basis[:500],
+                }
+            )
+        exact_transformation_required = (
+            _check_requires_exact_transformation_suppression(check)
+            and not schema_exact_suppression
+        )
         exact_transformation_mismatch = exact_transformation_required and (
             not _answer_scope_is_exact(result)
             or _suppression_basis_is_empty_or_generic(result)
             or not _suppression_basis_has_value_flow(result)
         )
-        omitted_scope_variant = _suppression_omits_scope_variant(result, check)
-        displaced_owned_variant = _suppression_displaces_owned_variant(result, check)
+        omitted_scope_variant = (
+            _suppression_omits_scope_variant(result, check)
+            if not schema_exact_suppression
+            else False
+        )
+        displaced_owned_variant = (
+            _suppression_displaces_owned_variant(result, check)
+            if not schema_exact_suppression
+            else False
+        )
         focused_degradation = _focused_context_degraded_for_check(state, check)
         if result.decision in {"no_finding", "suppressed"} and (
             _answer_scope_is_neighboring(result)

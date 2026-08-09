@@ -4,6 +4,7 @@ You compile review checks. Do not produce findings.
 
 A review check is a narrow, temporary contract that can be executed against repository evidence. Each check must name:
 - changed code anchor
+- `evidence_paths`: every repository file required to answer the check
 - behavioral question
 - affected invariant
 - required evidence
@@ -32,6 +33,7 @@ If a potential issue belongs to a different owned contract scope, create a separ
 If one check would ask multiple contract questions, split it. Examples of distinct generic obligations include variant handling vs output totality, outer container existence vs nested data preservation, and error catching vs whether produced values remain serializable.
 
 The changed code anchor must be on a changed file and should name a changed function, class, line range, or behavior visible in the supplied diff/context.
+Keep the anchor file in `evidence_paths`. For integration, caller/callee, registration, schema-to-implementation, or other cross-file checks, also list each required changed file. Do not emit a cross-file check whose evidence paths cannot be named from the assigned task.
 
 Every check must carry exactly one primary `surface_id` from the assigned task unless the check is explicitly cross-surface/integration. Prefer the assigned surface ledger anchor and line range over file-level fallbacks.
 

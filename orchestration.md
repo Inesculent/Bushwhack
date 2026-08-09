@@ -115,7 +115,7 @@ Each planned task runs the compiled subgraph `critique_review_subgraph`:
 
 `critique_context_probe` -> `mental_model_context_enricher` -> either `general_critiquer` or the check-first review-check chain, depending on `reviewer_check_mode`.
 
-This ensures direct code context is gathered **before** optional `query_mental_model` calls. In `enforced` mode, contract questions and surface invariants from the `BehavioralSpec` are converted into concrete review checks; the validator routes through `review_check_context_planner` and `review_check_focused_context` before execution, and the evidence gate can run a bounded `review_check_scout` loop before ending the branch. Parallel `Send` payloads use `payload_for_send` to avoid copying forbidden large keys.
+This ensures direct code context is gathered **before** optional `query_mental_model` calls. In `enforced` mode, contract questions and surface invariants from the `BehavioralSpec` are converted into concrete review checks. Each check declares `evidence_paths`; cross-file checks are executed separately and receive source evidence keyed by check id so repository context collected for the task is not lost at the executor boundary. The validator routes through `review_check_context_planner` and `review_check_focused_context` before execution, and the evidence gate can run a bounded `review_check_scout` loop before ending the branch. Parallel `Send` payloads use `payload_for_send` to avoid copying forbidden large keys.
 
 ### Exploration Ledger
 

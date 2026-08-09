@@ -62,6 +62,16 @@ execution is the reviewer default:
 sbatch scripts/cluster/run_bushwhack_full_suite.sbatch
 ```
 
+All Slurm launchers source `vllm_runtime.sh`. Before starting the reviewer it
+records the Slurm/CUDA allocation, verifies GPU visibility from inside
+Apptainer, fails if fewer GPUs are visible than tensor parallelism requires,
+detects early vLLM process exit, and enforces a bounded readiness deadline.
+Launcher overrides:
+
+- `BUSHWHACK_VLLM_TENSOR_PARALLEL_SIZE` (default `2`)
+- `BUSHWHACK_VLLM_STARTUP_TIMEOUT_SECONDS` (default `900`)
+- `BUSHWHACK_VLLM_STARTUP_POLL_SECONDS` (default `5`)
+
 ---
 
 ## Command Flags
