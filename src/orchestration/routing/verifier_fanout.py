@@ -307,8 +307,15 @@ def make_verifier_subgraph_node():
     )
 
     def verifier_subgraph_node(state: GraphState) -> Dict[str, Any]:
+        from src.orchestration.routing.send_payload import subgraph_parent_updates
+
         result = inner.invoke(state)
-        # Only return keys that should be merged back into the parent GraphState
-        return {k: result[k] for k in _PARENT_KEYS if k in result}
+        return subgraph_parent_updates(
+            state,
+            result,
+            keys=_PARENT_KEYS,
+            additive_lists={"verifier_reports", "llm_trace", "node_history"},
+            additive_ints={"token_usage"},
+        )
 
     return verifier_subgraph_node

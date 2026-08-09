@@ -837,14 +837,12 @@ def _normalize_adjudication_items(
         )
 
     for cid in sorted(candidate_ids - seen):
-        warnings.append(f"adjudication_missing_candidate_promoted_fallback:{cid}")
-        _record_promote(
-            cid=cid,
-            candidate=candidates[cid],
-            finding=None,
-            rationale="No adjudication item was returned for this candidate; preserved via fallback finding.",
-            item_warnings=["adjudication_missing_candidate_promoted_fallback"],
-        )
+        warnings.append(f"adjudication_missing_candidate_dropped:{cid}")
+        lifecycle[cid] = {
+            "decision": "dropped",
+            "reason": "adjudication_item_missing",
+            "rationale": "The adjudicator did not return the required decision for this candidate.",
+        }
 
     return ensure_unique_finding_ids(promoted), lifecycle, merge_map, warnings
 

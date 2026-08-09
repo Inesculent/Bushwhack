@@ -45,12 +45,25 @@ def test_payload_for_send_is_shallow_copy() -> None:
         "repo_path": "/repo",
         "git_diff": "diff",
         "exploration_ledger": [{"kind": "mental_model_query", "dedupe_key": "k1"}],
+        "token_usage": 17,
+        "node_history": ["parent"],
     }
     p = payload_for_send(state, current_task_id="t1")
     assert p["current_task_id"] == "t1"
     assert p["exploration_ledger"] == state["exploration_ledger"]
+    assert p["token_usage"] == 0
+    assert p["node_history"] == []
     p["extra"] = True
     assert "extra" not in state
+
+
+def test_payload_for_send_allows_explicit_additive_overrides() -> None:
+    state: GraphState = {"token_usage": 17, "node_history": ["parent"]}  # type: ignore[assignment]
+
+    payload = payload_for_send(state, token_usage=3, node_history=["branch"])
+
+    assert payload["token_usage"] == 3
+    assert payload["node_history"] == ["branch"]
 
 
 def test_format_exploration_ledger_caps_and_prioritizes_task() -> None:

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 from src.domain.schemas import (
     BehavioralSpec,
     CandidateFinding,
@@ -570,6 +572,53 @@ def test_packet_budget_truncates_lowest_tier_first() -> None:
     assert "diff_hunk" in keys
     assert "exploration_ledger" not in keys
     assert enforced.metadata.get("dropped_sections") == ["exploration_ledger"]
+
+
+def test_packet_budget_preserves_required_structured_section() -> None:
+    packet = ContextPacket(
+        stage="test",
+        char_budget=60,
+        sections=[
+            ContextSection(
+                key="draft_tasks_json",
+                tier=1,
+                content='[{"id":"task-1"}]',
+                source="planner",
+                required=True,
+            ),
+            ContextSection(key="intent_summary", tier=3, content="A" * 80, source="intent"),
+        ],
+    )
+
+    enforced = enforce_packet_budget(packet)
+
+    required = next(section for section in enforced.sections if section.key == "draft_tasks_json")
+    assert json.loads(required.content) == [{"id": "task-1"}]
+    assert enforced.metadata["required_sections"] == ["draft_tasks_json"]
+    assert "intent_summary" in enforced.metadata["dropped_sections"]
+
+
+def test_plan_critic_packet_keeps_valid_compact_json_for_every_task() -> None:
+    state = _minimal_state(git_diff="diff --git a/foo.py b/foo.py\n+++ b/foo.py\n+x = 1\n")
+    tasks = [
+        ReviewTask(
+            id=f"task-{index}",
+            title=f"Review surface {index}",
+            description="Detailed semantic review scope. " * 20,
+            target_files=["foo.py"],
+            surface_ids=[f"surface:{index}"],
+            specialty="logic",
+        )
+        for index in range(10)
+    ]
+
+    packet = build_plan_critic_packet(state, tasks)
+
+    task_section = next(section for section in packet.sections if section.key == "draft_tasks_json")
+    decoded = json.loads(task_section.content)
+    assert [row["id"] for row in decoded] == [task.id for task in tasks]
+    assert task_section.required is True
+    assert len(task_section.content) <= packet.char_budget // 2
 
 
 def test_focused_snippets_render_file_body_before_search_hits_and_kb() -> None:

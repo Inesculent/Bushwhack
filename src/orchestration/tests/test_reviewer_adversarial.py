@@ -157,6 +157,30 @@ def test_critique_subgraph_parent_updates_strips_last_value_channels() -> None:
     assert out == {"metadata": {"a": 1}, "node_history": ["n"], "token_usage": 3}
 
 
+def test_critique_subgraph_parent_updates_returns_only_reducer_deltas() -> None:
+    from src.orchestration.nodes.application.critique_pipeline import _critique_subgraph_parent_updates
+
+    initial = {
+        "token_usage": 5,
+        "node_history": ["parent"],
+        "review_checks": ["existing"],
+        "focused_context_results": {"old": {"value": 1}},
+    }
+    full = {
+        "token_usage": 8,
+        "node_history": ["parent", "branch"],
+        "review_checks": ["existing", "new"],
+        "focused_context_results": {"old": {"value": 1}, "new": {"value": 2}},
+    }
+
+    out = _critique_subgraph_parent_updates(full, initial)  # type: ignore[arg-type]
+
+    assert out["token_usage"] == 3
+    assert out["node_history"] == ["branch"]
+    assert out["review_checks"] == ["new"]
+    assert out["focused_context_results"] == {"new": {"value": 2}}
+
+
 def test_merge_graph_metadata_unions_ast_included_files() -> None:
     a = {"ast_included_files": ["src/a.py"]}
     b = {"ast_included_files": ["src/b.py"]}

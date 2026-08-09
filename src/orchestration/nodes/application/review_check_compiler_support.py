@@ -2469,10 +2469,11 @@ def render_compiler_prompt(
     *,
     settings: Settings | None = None,
 ) -> str:
+    settings = settings or get_settings()
     ranked_obligations = ranked_coverage_obligations(task, slot)
     ledger = surface_ledger_from_state(state)
     task_surface_ids = surface_ids_for_task(task, ledger) if ledger else task.surface_ids
-    spec = behavioral_spec_from_state(state, settings or get_settings())
+    spec = behavioral_spec_from_state(state, settings)
     contract_questions = []
     if spec is not None and spec.contract_questions:
         task_surface_id_set = set(task_surface_ids)
@@ -2481,7 +2482,7 @@ def render_compiler_prompt(
             for question in spec.contract_questions
             if question.surface_id in task_surface_id_set
             and _task_owns_contract_question(state, task, question, ledger)
-        ][:12]
+        ][:8]
     lens_text = _lens_text_from_slot(slot, contract_questions)
     selected_lens_cards = select_lens_cards(
         task=task,
@@ -2501,19 +2502,19 @@ def render_compiler_prompt(
             f"Target files: {task.target_files}\n"
             f"Surface IDs: {task_surface_ids}"
         ),
-        "Surface Ledger": compact_surface_ledger_json(ledger, max_records=40) if ledger else "[]",
-        "Repository Code Evidence": str(slot.get("direct_context") or "")[:60000],
+        "Surface Ledger": compact_surface_ledger_json(ledger, max_records=20) if ledger else "[]",
+        "Repository Code Evidence": str(slot.get("direct_context") or "")[:14000],
         "Prompt File Scope": json_for_prompt(
             {
                 "primary_files": primary_files,
                 "omitted_prompt_files": omitted_prompt_files,
                 "omitted_handling": "Omitted changed files are reviewed through scoped focused-context checks.",
             },
-            max_chars=2000,
+            max_chars=1500,
         ),
-        "Mental Model Excerpt": str(slot.get("mental_model_excerpt") or "")[:12000],
-        "Mental Model Contract Questions": json_for_prompt(contract_questions, max_chars=20000),
-        "Review KB Context": str(slot.get("review_kb_excerpt") or "")[:12000],
+        "Mental Model Excerpt": str(slot.get("mental_model_excerpt") or "")[:3000],
+        "Mental Model Contract Questions": json_for_prompt(contract_questions, max_chars=5000),
+        "Review KB Context": str(slot.get("review_kb_excerpt") or "")[:3000],
         "Mental Model Contract Material": "\n".join(
             f"- {line}" for line in mental_model_contract_lines(slot)
         ),
@@ -2524,7 +2525,7 @@ def render_compiler_prompt(
             _lens_metadata(selected_lens_cards),
             max_chars=5000,
         ),
-        "Ranked Coverage Obligations": json_for_prompt(ranked_obligations, max_chars=15000),
+        "Ranked Coverage Obligations": json_for_prompt(ranked_obligations, max_chars=5000),
         "Available Lenses": ", ".join(REVIEW_CHECK_LENSES),
     }
     return render_reviewer_prompt("review_check_compiler.md", sections)

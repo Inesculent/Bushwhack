@@ -2109,6 +2109,24 @@ def test_review_check_compiler_uses_source_order_without_relevance_signal(monkey
     assert compiled[0]["changed_code_anchor"] == "first_surface"
 
 
+def test_review_check_compiler_prompt_caps_stage_context() -> None:
+    task = _task()
+    state = _state(task_registry={task.id: task})
+    slot = {
+        "direct_context": "D" * 14_000 + "DIRECT_CONTEXT_TAIL",
+        "mental_model_excerpt": "M" * 3_000 + "MENTAL_MODEL_TAIL",
+        "review_kb_excerpt": "K" * 3_000 + "REVIEW_KB_TAIL",
+        "coverage_obligations": [],
+    }
+
+    prompt = compiler_support.render_compiler_prompt(state, task, slot)  # type: ignore[arg-type]
+
+    assert "DIRECT_CONTEXT_TAIL" not in prompt
+    assert "MENTAL_MODEL_TAIL" not in prompt
+    assert "REVIEW_KB_TAIL" not in prompt
+    assert len(prompt) < 40_000
+
+
 def test_review_check_compiler_floor_adds_high_relevance_obligation_first(monkeypatch) -> None:
     output = ReviewCheckCompilerOutput(summary="compiled", checks=[_check()])
     monkeypatch.setattr(

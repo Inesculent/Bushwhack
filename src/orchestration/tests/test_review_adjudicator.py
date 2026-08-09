@@ -223,15 +223,15 @@ def test_adjudication_validation_records_one_lifecycle_per_candidate() -> None:
 
     findings, lifecycle, merge_map, warnings = _normalize(output, candidates)
 
-    assert [finding.id for finding in findings] == ["c1", "c3"]
+    assert [finding.id for finding in findings] == ["c1"]
     assert lifecycle["c1"]["decision"] == "promoted"
     assert lifecycle["c2"]["decision"] == "merged"
-    assert lifecycle["c3"]["reason"] == "adjudicator_promote"
+    assert lifecycle["c3"]["reason"] == "adjudication_item_missing"
     assert merge_map == {"c1": ["c2"]}
-    assert "adjudication_missing_candidate_promoted_fallback:c3" in warnings
+    assert "adjudication_missing_candidate_dropped:c3" in warnings
 
 
-def test_adjudication_none_output_promotes_fallback_findings() -> None:
+def test_adjudication_none_output_does_not_publish_unadjudicated_findings() -> None:
     candidates = {
         "c1": _candidate("c1"),
         "c2": _candidate("c2"),
@@ -239,13 +239,12 @@ def test_adjudication_none_output_promotes_fallback_findings() -> None:
 
     findings, lifecycle, merge_map, warnings = _normalize(None, candidates)
 
-    assert [finding.id for finding in findings] == ["c1", "c2"]
-    assert findings[0].expected_behavior == candidates["c1"].expected_behavior
-    assert lifecycle["c1"]["decision"] == "promoted"
-    assert lifecycle["c2"]["decision"] == "promoted"
+    assert findings == []
+    assert lifecycle["c1"]["decision"] == "dropped"
+    assert lifecycle["c2"]["decision"] == "dropped"
     assert merge_map == {}
-    assert "adjudication_missing_candidate_promoted_fallback:c1" in warnings
-    assert "adjudication_missing_candidate_promoted_fallback:c2" in warnings
+    assert "adjudication_missing_candidate_dropped:c1" in warnings
+    assert "adjudication_missing_candidate_dropped:c2" in warnings
 
 
 def test_adjudication_explicit_drop_records_obvious_drop_reason() -> None:
@@ -330,7 +329,7 @@ def test_adjudication_invalid_promoted_line_range_still_drops() -> None:
     assert "adjudication_invalid_line_range:c1" in warnings
 
 
-def test_adjudication_preserves_combo_uncertainty_when_decision_missing() -> None:
+def test_adjudication_requires_explicit_decision_for_combo_uncertainty() -> None:
     candidate = _candidate("c1").model_copy(
         update={
             "content": "StringCompare can implicitly return None for an unexpected COMBO mode.",
@@ -344,14 +343,12 @@ def test_adjudication_preserves_combo_uncertainty_when_decision_missing() -> Non
 
     findings, lifecycle, _merge_map, warnings = _normalize(None, {"c1": candidate})
 
-    assert [finding.id for finding in findings] == ["c1"]
-    assert "implicitly return None" in findings[0].content
-    assert findings[0].expected_behavior == candidate.expected_behavior
-    assert lifecycle["c1"]["decision"] == "promoted"
-    assert "adjudication_missing_candidate_promoted_fallback:c1" in warnings
+    assert findings == []
+    assert lifecycle["c1"]["reason"] == "adjudication_item_missing"
+    assert "adjudication_missing_candidate_dropped:c1" in warnings
 
 
-def test_adjudication_preserves_findall_tuple_data_loss_candidate() -> None:
+def test_adjudication_requires_explicit_decision_for_data_loss_candidate() -> None:
     candidate = _candidate("c1").model_copy(
         update={
             "content": "All Matches extracts only m[0] from findall tuples, dropping other captured groups.",
@@ -365,18 +362,16 @@ def test_adjudication_preserves_findall_tuple_data_loss_candidate() -> None:
 
     findings, lifecycle, _merge_map, warnings = _normalize(None, {"c1": candidate})
 
-    assert [finding.id for finding in findings] == ["c1"]
-    assert "dropping other captured groups" in findings[0].content
-    assert findings[0].expected_behavior == candidate.expected_behavior
-    assert lifecycle["c1"]["decision"] == "promoted"
-    assert "adjudication_missing_candidate_promoted_fallback:c1" in warnings
+    assert findings == []
+    assert lifecycle["c1"]["reason"] == "adjudication_item_missing"
+    assert "adjudication_missing_candidate_dropped:c1" in warnings
 
 
-def test_review_adjudicator_prompt_is_preservation_biased() -> None:
+def test_review_adjudicator_prompt_is_balanced_and_evidence_led() -> None:
     prompt = Path("src/orchestration/prompts/reviewer/review_adjudicator.md").read_text()
 
-    assert "You are not a verifier" in prompt
-    assert "Default to `promote`" in prompt
+    assert "Do not default to either promotion or rejection" in prompt
+    assert "Default to `promote`" not in prompt
     assert "framework, enum, schema, caller, or runtime might prevent the trigger" in prompt
     assert "A schema allowing a value proves that trigger can exist" in prompt
     assert "Merge only true duplicates with the same expected behavior, contract, operation, trigger, and impact" in prompt
