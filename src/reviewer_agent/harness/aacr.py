@@ -27,6 +27,7 @@ from src.domain.state import GraphState
 from src.infrastructure.mcp.client import MCPClient
 from src.infrastructure.redis_checkpoint import delete_checkpoint_thread
 from src.infrastructure.snapshot_loader import SnapshotLoader
+from src.infrastructure.source_provenance import collect_source_provenance
 from src.orchestration.reviewer_graph import run_reviewer
 
 DEFAULT_AACR_PROCESSED_PATH: Path = PROCESSED_DIR / "aacr_bench_graph_ready.csv"
@@ -1394,6 +1395,7 @@ def run_aacr_reviewer(
         "repo_root": str(repo_root) if repo_root is not None else "",
         "trace": trace,
         "cli_flags": dict(cli_flags) if cli_flags else {},
+        "source_provenance": collect_source_provenance(),
         "mcp_preflight": mcp_preflight,
         "run_warnings": sorted(run_warnings),
         "coverage_audit_path": str(coverage_audit_path.relative_to(run_dir)),

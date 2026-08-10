@@ -13,6 +13,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from src.infrastructure.run_profile import add_run_profile_arguments, configure_run_profile_from_args
+from src.infrastructure.source_provenance import collect_source_provenance
 from src.reviewer_agent.harness.aacr import (
     DEFAULT_AACR_PROCESSED_PATH,
     DatasetRange,
@@ -207,6 +208,16 @@ def main() -> None:
         os.environ["REVIEW_REVIEWER_CHECK_MODE"] = args.review_check_mode
 
     configure_run_profile_from_args(args)
+
+    source_provenance = collect_source_provenance()
+    logger.info(
+        "source provenance root=%s tree_sha256=%s files=%s git_commit=%s git_dirty=%s",
+        source_provenance["repository_root"],
+        source_provenance["source_tree_sha256"],
+        source_provenance["source_file_count"],
+        source_provenance["git"]["commit"],
+        source_provenance["git"]["dirty"],
+    )
 
     if (
         args.llm_timeout is not None

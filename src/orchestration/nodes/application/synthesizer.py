@@ -119,13 +119,25 @@ def _reconcile_adjudicated_finding_duplicates(
             findings,
             audit,
         )
-        return ensure_unique_finding_ids(reconciled), duplicates, {
+        reconciled_by_id = {finding.id: finding for finding in reconciled}
+        preserved_ids = [
+            finding.id
+            for finding in findings
+            if finding.id not in reconciled_by_id and finding.id not in duplicate_to_keeper
+        ]
+        final_reconciled = [
+            reconciled_by_id.get(finding.id, finding)
+            for finding in findings
+            if finding.id not in duplicate_to_keeper
+        ]
+        return ensure_unique_finding_ids(final_reconciled), duplicates, {
             "cluster_count": len(clusters),
             "claim_cluster_groups": clusters,
             "claim_cluster_audits": [item.model_dump(mode="json") for item in audit.clusters],
             "claim_cluster_warnings": list(audit.warnings),
             "claim_cluster_duplicate_to_keeper": duplicate_to_keeper,
             "claim_cluster_rejected": rejected,
+            "claim_cluster_preserved_after_adjudication": preserved_ids,
         }, traced.tokens, traced.trace_records
     except Exception as exc:  # noqa: BLE001
         return findings, {}, {

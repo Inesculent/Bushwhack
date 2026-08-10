@@ -18,6 +18,19 @@ REPO_ROOT="${BUSHWHACK_REPO:-${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[
 cd "${REPO_ROOT}"
 mkdir -p slurm_logs
 
+echo "Resolved repository root: ${REPO_ROOT}"
+echo "Resolved working directory: $(pwd -P)"
+if git -C "${REPO_ROOT}" rev-parse HEAD >/dev/null 2>&1; then
+  echo "Git commit: $(git -C "${REPO_ROOT}" rev-parse HEAD)"
+  if [[ -n "$(git -C "${REPO_ROOT}" status --porcelain)" ]]; then
+    echo "Git working tree dirty: true"
+  else
+    echo "Git working tree dirty: false"
+  fi
+else
+  echo "Git metadata: unavailable (source fingerprint will still be recorded)"
+fi
+
 # ==========================================
 # GPU DIAGNOSTICS & LOGGING
 # ==========================================

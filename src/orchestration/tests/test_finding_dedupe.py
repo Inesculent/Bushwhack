@@ -1040,6 +1040,53 @@ def test_cleanup_claim_cluster_refuses_incompatible_merge_suggestion() -> None:
     assert rejected == {"missing-return": "claim_cluster_incompatible_merge"}
 
 
+def test_claim_cluster_distinct_ids_override_contradictory_rejection() -> None:
+    keeper = ReviewFinding(
+        id="redos",
+        file_path="src/x.py",
+        line_start=100,
+        line_end=120,
+        content="Regex execution permits unbounded work.",
+        severity="high",
+        feedback_type="defect_detection",
+        recommendation="Bound regex execution.",
+    )
+    distinct = ReviewFinding(
+        id="missing-return",
+        file_path="src/x.py",
+        line_start=20,
+        line_end=30,
+        content="A separate handler can return None.",
+        severity="medium",
+        feedback_type="defect_detection",
+        recommendation="Return a value on every branch.",
+    )
+    audit = SemanticClaimClusterOutput(
+        clusters=[
+            SemanticClaimClusterDecision(
+                cluster_id="cluster-1",
+                duplicate_groups=[
+                    SemanticClaimDuplicateGroup(
+                        keeper_id="redos",
+                        rejected_ids=["missing-return"],
+                    )
+                ],
+                distinct_ids=["missing-return"],
+            )
+        ]
+    )
+
+    findings, duplicates, duplicate_to_keeper, rejected = _apply_semantic_claim_cluster_audit(
+        [keeper, distinct],
+        audit,
+    )
+
+    assert [finding.id for finding in findings] == ["redos", "missing-return"]
+    assert duplicates == {}
+    assert duplicate_to_keeper == {}
+    assert rejected == {}
+
+
 def test_cleanup_claim_cluster_preserves_distinct_dimensions(monkeypatch) -> None:
     node = make_adversarial_cleanup_node()
     indexing = _cand(
@@ -2307,6 +2354,74 @@ def test_synthesizer_reconciles_adjudicator_duplicates_globally(monkeypatch) -> 
     assert meta["dropped_duplicate_ids"] == ["duplicate"]
     assert meta["claim_cluster_reconciliation"]["claim_cluster_duplicate_to_keeper"] == {"duplicate": "keeper"}
     assert meta["recall_audit"]["duplicate_equivalents"] == {"duplicate": "keeper"}
+
+
+def test_synthesizer_preserves_nonduplicate_rejections_after_adjudication(monkeypatch) -> None:
+    keeper = ReviewFinding(
+        id="redos",
+        file_path="src/x.py",
+        line_start=100,
+        line_end=120,
+        content="Regex execution permits unbounded work.",
+        severity="high",
+        feedback_type="defect_detection",
+        recommendation="Bound regex execution.",
+        root_operation="resource_use",
+    )
+    distinct = ReviewFinding(
+        id="missing-return",
+        file_path="src/x.py",
+        line_start=40,
+        line_end=50,
+        content="A separate handler can return None.",
+        severity="medium",
+        feedback_type="defect_detection",
+        recommendation="Return a value on every branch.",
+        behavioral_symptom="unbounded_work",
+        root_operation="resource_use",
+    )
+    audit = SemanticClaimClusterOutput(
+        clusters=[
+            SemanticClaimClusterDecision(
+                cluster_id="cluster-1",
+                duplicate_groups=[
+                    SemanticClaimDuplicateGroup(
+                        keeper_id="redos",
+                        rejected_ids=["missing-return"],
+                    )
+                ],
+            )
+        ]
+    )
+    monkeypatch.setattr(
+        "src.orchestration.nodes.application.synthesizer.Models.worker",
+        lambda *_args, **_kwargs: type(
+            "FakeLLM",
+            (),
+            {"invoke": lambda self, _prompt: {"parsed": audit}},
+        )(),
+    )
+
+    out = synthesizer_node(
+        {
+            "findings": [keeper, distinct],
+            "metadata": {
+                "review_adjudicator": {
+                    "candidate_lifecycle": {
+                        "redos": {"decision": "promoted"},
+                        "missing-return": {"decision": "promoted"},
+                    }
+                }
+            },
+        }
+    )
+
+    assert [finding.id for finding in out["final_findings"]] == ["redos", "missing-return"]
+    meta = out["metadata"]["review_synthesizer"]
+    assert meta["lost_promoted_candidate_ids"] == []
+    assert meta["claim_cluster_reconciliation"]["claim_cluster_preserved_after_adjudication"] == [
+        "missing-return"
+    ]
 
 
 def test_synthesizer_uses_cleanup_duplicate_map_for_lost_promoted_audit() -> None:
