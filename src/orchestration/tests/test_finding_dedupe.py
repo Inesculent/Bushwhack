@@ -2424,6 +2424,54 @@ def test_synthesizer_preserves_nonduplicate_rejections_after_adjudication(monkey
     ]
 
 
+def test_synthesizer_preserves_batch_when_ai_omits_classification(monkeypatch) -> None:
+    first = ReviewFinding(
+        id="first",
+        file_path="src/x.py",
+        line_start=10,
+        line_end=12,
+        content="First independent issue.",
+        severity="medium",
+        feedback_type="defect_detection",
+    )
+    second = first.model_copy(
+        update={"id": "second", "line_start": 20, "line_end": 22, "content": "Second issue."}
+    )
+    incomplete = SemanticClaimClusterOutput(
+        clusters=[
+            SemanticClaimClusterDecision(
+                cluster_id="cluster-1",
+                distinct_ids=["first"],
+            )
+        ]
+    )
+    monkeypatch.setattr(
+        "src.orchestration.nodes.application.synthesizer.Models.worker",
+        lambda *_args, **_kwargs: type(
+            "FakeLLM", (), {"invoke": lambda self, _prompt: {"parsed": incomplete}}
+        )(),
+    )
+
+    out = synthesizer_node(
+        {
+            "findings": [first, second],
+            "metadata": {
+                "review_adjudicator": {
+                    "candidate_lifecycle": {
+                        "first": {"decision": "promoted"},
+                        "second": {"decision": "promoted"},
+                    }
+                }
+            },
+        }
+    )
+
+    assert [finding.id for finding in out["final_findings"]] == ["first", "second"]
+    meta = out["metadata"]["review_synthesizer"]["claim_cluster_reconciliation"]
+    assert meta["valid_cluster_count"] == 0
+    assert any("missing_ids=['second']" in warning for warning in meta["claim_cluster_warnings"])
+
+
 def test_synthesizer_uses_cleanup_duplicate_map_for_lost_promoted_audit() -> None:
     finding = ReviewFinding(
         id="keeper",

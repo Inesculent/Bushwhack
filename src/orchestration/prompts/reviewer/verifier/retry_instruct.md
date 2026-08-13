@@ -38,6 +38,8 @@ Produce an improved standalone script that follows the same STATUS contract (SAF
 
 - Use `inspect.signature` or read `INPUT_TYPES` from the **actual** module before calling `execute`.
 - Stub only what the traceback requires (no fixed framework enum tables).
+- If the disputed fact is a standard-library operation already visible in supplied source, replace
+  a failing whole-module import with a tiny isolated repro of that exact operation.
 - Use `STATUS: HARNESS_ERROR` for import/setup/syntax failures; reserve `STATUS: CRASHED` for exceptions **after** the product under test is loaded and invoked.
 
 Return **only** Python source.

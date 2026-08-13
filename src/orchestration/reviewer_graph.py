@@ -181,6 +181,19 @@ def post_verifier_gate_node(state: GraphState) -> Dict[str, Any]:
     return {"node_history": ["post_verifier_gate"]}
 
 
+def _route_after_review_adjudicator(state: GraphState):
+    sends = collect_verifier_send_payloads(state)
+    return sends or "review_synthesizer"
+
+
+def _route_after_post_verifier_gate(state: GraphState):
+    metadata = state.get("metadata", {}) or {}
+    adjudicator = metadata.get("review_adjudicator") if isinstance(metadata, dict) else {}
+    if isinstance(adjudicator, dict) and int(adjudicator.get("verification_round", 0) or 0) > 0:
+        return "review_adjudicator"
+    return _route_critique_revision(state)
+
+
 def _route_after_critique_revision_digest(state: GraphState):
     """Run reduce only after the last digest shard lands (map-reduce barrier)."""
     metadata = state.get("metadata", {}) or {}
@@ -565,12 +578,12 @@ def build_graph(
     builder.add_conditional_edges("focused_context", _route_after_focused_context)
     builder.add_conditional_edges("post_reflection_evidence_pass", _route_after_focused_context)
     builder.add_edge("verifier_subgraph", "post_verifier_gate")
-    builder.add_conditional_edges("post_verifier_gate", _route_critique_revision)
+    builder.add_conditional_edges("post_verifier_gate", _route_after_post_verifier_gate)
     # Always fan in to reduce; reduce waits until all digest shards are merged (operator.or_).
     # Routing digest -> END left the graph without cleanup when parallel shards finished out of order.
     builder.add_edge("critique_revision_digest", "critique_revision_reduce")
     builder.add_edge("critique_revision_reduce", "review_adjudicator")
-    builder.add_edge("review_adjudicator", "review_synthesizer")
+    builder.add_conditional_edges("review_adjudicator", _route_after_review_adjudicator)
 
     builder.add_conditional_edges(
         START,

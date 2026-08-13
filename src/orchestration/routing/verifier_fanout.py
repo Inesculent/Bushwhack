@@ -153,6 +153,13 @@ def _existing_source_fact_ids(state: GraphState) -> set[str]:
     return out
 
 
+def _adjudicator_verification_requested_ids(state: GraphState) -> set[str]:
+    metadata = state.get("metadata") or {}
+    adjudicator = metadata.get("review_adjudicator") if isinstance(metadata, dict) else {}
+    requested = adjudicator.get("verification_requested_ids") if isinstance(adjudicator, dict) else []
+    return {str(candidate_id) for candidate_id in requested or [] if str(candidate_id)}
+
+
 def _triage_by_candidate(state: GraphState) -> dict[str, ReviewEvidenceTriageItem]:
     metadata = state.get("metadata") or {}
     triage = metadata.get("review_evidence_triage") if isinstance(metadata, dict) else {}
@@ -249,13 +256,18 @@ def collect_verifier_send_payloads(state: GraphState) -> List[Send]:
         return []
 
     source_local_missing_test_ids = _concrete_source_local_missing_test_ids(state)
-    need_ids = set(_needs_revision_candidates(state)) | source_local_missing_test_ids
+    need_ids = (
+        set(_needs_revision_candidates(state))
+        | source_local_missing_test_ids
+        | _adjudicator_verification_requested_ids(state)
+    )
     need_ids -= _existing_verifier_report_ids(state)
     if not need_ids:
         return []
     if settings.verifier_require_focused_evidence and not _has_focused_evidence(state, sorted(need_ids)):
         nv_ids = _candidate_ids_needs_verification(state)
-        need_ids = need_ids & (nv_ids | source_local_missing_test_ids)
+        adjudicator_ids = _adjudicator_verification_requested_ids(state)
+        need_ids = need_ids & (nv_ids | source_local_missing_test_ids | adjudicator_ids)
         if not need_ids:
             return []
 

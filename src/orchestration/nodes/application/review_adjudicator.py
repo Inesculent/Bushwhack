@@ -26,6 +26,7 @@ from src.domain.verifier_schemas import VerifierReport
 from src.infrastructure.llm.factory import Models
 from src.infrastructure.llm.token_usage import parse_structured_output
 from src.infrastructure.llm.trace import append_trace, trace_from_exception, trace_llm_call
+from src.infrastructure.sandbox import sandbox_runtime_available
 from src.orchestration.prompts.renderer import render_reviewer_prompt
 from src.orchestration.routing.finding_dedupe import (
     changed_files_from_diff,
@@ -737,14 +738,18 @@ def _normalize_adjudication_items(
     output: ReviewAdjudicationOutput | None,
     candidates: Mapping[str, CandidateFinding],
     changed_files: set[str],
-) -> tuple[List[ReviewFinding], Dict[str, Any], Dict[str, List[str]], List[str]]:
+    allow_verification: bool = False,
+    verifier_report_ids: set[str] | None = None,
+) -> tuple[List[ReviewFinding], Dict[str, Any], Dict[str, List[str]], List[str], List[str]]:
     warnings: List[str] = []
     lifecycle: Dict[str, Any] = {}
     merge_map: Dict[str, List[str]] = {}
     promoted: List[ReviewFinding] = []
+    verification_requested: List[str] = []
     seen: set[str] = set()
     items = list(output.items) if output is not None else []
     candidate_ids = set(candidates.keys())
+    verifier_report_ids = verifier_report_ids or set()
 
     def _record_promote(
         *,
@@ -827,6 +832,27 @@ def _normalize_adjudication_items(
             }
             continue
 
+        if item.decision == "verify":
+            if not allow_verification or cid in verifier_report_ids:
+                warnings.append(f"adjudication_verification_unavailable:{cid}")
+                lifecycle[cid] = {
+                    "decision": "dropped",
+                    "reason": "verification_unavailable",
+                    "rationale": item.rationale,
+                    "evidence_refs": list(item.evidence_refs),
+                    "warnings": list(item.warnings),
+                }
+                continue
+            verification_requested.append(cid)
+            lifecycle[cid] = {
+                "decision": "verification_requested",
+                "reason": "adjudicator_verify",
+                "rationale": item.rationale,
+                "evidence_refs": list(item.evidence_refs),
+                "warnings": list(item.warnings),
+            }
+            continue
+
         _record_promote(
             cid=cid,
             candidate=candidate,
@@ -844,7 +870,13 @@ def _normalize_adjudication_items(
             "rationale": "The adjudicator did not return the required decision for this candidate.",
         }
 
-    return ensure_unique_finding_ids(promoted), lifecycle, merge_map, warnings
+    return (
+        ensure_unique_finding_ids(promoted),
+        lifecycle,
+        merge_map,
+        warnings,
+        verification_requested,
+    )
 
 
 def _completion_cap(settings: Settings) -> int:
@@ -962,12 +994,29 @@ def make_review_adjudicator_node(
         else:
             combined = None
 
-        findings, lifecycle, merge_map, norm_warnings = _normalize_adjudication_items(
+        prior_adjudicator = metadata.get(node_name) if isinstance(metadata.get(node_name), dict) else {}
+        verification_round = int(prior_adjudicator.get("verification_round", 0) or 0)
+        verifier_report_ids = set(_verifier_by_candidate(state))
+        verification_available = bool(
+            resolved_settings.verifier_enabled
+            and verification_round == 0
+            and (
+                not resolved_settings.verifier_skip_if_no_sandbox
+                or sandbox_runtime_available(resolved_settings)
+            )
+        )
+        findings, lifecycle, merge_map, norm_warnings, verification_requested = _normalize_adjudication_items(
             output=combined,
             candidates=candidates,
             changed_files=changed_files,
+            allow_verification=verification_available,
+            verifier_report_ids=verifier_report_ids,
         )
         warnings.extend(norm_warnings)
+
+        if verification_requested:
+            findings = []
+            verification_round += 1
 
         severity_rank = {"high": 0, "medium": 1, "low": 2}
         findings = sorted(
@@ -986,6 +1035,8 @@ def make_review_adjudicator_node(
             "promoted_count": len(findings),
             "candidate_lifecycle": lifecycle,
             "merge_map": merge_map,
+            "verification_requested_ids": verification_requested,
+            "verification_round": verification_round,
             "warnings": warnings,
             "packet_candidate_ids": _candidate_ids_from_packets(packets),
         }

@@ -27,6 +27,8 @@ Set `aligned=false` when tasks miss coverage OR the mandate lacks evidence for a
 
 Set `aligned=false` if any of the following apply:
 
+- The plan has more than 10 tasks. Instruct the reviser to consolidate related surfaces and
+  contract questions while preserving coverage; do not request one task per gap.
 - A surface listed in **Surface ledger (JSON)** (or a distinct feature in **PR context**) has **no** task coverage - neither a dedicated task nor inclusion in a **diff-local correctness** `logic` task that names the surface set and declares its `surface_ids`.
 - A task mentions changed surfaces but omits matching `surface_ids` from **Surface ledger (JSON)**.
 - Two non-cross-surface `logic` tasks claim the same `surface_ids`; require disjoint logic scopes unless the task explicitly says it is cross-surface/integration.

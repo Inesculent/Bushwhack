@@ -1,0 +1,107 @@
+{
+  "experiment": "reviewer_graph_parallel",
+  "run_id": "da3ea2b38854",
+  "started_at": "2026-08-10T22:19:59.416559+00:00",
+  "finished_at": "2026-08-10T22:35:05.620517+00:00",
+  "dataset": "aacr_bench",
+  "dataset_path": "data/processed/aacr_bench_graph_ready.csv",
+  "planner_model_key": "qwen3.5-122b",
+  "worker_model_key": "qwen3.5-122b",
+  "reviewer_check_mode": "enforced",
+  "reviewer_check_mode_source": "settings_default",
+  "effective_reviewer_mode": {
+    "graph": "full",
+    "planner": "mental_model",
+    "mandate_explorer": "enabled",
+    "worker_path": "adversarial",
+    "check_mode": "enforced",
+    "check_nodes_reached": {
+      "compiler": true,
+      "validator": true,
+      "executor": true,
+      "evidence_gate": true
+    },
+    "snapshot_resume": false,
+    "final_review": "review_adjudicator"
+  },
+  "pr_url_filter": "",
+  "dataset_range": null,
+  "repo_root": "",
+  "trace": true,
+  "cli_flags": {
+    "dataset": "aacr",
+    "dataset_path": "data/processed/aacr_bench_graph_ready.csv",
+    "run_id": null,
+    "limit": 1,
+    "range": null,
+    "pr_url": null,
+    "pr_urls": null,
+    "snapshot_id": null,
+    "output_root": null,
+    "repo_root": null,
+    "trace": true,
+    "review_check_mode": null,
+    "llm_timeout": null,
+    "llm_max_retries": null,
+    "keep_redis_checkpoints": false,
+    "run_profile": "remote"
+  },
+  "source_provenance": {
+    "schema_version": 1,
+    "repository_root": "/lustre/fs1/home/dy828490/bushwhack/Bushwhack2",
+    "source_tree_sha256": "3d1dd4cb9638d06f8ac5488120aa966b2b1228ad4e4c858aba5292e23c4d19f2",
+    "source_file_count": 277,
+    "included_extensions": [
+      ".md",
+      ".py"
+    ],
+    "git": {
+      "available": true,
+      "root": "/lustre/fs1/home/dy828490/bushwhack/Bushwhack2",
+      "commit": "c9ec340069acbccdc9c12798082822aab9151df1",
+      "dirty": true
+    }
+  },
+  "mcp_preflight": {
+    "status": "ok",
+    "required_tools": [
+      "get_commits_for_path"
+    ],
+    "available_tools": [
+      "create_pr_review_comment",
+      "get_commits_for_path",
+      "get_file_content",
+      "get_issue",
+      "get_issue_comments",
+      "get_pull_request",
+      "get_pull_request_diff",
+      "get_pull_request_review_comments",
+      "get_pull_requests_for_commit",
+      "get_repo_metadata",
+      "get_repo_structure"
+    ],
+    "missing_required_tools": [],
+    "tool_discovery_available": true
+  },
+  "run_warnings": [],
+  "coverage_audit_path": "coverage_audit.json",
+  "coverage_audit_summary": {
+    "prs_with_positive_labels": 1,
+    "positive_label_count": 5,
+    "positive_path_count": 1,
+    "compiled_path_count": 0,
+    "valid_path_count": 0,
+    "focused_requested_path_count": 0,
+    "focused_effective_path_count": 0,
+    "focused_result_path_count": 0,
+    "candidate_path_count": 0,
+    "final_path_count": 0
+  },
+  "redis_checkpoint_cleanup_enabled": false,
+  "total_prs": 1,
+  "manifest_total_rows": 1,
+  "succeeded": 1,
+  "failed": 0,
+  "total_llm_tokens": 199999,
+  "elapsed_ms": 904370
+}

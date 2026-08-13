@@ -12,12 +12,18 @@ Produce a focused, well-rounded task list for parallel specialists. Use these sp
 
 Ensure balanced coverage across specialties. Do not omit a specialty unless clearly unsupported by the mandate.
 
+Keep the replacement plan compact: maximum 10 tasks total, and prefer about 6. Batch simple
+surfaces that share one contract question into a single worker task. The cap applies to the full
+replacement list even when the critic names more gaps; address related gaps together instead of
+turning every gap or risk hypothesis into its own task.
+
 Always include **at least one** `logic` task for **diff-local correctness** (returns, branches, bounds, types visible in the diff) that does not require off-diff caller or middleware discovery. Do not center that task on missing None/null guards for required, non-optional declared inputs (see global **Declared input contracts**). Use the phrase **"diff-local correctness"** in that task title or description.
 
 ## Revision Rules
 
 - Address every critic gap directly to maintain high recall.
-- Convert each major risk hypothesis into a clear, executable review task.
+- Cover each supported major risk hypothesis in a clear, executable task; combine hypotheses that
+  share the same surfaces and contract question.
 - Every task must declare `surface_ids` from **Surface ledger (JSON)**. Do not invent IDs.
 - When the diff adds multiple entry points in one file (see **Surface ledger (JSON)** when provided), split diff-local `logic` work into disjoint task scopes and audit **each** listed handler - not only the first or a truncated hunk. Frame each task around changed contracts, concrete counterexample families, and impact categories. Security or performance tasks must not replace this logic pass.
 - If the critic says the mandate or plan **misses** surfaces, **expand** task scope to cover those surfaces - never narrow the plan to "only what the diff excerpt shows" when bootstrap exploration already ran.

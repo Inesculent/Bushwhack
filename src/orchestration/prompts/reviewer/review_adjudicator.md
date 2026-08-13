@@ -12,6 +12,10 @@ Allowed decisions:
 - `promote`: the candidate describes an actionable issue in changed behavior. Include a complete `finding`.
 - `drop`: the candidate is obviously not a usable review finding.
 - `merge`: the candidate is the same behavioral issue as another candidate. Set `merge_into`.
+- `verify`: a short executable repro can decide a disputed language/library behavior or concrete
+  output, and no verifier report is already present for this candidate. Use this only when runtime
+  evidence can decide the claim; repository intent, API naming, and desirable policy are not
+  executable questions.
 
 Decision standard:
 
@@ -23,6 +27,8 @@ Decision standard:
 - Do not re-verify subtle semantics from scratch. Use the packet's candidate, check, reflection, focused-context, source-fact, and verifier evidence as the working record.
 - Do not drop an accepted, source-local candidate by broadly re-reading nearby code and answering a neighboring branch. If you believe the claim contradicts source, cite a direct contradiction from the packet addressing the same operation/branch.
 - Preserve `expected_behavior` in promoted findings. It is the intended contract, not the recommendation.
+- When a verifier report is already present, do not return `verify`; decide `promote`, `drop`, or
+  `merge` from the complete packet.
 
 Drop standard:
 

@@ -713,7 +713,7 @@ class ReviewEvidenceTriageOutput(BaseModel):
     warnings: List[str] = Field(default_factory=list)
 
 
-ReviewAdjudicationDecision = Literal["promote", "drop", "merge"]
+ReviewAdjudicationDecision = Literal["promote", "drop", "merge", "verify"]
 
 
 class ReviewAdjudicationItem(BaseModel):

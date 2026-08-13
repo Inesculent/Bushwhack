@@ -1293,7 +1293,7 @@ def _render_semantic_claim_cluster_prompt(clusters: Sequence[Mapping[str, Any]])
         "that describe the same violated contract, counterexample family, and practical fix, and list distinct_ids "
         "for nearby findings that cover a different contract, mode, data element, trigger, or impact. Put internally "
         "contradictory or incoherent variants in rejected_ids rather than merging their text into the keeper.\n"
-        "Classify each candidate ID exactly once: absorbed, distinct, or rejected. Never place a distinct ID "
+        "Classify each candidate ID exactly once: keeper, absorbed, distinct, or rejected. Never place a distinct ID "
         "inside a duplicate group\'s rejected_ids.\n"
         "Do not merge two findings merely because they share a file or method. Same symbol plus different contract "
         "must remain distinct.\n\n"

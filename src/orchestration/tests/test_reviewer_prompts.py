@@ -52,6 +52,18 @@ def test_planner_prompt_requires_diff_local_correctness_baseline() -> None:
     assert "general correctness" in text.lower()
 
 
+def test_all_active_planning_prompts_share_compact_task_budget() -> None:
+    for prompt_path in (
+        "planner.md",
+        "mental_model/plan_revision.md",
+        "mental_model/joint_plan_critic.md",
+        "mental_model/plan_critic.md",
+    ):
+        text = load_reviewer_prompt(prompt_path).lower()
+        assert "10 tasks" in text
+        assert "consolidat" in text or "batch" in text or "prefer 6" in text
+
+
 def test_critiquer_prompt_contains_routing_hardcap() -> None:
     text = load_reviewer_prompt("critiquer.md")
     assert "Single-Specialty Hardcap" in text
@@ -244,6 +256,13 @@ def test_high_volume_structured_prompts_include_output_budget() -> None:
         assert "Output budget" in text
         assert "Return only schema JSON" in text
         assert "Do not quote long" in text or "Do not repeat long" in text
+
+
+def test_adjudicator_can_request_bounded_runtime_evidence() -> None:
+    text = load_reviewer_prompt("review_adjudicator.md")
+    assert "`verify`" in text
+    assert "no verifier report is already present" in text
+    assert "repository intent" in text
 
 
 def test_active_planning_prompts_do_not_prescribe_issue_class_tasks() -> None:

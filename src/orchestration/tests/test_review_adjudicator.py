@@ -66,11 +66,12 @@ def _normalize(
     *,
     changed_files: set[str] | None = None,
 ) -> tuple[list[ReviewFinding], dict[str, object], dict[str, list[str]], list[str]]:
-    return _normalize_adjudication_items(
+    findings, lifecycle, merge_map, warnings, _verification_requested = _normalize_adjudication_items(
         output=output,
         candidates=candidates,
         changed_files=changed_files or {"pkg/mod.py"},
     )
+    return findings, lifecycle, merge_map, warnings
 
 
 def test_adjudication_packet_includes_available_evidence(tmp_path: Path) -> None:
@@ -266,6 +267,52 @@ def test_adjudication_explicit_drop_records_obvious_drop_reason() -> None:
     assert warnings == []
     assert lifecycle["c1"]["decision"] == "dropped"
     assert lifecycle["c1"]["reason"] == "adjudicator_drop_obvious"
+
+
+def test_adjudication_can_request_one_runtime_verification() -> None:
+    candidates = {"c1": _candidate("c1")}
+    output = ReviewAdjudicationOutput(
+        items=[
+            ReviewAdjudicationItem(
+                candidate_id="c1",
+                decision="verify",
+                rationale="A short execution can decide the disputed output semantics.",
+            )
+        ]
+    )
+
+    findings, lifecycle, merge_map, warnings, requested = _normalize_adjudication_items(
+        output=output,
+        candidates=candidates,
+        changed_files={"pkg/mod.py"},
+        allow_verification=True,
+    )
+
+    assert findings == []
+    assert merge_map == {}
+    assert warnings == []
+    assert requested == ["c1"]
+    assert lifecycle["c1"]["decision"] == "verification_requested"
+
+
+def test_adjudication_cannot_repeat_verification_after_report() -> None:
+    candidates = {"c1": _candidate("c1")}
+    output = ReviewAdjudicationOutput(
+        items=[ReviewAdjudicationItem(candidate_id="c1", decision="verify", rationale="retry")]
+    )
+
+    findings, lifecycle, _merge_map, warnings, requested = _normalize_adjudication_items(
+        output=output,
+        candidates=candidates,
+        changed_files={"pkg/mod.py"},
+        allow_verification=True,
+        verifier_report_ids={"c1"},
+    )
+
+    assert findings == []
+    assert requested == []
+    assert lifecycle["c1"]["reason"] == "verification_unavailable"
+    assert "adjudication_verification_unavailable:c1" in warnings
 
 
 def test_adjudication_validation_rejects_invalid_merge_target() -> None:

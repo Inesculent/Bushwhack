@@ -11,6 +11,10 @@ Judge whether the task list covers:
 - non-security concerns such as correctness, performance, tests, integration, and maintainability;
 - **at least one diff-local general correctness** `logic` task (changed-hunk control flow, returns, None/edge inputs, bounds) that does **not** depend on off-diff caller/middleware discovery.
 
+The complete plan must contain at most 10 tasks (prefer about 6). If it exceeds the cap, set
+`aligned=false` and ask for consolidation by shared surface and contract question without dropping
+coverage.
+
 ## Alignment Rules
 
 Set `aligned=true` when the plan covers all key areas with sufficient specificity, avoiding the trap of hyperfixating on a single detail while missing others (high recall is essential).

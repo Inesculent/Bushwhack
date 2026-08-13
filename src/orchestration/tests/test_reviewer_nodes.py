@@ -787,7 +787,7 @@ def test_plan_emit_emits_surface_valid_plan_when_critic_misaligned_after_budget(
     ]
 
 
-def test_plan_emit_still_blocks_surface_invalid_plan_after_budget() -> None:
+def test_plan_emit_repairs_invalid_target_from_bound_surface_after_budget() -> None:
     diff = (
         "diff --git a/src/app.py b/src/app.py\n"
         "+++ b/src/app.py\n"
@@ -817,12 +817,56 @@ def test_plan_emit_still_blocks_surface_invalid_plan_after_budget() -> None:
 
     out = make_plan_emit_node()(state)
 
+    assert out["next_step"] == "review"
+    emitted = [task for task_id, task in out["task_registry"].items() if task_id != out["root_task_id"]]
+    assert len(emitted) == 1
+    assert emitted[0].target_files == ["src/app.py"]
+    repaired = out["metadata"]["review_planner"]["plan_validation"][
+        "task_target_files_repaired_from_surfaces"
+    ]
+    assert repaired == [
+        {
+            "task_id": "logic-handle",
+            "dropped": ["tests/test_app.py"],
+            "repaired": ["src/app.py"],
+            "surface_ids": emitted[0].surface_ids,
+        }
+    ]
+
+
+def test_plan_emit_blocks_invalid_target_without_authoritative_surface_path() -> None:
+    diff = (
+        "diff --git a/src/app.py b/src/app.py\n"
+        "+++ b/src/app.py\n"
+        "@@ -0,0 +1,2 @@\n"
+        "+def handle():\n"
+        "+    return None\n"
+    )
+    task = ReviewTask(
+        id="unbound-review",
+        title="Review unrelated behavior",
+        description="No changed surface is assigned.",
+        target_files=["tests/test_app.py"],
+        surface_ids=["surface:missing"],
+        specialty="general",
+    )
+    state = {
+        "git_diff": diff,
+        "metadata": {
+            "actor_critic_planner": {
+                "draft_tasks": [task.model_dump(mode="json")],
+                "revision_count": 99,
+                "aligned": False,
+            },
+            "mental_model": {"coupled_loop": {"cycles": 99}},
+        },
+    }
+
+    out = make_plan_emit_node()(state)
+
     assert out["next_step"] == "blocked"
     assert out["metadata"]["review_planner"]["blocked"] is True
-    assert out["metadata"]["review_planner"]["plan_validation"]["blocked_reason"] == (
-        "surface_plan_validation_failed"
-    )
-    assert [task_id for task_id in out["task_registry"] if task_id != out["root_task_id"]] == []
+    assert out["metadata"]["review_planner"]["blocked_reason"] == "surface_plan_validation_failed"
 
 
 def test_plan_emit_prunes_non_changed_context_target_when_changed_target_remains() -> None:
@@ -863,6 +907,51 @@ def test_plan_emit_prunes_non_changed_context_target_when_changed_target_remains
     assert validation["task_target_files_pruned"] == [
         {"task_id": "test-coverage", "dropped": ["tests/"], "kept": ["src/app.py"]}
     ]
+
+
+def test_plan_emit_uses_bound_surface_files_instead_of_all_changed_targets() -> None:
+    diff = (
+        "diff --git a/src/app.py b/src/app.py\n"
+        "+++ b/src/app.py\n"
+        "@@ -0,0 +1,2 @@\n"
+        "+def handle():\n"
+        "+    return None\n"
+        "diff --git a/src/registry.py b/src/registry.py\n"
+        "+++ b/src/registry.py\n"
+        "@@ -0,0 +1 @@\n"
+        "+HANDLERS = [handle]\n"
+    )
+    surface = ReviewSurface(
+        surface_id="surface:handle",
+        name="handle",
+        kind="function",
+        file_path="src/app.py",
+        confidence=0.95,
+    )
+    task = ReviewTask(
+        id="logic-handle",
+        title="Handle diff-local correctness",
+        description="Review only the changed handle contract.",
+        target_files=["src/app.py", "src/registry.py"],
+        surface_ids=[surface.surface_id],
+        specialty="logic",
+        review_dimension="diff-local correctness",
+    )
+    state = {
+        "git_diff": diff,
+        "metadata": {
+            "mental_model": {"surface_ledger": [surface.model_dump()]},
+            "actor_critic_planner": {
+                "draft_tasks": [task.model_dump(mode="json")],
+                "revision_count": 99,
+                "aligned": True,
+            },
+        },
+    }
+
+    out = make_plan_emit_node()(state)
+
+    assert out["task_registry"]["logic-handle"].target_files == ["src/app.py"]
 
 
 def test_plan_emit_allows_aligned_surface_bound_plan() -> None:

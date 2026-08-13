@@ -614,24 +614,47 @@ def _prune_non_changed_task_targets(
 ) -> tuple[List[ReviewTask], Dict[str, Any]]:
     changed_files = _changed_code_files_for_task_targets(state)
     if not changed_files:
-        return tasks, {"task_target_files_pruned": [], "task_target_files_pruned_empty": []}
+        return tasks, {
+            "task_target_files_pruned": [],
+            "task_target_files_pruned_empty": [],
+            "task_target_files_repaired_from_surfaces": [],
+        }
+    by_id = surface_by_id(surface_ledger_from_state(state))
     pruned: List[ReviewTask] = []
     pruned_rows: List[Dict[str, Any]] = []
     empty_rows: List[Dict[str, Any]] = []
+    repaired_rows: List[Dict[str, Any]] = []
     for task in tasks:
         original = [path.strip().replace("\\", "/") for path in task.target_files if path and path.strip()]
         kept = [path for path in original if path in changed_files]
         dropped = [path for path in original if path not in changed_files]
         if dropped:
             pruned_rows.append({"task_id": task.id, "dropped": dropped, "kept": kept})
-        if not kept:
-            empty_rows.append({"task_id": task.id, "dropped": dropped})
-            pruned.append(task)
+        surface_files = [
+            surface.file_path.strip().replace("\\", "/")
+            for surface_id in task.surface_ids
+            if (surface := by_id.get(surface_id)) is not None
+            and surface.file_path.strip().replace("\\", "/") in changed_files
+        ]
+        repaired = list(dict.fromkeys(surface_files or kept))
+        if repaired != kept:
+            repaired_rows.append(
+                {
+                    "task_id": task.id,
+                    "dropped": dropped,
+                    "repaired": repaired,
+                    "surface_ids": list(task.surface_ids),
+                }
+            )
+        if repaired:
+            pruned.append(task.model_copy(update={"target_files": repaired}))
             continue
-        pruned.append(task.model_copy(update={"target_files": kept}))
+        empty_rows.append({"task_id": task.id, "dropped": dropped})
+        pruned.append(task)
     return pruned, {
         "task_target_files_pruned": pruned_rows,
         "task_target_files_pruned_empty": empty_rows,
+        "task_target_files_repaired_from_surfaces": repaired_rows,
     }
 
 
