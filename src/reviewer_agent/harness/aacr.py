@@ -370,13 +370,11 @@ def _paths_from_raw_stage(raw: dict[str, Any], final_findings: Iterable[Any]) ->
     focused_results = raw.get("focused_context_results", {}) or {}
     if isinstance(focused_results, dict):
         for result in focused_results.values():
-            if not isinstance(result, dict):
-                continue
             for key in ("file_snippets", "file_contents_full"):
-                values = result.get(key, {})
+                values = _field_from_mapping_or_model(result, key, {})
                 if isinstance(values, dict):
                     result_paths.update(_normalize_repo_path(str(path)) for path in values.keys())
-            hits = result.get("search_hits", {})
+            hits = _field_from_mapping_or_model(result, "search_hits", {})
             if isinstance(hits, dict):
                 for hit_list in hits.values():
                     if not isinstance(hit_list, list):

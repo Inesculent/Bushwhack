@@ -347,6 +347,19 @@ def verifier_routing(state: GraphState) -> str:
     if (state.get("verifier_attempt_idx") or 0) >= settings.verifier_max_attempts:
         return "finalize"
 
+    attempts = state.get("verifier_attempts", []) or []
+    environment_failures = {"module_not_found", "import_error", "harness_error"}
+    if len(attempts) >= 2 and all(
+        (
+            attempt.get("failure_class")
+            if isinstance(attempt, dict)
+            else attempt.failure_class
+        )
+        in environment_failures
+        for attempt in attempts[-2:]
+    ):
+        return "finalize"
+
     if (
         state.get("verifier_last_rationale")
         == "Test generation failed or returned empty code."

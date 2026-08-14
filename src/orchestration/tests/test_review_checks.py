@@ -10,6 +10,7 @@ from src.domain.schemas import (
     CandidateFinding,
     ContractQuestion,
     FocusedContextRequest,
+    FocusedContextResult,
     ReviewCheck,
     ReviewCheckCompilerOutput,
     ReviewCheckExecutorOutput,
@@ -1554,7 +1555,7 @@ def test_review_check_compiler_completeness_enrichment_does_not_expand_cap(monke
     compiled = task_meta["compiled_checks"]
     compiled_ids = [check["check_id"] for check in compiled]
     focused_check = next(check for check in compiled if check["check_id"] == focused.check_id)
-    assert task_meta["compiled_count"] == 12
+    assert task_meta["compiled_count"] == 10
     assert focused.check_id in compiled_ids
     assert any(
         item.startswith("mental-model completeness/cardinality contract:")
@@ -1692,9 +1693,9 @@ def test_review_check_compiler_keeps_focused_llm_check_ahead_of_surface_cap(monk
 
     task_meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
     compiled_ids = [check["check_id"] for check in task_meta["compiled_checks"]]
-    assert len(compiled_ids) == 16
+    assert len(compiled_ids) == 10
     assert compiled_ids[0] == "review-logic:regexextract-tuple-indexing"
-    assert task_meta["compiler_coverage_floor"]["adaptive_max_checks"] == 16
+    assert task_meta["compiler_coverage_floor"]["adaptive_max_checks"] == 10
     assert task_meta["compiler_coverage_floor"]["adaptive_cap_reason"] == "many_primary_owners"
     assert task_meta["compiler_coverage_floor"]["skipped_due_to_cap"]
 
@@ -2370,9 +2371,9 @@ def test_review_check_compiler_coverage_floor_respects_cap(monkeypatch) -> None:
     out = make_review_check_compiler_node()(state)  # type: ignore[arg-type]
 
     floor = out["metadata"]["review_checks"]["by_task"]["review-logic"]["compiler_coverage_floor"]
-    assert out["metadata"]["review_checks"]["by_task"]["review-logic"]["compiled_count"] == 12
-    assert len(floor["added_checks"]) == 3
-    assert len(floor["skipped_due_to_cap"]) == 0
+    assert out["metadata"]["review_checks"]["by_task"]["review-logic"]["compiled_count"] == 10
+    assert len(floor["added_checks"]) == 1
+    assert len(floor["skipped_due_to_cap"]) == 2
 
 
 def test_review_check_compiler_fair_cap_keeps_later_surface_source_local_check(monkeypatch) -> None:
@@ -2448,8 +2449,8 @@ def test_review_check_compiler_fair_cap_keeps_later_surface_source_local_check(m
 
     task_meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
     compiled_ids = [check["check_id"] for check in task_meta["compiled_checks"]]
-    assert task_meta["compiled_count"] == 16
-    assert task_meta["compiler_coverage_floor"]["adaptive_max_checks"] == 16
+    assert task_meta["compiled_count"] == 10
+    assert task_meta["compiler_coverage_floor"]["adaptive_max_checks"] == 10
     assert task_meta["compiler_coverage_floor"]["adaptive_cap_reason"] == "eligible_non_audit_over_base_cap"
     assert "review-logic:beta:1" in compiled_ids
     assert "review-logic:alpha:16" in task_meta["compiler_coverage_floor"]["trimmed_existing_check_ids"]
@@ -2560,8 +2561,8 @@ def test_review_check_compiler_keeps_late_owner_high_signal_checks_under_adaptiv
     task_meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
     compiled_ids = [check["check_id"] for check in task_meta["compiled_checks"]]
     floor = task_meta["compiler_coverage_floor"]
-    assert task_meta["compiled_count"] == 16
-    assert floor["adaptive_max_checks"] == 16
+    assert task_meta["compiled_count"] == 10
+    assert floor["adaptive_max_checks"] == 10
     assert floor["adaptive_cap_reason"] == "many_primary_owners"
     assert "review-logic:owner4:tuple-cardinality" in compiled_ids
     assert "review-logic:owner4:join-none" in compiled_ids
@@ -2752,14 +2753,14 @@ def test_review_check_compiler_prioritizes_local_behavior_floor_over_broad_surfa
     task_meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
     compiled_ids = [check["check_id"] for check in task_meta["compiled_checks"]]
     floor = task_meta["compiler_coverage_floor"]
-    assert task_meta["compiled_count"] == 16
-    assert floor["adaptive_max_checks"] == 16
+    assert task_meta["compiled_count"] == 10
+    assert floor["adaptive_max_checks"] == 10
     assert floor["adaptive_cap_reason"] == "eligible_non_audit_over_base_cap"
     assert any(check_id.startswith("review-logic:coverage:") for check_id in compiled_ids)
     assert any(check_id.startswith("review-logic:surface:") for check_id in floor["trimmed_existing_check_ids"])
 
 
-def test_review_check_compiler_fans_out_omitted_file_check(monkeypatch) -> None:
+def test_review_check_compiler_records_omitted_file_without_inventing_check(monkeypatch) -> None:
     task = _task().model_copy(update={"target_files": ["src/app.py", "src/other.py"]})
     output = ReviewCheckCompilerOutput(summary="compiled", checks=[_check()])
     monkeypatch.setattr(
@@ -2791,13 +2792,11 @@ def test_review_check_compiler_fans_out_omitted_file_check(monkeypatch) -> None:
 
     task_meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
     compiled = task_meta["compiled_checks"]
-    omitted = [check for check in compiled if check["check_id"].startswith("review-logic:omitted-file:")]
-    assert omitted, compiled
-    assert omitted[0]["file_path"] == "src/other.py"
-    assert omitted[0]["allowed_retrieval"] == ["focused_context", "task_evidence"]
+    assert not any(check["check_id"].startswith("review-logic:omitted-file:") for check in compiled)
+    assert task_meta["compiler_coverage_floor"]["evidence_omitted_files"] == ["src/other.py"]
 
 
-def test_review_check_compiler_fans_out_omitted_changed_surfaces(monkeypatch) -> None:
+def test_review_check_compiler_does_not_expand_omitted_changed_surfaces(monkeypatch) -> None:
     one = ReviewSurface(
         surface_id="surface:one",
         name="first_changed",
@@ -2848,15 +2847,12 @@ def test_review_check_compiler_fans_out_omitted_changed_surfaces(monkeypatch) ->
     out = make_review_check_compiler_node()(state)  # type: ignore[arg-type]
 
     compiled = out["metadata"]["review_checks"]["by_task"]["review-logic"]["compiled_checks"]
-    omitted_surface_ids = [
-        check["surface_ids"][0]
-        for check in compiled
-        if check["check_id"].startswith("review-logic:omitted-surface:")
-    ]
-    assert omitted_surface_ids == ["surface:one", "surface:two"]
+    assert not any(check["check_id"].startswith("review-logic:omitted-surface:") for check in compiled)
+    floor = out["metadata"]["review_checks"]["by_task"]["review-logic"]["compiler_coverage_floor"]
+    assert floor["evidence_omitted_files"] == ["src/other.py"]
 
 
-def test_review_check_compiler_does_not_trim_mandatory_omitted_file_under_cap(monkeypatch) -> None:
+def test_review_check_compiler_keeps_real_cap_when_evidence_was_omitted(monkeypatch) -> None:
     task = _task().model_copy(update={"target_files": ["src/app.py", "src/other.py"]})
     llm_checks = [
         _check(check_id=f"review-logic:check:{idx}", changed_code_anchor="handle")
@@ -2892,12 +2888,10 @@ def test_review_check_compiler_does_not_trim_mandatory_omitted_file_under_cap(mo
 
     task_meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
     compiled_ids = [check["check_id"] for check in task_meta["compiled_checks"]]
-    skipped = task_meta["compiler_coverage_floor"]["skipped_due_to_cap"]
-    assert task_meta["compiled_count"] == 13
-    assert any(check_id.startswith("review-logic:omitted-file:") for check_id in compiled_ids), compiled_ids
-    assert not any(item.get("dimension") == "omitted prompt file" for item in skipped)
-    assert all(item.get("origin_kind") for item in skipped)
-    assert all("surface_already_selected" in item for item in skipped)
+    floor = task_meta["compiler_coverage_floor"]
+    assert task_meta["compiled_count"] <= floor["max_checks"]
+    assert not any(check_id.startswith("review-logic:omitted-file:") for check_id in compiled_ids)
+    assert floor["evidence_omitted_files"] == ["src/other.py"]
 
 
 def test_review_check_validator_moves_only_valid_checks_to_state() -> None:
@@ -5377,10 +5371,12 @@ def test_coverage_audit_reports_stage_coverage_and_writes_json(tmp_path) -> None
             ).model_dump(mode="json")
         ],
         "focused_context_results": {
-            "check:review-logic:check:1:1": {
-                "file_snippets": {"src/app.py": "def handle(): ..."},
-                "search_hits": {},
-            }
+            "check:review-logic:check:1:1": FocusedContextResult(
+                request_id="check:review-logic:check:1:1",
+                candidate_id="review-logic:check:1",
+                file_snippets={"src/app.py": "def handle(): ..."},
+                search_hits={},
+            )
         },
         "review_check_results": [
             ReviewCheckResult(
@@ -5411,6 +5407,7 @@ def test_coverage_audit_reports_stage_coverage_and_writes_json(tmp_path) -> None
 
     assert record["summary"]["positive_path_count"] == 2
     assert record["summary"]["compiled_path_count"] == 1
+    assert record["summary"]["focused_result_path_count"] == 1
     assert record["summary"]["candidate_path_count"] == 1
     paths = {item["path"]: item for item in record["paths"]}
     assert paths["src/app.py"]["reason_state"] == "dropped_by_cleanup"

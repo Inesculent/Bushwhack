@@ -27,7 +27,6 @@ from src.orchestration.context.surface_ledger import (
     surface_ids_for_text,
     surface_ledger_from_state,
 )
-from src.orchestration.context.task_evidence import changed_lines_for_file
 from src.orchestration.routing.claim_digest import owned_contract_scope_for_check
 from src.orchestration.nodes.application.review_check_source_scope import (
     changed_task_files,
@@ -53,8 +52,8 @@ REVIEW_CHECK_LENSES = (
     "test_oracle_strength",
 )
 
-MAX_CHECKS_PER_TASK = 12
-ADAPTIVE_MAX_CHECKS_PER_TASK = 16
+MAX_CHECKS_PER_TASK = 8
+ADAPTIVE_MAX_CHECKS_PER_TASK = 10
 CONTRACT_QUESTION_CHECK_GUARD = 32
 _OWNER_FAIR_CAP_OWNER_THRESHOLD = 3
 
@@ -1442,123 +1441,6 @@ def omitted_prompt_files(slot: Mapping[str, Any], coverage_files: Sequence[str])
     return out
 
 
-def surface_intersects_changed_lines(surface: ReviewSurface, changed_lines: set[int]) -> bool:
-    if not changed_lines:
-        return False
-    line_start = surface.line_start or 0
-    line_end = surface.line_end or line_start
-    if line_start < 1:
-        return False
-    return any(line_start <= line <= line_end for line in changed_lines)
-
-
-def omitted_file_surface_check(
-    task: ReviewTask,
-    surface: ReviewSurface,
-    index: int,
-) -> ReviewCheck:
-    line_start = surface.line_start or 1
-    line_end = surface.line_end or line_start
-    return ReviewCheck(
-        check_id=f"{task.id}:omitted-surface:{index}",
-        patch_task_id=task.id,
-        surface_ids=[surface.surface_id],
-        lens="data_shape_consistency",
-        file_path=surface.file_path,
-        line_start=line_start,
-        line_end=line_end,
-        changed_code_anchor=surface.name,
-        behavioral_question=(
-            f"Does the changed {surface.name} in omitted prompt file {surface.file_path} "
-            "have any reachable mismatch in inputs, branch behavior, return shape, data shape, or local side effects?"
-        ),
-        affected_invariant="source-local changed behavior consistency for omitted prompt file",
-        expected_behavior=(
-            f"{surface.name} keeps declared inputs/options, reachable branch behavior, "
-            "return shape, data shape, and local side effects internally consistent."
-        ),
-        required_evidence=[
-            f"focused changed implementation for {surface.name}",
-            "declared inputs/options, branch bodies, return shape, data shape, and local side effects",
-        ],
-        suppress_criteria=[
-            "Focused source evidence shows the omitted prompt surface preserves reachable local behavior."
-        ],
-        report_criteria=[
-            "Focused source evidence shows a reachable wrong output, crash, data loss, or contract mismatch."
-        ],
-        allowed_retrieval=["focused_context", "task_evidence"],
-        budget=2,
-    )
-
-
-def omitted_file_behavior_check(
-    state: GraphState,
-    task: ReviewTask,
-    file_path: str,
-    index: int,
-) -> ReviewCheck:
-    check = coverage_check_for_file(state, task, file_path, index)
-    return check.model_copy(
-        update={
-            "check_id": f"{task.id}:omitted-file:{index}",
-            "lens": "data_shape_consistency",
-            "changed_code_anchor": file_path,
-            "behavioral_question": (
-                f"Does the changed code in omitted prompt file {file_path} have any reachable mismatch "
-                "in inputs, branch behavior, return shape, data shape, or local side effects?"
-            ),
-            "affected_invariant": "source-local changed behavior consistency for omitted prompt file",
-            "expected_behavior": (
-                f"{file_path} keeps changed prompt-file behavior, return shape, data shape, "
-                "and local side effects internally consistent."
-            ),
-            "required_evidence": [
-                f"focused changed implementation in {file_path}",
-                "declared inputs/options, branch bodies, return shape, data shape, and local side effects",
-            ],
-            "suppress_criteria": [
-                f"Focused source evidence shows changed code in {file_path} preserves reachable local behavior."
-            ],
-            "report_criteria": [
-                f"Focused source evidence shows changed code in {file_path} creates a reachable regression."
-            ],
-            "allowed_retrieval": ["focused_context", "task_evidence"],
-            "budget": 2,
-        }
-    )
-
-
-def mandatory_omitted_file_checks(
-    state: GraphState,
-    task: ReviewTask,
-    slot: Mapping[str, Any],
-    coverage_files: Sequence[str],
-    by_id: Mapping[str, ReviewSurface],
-    start_index: int,
-) -> List[ReviewCheck]:
-    omitted_files = omitted_prompt_files(slot, coverage_files)
-    if not omitted_files:
-        return []
-    git_diff = str(state.get("git_diff") or "")
-    added: List[ReviewCheck] = []
-    for file_path in omitted_files:
-        changed_lines = changed_lines_for_file(git_diff, file_path)
-        surfaces = [
-            surface for surface in by_id.values()
-            if surface.file_path.replace("\\", "/") == file_path
-            and surface.confidence >= 0.75
-            and surface.kind != "file"
-            and surface_intersects_changed_lines(surface, changed_lines)
-        ]
-        if surfaces:
-            for surface in sorted(surfaces, key=lambda item: (item.line_start or 10**9, item.name)):
-                added.append(omitted_file_surface_check(task, surface, start_index + len(added)))
-            continue
-        added.append(omitted_file_behavior_check(state, task, file_path, start_index + len(added)))
-    return added
-
-
 def _origin_reason(origin_kind: str) -> str:
     return {
         "llm_compiled": "compiled_by_review_check_llm",
@@ -1567,7 +1449,6 @@ def _origin_reason(origin_kind: str) -> str:
         "deterministic_fallback": "deterministic_fallback_from_task_evidence",
         "coverage_obligation": "added_for_uncovered_coverage_obligation",
         "deterministic_floor": "added_by_deterministic_review_floor",
-        "mandatory_omitted_file": "added_for_changed_file_omitted_from_prompt",
         "uncovered_surface_behavior": "added_for_uncovered_source_local_surface_behavior",
         "surface_coverage": "added_for_missing_primary_surface_coverage",
         "file_coverage": "added_for_changed_file_without_check",
@@ -1640,22 +1521,7 @@ def ensure_compiler_coverage_floor(
         sid for sid in surface_ids_for_task(task, ledger)
         if sid in by_id and by_id[sid].confidence >= 0.75 and by_id[sid].kind != "file"
     ]
-    mandatory_omitted = mandatory_omitted_file_checks(
-        state,
-        task,
-        slot,
-        coverage_files,
-        by_id,
-        len(checks) + len(added_candidates) + 1,
-    )
-    for check in mandatory_omitted:
-        added_candidates.append(
-            (
-                check,
-                {"file_path": check.file_path, "surface": check.changed_code_anchor, "dimension": "omitted prompt file"},
-                "mandatory_omitted_file",
-            )
-        )
+    evidence_omitted_files = omitted_prompt_files(slot, coverage_files)
     behavior_floor = uncovered_surface_behavior_checks(
         state,
         task,
@@ -1737,12 +1603,7 @@ def ensure_compiler_coverage_floor(
         ranked,
         primary_owner_count=len(primary_owner_keys),
     )
-    mandatory_ids = {
-        check.check_id
-        for check, _meta, kind in added_candidates
-        if kind == "mandatory_omitted_file"
-    }
-    mandatory_ranked = [check for check in ranked if check.check_id in mandatory_ids]
+    mandatory_ids: set[str] = set()
     capped, cap_diagnostics = surface_fair_cap_checks(
         ranked,
         task_surface_ids=task_surface_ids,
@@ -1767,8 +1628,7 @@ def ensure_compiler_coverage_floor(
         for check_id in cap_diagnostics.get("protected_existing_check_ids", [])
         if check_id in original_ids
     ]
-    capped_ids = {check.check_id for check in capped}
-    final_checks = [*capped, *(check for check in mandatory_ranked if check.check_id not in capped_ids)]
+    final_checks = list(capped)
     final_ids = {check.check_id for check in final_checks}
     selected_surface_ids = {
         sid
@@ -1824,6 +1684,7 @@ def ensure_compiler_coverage_floor(
         warnings.append(f"compiler_coverage_floor_cap_reached:{len(skipped_due_to_cap)}")
     return final_checks, {
         "coverage_files": coverage_files,
+        "evidence_omitted_files": evidence_omitted_files,
         "missed_files": missing_files,
         "ranked_obligations": [dict(item) for item in obligations],
         "uncovered_obligations": [dict(item) for item in uncovered_obligations],

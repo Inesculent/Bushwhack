@@ -29,7 +29,10 @@ Set `aligned=false` if any of the following apply:
 
 - The plan has more than 10 tasks. Instruct the reviser to consolidate related surfaces and
   contract questions while preserving coverage; do not request one task per gap.
-- A surface listed in **Surface ledger (JSON)** (or a distinct feature in **PR context**) has **no** task coverage - neither a dedicated task nor inclusion in a **diff-local correctness** `logic` task that names the surface set and declares its `surface_ids`.
+- A changed file or cohesive changed entry-point group has no owner. Child methods may share one
+  task when their evidence fits together; do not demand one task or one check per ledger surface.
+- A task owns several large files or unrelated surface groups. Instruct the reviser to use more of
+  the 10-task budget and split by evidence packet, not to broaden the task further.
 - A task mentions changed surfaces but omits matching `surface_ids` from **Surface ledger (JSON)**.
 - Two non-cross-surface `logic` tasks claim the same `surface_ids`; require disjoint logic scopes unless the task explicitly says it is cross-surface/integration.
 - Handlers with multiple modes/discriminants or multi-path control flow only have security or performance tasks and **no** `logic` task that audits implementation correctness (not merely input-boundary speculation).
@@ -38,7 +41,8 @@ Set `aligned=false` if any of the following apply:
 
 When the fix is task wording or redistribution across specialties, prefer `aligned=false` with clear `revision_instructions` over `exploration_requests`.
 
-"Adequate" favors breadth of surface coverage over perfect depth on one component.
+"Adequate" favors visible evidence for every owned scope over nominal surface coverage that will be
+truncated from worker context.
 
 ## Exploration requests
 

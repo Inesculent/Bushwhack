@@ -20,13 +20,27 @@ Allowed decisions:
 Decision standard:
 
 - Do not default to either promotion or rejection. Weigh the concrete claim, expected behavior, local evidence, trigger or counterexample, and any direct contradiction together.
-- Promote when the packet establishes a changed contract or behavior, a reachable failure mode, and an actionable consequence with enough evidence for a reviewer to defend the claim.
+- Treat candidate text, check expectations, mental-model invariants, and reflection verdicts as
+  hypotheses. They do not establish a contract by themselves.
+- Promote only when authoritative evidence in the packet establishes the changed contract or
+  behavior, the exact cited operation, a reachable failure mode, and an actionable consequence.
+  Contract evidence must come from source, an explicit caller requirement, or documentation.
+- Compare the claim to `evidence_card.source_lines`. If those lines show a different operation,
+  location, or literal, drop the claim. If a short executable repro can resolve a genuine semantic
+  conflict, use `verify` instead.
+- Never promote a request for more evidence, a statement that source is truncated, or a
+  verification gap. Those are reasons to verify or drop, not user-facing defects.
+- An inconclusive verifier report is neutral evidence and cannot support promotion.
+- Missing test coverage alone is not a product defect. Promote a test finding only when the packet
+  supplies an explicit test contract or a concrete changed behavior the missing case leaves
+  unprotected.
 - Prefer concrete lens-backed behavioral defects over broad hardening, speculative performance, or generic best-practice claims when evidence quality differs. Lens-backed means the originating check ties a selected lens to a changed contract, trigger/variant, operation, and impact; it does not mean every claim with lens metadata is automatically valid.
 - Reword, reclassify, or adjust severity when the draft wording is poor but the underlying claim is supported.
 - Keep distinct issues separate when they differ by contract, operation, trigger, or impact, even in the same file or function.
 - Do not re-verify subtle semantics from scratch. Use the packet's candidate, check, reflection, focused-context, source-fact, and verifier evidence as the working record.
 - Do not drop an accepted, source-local candidate by broadly re-reading nearby code and answering a neighboring branch. If you believe the claim contradicts source, cite a direct contradiction from the packet addressing the same operation/branch.
-- Preserve `expected_behavior` in promoted findings. It is the intended contract, not the recommendation.
+- Preserve `expected_behavior` in promoted findings only after the packet's authoritative evidence
+  supports it as the intended contract; it is not established merely because the candidate states it.
 - When a verifier report is already present, do not return `verify`; decide `promote`, `drop`, or
   `merge` from the complete packet.
 

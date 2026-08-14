@@ -2472,6 +2472,61 @@ def test_synthesizer_preserves_batch_when_ai_omits_classification(monkeypatch) -
     assert any("missing_ids=['second']" in warning for warning in meta["claim_cluster_warnings"])
 
 
+def test_synthesizer_retries_invalid_classification_once(monkeypatch) -> None:
+    first = ReviewFinding(
+        id="first",
+        file_path="src/x.py",
+        line_start=10,
+        line_end=12,
+        content="Duplicate issue wording one.",
+        severity="medium",
+        feedback_type="defect_detection",
+    )
+    second = first.model_copy(update={"id": "second", "content": "Duplicate issue wording two."})
+    incomplete = SemanticClaimClusterOutput(
+        clusters=[SemanticClaimClusterDecision(cluster_id="cluster-1", distinct_ids=["first"])]
+    )
+    corrected = SemanticClaimClusterOutput(
+        clusters=[
+            SemanticClaimClusterDecision(
+                cluster_id="cluster-1",
+                duplicate_groups=[
+                    SemanticClaimDuplicateGroup(keeper_id="first", absorbed_ids=["second"])
+                ],
+            )
+        ]
+    )
+    responses = iter((incomplete, corrected))
+
+    class FakeLLM:
+        def invoke(self, _prompt):
+            return {"parsed": next(responses)}
+
+    monkeypatch.setattr(
+        "src.orchestration.nodes.application.synthesizer.Models.worker",
+        lambda *_args, **_kwargs: FakeLLM(),
+    )
+
+    out = synthesizer_node(
+        {
+            "findings": [first, second],
+            "metadata": {
+                "review_adjudicator": {
+                    "candidate_lifecycle": {
+                        "first": {"decision": "promoted"},
+                        "second": {"decision": "promoted"},
+                    }
+                }
+            },
+        }
+    )
+
+    assert [finding.id for finding in out["final_findings"]] == ["first"]
+    meta = out["metadata"]["review_synthesizer"]["claim_cluster_reconciliation"]
+    assert meta["valid_cluster_count"] == 1
+    assert meta["claim_cluster_duplicate_to_keeper"] == {"second": "first"}
+
+
 def test_synthesizer_uses_cleanup_duplicate_map_for_lost_promoted_audit() -> None:
     finding = ReviewFinding(
         id="keeper",

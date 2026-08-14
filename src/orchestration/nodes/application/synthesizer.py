@@ -222,23 +222,40 @@ def _reconcile_adjudicated_finding_duplicates(
                 model_key=selected_model,
                 max_completion_tokens=2200,
             )
-            traced = trace_llm_call(
-                llm,
-                _render_semantic_claim_cluster_prompt([cluster]),
-                state=state,
-                node_name="review_synthesizer_claim_cluster_reconciliation",
-                model_key=selected_model,
-                schema_name="SemanticClaimClusterOutput",
-                input_summary={"cluster_id": cluster_id, "finding_count": len(expected_ids)},
-            )
-            llm_tokens += traced.tokens
-            llm_trace.extend(traced.trace_records)
-            batch_audit = parse_structured_output(traced.result, SemanticClaimClusterOutput)
-            errors = _claim_cluster_classification_errors(
-                batch_audit,
-                {cluster_id: expected_ids},
-            )
-            if errors:
+            prompt = _render_semantic_claim_cluster_prompt([cluster])
+            batch_audit = None
+            errors: List[str] = []
+            for attempt in range(2):
+                traced = trace_llm_call(
+                    llm,
+                    prompt,
+                    state=state,
+                    node_name="review_synthesizer_claim_cluster_reconciliation",
+                    model_key=selected_model,
+                    schema_name="SemanticClaimClusterOutput",
+                    input_summary={
+                        "cluster_id": cluster_id,
+                        "finding_count": len(expected_ids),
+                        "attempt": attempt + 1,
+                    },
+                )
+                llm_tokens += traced.tokens
+                llm_trace.extend(traced.trace_records)
+                batch_audit = parse_structured_output(traced.result, SemanticClaimClusterOutput)
+                errors = _claim_cluster_classification_errors(
+                    batch_audit,
+                    {cluster_id: expected_ids},
+                )
+                if not errors:
+                    break
+                if attempt == 0:
+                    prompt = (
+                        f"{prompt}\n\nYour previous structured classification was invalid:\n"
+                        + "\n".join(f"- {error}" for error in errors)
+                        + "\nReturn a corrected classification. Every supplied candidate ID must appear exactly "
+                        "once across keeper_id, absorbed_ids, distinct_ids, and rejected_ids."
+                    )
+            if errors or batch_audit is None:
                 warnings.extend(f"claim_cluster_invalid:{error}" for error in errors)
                 continue
             audits.extend(batch_audit.clusters)

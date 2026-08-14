@@ -11,13 +11,20 @@ Mutual exclusivity means primary ownership, not blindness. If a task may notice 
 Each task must declare `surface_ids` from **Surface ledger (JSON)**. Use those IDs as the scope boundary. Do not invent IDs. If a task is intentionally cross-surface, make that explicit in the title or description and include only the relevant surface IDs.
 
 Hard caps:
-- Maximum 10 tasks total (prefer 6).
+- Maximum 10 tasks total. Use 4–6 only for a small patch; scale toward 10 when changed code cannot fit in a few focused worker contexts.
 - Title <= 80 characters.
 - Description <= 500 characters.
 
+Context capacity is part of correctness. Prefer one changed file or one cohesive surface group per
+task. Use two files only when both are small or the task is tracing one explicit cross-file contract.
+Never make a task responsible for several large files. Split large files by cohesive changed
+surface groups, and use the available task budget before broadening worker scope.
+
 Use only these specialties: security, logic, performance, general.
 
-Prefer one focused task per specialty unless the diff clearly contains independent risk clusters that need separate review. Keep target files limited to the changed files or directly implicated context files.
+Use a specialty task only when the diff clearly supports that lens. Do not duplicate the same
+surface across security, performance, and general tasks merely for balance. Keep target files
+limited to changed files or directly implicated context files.
 
 Use three inputs together: (1) PR description intent, (2) what the repository actually does from KB/structural hints/mental model, and (3) general code-review practice. General practice may suggest questions, but it is not by itself a task-worthy defect hypothesis. Do not overfit to any one source. Use Repository KB summaries, when present, to identify directly related subsystems, contracts, and dependency boundaries. Use the PR diff/review overlay for task anchoring. Do not create broad repository-wide tasks unless KB evidence shows the changed surface depends on that subsystem or contract.
 

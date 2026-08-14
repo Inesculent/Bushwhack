@@ -11,9 +11,9 @@ Judge whether the task list covers:
 - non-security concerns such as correctness, performance, tests, integration, and maintainability;
 - **at least one diff-local general correctness** `logic` task (changed-hunk control flow, returns, None/edge inputs, bounds) that does **not** depend on off-diff caller/middleware discovery.
 
-The complete plan must contain at most 10 tasks (prefer about 6). If it exceeds the cap, set
-`aligned=false` and ask for consolidation by shared surface and contract question without dropping
-coverage.
+The complete plan must contain at most 10 tasks. A small patch usually needs 4–6; a larger patch
+should use more of the budget instead of assigning several large files or unrelated surface groups
+to one worker. Set `aligned=false` when a task's evidence is unlikely to fit one focused context.
 
 ## Alignment Rules
 
@@ -25,6 +25,7 @@ Set `aligned=false` when:
 - tasks are too generic (e.g., broad "check edge cases" work) or, conversely, so hyperspecific they miss the bigger picture;
 - the plan over-indexes on one specialty, causing a drop in overall review recall;
 - tasks get stuck in infinite loops of repetitive checks.
+- a task owns several large files, or unrelated surfaces, that should be split to keep its evidence visible.
 
 Good task specificity: "Verify `.join()` handles optional extracted fields correctly in the changed path."
 
@@ -32,7 +33,8 @@ Weak task specificity: "Check null handling." OR "Check if line 43 might be null
 
 ## Revision Guidance
 
-When `aligned=false`, provide actionable `revision_instructions` that tell the reviser how to rebalance the plan for better recall and broad coverage without context explosion.
+When `aligned=false`, provide at most five concise, actionable revision instructions. Prefer
+redistributing ownership over adding more review dimensions to the same task.
 
 ## Output
 
