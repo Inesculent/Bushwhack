@@ -19,6 +19,7 @@ from src.domain.schemas import (
 from src.domain.verifier_schemas import VerifierReport
 from src.orchestration.nodes.application.review_adjudicator import (
     _normalize_adjudication_items,
+    _packet_evidence_summary,
     _render_reduce_prompt,
     build_review_adjudication_packets,
     plan_adjudication_batches,
@@ -181,6 +182,7 @@ def test_adjudication_packet_includes_available_evidence(tmp_path: Path) -> None
     assert len(packets) == 1
     packet = packets[0]
     assert packet["evidence_card"]["source_lines"]["status"] == "included"
+    assert packet["evidence_card"]["source_lines"]["origin"] == "repo_path"
     assert "10: def changed():" in packet["evidence_card"]["source_lines"]["snippet"]
     assert packet["candidate"]["candidate_id"] == "c1"
     assert packet["candidate"]["expected_behavior"] == "The changed operation returns the complete expected value."
@@ -197,6 +199,86 @@ def test_adjudication_packet_includes_available_evidence(tmp_path: Path) -> None
     assert packet["critique_revision_digests"][0]["impact"] == "supports"
     assert packet["critique_revision_rows"][0]["verdict"] == "accept"
     assert packet["prior_lifecycle_hint"]["reason"] == "legacy advisory"
+
+
+def test_adjudication_packet_uses_task_evidence_when_repo_path_is_remote() -> None:
+    candidate = _candidate()
+    lines = [f"line = {index}" for index in range(1, 10)] + [
+        "def changed():",
+        "    value = incomplete()",
+        "    return value",
+    ] + [f"trailing = {index}" for index in range(13, 21)]
+    state = {
+        "repo_path": "https://github.com/example/project",
+        "candidate_findings": [candidate],
+        "metadata": {
+            "critique_pipeline": {
+                "by_task": {
+                    "task": {
+                        "task_evidence": {
+                            "file_contents": {"pkg/mod.py": "\n".join(lines)}
+                        }
+                    }
+                }
+            }
+        },
+    }
+
+    packet = build_review_adjudication_packets(state)[0]  # type: ignore[arg-type]
+    source = packet["evidence_card"]["source_lines"]
+
+    assert source["status"] == "included"
+    assert source["origin"] == "task_evidence"
+    assert "10: def changed():" in source["snippet"]
+    assert "20: trailing = 20" in source["snippet"]
+    assert len(source["snippet"]) <= 1200
+
+
+def test_adjudication_packet_includes_one_cited_contract_excerpt() -> None:
+    candidate = _candidate()
+    check_result = ReviewCheckResult(
+        check_id="check-1",
+        patch_task_id="task",
+        decision="candidate",
+        evidence_refs=["pkg/mod.py:10-12", "pkg/caller.py:3-4", "pkg/other.py:1"],
+        candidate=candidate,
+    )
+    state = {
+        "repo_path": "https://github.com/example/project",
+        "candidate_findings": [candidate],
+        "review_check_results": [check_result],
+        "metadata": {
+            "critique_pipeline": {
+                "by_task": {
+                    "task": {
+                        "task_evidence": {
+                            "file_contents": {
+                                "pkg/mod.py": "\n".join(f"source {index}" for index in range(1, 20)),
+                                "pkg/caller.py": "setup\nvalue = 1\nresult = changed()\nuse(result)\n",
+                                "pkg/other.py": "unused\n",
+                            }
+                        }
+                    }
+                }
+            }
+        },
+    }
+
+    packet = build_review_adjudication_packets(state)[0]  # type: ignore[arg-type]
+    contract = packet["evidence_card"]["contract_lines"]
+
+    assert contract["status"] == "included"
+    assert contract["origin"] == "task_evidence"
+    assert contract["file_path"] == "pkg/caller.py"
+    assert contract["evidence_ref"] == "pkg/caller.py:3-4"
+    assert "3: result = changed()" in contract["snippet"]
+    assert len(contract["snippet"]) <= 900
+    assert _packet_evidence_summary([packet]) == {
+        "source_included": 1,
+        "source_unavailable": 0,
+        "contract_included": 1,
+        "source_origins": {"task_evidence": 1},
+    }
 
 
 def test_adjudication_validation_records_one_lifecycle_per_candidate() -> None:
@@ -421,6 +503,8 @@ def test_review_adjudicator_prompt_is_balanced_and_evidence_led() -> None:
     assert "Default to `promote`" not in prompt
     assert "framework, enum, schema, caller, or runtime might prevent the trigger" in prompt
     assert "A schema allowing a value proves that trigger can exist" in prompt
+    assert "global Git Diff Excerpt is supplementary" in prompt
+    assert "base, abstract, or default hook" in prompt
     assert "Merge only true duplicates with the same expected behavior, contract, operation, trigger, and impact" in prompt
 
 
