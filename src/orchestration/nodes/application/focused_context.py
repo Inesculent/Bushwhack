@@ -101,6 +101,68 @@ def _has_hits(result: FocusedContextResult) -> bool:
     return any(rows for rows in result.search_hits.values())
 
 
+def _path_text_for_request(request: FocusedContextRequest, result: FocusedContextResult) -> str:
+    requested = set(_request_paths(request))
+    chunks: List[str] = []
+    for path, body in result.file_snippets.items():
+        if _norm_path(path) in requested:
+            chunks.append(str(body or ""))
+    for path, body in result.file_contents_full.items():
+        if _norm_path(path) in requested:
+            chunks.append(str(body or ""))
+    for rows in result.search_hits.values():
+        for hit in rows or []:
+            path = hit.file_path if hasattr(hit, "file_path") else (
+                hit.get("file_path") if isinstance(hit, Mapping) else ""
+            )
+            if path and _norm_path(str(path)) in requested:
+                content = hit.content if hasattr(hit, "content") else (
+                    hit.get("content") if isinstance(hit, Mapping) else ""
+                )
+                chunks.append(str(content or ""))
+    return "\n".join(chunks)
+
+
+def _symbol_context_missing(request: FocusedContextRequest, result: FocusedContextResult) -> bool:
+    text = _path_text_for_request(request, result).lower()
+    if not text:
+        return False
+    for query in request.symbol_queries:
+        token = str(query or "").strip().split(".", 1)[0].lower()
+        if len(token) >= 3 and token not in text:
+            return True
+    return False
+
+
+def _focused_context_sufficiency_outcomes(
+    request: FocusedContextRequest,
+    result: FocusedContextResult | None,
+) -> List[str]:
+    if result is None:
+        return []
+    outcomes: List[str] = []
+    requested_paths = set(_request_paths(request))
+    if not requested_paths:
+        return outcomes
+    effective_paths = set(_result_paths(result))
+    if effective_paths and not requested_paths.intersection(effective_paths):
+        return outcomes
+    requested_text = _path_text_for_request(request, result)
+    if not requested_text.strip():
+        outcomes.append("missing_requested_file_context")
+    if request.file_read_mode == "full":
+        full_paths = {_norm_path(path) for path in result.file_contents_full}
+        if not requested_paths.intersection(full_paths):
+            outcomes.append("missing_full_file_context")
+    elif request.symbol_queries and len(requested_text) < 1200 and not any(result.search_hits.values()):
+        outcomes.append("thin_symbol_context")
+    if _symbol_context_missing(request, result):
+        outcomes.append("missing_symbol_context")
+    if any(str(w).startswith("truncated") for w in result.warnings):
+        outcomes.append("budget_omission")
+    return list(dict.fromkeys(outcomes))
+
+
 def _queries_changed(before: FocusedContextRequest, after: FocusedContextRequest) -> bool:
     return (
         list(before.symbol_queries) != list(after.symbol_queries)
@@ -117,12 +179,13 @@ def _diagnostic_row(
 ) -> Dict[str, Any]:
     requested = _request_paths(request)
     effective = _result_paths(result) if result is not None else []
+    sufficiency = _focused_context_sufficiency_outcomes(request, result)
     return {
         "request_id": request.request_id,
         "candidate_id": request.candidate_id,
         "requested_paths": requested,
         "effective_paths": effective,
-        "outcomes": list(dict.fromkeys(outcomes)),
+        "outcomes": list(dict.fromkeys([*outcomes, *sufficiency])),
         "warnings": ([warning] if warning else []) + (list(result.warnings) if result is not None else []),
     }
 
@@ -192,8 +255,6 @@ def make_focused_context_node(
                 effective_paths = set(_result_paths(result))
                 if requested_paths and effective_paths and not requested_paths.intersection(effective_paths):
                     outcomes.append("path_mismatch")
-                if any(str(w).startswith("truncated") for w in result.warnings):
-                    outcomes.append("budget_omission")
                 diagnostics.append(_diagnostic_row(sanitized, outcomes=outcomes or ["fulfilled"], result=result))
             except Exception as exc:  # noqa: BLE001
                 warnings.append(f"fulfill_failed:{req.request_id}:{exc.__class__.__name__}: {exc}")
@@ -252,6 +313,16 @@ def make_focused_context_node(
                 health_warnings.append("focused_context_tool_unavailable")
             if "path_mismatch" in outcomes:
                 health_warnings.append("focused_context_path_mismatch")
+            if "missing_requested_file_context" in outcomes:
+                health_warnings.append("focused_context_missing_requested_file_context")
+            if "missing_full_file_context" in outcomes:
+                health_warnings.append("focused_context_missing_full_file_context")
+            if "missing_symbol_context" in outcomes:
+                health_warnings.append("focused_context_missing_symbol_context")
+            if "thin_symbol_context" in outcomes:
+                health_warnings.append("focused_context_thin_symbol_context")
+            if "budget_omission" in outcomes:
+                health_warnings.append("focused_context_budget_omission")
         fc_meta["health_warnings"] = sorted(set(health_warnings))
         metadata["focused_context"] = fc_meta
 

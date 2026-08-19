@@ -30,7 +30,9 @@ from src.orchestration.context.surface_ledger import (
 from src.orchestration.context.task_evidence import changed_lines_for_file
 from src.orchestration.routing.claim_digest import owned_contract_scope_for_check
 from src.orchestration.nodes.application.review_check_source_scope import (
+    CONTRACT_JUSTIFICATION_REQUIREMENT,
     changed_task_files,
+    check_requires_contract_justification,
     compiled_check_is_source_local,
     coverage_meta_relevance,
     evidence_requirements_for_check,
@@ -913,7 +915,34 @@ def check_covers_obligation(check: ReviewCheck, obligation: Mapping[str, Any]) -
     )
     surface_ok = not surface.strip() or tokens_overlap(surface, blob) or surface.lower() in blob.lower()
     dimension_ok = tokens_overlap(dimension, blob) or dimension.lower() in blob.lower()
-    return surface_ok and dimension_ok
+    if not (surface_ok and dimension_ok):
+        return False
+    operation_markers = (
+        [
+            str(item).strip()
+            for item in obligation.get("operation_markers", [])
+            if str(item).strip()
+        ]
+        if isinstance(obligation.get("operation_markers"), list)
+        else []
+    )
+    material = (
+        [
+            str(item).strip()
+            for item in obligation.get("mental_model_contract_material", [])
+            if str(item).strip()
+        ]
+        if isinstance(obligation.get("mental_model_contract_material"), list)
+        else []
+    )
+    if operation_markers and not any(
+        tokens_overlap(item, blob) or item.lower() in blob.lower()
+        for item in operation_markers
+    ):
+        return False
+    if material and not any(tokens_overlap(item, blob) for item in material):
+        return False
+    return True
 
 
 def coverage_obligation_is_concrete(obligation: Mapping[str, Any]) -> bool:
@@ -953,6 +982,39 @@ def coverage_obligation_is_concrete(obligation: Mapping[str, Any]) -> bool:
         return True
     return bool(file_path and surface and dimension and evidence and (has_contract_material or signal.strip())) and any(
         term in blob for term in concrete_terms
+    )
+
+
+def _obligation_needs_integration_bridge(obligation: Mapping[str, Any]) -> bool:
+    blob = " ".join(
+        str(obligation.get(key) or "")
+        for key in (
+            "dimension",
+            "evidence",
+            "diff_signal",
+            "diff_signal_family",
+            "issue_family",
+            "expected_behavior",
+        )
+    )
+    if isinstance(obligation.get("operation_markers"), list):
+        blob = f"{blob} {' '.join(str(item) for item in obligation['operation_markers'])}"
+    if isinstance(obligation.get("mental_model_contract_material"), list):
+        blob = f"{blob} {' '.join(str(item) for item in obligation['mental_model_contract_material'])}"
+    lowered = blob.lower()
+    return any(
+        marker in lowered
+        for marker in (
+            "caller",
+            "call site",
+            "call path",
+            "consumer",
+            "downstream",
+            "integration",
+            "migration",
+            "reconstruct",
+            "pipeline",
+        )
     )
 
 
@@ -998,8 +1060,47 @@ def coverage_check_for_obligation(
         for item in obligation.get("mental_model_contract_material", [])
         if str(item).strip()
     ][:2]
-    cardinality = signal_family == "aggregation_cardinality" or "structured" in dimension.lower()
-    if cardinality:
+    value_flow_terms = (
+        "aggregation",
+        "cardinality",
+        "structured",
+        "field",
+        "element",
+        "group",
+        "projection",
+        "selection",
+        "serialize",
+        "serialization",
+        "join",
+        "return shape",
+        "output shape",
+        "type closure",
+        "type-closure",
+    )
+    cardinality = signal_family in {
+        "aggregation_cardinality",
+        "data_preservation_cardinality",
+        "serialization_type_closure",
+    } or any(term in dimension.lower() for term in value_flow_terms)
+    integration_bridge = _obligation_needs_integration_bridge(obligation)
+    if cardinality and integration_bridge:
+        expected_behavior = (
+            f"{surface} preserves the intended value/cardinality contract at both the changed owner and its "
+            "reachable consumer or caller path."
+        )
+        question = (
+            f"Does the changed {surface} preserve the value/cardinality contract through the reachable "
+            "caller or downstream integration path?"
+        )
+        report = (
+            f"The changed {surface} appears locally plausible but drops, narrows, skips, or mis-shapes a "
+            "value that a reachable caller/downstream path still relies on."
+        )
+        suppress = (
+            f"Concrete evidence shows both {surface} and the reachable caller/downstream path preserve the "
+            "same value/cardinality contract."
+        )
+    elif cardinality:
         expected_behavior = (
             f"{surface} preserves each intended field, element, group, nested value, and cardinality "
             "for this aggregation/cardinality path unless the changed contract intentionally narrows it."
@@ -1018,9 +1119,23 @@ def coverage_check_for_obligation(
         )
     else:
         expected_behavior = f"{surface} preserves {dimension}."
-        question = f"Does the changed {surface} preserve {dimension}?"
-        report = f"The changed {surface} violates {dimension} on a concrete reachable path."
-        suppress = f"Concrete repository evidence shows {surface} preserves {dimension}."
+        if integration_bridge:
+            question = (
+                f"Does the changed {surface} preserve {dimension} through the reachable caller or "
+                "downstream integration path?"
+            )
+            report = (
+                f"The changed {surface} violates {dimension} when exercised through a concrete caller or "
+                "downstream integration path."
+            )
+            suppress = (
+                f"Concrete repository evidence shows both {surface} and the reachable caller/downstream "
+                f"path preserve {dimension}."
+            )
+        else:
+            question = f"Does the changed {surface} preserve {dimension}?"
+            report = f"The changed {surface} violates {dimension} on a concrete reachable path."
+            suppress = f"Concrete repository evidence shows {surface} preserves {dimension}."
     return ReviewCheck(
         check_id=f"{task.id}:coverage:{index}",
         patch_task_id=task.id,
@@ -1030,7 +1145,9 @@ def coverage_check_for_obligation(
         line_start=max(1, line_start),
         line_end=max(max(1, line_start), line_end),
         changed_code_anchor=surface,
-        owned_contract_scope=f"{surface}:{issue_family or dimension}:{diff_signal}"[:240],
+        owned_contract_scope=(
+            f"{surface}:{'integration:' if integration_bridge else ''}{issue_family or dimension}:{diff_signal}"
+        )[:240],
         issue_family=issue_family,
         diff_signal_family=signal_family,
         diff_signal=diff_signal[:240],
@@ -1044,6 +1161,11 @@ def coverage_check_for_obligation(
             *contract_material,
             f"changed behavior of {surface} in {file_path}",
             "caller, contract, framework, or repository-convention evidence if the local code is not enough",
+            *(
+                ["reachable caller/downstream integration path for the same contract"]
+                if integration_bridge
+                else []
+            ),
         ],
         suppress_criteria=[suppress],
         report_criteria=[report],
@@ -1938,7 +2060,40 @@ def _check_from_contract_question(
 
 def _contract_question_requires_value_flow(question: ContractQuestion) -> bool:
     dimension = question.dimension.strip().lower()
-    return dimension in {"data_preservation_cardinality", "serialization_type_closure"}
+    if dimension in {"data_preservation_cardinality", "serialization_type_closure"}:
+        return True
+    blob = " ".join(
+        [
+            question.dimension,
+            question.expected_behavior,
+            question.trigger_variant,
+            question.operation,
+            question.breach_question,
+        ]
+    ).lower()
+    return any(
+        marker in blob
+        for marker in (
+            "aggregate",
+            "aggregation",
+            "cardinality",
+            "field",
+            "element",
+            "group",
+            "nested",
+            "projection",
+            "select",
+            "selection",
+            "serialize",
+            "serialization",
+            "join",
+            "returned value",
+            "return shape",
+            "output shape",
+            "type closure",
+            "type-closure",
+        )
+    )
 
 
 def checks_from_contract_questions(
@@ -2389,11 +2544,27 @@ def normalize_compiled_checks(
         }
         if _expected_behavior_is_implementation_shaped(check):
             updates["audit_only"] = True
-        normalized.append(check.model_copy(update=updates))
-        if not normalized[-1].owned_contract_scope.strip():
-            normalized[-1] = normalized[-1].model_copy(
-                update={"owned_contract_scope": owned_contract_scope_for_check(normalized[-1])}
+        current = check.model_copy(update=updates)
+        if not current.owned_contract_scope.strip():
+            current = current.model_copy(
+                update={"owned_contract_scope": owned_contract_scope_for_check(current)}
             )
+        if check_requires_contract_justification(current):
+            required_evidence = list(dict.fromkeys([
+                *current.required_evidence,
+                CONTRACT_JUSTIFICATION_REQUIREMENT,
+            ]))
+            allowed_retrieval = list(dict.fromkeys([
+                *current.allowed_retrieval,
+                "focused_context",
+            ]))
+            current = current.model_copy(
+                update={
+                    "required_evidence": required_evidence,
+                    "allowed_retrieval": allowed_retrieval,
+                }
+            )
+        normalized.append(current)
     return normalized
 
 

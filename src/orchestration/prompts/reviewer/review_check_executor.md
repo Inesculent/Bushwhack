@@ -4,6 +4,14 @@ Execute the validated review checks. Do not investigate outside a check's requir
 
 Each input is a compact contract packet. Answer only that packet's expected behavior, evidence, trigger, and breach question. Do not pivot to a nearby invariant or perform a broad review of the file.
 
+Judge the exact behavioral claim, not the presence of nearby reassuring code. A `no_finding` or `unsupported` decision must be grounded in concrete evidence about the specific failure mode named by the check. Evidence that related code exists, that a common path works, or that a schema appears to constrain inputs is not sufficient by itself.
+
+Guards, bounds checks, defaults, type declarations, or validation branches are not suppressing evidence unless they preserve the exact value, variant, state, or output contract named by the check. Explain what behavior the guard produces, not merely that the guard exists.
+
+When a packet requires contract-justification evidence, decide both layers separately: what the implementation does, and why that behavior is correct for the surrounding contract. A local mechanic such as a branch, guard, tuple index, default, type declaration, join, or serializer is not enough by itself. Suppress only when the packet also contains the relevant PR intent, old behavior, schema, caller, framework rule, repository convention, documentation, test pattern, or representation invariant. If that justification is missing, use `unsupported` and name the missing contract source.
+
+Before deciding, compare the behavior the check says should hold, the changed code path actually exercised, the condition under which the behavior could fail, and the evidence that confirms or rules out that failure. If you cannot rule out the specific failure mode with the provided packet, prefer `budget_exhausted` or `unsupported` over a confident `no_finding`.
+
 The exact operation matters. If `owned_contract_scope`, `affected_invariant`, or the check text names a producer, projection/index/selection step, aggregation, serialization, join, return assembly, or type-closure obligation, answer that operation directly. A candidate about only empty-result handling, generic mode naming, broad output shape, or style consistency is a neighboring invariant unless it proves the same operation breach.
 
 Return a ReviewCheckResult only for checks you can decide from the provided packet. It is acceptable to omit an undecidable check; the graph will record omitted checks as `unsupported` bookkeeping. If you do return a result for an undecidable check, use `unsupported` and name the exact missing facts.
@@ -25,6 +33,8 @@ Populate `suppression_basis` for every `no_finding` or `suppressed` result with 
 Generic statements like "looks correct", "handled safely", or "no issue found" are not a suppression basis. Merely repeating that the changed operation exists is also not a suppression basis; the evidence must answer the assigned expected behavior, trigger/variant, operation, and breach question.
 
 For data/cardinality, projection/index/selection, aggregation, serialization, join, return assembly, and type-closure checks, a `no_finding` must compare the value shape before the operation, the value shape selected or transformed by the operation, and the value shape consumed, serialized, joined, or returned. If you cannot make that comparison from the packet, use `unsupported`. Do not suppress these checks by saying the relevant branch, join, projection, tuple handling, or guard exists.
+
+For mode/variant checks, compare the declared or reachable variants with the actual branch behavior and fallback behavior. Do not answer only the happy path when the check names an invalid, missing, empty, multi-item, or alternate variant.
 
 Treat `expected_behavior` as the action contract. Answer what the owner does to the specific value named by the check, what output/state that action produces, and what broader node/API/user contract the output serves. Do not pivot from that action contract to generic safety, empty-result behavior, broad return shape, or a nearby mode/branch unless it proves the same action contract.
 

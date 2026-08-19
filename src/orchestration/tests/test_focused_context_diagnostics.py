@@ -43,6 +43,11 @@ class _UnavailableProvider(_Provider):
         raise RuntimeError("context provider unavailable")
 
 
+class _ThinProvider(_Provider):
+    def read_file_slice(self, *_args: Any, **_kwargs: Any) -> str:
+        return "def other():\n    pass\n"
+
+
 def _request(**updates: Any) -> FocusedContextRequest:
     values = {
         "request_id": "r1",
@@ -84,3 +89,28 @@ def test_focused_context_records_path_mismatch_and_tool_unavailable() -> None:
     )
     unavailable_row = unavailable["metadata"]["focused_context"]["diagnostics"][0]
     assert "tool_unavailable" in unavailable_row["outcomes"]
+
+
+def test_focused_context_records_missing_full_and_symbol_context() -> None:
+    missing_full = make_focused_context_node(_Provider())(  # type: ignore[arg-type]
+        {
+            "focused_context_requests": [_request(file_read_mode="full", text_queries=[])],
+            "focused_context_results": {},
+        }
+    )
+    missing_full_row = missing_full["metadata"]["focused_context"]["diagnostics"][0]
+    assert "missing_requested_file_context" in missing_full_row["outcomes"]
+    assert "missing_full_file_context" in missing_full_row["outcomes"]
+
+    thin_symbol = make_focused_context_node(_ThinProvider())(  # type: ignore[arg-type]
+        {
+            "focused_context_requests": [
+                _request(symbol_queries=["allocate_slots"], text_queries=[])
+            ],
+            "focused_context_results": {},
+        }
+    )
+    thin_row = thin_symbol["metadata"]["focused_context"]["diagnostics"][0]
+    assert "thin_symbol_context" in thin_row["outcomes"]
+    assert "missing_symbol_context" in thin_row["outcomes"]
+    assert "focused_context_thin_symbol_context" in thin_symbol["metadata"]["focused_context"]["health_warnings"]

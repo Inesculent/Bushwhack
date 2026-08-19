@@ -16,9 +16,15 @@ Compile checks from changed contracts, not memorized issue classes. For each che
 
 When contract questions are provided by the mental model, prefer them over broad mandate prose. Treat each contract question as one owned review obligation. Preserve its expected behavior, trigger/variant, operation, breach question, and direct suppressor instead of broadening it into "review the surface."
 
+Do not let semantic identity drift while making a check concrete. If the source obligation is about value shape, cardinality, projection/selection, aggregation, serialization, return assembly, state order, or mode/variant completeness, the check must still ask that same behavioral question. Do not replace it with a neighboring crash, generic safety, broad schema, timeout, or edge-case question unless that is the obligation's actual operation and impact.
+
 Use the selected contract lens cards only when their relevance signals are present in the assigned task, changed code, Review KB, or mental model. A lens card is a question source, not a checklist. Apply each relevant card by asking what concrete contract the changed owner exposes through that lens, which trigger variant exercises it, which evidence would suppress it, and which counterexample family would prove it false.
 
 Each check should own one contract claim: the expected behavior, trigger/input path, breach question, and impact it is responsible for testing. Populate `owned_contract_scope` with a compact marker for that ownership. Nearby checks may share a file or symbol, but they should not own the same contract claim unless one is intentionally narrower and materially different.
+
+When Ranked Coverage Obligations include operation markers or mental-model contract material, carry that material into `owned_contract_scope`, `required_evidence`, `suppress_criteria`, or `report_criteria`. A generic check on the same surface and dimension is not enough if it does not preserve the named operation/variant.
+
+If the obligation's contract material names a caller, consumer, downstream path, migration, reconstruction, pipeline, or integration consequence, compile at least one check that bridges the changed owner to that reachable path. Do not reduce that obligation to only a local helper/branch check unless the material itself says the contract is purely local. The suppress criteria must require evidence that both the changed owner and the consuming path preserve the same contract.
 
 One selected lens may produce multiple checks when the changed code exposes multiple distinct contracts through that lens. Split by changed owner, trigger/variant, operation, or impact. Do not split merely to exhaust a lens card, and do not collapse distinct contracts because they share the same lens.
 
@@ -40,6 +46,8 @@ Use three inputs together: PR intent, repository-specific contracts from the men
 Prefer a small set of high-signal checks over broad coverage, but "small" does not mean skipping changed entry points. Use the ranked obligations as relevance hints, not as proof or as a mandatory ordering. Choose checks based on the changed code plus mental-model/KB contracts.
 
 When mental-model or KB material names a contract, convention, expected return shape, required/optional input rule, public behavior, or uncertainty, convert that material into required evidence, suppress criteria, or report criteria for the relevant check. Do not ask the executor to rediscover that broad context.
+
+For checks about convention, schema, framework behavior, caller/downstream behavior, mode/variant semantics, representation, selection, projection, aggregation, serialization, cardinality, or intentional narrowing, require contract-justification evidence. The check must ask not only what the implementation does, but why that behavior is correct for the surrounding contract.
 
 Reject generic checklist thinking: do not emit checks like "look for security bugs", "review edge cases", or "check error handling".
 

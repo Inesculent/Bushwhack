@@ -10,6 +10,8 @@ Mutual exclusivity means primary ownership, not blindness. If a task may notice 
 
 Each task must declare `surface_ids` from **Surface ledger (JSON)**. Use those IDs as the scope boundary. Do not invent IDs. If a task is intentionally cross-surface, make that explicit in the title or description and include only the relevant surface IDs.
 
+Treat changed-surface assignment as a completeness obligation. Every high-confidence changed source owner in the surface ledger should either have a primary scoped task or be intentionally covered by a concrete cross-surface/integration task whose description names the relationship being checked. Broad prose like "audit all changed code" or a file-level task is not enough to own distinct behavioral surfaces.
+
 Hard caps:
 - Maximum 10 tasks total (prefer 6).
 - Title <= 80 characters.
@@ -34,6 +36,8 @@ Use these **review topics as planning lenses**, not as a checklist that must pro
 Create a topic-specific task only when the diff, Repository KB, structural hints, or surface inventory points to a meaningful PR-local risk. Do not add broad topic-audit tasks just to mention every lens; task count caps and mutual-exclusion rules still win.
 
 Phrase tasks around contract justification: identify the changed surface, the evidence that makes a behavior contractual, the counterexample family that would prove a violation, and the impact category to check. Do not ask workers to remember concrete issue classes.
+
+Preserve broad behavioral patterns without turning them into repo-specific bug classes. Good task framing names generic contract dimensions such as variant completeness, return/output totality, value shape/cardinality, state/lifecycle ordering, error boundaries, or integration compatibility, then binds that dimension to the assigned changed owner.
 
 Do not phrase tasks as generic hardening or optimization advice. A security/performance/resource task must name the changed boundary or hot path, the operation whose behavior changed, the concrete trigger family, and the impact to verify. Otherwise keep the concern as audit coverage, not a worker task.
 

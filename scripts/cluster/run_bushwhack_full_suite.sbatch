@@ -85,9 +85,11 @@ CONTAINER_PATH="/lustre/fs1/home/dy828490/bushwhack_dev/vllm-v0.20.1.sif"
 
 # 3. Mount the Lustre drive into the container
 export APPTAINER_BIND="/lustre"
+export VLLM_ENGINE_READY_TIMEOUT_S="${VLLM_ENGINE_READY_TIMEOUT_S:-3600}"
+export APPTAINERENV_VLLM_ENGINE_READY_TIMEOUT_S="$VLLM_ENGINE_READY_TIMEOUT_S"
 
 # Start vLLM in the background
-echo "Starting vLLM..."
+echo "Starting vLLM with engine ready timeout ${VLLM_ENGINE_READY_TIMEOUT_S}s..."
 VLLM_ALLOW_LONG_MAX_MODEL_LEN=1 apptainer exec --nv "$CONTAINER_PATH" \
     vllm serve "$MODEL_PATH" \
     --host 0.0.0.0 \

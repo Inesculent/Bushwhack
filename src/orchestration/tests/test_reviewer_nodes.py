@@ -567,6 +567,170 @@ def test_surface_first_fill_adds_missing_load_image_set_node_tasks() -> None:
     ]
 
 
+def test_surface_first_repairs_target_files_from_explicit_surface_ids() -> None:
+    diff = (
+        "diff --git a/nodes.py b/nodes.py\n"
+        "+++ b/nodes.py\n"
+        "@@ -1 +1 @@\n"
+        "-extras = []\n"
+        "+extras = ['nodes_string.py']\n"
+        "diff --git a/comfy_extras/nodes_string.py b/comfy_extras/nodes_string.py\n"
+        "+++ b/comfy_extras/nodes_string.py\n"
+        "@@ -0,0 +1,3 @@\n"
+        "+class StringCompare:\n"
+        "+    def execute(self):\n"
+        "+        return None\n"
+    )
+    surface = ReviewSurface(
+        surface_id="surface:stringcompare",
+        name="StringCompare",
+        kind="class",
+        file_path="comfy_extras/nodes_string.py",
+        confidence=0.95,
+    )
+    state = {
+        "git_diff": diff,
+        "metadata": {"mental_model": {"surface_ledger": [surface.model_dump()]}},
+    }
+    task = ReviewTask(
+        id="logic-compare",
+        title="Diff-local correctness: StringCompare",
+        description="Audit StringCompare only.",
+        target_files=["nodes.py"],
+        surface_ids=[surface.surface_id],
+        specialty="logic",
+    )
+
+    tasks, meta = prepare_surface_first_tasks([task], state)
+
+    repaired = next(item for item in tasks if item.id == "logic-compare")
+    assert repaired.target_files == ["comfy_extras/nodes_string.py"]
+    assert meta["task_target_files_repaired_from_surfaces"] == [
+        {
+            "task_id": "logic-compare",
+            "surface_ids": ["surface:stringcompare"],
+            "original": ["nodes.py"],
+            "repaired": ["comfy_extras/nodes_string.py"],
+        }
+    ]
+
+
+def test_surface_first_fill_uses_primary_executable_surfaces() -> None:
+    diff = (
+        "diff --git a/pkg/nodes.py b/pkg/nodes.py\n"
+        "+++ b/pkg/nodes.py\n"
+        "@@ -0,0 +1,7 @@\n"
+        "+class First:\n"
+        "+    def execute(self):\n"
+        "+        return 1\n"
+        "+class Second:\n"
+        "+    def execute(self):\n"
+        "+        return 2\n"
+    )
+    surfaces = [
+        ReviewSurface(
+            surface_id="surface:first",
+            name="First",
+            kind="class",
+            file_path="pkg/nodes.py",
+            line_start=1,
+            confidence=0.95,
+        ),
+        ReviewSurface(
+            surface_id="surface:first-execute",
+            name="First.execute",
+            kind="method",
+            file_path="pkg/nodes.py",
+            line_start=2,
+            confidence=0.95,
+        ),
+        ReviewSurface(
+            surface_id="surface:second",
+            name="Second",
+            kind="class",
+            file_path="pkg/nodes.py",
+            line_start=4,
+            confidence=0.95,
+        ),
+        ReviewSurface(
+            surface_id="surface:second-execute",
+            name="Second.execute",
+            kind="method",
+            file_path="pkg/nodes.py",
+            line_start=5,
+            confidence=0.95,
+        ),
+    ]
+    state = {
+        "git_diff": diff,
+        "metadata": {"mental_model": {"surface_ledger": [surface.model_dump() for surface in surfaces]}},
+    }
+    task = ReviewTask(
+        id="logic-first",
+        title="Diff-local correctness: First",
+        description="Audit First only.",
+        target_files=["pkg/nodes.py"],
+        surface_ids=["surface:first"],
+        specialty="logic",
+    )
+
+    tasks, meta = prepare_surface_first_tasks([task], state)
+
+    assert "surface:first-execute" not in {
+        item["surface_id"] for item in meta["surface_fill_uncovered_before"]
+    }
+    assert [item["surface_id"] for item in meta["surface_fill_uncovered_before"]] == [
+        "surface:second-execute"
+    ]
+    added = [task for task in tasks if task.id.startswith("review-logic-surface-fill")]
+    assert [task.surface_ids for task in added] == [["surface:second-execute"]]
+
+
+def test_surface_first_fill_adds_bounded_source_file_fallback_when_no_symbol_owner() -> None:
+    diff = (
+        "diff --git a/src/graph/utils.py b/src/graph/utils.py\n"
+        "+++ b/src/graph/utils.py\n"
+        "@@ -1 +1 @@\n"
+        "-VALUE = 1\n"
+        "+VALUE = 2\n"
+        "diff --git a/docs/notes.md b/docs/notes.md\n"
+        "+++ b/docs/notes.md\n"
+        "@@ -1 +1 @@\n"
+        "-old\n"
+        "+new\n"
+    )
+    surfaces = [
+        ReviewSurface(
+            surface_id="surface:utils-file",
+            name="utils.py",
+            kind="file",
+            file_path="src/graph/utils.py",
+            confidence=0.7,
+            line_start=1,
+        ),
+        ReviewSurface(
+            surface_id="surface:docs-file",
+            name="notes.md",
+            kind="file",
+            file_path="docs/notes.md",
+            confidence=0.7,
+            line_start=1,
+        ),
+    ]
+    state = {
+        "git_diff": diff,
+        "metadata": {"mental_model": {"surface_ledger": [surface.model_dump() for surface in surfaces]}},
+    }
+
+    tasks, meta = prepare_surface_first_tasks([], state)
+
+    assert [item["surface_id"] for item in meta["surface_fill_uncovered_before"]] == [
+        "surface:utils-file"
+    ]
+    added = [task for task in tasks if task.id.startswith("review-logic-surface-fill")]
+    assert [task.surface_ids for task in added] == [["surface:utils-file"]]
+
+
 def test_broad_surface_prose_does_not_create_surface_ownership() -> None:
     diff = (
         "diff --git a/comfy_extras/nodes_train.py b/comfy_extras/nodes_train.py\n"
@@ -899,6 +1063,55 @@ def test_plan_emit_still_blocks_surface_invalid_plan_after_budget() -> None:
         "surface_plan_validation_failed"
     )
     assert [task_id for task_id in out["task_registry"] if task_id != out["root_task_id"]] == []
+
+
+def test_plan_emit_drops_empty_pruned_task_when_other_task_remains() -> None:
+    diff = (
+        "diff --git a/src/app.py b/src/app.py\n"
+        "+++ b/src/app.py\n"
+        "@@ -0,0 +1,2 @@\n"
+        "+def handle():\n"
+        "+    return None\n"
+    )
+    invalid_task = ReviewTask(
+        id="test-only",
+        title="Review tests",
+        description="Audit test-only context.",
+        target_files=["tests/test_app.py"],
+        specialty="general",
+    )
+    valid_task = ReviewTask(
+        id="logic-handle",
+        title="Diff-local correctness: handle",
+        description="Audit handle only.",
+        target_files=["src/app.py"],
+        specialty="logic",
+    )
+    state = {
+        "git_diff": diff,
+        "metadata": {
+            "actor_critic_planner": {
+                "draft_tasks": [
+                    invalid_task.model_dump(mode="json"),
+                    valid_task.model_dump(mode="json"),
+                ],
+                "revision_count": 99,
+                "aligned": False,
+                "last_critique": {"gaps": "missing boundaries"},
+            },
+            "mental_model": {"coupled_loop": {"cycles": 99}},
+        },
+    }
+
+    out = make_plan_emit_node()(state)
+
+    assert out["next_step"] == "review"
+    emitted_ids = [task_id for task_id in out["task_registry"] if task_id != out["root_task_id"]]
+    assert "logic-handle" in emitted_ids
+    assert "test-only" not in emitted_ids
+    validation = out["metadata"]["review_planner"]["plan_validation"]
+    assert validation["invalid_target_files"] == []
+    assert validation["task_target_files_pruned_empty_dropped"] == ["test-only"]
 
 
 def test_plan_emit_prunes_non_changed_context_target_when_changed_target_remains() -> None:

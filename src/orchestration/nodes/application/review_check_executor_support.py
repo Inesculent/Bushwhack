@@ -7,6 +7,7 @@ from typing import Any, Callable, Iterable, List, Mapping
 from src.domain.schemas import CandidateFinding, ReviewCheck, ReviewCheckResult, ReviewTask
 from src.domain.state import GraphState
 from src.orchestration.nodes.application.critiquer import _normalize_candidates
+from src.orchestration.nodes.application.review_check_source_scope import check_requires_contract_justification
 from src.orchestration.routing.claim_digest import claim_digest_for_result
 
 
@@ -317,6 +318,13 @@ def _check_requires_exact_transformation_suppression(check: ReviewCheck) -> bool
             "type closure",
             "join",
             "cardinality",
+            "field",
+            "element",
+            "group",
+            "nested",
+            "structured",
+            "return shape",
+            "output shape",
             "payload",
         )
     )
@@ -332,9 +340,42 @@ def _suppression_basis_has_value_flow(result: ReviewCheckResult) -> bool:
     ).lower()
     if not basis.strip():
         return False
-    produced = any(marker in basis for marker in ("produced", "input shape", "source value", "before the operation"))
-    selected = any(marker in basis for marker in ("selected", "transformed", "projected", "extracted", "normalized"))
-    consumed = any(marker in basis for marker in ("returned", "joined", "serialized", "consumed", "output shape"))
+    produced = any(
+        marker in basis
+        for marker in (
+            "produced",
+            "input shape",
+            "source value",
+            "original value",
+            "before the operation",
+            "pre-operation",
+        )
+    )
+    selected = any(
+        marker in basis
+        for marker in (
+            "selected",
+            "transformed",
+            "projected",
+            "extracted",
+            "normalized",
+            "field",
+            "element",
+            "group",
+        )
+    )
+    consumed = any(
+        marker in basis
+        for marker in (
+            "returned",
+            "joined",
+            "serialized",
+            "consumed",
+            "output shape",
+            "after the operation",
+            "post-operation",
+        )
+    )
     intentional = "intentionally narrowed" in basis or "documented projection" in basis
     return intentional or (produced and selected and consumed)
 
@@ -370,6 +411,49 @@ def _suppression_omits_scope_variant(result: ReviewCheckResult, check: ReviewChe
     if parts and all(part in normalized_basis for part in parts):
         return False
     return True
+
+
+def _suppression_has_contract_justification(result: ReviewCheckResult) -> bool:
+    blob = " ".join(
+        [
+            result.evidence_for_contract,
+            result.suppression_basis,
+            " ".join(result.suppressing_evidence),
+            result.answer_scope,
+        ]
+    ).lower()
+    if not blob.strip():
+        return False
+    markers = (
+        "old behavior",
+        "prior behavior",
+        "pr intent",
+        "pull request intent",
+        "documented",
+        "documentation",
+        "docstring",
+        "test",
+        "schema",
+        "declared",
+        "caller",
+        "call site",
+        "downstream",
+        "consumer",
+        "framework",
+        "repository convention",
+        "repo convention",
+        "project convention",
+        "public api",
+        "api contract",
+        "type declaration",
+        "input_types",
+        "input types",
+        "return_types",
+        "return types",
+        "intentional narrowing",
+        "representation invariant",
+    )
+    return any(marker in blob for marker in markers)
 
 
 def _focused_context_degraded_for_check(state: GraphState, check: ReviewCheck) -> list[str]:
@@ -506,12 +590,18 @@ def normalize_executor_results(
             or not _suppression_basis_has_value_flow(result)
         )
         omitted_scope_variant = _suppression_omits_scope_variant(result, check)
+        missing_contract_justification = (
+            check_requires_contract_justification(check)
+            and result.decision in {"no_finding", "suppressed"}
+            and not _suppression_has_contract_justification(result)
+        )
         focused_degradation = _focused_context_degraded_for_check(state, check)
         if result.decision in {"no_finding", "suppressed"} and (
             _answer_scope_is_neighboring(result)
             or _suppression_basis_is_operation_only(result)
             or (not check.audit_only and _suppression_basis_is_empty_or_generic(result))
             or omitted_scope_variant
+            or missing_contract_justification
             or bool(focused_degradation)
             or exact_transformation_mismatch
         ):
@@ -533,7 +623,11 @@ def normalize_executor_results(
                                 else (
                                     "missing_owned_scope_variant"
                                     if omitted_scope_variant
-                                    else "missing_exact_transformation_scope"
+                                    else (
+                                        "missing_exact_transformation_scope"
+                                        if exact_transformation_mismatch
+                                        else "missing_contract_justification"
+                                    )
                                 )
                             )
                         )

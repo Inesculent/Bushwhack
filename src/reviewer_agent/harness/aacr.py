@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -253,6 +254,72 @@ def _normalize_repo_path(path: str) -> str:
     return path.strip().replace("\\", "/").lstrip("/")
 
 
+_AUDIT_SOURCE_EXTENSIONS = (
+    ".py",
+    ".pyi",
+    ".js",
+    ".jsx",
+    ".ts",
+    ".tsx",
+    ".go",
+    ".rs",
+    ".java",
+    ".kt",
+    ".c",
+    ".cc",
+    ".cpp",
+    ".h",
+    ".hpp",
+    ".cs",
+    ".rb",
+    ".php",
+    ".swift",
+    ".scala",
+    ".sql",
+    ".yaml",
+    ".yml",
+    ".json",
+    ".toml",
+    ".ini",
+    ".cfg",
+    ".md",
+)
+
+
+def _normalize_source_ref_path(path: str) -> str:
+    normalized = _normalize_repo_path(path).strip("`'\".,;)(")
+    normalized = re.sub(r":\d+(?::\d+)?$", "", normalized)
+    if normalized.startswith(("a/", "b/")):
+        normalized = normalized[2:]
+    return normalized
+
+
+def _looks_like_source_ref_path(path: str) -> bool:
+    normalized = _normalize_source_ref_path(path)
+    if not normalized or any(ch.isspace() for ch in normalized) or "://" in normalized:
+        return False
+    lower = normalized.lower()
+    return any(lower.endswith(ext) for ext in _AUDIT_SOURCE_EXTENSIONS)
+
+
+def _source_paths_from_text_refs(text: str) -> set[str]:
+    if not text:
+        return set()
+    paths: set[str] = set()
+    patterns = (
+        r"file:([A-Za-z0-9_.\-/\\]+?\.[A-Za-z0-9_]+(?::\d+(?::\d+)?)?)",
+        r"`([^`]+?\.[A-Za-z0-9_]+(?::\d+(?::\d+)?)?)`",
+        r"\(([A-Za-z0-9_.\-/\\]+?\.[A-Za-z0-9_]+(?::\d+(?::\d+)?)?)\)",
+        r"\b([A-Za-z0-9_.\-/\\]+/[A-Za-z0-9_.\-/\\]+?\.[A-Za-z0-9_]+(?::\d+(?::\d+)?)?)\b",
+    )
+    for pattern in patterns:
+        for match in re.finditer(pattern, text):
+            path = _normalize_source_ref_path(match.group(1))
+            if _looks_like_source_ref_path(path):
+                paths.add(path)
+    return paths
+
+
 def _path_from_mapping_or_model(item: Any) -> str:
     if item is None:
         return ""
@@ -374,7 +441,12 @@ def _paths_from_raw_stage(raw: dict[str, Any], final_findings: Iterable[Any]) ->
             for key in ("file_snippets", "file_contents_full"):
                 values = result.get(key, {})
                 if isinstance(values, dict):
-                    result_paths.update(_normalize_repo_path(str(path)) for path in values.keys())
+                    for path, content in values.items():
+                        normalized = _normalize_source_ref_path(str(path))
+                        if _looks_like_source_ref_path(normalized):
+                            result_paths.add(normalized)
+                        if isinstance(content, str):
+                            result_paths.update(_source_paths_from_text_refs(content))
             hits = result.get("search_hits", {})
             if isinstance(hits, dict):
                 for hit_list in hits.values():
@@ -384,6 +456,10 @@ def _paths_from_raw_stage(raw: dict[str, Any], final_findings: Iterable[Any]) ->
                         path = _path_from_mapping_or_model(hit)
                         if path:
                             result_paths.add(path)
+                        if isinstance(hit, dict):
+                            result_paths.update(
+                                _source_paths_from_text_refs(str(hit.get("content") or hit.get("text") or ""))
+                            )
 
     executor_paths: set[str] = set()
     candidate_paths: set[str] = set()
@@ -411,6 +487,64 @@ def _paths_from_raw_stage(raw: dict[str, Any], final_findings: Iterable[Any]) ->
         "candidate": candidate_paths,
         "final": final_paths,
     }
+
+
+def _changed_inventory_paths_from_raw(raw: dict[str, Any]) -> set[str]:
+    paths: set[str] = set()
+
+    def add_values(value: Any) -> None:
+        if not isinstance(value, list):
+            return
+        for item in value:
+            text = str(item or "").strip()
+            if text:
+                paths.add(_normalize_repo_path(text))
+
+    for key in (
+        "changed_files",
+        "changed_file_paths",
+        "benchmark_changed_files",
+        "pr_changed_files",
+        "review_changed_files",
+    ):
+        add_values(raw.get(key))
+
+    metadata = raw.get("metadata", {}) if isinstance(raw.get("metadata"), dict) else {}
+    for key in (
+        "changed_files",
+        "changed_file_paths",
+        "benchmark_changed_files",
+        "pr_changed_files",
+        "review_changed_files",
+    ):
+        add_values(metadata.get(key))
+
+    def add_diagnostics(mapping: Any) -> None:
+        if not isinstance(mapping, dict):
+            return
+        add_values(mapping.get("trusted_union"))
+        sources = mapping.get("sources")
+        if isinstance(sources, dict):
+            for value in sources.values():
+                add_values(value)
+
+    for container in (
+        metadata,
+        metadata.get("review_planner"),
+        metadata.get("mental_model"),
+        metadata.get("mandate_patch"),
+    ):
+        if isinstance(container, dict):
+            add_diagnostics(container.get("changed_file_inventory_diagnostics"))
+
+    mental_model = metadata.get("mental_model", {}) if isinstance(metadata.get("mental_model"), dict) else {}
+    ledger = mental_model.get("surface_ledger", [])
+    if isinstance(ledger, list):
+        for surface in ledger:
+            path = surface.get("file_path") if isinstance(surface, dict) else None
+            if path:
+                paths.add(_normalize_repo_path(str(path)))
+    return {path for path in paths if path}
 
 
 def _coverage_audit_for_pr(
@@ -453,15 +587,26 @@ def _coverage_audit_for_pr(
                 if path and family:
                     path_obligation_families[path].add(family)
     gate_dropped_paths: set[str] = set()
+    gate_passed_paths: set[str] = set()
     false_suppression_paths: set[str] = set()
+    path_decision_counts: dict[str, Counter[str]] = defaultdict(Counter)
+    path_gate_reason_counts: dict[str, Counter[str]] = defaultdict(Counter)
     for result in raw.get("review_check_results", []) or []:
         check = checks_by_id.get(_check_id_from_result(result))
         path = _path_from_mapping_or_model(_candidate_from_result(result)) or _path_from_mapping_or_model(check)
         if not path:
             continue
+        decision = str(_field_from_mapping_or_model(result, "decision") or "").strip()
+        if decision:
+            path_decision_counts[path][decision] += 1
         gate_decision = str(_field_from_mapping_or_model(result, "gate_decision") or "")
+        gate_reason = str(_field_from_mapping_or_model(result, "gate_reason") or "").strip()
+        if gate_reason:
+            path_gate_reason_counts[path][gate_reason] += 1
         if gate_decision == "dropped":
             gate_dropped_paths.add(path)
+        if gate_decision == "passed" or "evidence_gate_passed" in gate_reason:
+            gate_passed_paths.add(path)
         warnings = _field_from_mapping_or_model(result, "warnings", []) or []
         if isinstance(warnings, list) and any("suppression_audit_insufficient" in str(item) for item in warnings):
             false_suppression_paths.add(path)
@@ -502,6 +647,7 @@ def _coverage_audit_for_pr(
                 if path:
                     rejected_cluster_paths.add(path)
     path_counts = Counter(label["path"] for label in labels)
+    changed_inventory_paths = _changed_inventory_paths_from_raw(raw)
     records = []
     for path, count in sorted(path_counts.items()):
         if path in stage_paths["final"]:
@@ -510,6 +656,8 @@ def _coverage_audit_for_pr(
             reason_state = "merged_duplicate"
         elif path in rejected_cluster_paths:
             reason_state = "rejected_cluster_variant"
+        elif path in stage_paths["candidate"] and path in gate_passed_paths:
+            reason_state = "passed_gate_dropped_afterward"
         elif path in gate_dropped_paths:
             reason_state = "dropped_by_gate"
         elif path in false_suppression_paths:
@@ -524,6 +672,8 @@ def _coverage_audit_for_pr(
             reason_state = "no_valid_check"
         elif path in stage_paths["compiled"]:
             reason_state = "no_executor_candidate"
+        elif changed_inventory_paths and path not in changed_inventory_paths:
+            reason_state = "absent_from_changed_inventory"
         else:
             reason_state = "no_task"
         last_stage = (
@@ -557,6 +707,9 @@ def _coverage_audit_for_pr(
                 "reason_state": reason_state,
                 "last_stage": last_stage,
                 "obligation_families": sorted(path_obligation_families.get(path, set())),
+                "executor_decision_counts": dict(sorted(path_decision_counts.get(path, Counter()).items())),
+                "gate_reason_counts": dict(sorted(path_gate_reason_counts.get(path, Counter()).items())),
+                "changed_inventory_present": not changed_inventory_paths or path in changed_inventory_paths,
                 "duplicate_equivalents": duplicate_equivalents,
             }
         )
@@ -571,6 +724,8 @@ def _coverage_audit_for_pr(
         "executed_path_count": sum(1 for item in records if item["executed"]),
         "candidate_path_count": sum(1 for item in records if item["candidate"]),
         "final_path_count": sum(1 for item in records if item["final"]),
+        "reason_state_counts": dict(Counter(item["reason_state"] for item in records)),
+        "last_stage_counts": dict(Counter(item["last_stage"] for item in records)),
     }
     return {"pr_url": pr_url, "slug": slug, "summary": summary, "paths": records}
 

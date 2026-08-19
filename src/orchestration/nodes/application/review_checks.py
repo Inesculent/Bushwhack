@@ -38,6 +38,7 @@ from src.orchestration.context.surface_ledger import (
     surface_ledger_from_state,
 )
 from src.orchestration.nodes.application.review_check_executor_support import (
+    file_contents_from_slot,
     missing_evidence_for_weak_no_finding as _support_missing_evidence_for_weak_no_finding,
     normalize_executor_results as _support_normalize_executor_results,
 )
@@ -104,6 +105,45 @@ _AFFECTED_PATH_MARKERS = (
     "if ",
 )
 _GENERIC_QUERY_TOKENS = {"changed", "code", "behavior", "repository", "evidence", "context"}
+_CONTRACT_CONTEXT_MARKERS = (
+    "contract-justification",
+    "contract justification",
+    "why the expected behavior",
+    "why expected behavior",
+    "repository convention",
+    "framework rule",
+    "representation invariant",
+)
+_SOURCE_CONTEXT_EXTENSIONS = (
+    ".py",
+    ".pyi",
+    ".js",
+    ".jsx",
+    ".ts",
+    ".tsx",
+    ".go",
+    ".rs",
+    ".java",
+    ".kt",
+    ".c",
+    ".cc",
+    ".cpp",
+    ".h",
+    ".hpp",
+    ".cs",
+    ".rb",
+    ".php",
+    ".swift",
+    ".scala",
+    ".sql",
+    ".yaml",
+    ".yml",
+    ".json",
+    ".toml",
+    ".ini",
+    ".cfg",
+    ".md",
+)
 _EXECUTOR_BATCH_SIZE = 3
 _EXECUTOR_CODE_EVIDENCE_CHARS = 60000
 _EXECUTOR_FOCUSED_EVIDENCE_CHARS = 40000
@@ -831,6 +871,25 @@ def _checks_for_task(state: GraphState, task_id: str) -> List[ReviewCheck]:
     return out
 
 
+def _check_specificity_rank(check: ReviewCheck) -> tuple[int, int, int, int]:
+    """Prefer the check most able to own a promotable result for a duplicated id."""
+    return (
+        0 if check.audit_only else 1,
+        1 if check.owned_contract_scope.strip() else 0,
+        len([sid for sid in check.surface_ids if str(sid).strip()]),
+        len(check.behavioral_question or ""),
+    )
+
+
+def _checks_by_id_preferring_promotable(checks: Iterable[ReviewCheck]) -> Dict[str, ReviewCheck]:
+    by_id: Dict[str, ReviewCheck] = {}
+    for check in checks:
+        existing = by_id.get(check.check_id)
+        if existing is None or _check_specificity_rank(check) > _check_specificity_rank(existing):
+            by_id[check.check_id] = check
+    return by_id
+
+
 def _results_for_task(state: GraphState, task_id: str) -> List[ReviewCheckResult]:
     out: List[ReviewCheckResult] = []
     for raw in state.get("review_check_results", []) or []:
@@ -912,6 +971,143 @@ def _missing_evidence_for_check(
     return list(requirements[:3])
 
 
+def _normalize_source_context_path(path: str) -> str:
+    normalized = path.strip().strip("`'\".,;)(").replace("\\", "/").lstrip("/")
+    normalized = re.sub(r":\d+(?::\d+)?$", "", normalized)
+    if normalized.startswith(("a/", "b/")):
+        normalized = normalized[2:]
+    return normalized
+
+
+def _looks_like_source_context_path(path: str) -> bool:
+    normalized = _normalize_source_context_path(path)
+    if not normalized or any(ch.isspace() for ch in normalized) or "://" in normalized:
+        return False
+    lower = normalized.lower()
+    return any(lower.endswith(ext) for ext in _SOURCE_CONTEXT_EXTENSIONS)
+
+
+def _source_context_paths_from_text(text: str) -> List[str]:
+    if not text:
+        return []
+    patterns = (
+        r"file:([A-Za-z0-9_.\-/\\]+?\.[A-Za-z0-9_]+(?::\d+(?::\d+)?)?)",
+        r"`([^`]+?\.[A-Za-z0-9_]+(?::\d+(?::\d+)?)?)`",
+        r"\(([A-Za-z0-9_.\-/\\]+?\.[A-Za-z0-9_]+(?::\d+(?::\d+)?)?)\)",
+        r"\b([A-Za-z0-9_.\-/\\]+/[A-Za-z0-9_.\-/\\]+?\.[A-Za-z0-9_]+(?::\d+(?::\d+)?)?)\b",
+    )
+    paths: List[str] = []
+    seen: set[str] = set()
+    for pattern in patterns:
+        for match in re.finditer(pattern, text):
+            path = _normalize_source_context_path(match.group(1))
+            if path and path not in seen and _looks_like_source_context_path(path):
+                seen.add(path)
+                paths.append(path)
+    return paths
+
+
+def _missing_evidence_requests_contract_context(missing_evidence: Sequence[str]) -> bool:
+    blob = " ".join(str(item or "") for item in missing_evidence).lower()
+    if any(marker in blob for marker in _CONTRACT_CONTEXT_MARKERS):
+        return True
+    return "contract" in blob and any(
+        marker in blob
+        for marker in (
+            "schema",
+            "caller",
+            "documentation",
+            "test pattern",
+            "convention",
+            "invariant",
+        )
+    )
+
+
+def _contract_context_paths_for_check(
+    *,
+    state: GraphState,
+    slot: Mapping[str, Any],
+    check: ReviewCheck,
+) -> List[str]:
+    paths: List[str] = []
+    seen: set[str] = set()
+    check_path = _normalize_source_context_path(check.file_path)
+
+    def add(path: str) -> None:
+        normalized = _normalize_source_context_path(path)
+        if (
+            normalized
+            and normalized != check_path
+            and normalized not in seen
+            and _looks_like_source_context_path(normalized)
+        ):
+            seen.add(normalized)
+            paths.append(normalized)
+
+    def scan(value: Any, depth: int = 0) -> None:
+        if len(paths) >= 8 or depth > 4:
+            return
+        if isinstance(value, str):
+            for path in _source_context_paths_from_text(value):
+                add(path)
+                if len(paths) >= 8:
+                    return
+            return
+        if isinstance(value, Mapping):
+            for key in (
+                "file",
+                "path",
+                "file_path",
+                "source_file",
+                "target_file",
+                "source_ref",
+                "target_ref",
+                "source",
+                "target",
+                "ref",
+            ):
+                raw = value.get(key)
+                if isinstance(raw, str):
+                    for path in _source_context_paths_from_text(raw) or [raw]:
+                        add(path)
+                        if len(paths) >= 8:
+                            return
+            for nested in value.values():
+                scan(nested, depth + 1)
+                if len(paths) >= 8:
+                    return
+            return
+        if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+            for item in value:
+                scan(item, depth + 1)
+                if len(paths) >= 8:
+                    return
+
+    metadata = state.get("metadata", {}) if isinstance(state.get("metadata"), Mapping) else {}
+    for value in (
+        metadata.get("snapshot_diagnostics"),
+        metadata.get("mental_model"),
+        slot.get("mental_model_excerpt"),
+        slot.get("review_kb_excerpt"),
+    ):
+        scan(value)
+        if len(paths) >= 8:
+            break
+    return paths
+
+
+def _unique_source_paths(paths: Iterable[str]) -> List[str]:
+    out: List[str] = []
+    seen: set[str] = set()
+    for path in paths:
+        normalized = _normalize_source_context_path(str(path or ""))
+        if normalized and normalized not in seen:
+            seen.add(normalized)
+            out.append(normalized)
+    return out
+
+
 def _planned_context_request_for_check(
     *,
     state: GraphState,
@@ -958,12 +1154,31 @@ def _planned_context_request_for_check(
     if request_id in existing_ids:
         return None
     file_read_mode = "full" if _should_retry_full_file_for_check(state, check, latest) else "slice"
+    contract_context_paths = (
+        _contract_context_paths_for_check(state=state, slot=slot, check=check)
+        if _missing_evidence_requests_contract_context(missing_evidence)
+        else []
+    )
+    request_file_paths = _unique_source_paths(
+        [
+            *contract_context_paths,
+            check.file_path,
+            *(task.target_files[:1] if not check.file_path else []),
+        ]
+    )
+    if contract_context_paths:
+        scope = frozenset({*scope, *contract_context_paths})
+    contract_reason = (
+        f"; contract_context_paths={', '.join(contract_context_paths[:4])}"
+        if contract_context_paths
+        else ""
+    )
     req = FocusedContextRequest(
         request_id=request_id,
         candidate_id=check.check_id,
         requested_by_specialty=task.specialty,
         file_read_mode=file_read_mode,
-        file_paths=[check.file_path] if check.file_path else task.target_files[:1],
+        file_paths=request_file_paths,
         symbol_queries=[check.changed_code_anchor] if check.changed_code_anchor else [],
         text_queries=[
             _query_for_requirement(req_text, check)
@@ -974,7 +1189,7 @@ def _planned_context_request_for_check(
             f"Gather missing evidence for review check {check.check_id} "
             f"at {check.file_path}:{check.line_start}-{check.line_end}; "
             f"anchor={check.changed_code_anchor}; invariant={check.affected_invariant}; "
-            f"missing={', '.join(missing_evidence[:2])}"
+            f"missing={', '.join(missing_evidence[:2])}{contract_reason}"
         ),
     )
     clamped = clamp_focused_context_request(
@@ -1033,7 +1248,7 @@ def _executable_checks_for_task(state: GraphState, task_id: str) -> List[ReviewC
     task = _task_from_state(state)
     slot = _pipeline_slot(state, task_id)
     checks: List[ReviewCheck] = []
-    for check in _checks_for_task(state, task_id):
+    for check in _checks_by_id_preferring_promotable(_checks_for_task(state, task_id)).values():
         result = latest.get(check.check_id)
         if result is None:
             checks.append(check)
@@ -1060,7 +1275,7 @@ def should_continue_review_check_loop(state: GraphState) -> bool:
     task = _task_from_state(state)
     if task is None:
         return False
-    checks = {check.check_id: check for check in _checks_for_task(state, task.id)}
+    checks = _checks_by_id_preferring_promotable(_checks_for_task(state, task.id))
     latest = _latest_result_by_check(state, task.id)
     for check_id, result in latest.items():
         check = checks.get(check_id)
@@ -1371,6 +1586,32 @@ def _contract_packet_for_check(check: ReviewCheck) -> Dict[str, Any]:
         "report_criteria": list(check.report_criteria[:4]),
         "allowed_retrieval": list(check.allowed_retrieval[:4]),
         "budget": check.budget,
+    }
+
+
+def _executor_context_presence(
+    state: GraphState,
+    checks: Sequence[ReviewCheck],
+    slot: Mapping[str, Any],
+) -> Dict[str, Any]:
+    focused_with_evidence = [
+        check.check_id for check in checks if _focused_context_for_check(state, check.check_id).strip()
+    ]
+    focused_set = set(focused_with_evidence)
+    focused_missing = [
+        check.check_id
+        for check in checks
+        if "focused_context" in check.allowed_retrieval and check.check_id not in focused_set
+    ]
+    return {
+        "direct_context": bool(str(slot.get("direct_context") or "").strip()),
+        "task_evidence_file_count": len(file_contents_from_slot(slot) or {}),
+        "mental_model_excerpt": bool(str(slot.get("mental_model_excerpt") or "").strip()),
+        "review_kb_excerpt": bool(str(slot.get("review_kb_excerpt") or "").strip()),
+        "focused_context_check_ids": focused_with_evidence,
+        "focused_context_check_count": len(focused_with_evidence),
+        "focused_context_missing_check_ids": focused_missing,
+        "focused_context_missing_check_count": len(focused_missing),
     }
 
 
@@ -2041,6 +2282,7 @@ def make_review_check_executor_node(
                 "executor_warnings": warnings,
                 "executor_batch_size": _EXECUTOR_BATCH_SIZE,
                 "executor_batch_count": len(executor_batches),
+                "executor_context_presence": _executor_context_presence(state, checks, slot),
                 "executor_max_multi_check_prompt_chars": _EXECUTOR_MAX_MULTI_CHECK_PROMPT_CHARS,
                 "executor_oversized_batch_splits": executor_oversized_batch_splits,
                 "executor_missing_result_check_ids": list(dict.fromkeys(missing_result_check_ids)),
@@ -2174,14 +2416,42 @@ def _result_has_repo_evidence(result: ReviewCheckResult, check: ReviewCheck) -> 
     return any(check_path in ref or ref.startswith("focused_context:") for ref in refs)
 
 
+def _audit_only_candidate_is_promotable(candidate: CandidateFinding, result: ReviewCheckResult) -> bool:
+    blob = " ".join(
+        [
+            candidate.content,
+            candidate.expected_behavior,
+            candidate.failure_mode,
+            candidate.evidence_summary,
+            result.reportable_reason,
+            candidate.suspected_category,
+        ]
+    ).lower()
+    low_signal_markers = (
+        "style",
+        "readability",
+        "comment",
+        "typo",
+        "formatting",
+        "lint",
+        "unused import",
+        "unused variable",
+        "dead code",
+        "cleanup",
+    )
+    if any(marker in blob for marker in low_signal_markers):
+        return False
+    if (candidate.claim_type or "").strip() and candidate.claim_type != "defect":
+        return False
+    return True
+
+
 def _candidate_passes_gate(
     candidate: CandidateFinding,
     result: ReviewCheckResult,
     check: ReviewCheck,
     state: GraphState,
 ) -> tuple[bool, str]:
-    if check.audit_only:
-        return False, "audit_only_check_not_promotable"
     if candidate.file_path.replace("\\", "/") != check.file_path.replace("\\", "/"):
         return False, "candidate_anchor_file_mismatch"
     if candidate.line_end < candidate.line_start or candidate.line_start < 1:
@@ -2243,6 +2513,8 @@ def _candidate_passes_gate(
         return False, focused_degradation[0]
     if _candidate_speculative(candidate, result):
         return False, "speculative_or_uncertain_claim"
+    if check.audit_only and not _audit_only_candidate_is_promotable(candidate, result):
+        return False, "audit_only_check_not_promotable"
     if not (candidate.recommendation or "").strip():
         return False, "missing_recommendation"
     return True, "evidence_gate_passed"
@@ -2255,8 +2527,9 @@ def make_review_check_evidence_gate_node():
         task = _task_from_state(state)
         if task is None:
             return {"node_history": [f"{node_name}:skipped"]}
-        checks = {check.check_id: check for check in _checks_for_task(state, task.id)}
+        checks = _checks_by_id_preferring_promotable(_checks_for_task(state, task.id))
         promoted: List[CandidateFinding] = []
+        promoted_ids: set[str] = set()
         lifecycle: Dict[str, Any] = {}
         gated_results: List[ReviewCheckResult] = []
         gate_reason_counts: Dict[str, int] = {}
@@ -2285,7 +2558,9 @@ def make_review_check_evidence_gate_node():
                 continue
             passed, reason = _candidate_passes_gate(candidate, result, check, state)
             if passed:
-                promoted.append(candidate)
+                if candidate.candidate_id not in promoted_ids:
+                    promoted.append(candidate)
+                    promoted_ids.add(candidate.candidate_id)
                 gated_results.append(
                     result.model_copy(update={"gate_decision": "passed", "gate_reason": reason})
                 )
@@ -2308,11 +2583,16 @@ def make_review_check_evidence_gate_node():
                 gated_results.append(
                     result.model_copy(update={"gate_decision": "dropped", "gate_reason": reason})
                 )
-                lifecycle[candidate.candidate_id] = {
-                    "decision": "dropped",
-                    "check_id": result.check_id,
-                    "reason": reason,
-                }
+                existing_lifecycle = lifecycle.get(candidate.candidate_id)
+                if not (
+                    isinstance(existing_lifecycle, dict)
+                    and existing_lifecycle.get("decision") == "passed"
+                ):
+                    lifecycle[candidate.candidate_id] = {
+                        "decision": "dropped",
+                        "check_id": result.check_id,
+                        "reason": reason,
+                    }
             gate_reason_counts[reason] = gate_reason_counts.get(reason, 0) + 1
 
         latest_results = list(_latest_result_by_check(state, task.id).values())

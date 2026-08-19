@@ -23,6 +23,7 @@ from src.orchestration.context.surface_ledger import (
     changed_file_sources_from_state,
     changed_files_from_diff,
     surface_by_id,
+    surface_ids_for_text,
     surface_ids_for_task,
     surface_ledger_from_state,
     surface_names_for_ids,
@@ -51,6 +52,30 @@ _MULTI_SURFACE_SPLIT_MIN_MENTIONED = 6
 _SURFACE_SCOPE_ISOLATION_PHRASE = "do not review any other surface"
 _CLASS_SCOPE_ISOLATION_PHRASE = _SURFACE_SCOPE_ISOLATION_PHRASE
 _TASK_SURFACE_NAME_RE = re.compile(r"\b([A-Z][a-zA-Z0-9_]{2,})\b")
+_PRIMARY_OWNER_SUFFIXES = {"execute", "run", "handle", "process", "call", "__call__"}
+_FILE_FALLBACK_CONFIDENCE_FLOOR = 0.65
+_MAX_LOW_CONFIDENCE_FILE_FALLBACKS = 6
+_SOURCE_REVIEW_EXTENSIONS = {
+    ".c",
+    ".cc",
+    ".cpp",
+    ".cs",
+    ".go",
+    ".java",
+    ".js",
+    ".jsx",
+    ".kt",
+    ".m",
+    ".mm",
+    ".php",
+    ".py",
+    ".rb",
+    ".rs",
+    ".scala",
+    ".swift",
+    ".ts",
+    ".tsx",
+}
 _TASK_SURFACE_NOISE = frozenset(
     {
         "Diff",
@@ -252,7 +277,26 @@ def _attach_task_surface_ids(task: ReviewTask, state: GraphState) -> ReviewTask:
     ledger = surface_ledger_from_state(state)
     if not ledger:
         return task
-    surface_ids = surface_ids_for_task(task, ledger)
+    by_id = surface_by_id(ledger)
+    explicit = _explicit_surface_ids(task, by_id)
+    if explicit:
+        surface_ids = explicit
+    else:
+        target_files = {path.strip().replace("\\", "/") for path in task.target_files if path.strip()}
+        surface_ids = [
+            sid
+            for sid in surface_ids_for_text(f"{task.title} {task.description}", ledger)
+            if not target_files or by_id[sid].file_path in target_files
+        ]
+        if not surface_ids:
+            file_ids = [
+                surface.surface_id
+                for surface in ledger
+                if surface.file_path and surface.file_path in target_files
+            ]
+            blob = f"{task.id} {task.title} {task.description}".lower()
+            if len(file_ids) == 1 or task.specialty != "logic" or "focused contract" in blob:
+                surface_ids = file_ids
     if surface_ids == task.surface_ids:
         return task
     return task.model_copy(update={"surface_ids": surface_ids})
@@ -265,17 +309,108 @@ def _surface_names_for_task(task: ReviewTask, state: GraphState) -> List[str]:
     return surface_names_for_ids(surface_ids_for_task(task, ledger), ledger)
 
 
-def _required_surfaces_for_plan(ledger: List[ReviewSurface]) -> List[ReviewSurface]:
+def _path_extension(path: str) -> str:
+    name = path.rsplit("/", 1)[-1]
+    if "." not in name:
+        return ""
+    return "." + name.rsplit(".", 1)[-1].lower()
+
+
+def _is_source_review_file(path: str) -> bool:
+    return _path_extension(path.strip().replace("\\", "/")) in _SOURCE_REVIEW_EXTENSIONS
+
+
+def _changed_file_union_for_surface_fill(state: GraphState) -> set[str]:
+    return {
+        path.strip().replace("\\", "/")
+        for paths in changed_file_sources_from_state(state).values()
+        for path in paths
+        if path and path.strip()
+    }
+
+
+def _required_surfaces_for_plan(
+    ledger: List[ReviewSurface],
+    *,
+    changed_files: set[str] | None = None,
+) -> List[ReviewSurface]:
     """Surfaces that must have executable work before emit."""
     high_confidence = [surface for surface in ledger if surface.confidence >= 0.75]
-    symbol_surfaces = [surface for surface in high_confidence if surface.kind != "file"]
+    symbol_surfaces = _primary_review_surfaces(
+        [surface for surface in high_confidence if surface.kind != "file"]
+    )
     symbol_files = {surface.file_path for surface in symbol_surfaces}
     file_fallbacks = [
         surface
         for surface in high_confidence
         if surface.kind == "file" and surface.file_path not in symbol_files
     ]
-    return sorted(symbol_surfaces + file_fallbacks, key=lambda s: (s.file_path, s.line_start or 10**9, s.name))
+    low_confidence_file_fallbacks: List[ReviewSurface] = []
+    if changed_files:
+        symbol_owner_files = {
+            surface.file_path
+            for surface in ledger
+            if surface.kind != "file" and surface.file_path and surface.confidence >= 0.5
+        }
+        required_files = {surface.file_path for surface in symbol_surfaces + file_fallbacks}
+        low_confidence_file_fallbacks = sorted(
+            [
+                surface
+                for surface in ledger
+                if surface.kind == "file"
+                and _FILE_FALLBACK_CONFIDENCE_FLOOR <= surface.confidence < 0.75
+                and surface.file_path in changed_files
+                and surface.file_path not in symbol_owner_files
+                and surface.file_path not in required_files
+                and _is_source_review_file(surface.file_path)
+            ],
+            key=lambda s: (-s.confidence, s.file_path, s.line_start or 10**9, s.name),
+        )[:_MAX_LOW_CONFIDENCE_FILE_FALLBACKS]
+    return sorted(
+        symbol_surfaces + file_fallbacks + low_confidence_file_fallbacks,
+        key=lambda s: (s.file_path, s.line_start or 10**9, s.name),
+    )
+
+
+def _surface_owner_key(surface: ReviewSurface) -> tuple[str, str]:
+    return (surface.file_path, surface.name.split(".", 1)[0].strip().lower())
+
+
+def _primary_review_surfaces(surfaces: List[ReviewSurface]) -> List[ReviewSurface]:
+    grouped: dict[tuple[str, str], List[ReviewSurface]] = {}
+    for surface in surfaces:
+        grouped.setdefault(_surface_owner_key(surface), []).append(surface)
+
+    selected: List[ReviewSurface] = []
+    for _key, group in grouped.items():
+        executable = [
+            surface
+            for surface in group
+            if surface.name.rsplit(".", 1)[-1].lower() in _PRIMARY_OWNER_SUFFIXES
+        ]
+        if executable:
+            selected.append(sorted(executable, key=lambda item: item.line_start or 10**9)[0])
+            continue
+        non_helper = [surface for surface in group if "input_types" not in surface.name.lower()]
+        selected.append(sorted(non_helper or group, key=lambda item: (item.line_start or 10**9, item.name))[0])
+    return sorted(selected, key=lambda surface: (surface.file_path, surface.line_start or 10**9, surface.name))
+
+
+def _primary_surface_id_map(by_id: dict[str, ReviewSurface]) -> dict[str, str]:
+    by_owner: dict[tuple[str, str], List[ReviewSurface]] = {}
+    for surface in by_id.values():
+        if surface.kind == "file":
+            continue
+        by_owner.setdefault(_surface_owner_key(surface), []).append(surface)
+    primary_by_owner: dict[tuple[str, str], str] = {}
+    for key, surfaces in by_owner.items():
+        primary = _primary_review_surfaces(surfaces)
+        if primary:
+            primary_by_owner[key] = primary[0].surface_id
+    return {
+        surface.surface_id: primary_by_owner.get(_surface_owner_key(surface), surface.surface_id)
+        for surface in by_id.values()
+    }
 
 
 def _explicit_surface_ids(task: ReviewTask, by_id: dict[str, ReviewSurface]) -> List[str]:
@@ -304,7 +439,8 @@ def _primary_surface_ids_for_task(task: ReviewTask, by_id: dict[str, ReviewSurfa
         return []
     if _task_is_explicit_cross_surface(task) and not _task_is_concrete_cross_surface(task):
         return []
-    return surface_ids
+    primary_by_id = _primary_surface_id_map(by_id)
+    return _dedupe_preserve_order(primary_by_id.get(sid, sid) for sid in surface_ids)
 
 
 def _logic_covered_surface_ids(tasks: List[ReviewTask], by_id: dict[str, ReviewSurface]) -> set[str]:
@@ -345,7 +481,8 @@ def surface_work_fill_tasks(tasks: List[ReviewTask], state: GraphState) -> tuple
             "surface_fill_added_tasks": [],
         }
     by_id = surface_by_id(ledger)
-    required = _required_surfaces_for_plan(ledger)
+    changed_files = _changed_file_union_for_surface_fill(state)
+    required = _required_surfaces_for_plan(ledger, changed_files=changed_files)
     logic_covered = _logic_covered_surface_ids(tasks, by_id)
     uncovered = [surface for surface in required if surface.surface_id not in logic_covered]
     added = [_surface_fill_task(surface, index=i + 1) for i, surface in enumerate(uncovered)]
@@ -580,6 +717,45 @@ def _chunk_logic_tasks_by_surface(tasks: List[ReviewTask], state: GraphState) ->
     if len(out) > _MAX_PLANNER_TASKS:
         return tasks
     return out
+
+
+def _repair_task_target_files_from_surfaces(
+    tasks: List[ReviewTask],
+    state: GraphState,
+) -> tuple[List[ReviewTask], Dict[str, Any]]:
+    ledger = surface_ledger_from_state(state)
+    by_id = surface_by_id(ledger)
+    if not by_id:
+        return tasks, {"task_target_files_repaired_from_surfaces": []}
+
+    repaired: List[ReviewTask] = []
+    repair_rows: List[Dict[str, Any]] = []
+    for task in tasks:
+        explicit_ids = _explicit_surface_ids(task, by_id)
+        surface_files = _dedupe_preserve_order(
+            by_id[sid].file_path for sid in explicit_ids if by_id[sid].file_path
+        )
+        if not surface_files:
+            repaired.append(task)
+            continue
+
+        original = _dedupe_preserve_order(task.target_files)
+        original_has_owner_file = any(path in surface_files for path in original)
+        if original_has_owner_file:
+            next_files = _dedupe_preserve_order([*original, *surface_files])
+        else:
+            next_files = surface_files
+        if next_files != original:
+            repair_rows.append(
+                {
+                    "task_id": task.id,
+                    "surface_ids": explicit_ids,
+                    "original": original,
+                    "repaired": next_files,
+                }
+            )
+        repaired.append(task.model_copy(update={"target_files": next_files}))
+    return repaired, {"task_target_files_repaired_from_surfaces": repair_rows}
 
 
 def _should_split_monolithic_logic_task(task: ReviewTask, inventory: List[str]) -> bool:
@@ -842,23 +1018,34 @@ def _prune_non_changed_task_targets(
     changed_files = _changed_code_files_for_task_targets(state)
     if not changed_files:
         return tasks, {"task_target_files_pruned": [], "task_target_files_pruned_empty": []}
-    pruned: List[ReviewTask] = []
+    rows: List[tuple[ReviewTask, List[str], List[str]]] = []
     pruned_rows: List[Dict[str, Any]] = []
     empty_rows: List[Dict[str, Any]] = []
     for task in tasks:
         original = [path.strip().replace("\\", "/") for path in task.target_files if path and path.strip()]
         kept = [path for path in original if path in changed_files]
         dropped = [path for path in original if path not in changed_files]
+        rows.append((task, kept, dropped))
         if dropped:
             pruned_rows.append({"task_id": task.id, "dropped": dropped, "kept": kept})
         if not kept:
             empty_rows.append({"task_id": task.id, "dropped": dropped})
+
+    pruned: List[ReviewTask] = []
+    drop_empty_rows = any(kept for _, kept, _ in rows)
+    dropped_empty_task_ids: List[str] = []
+    for task, kept, _dropped in rows:
+        if not kept:
+            if drop_empty_rows:
+                dropped_empty_task_ids.append(task.id)
+                continue
             pruned.append(task)
             continue
         pruned.append(task.model_copy(update={"target_files": kept}))
     return pruned, {
         "task_target_files_pruned": pruned_rows,
         "task_target_files_pruned_empty": empty_rows,
+        "task_target_files_pruned_empty_dropped": dropped_empty_task_ids,
     }
 
 
@@ -868,10 +1055,16 @@ def prepare_surface_first_tasks(
 ) -> tuple[List[ReviewTask], Dict[str, Any]]:
     """Finalize planner output, add deterministic surface coverage, and dedupe exact task duplicates."""
     finalized = finalize_emitted_tasks(tasks, state)
+    finalized, repair_meta = _repair_task_target_files_from_surfaces(finalized, state)
     finalized, prune_meta = _prune_non_changed_task_targets(finalized, state)
     filled, fill_meta = surface_work_fill_tasks(finalized, state)
     deduped, dedupe_meta = dedupe_tasks_by_surface_dimension(filled, state)
-    return [_attach_task_surface_ids(task, state) for task in deduped], {**prune_meta, **fill_meta, **dedupe_meta}
+    return [_attach_task_surface_ids(task, state) for task in deduped], {
+        **repair_meta,
+        **prune_meta,
+        **fill_meta,
+        **dedupe_meta,
+    }
 
 
 def _task_is_explicit_cross_surface(task: ReviewTask) -> bool:
@@ -917,7 +1110,10 @@ def validate_surface_bound_plan(tasks: List[ReviewTask], state: GraphState) -> D
                     continue
                 logic_owners.setdefault(sid, []).append(task.id)
 
-    required_surfaces = _required_surfaces_for_plan(ledger)
+    required_surfaces = _required_surfaces_for_plan(
+        ledger,
+        changed_files=_changed_file_union_for_surface_fill(state),
+    )
     uncovered = [surface.surface_id for surface in required_surfaces if surface.surface_id not in covered]
     overlapping = [
         {"surface_id": sid, "task_ids": task_ids}
