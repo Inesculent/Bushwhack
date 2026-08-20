@@ -116,6 +116,7 @@ class ContextSection:
     tier: int
     content: str
     source: str = ""
+    required: bool = False
 
 
 @dataclass
@@ -127,8 +128,21 @@ class ContextPacket:
     metadata: Dict[str, Any] = field(default_factory=dict)
 
 
-def _section(key: str, tier: int, content: str, *, source: str = "") -> ContextSection:
-    return ContextSection(key=key, tier=tier, content=content.strip(), source=source)
+def _section(
+    key: str,
+    tier: int,
+    content: str,
+    *,
+    source: str = "",
+    required: bool = False,
+) -> ContextSection:
+    return ContextSection(
+        key=key,
+        tier=tier,
+        content=content.strip(),
+        source=source,
+        required=required,
+    )
 
 
 # Section keys that must never be fully dropped (truncate in place instead).
@@ -162,6 +176,8 @@ def enforce_packet_budget(packet: ContextPacket) -> ContextPacket:
                 "char_len": total,
                 "packet_version": PACKET_VERSION,
                 "sections_included": [s.key for s in sections],
+                "required_sections": [s.key for s in sections if s.required],
+                "budget_overflow_due_to_required": 0,
             }
         )
         return ContextPacket(
@@ -177,7 +193,7 @@ def enforce_packet_budget(packet: ContextPacket) -> ContextPacket:
     remaining = list(sections)
     while total > packet.char_budget and by_tier:
         victim = by_tier.pop(0)
-        if victim.key in _PROTECTED_SECTION_KEYS:
+        if victim.required or victim.key in _PROTECTED_SECTION_KEYS:
             continue
         if victim in remaining:
             remaining.remove(victim)
@@ -187,7 +203,7 @@ def enforce_packet_budget(packet: ContextPacket) -> ContextPacket:
     # If still over, truncate protected / high-authority sections before dropping them.
     if total > packet.char_budget:
         ordered = sorted(
-            remaining,
+            (section for section in remaining if not section.required),
             key=lambda s: (-s.tier, -len(s.content)),
         )
         for sec in ordered:
@@ -208,7 +224,13 @@ def enforce_packet_budget(packet: ContextPacket) -> ContextPacket:
                 new_content = remaining[idx].content[:new_len]
                 if new_len < old_len:
                     new_content = new_content.rstrip() + "\n... [truncated]"
-            remaining[idx] = _section(sec.key, sec.tier, new_content, source=sec.source)
+            remaining[idx] = _section(
+                sec.key,
+                sec.tier,
+                new_content,
+                source=sec.source,
+                required=sec.required,
+            )
             total -= old_len - len(remaining[idx].content)
 
     chars_by_section = {s.key: len(s.content) for s in remaining}
@@ -220,6 +242,8 @@ def enforce_packet_budget(packet: ContextPacket) -> ContextPacket:
             "char_len": sum(chars_by_section.values()),
             "packet_version": PACKET_VERSION,
             "sections_included": [s.key for s in remaining],
+            "required_sections": [s.key for s in remaining if s.required],
+            "budget_overflow_due_to_required": max(0, sum(chars_by_section.values()) - packet.char_budget),
         }
     )
     return ContextPacket(
@@ -272,7 +296,13 @@ def packet_to_storage_dict(packet: ContextPacket) -> Dict[str, Any]:
         "authority_notes": packet.authority_notes,
         "metadata": packet.metadata,
         "sections": [
-            {"key": s.key, "tier": s.tier, "content": s.content, "source": s.source}
+            {
+                "key": s.key,
+                "tier": s.tier,
+                "content": s.content,
+                "source": s.source,
+                "required": s.required,
+            }
             for s in packet.sections
         ],
     }
@@ -668,12 +698,51 @@ def build_mandate_synthesizer_packet(
     return enforce_packet_budget(packet)
 
 
+def _compact_planner_tasks_json(
+    tasks: Sequence[ReviewTask],
+    *,
+    max_chars: int,
+) -> str:
+    """Keep every task visible to the critic without forwarding full task objects."""
+    task_count = max(1, len(tasks))
+    description_chars = max(40, min(240, (max_chars // task_count) - 190))
+    rows = [
+        {
+            "id": task.id,
+            "title": task.title[:80],
+            "description": task.description[:description_chars],
+            "specialty": task.specialty,
+            "review_dimension": task.review_dimension,
+            "target_files": task.target_files[:3],
+            "surface_ids": task.surface_ids[:8],
+        }
+        for task in tasks
+    ]
+    rendered = json.dumps(rows, ensure_ascii=False, separators=(",", ":"))
+    if len(rendered) <= max_chars:
+        return rendered
+
+    # Preserve complete, valid JSON and every task identity if unusually long
+    # paths or surface ids consume the descriptive budget.
+    compact_rows = [
+        {
+            "id": row["id"],
+            "title": str(row["title"])[:48],
+            "specialty": row["specialty"],
+            "surface_ids": list(row["surface_ids"])[:4],
+        }
+        for row in rows
+    ]
+    return json.dumps(compact_rows, ensure_ascii=False, separators=(",", ":"))
+
+
 def build_plan_critic_packet(
     state: GraphState,
     draft_tasks: Sequence[ReviewTask],
     *,
     settings: Settings | None = None,
     extra_sections: Mapping[str, ContextSection] | None = None,
+    tasks_section_key: str = "draft_tasks_json",
 ) -> ContextPacket:
     settings = settings or get_settings()
     _meta, slot = mm_meta(state)
@@ -725,12 +794,17 @@ def build_plan_critic_packet(
                 bootstrap_completed=bootstrap_completed,
             ),
             _section(
-                "draft_tasks_json",
-                3,
-                json.dumps([t.model_dump() for t in draft_tasks], indent=2)[
-                    : max(2000, int(settings.reviewer_context_plan_critic_max_chars) // 2)
-                ],
+                tasks_section_key,
+                1,
+                _compact_planner_tasks_json(
+                    draft_tasks,
+                    max_chars=max(
+                        2000,
+                        int(settings.reviewer_context_plan_critic_max_chars) // 2,
+                    ),
+                ),
                 source="actor_critic_planner",
+                required=True,
             ),
         ]
     )
@@ -927,6 +1001,7 @@ def build_plan_revision_packet(
         state,
         draft_tasks,
         settings=settings,
+        tasks_section_key="current_tasks_json",
         extra_sections={
             "critique_gaps": _section(
                 "critique_gaps",
@@ -939,14 +1014,6 @@ def build_plan_revision_packet(
                 3,
                 str(critique.get("revision_instructions", "")),
                 source="plan_critic",
-            ),
-            "current_tasks_json": _section(
-                "current_tasks_json",
-                3,
-                json.dumps([t.model_dump() for t in draft_tasks], indent=2)[
-                    : max(2000, int(settings.reviewer_context_plan_critic_max_chars) // 2)
-                ],
-                source="actor_critic_planner",
             ),
         },
     )

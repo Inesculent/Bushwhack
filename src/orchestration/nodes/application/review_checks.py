@@ -30,6 +30,7 @@ from src.orchestration.context.focus_request_scope import (
     clamp_focused_context_request,
 )
 from src.orchestration.context.context_packets import focused_snippets_for_candidate
+from src.orchestration.context.task_evidence import code_slice_from_task_evidence
 from src.orchestration.context.surface_ledger import (
     changed_files_from_diff,
     changed_file_sources_from_state,
@@ -648,6 +649,10 @@ def make_review_check_compiler_node(
             checks=checks,
             check_origins=check_origins,
         )
+        # Normalize the final set as well as LLM-authored checks. Deterministic
+        # coverage-floor checks are added above and need the same evidence-path
+        # contract before validation and execution.
+        checks = compiler_support.normalize_compiled_checks(state, task, checks)
         warnings.extend(coverage_floor.get("warnings", []))
         lens_counts = compiler_support.checks_per_selected_lens(
             checks,
@@ -1154,6 +1159,11 @@ def _planned_context_request_for_check(
     if request_id in existing_ids:
         return None
     file_read_mode = "full" if _should_retry_full_file_for_check(state, check, latest) else "slice"
+    evidence_paths = [
+        path.strip().replace("\\", "/")
+        for path in (check.evidence_paths or [check.file_path])
+        if path and path.strip()
+    ]
     contract_context_paths = (
         _contract_context_paths_for_check(state=state, slot=slot, check=check)
         if _missing_evidence_requests_contract_context(missing_evidence)
@@ -1162,8 +1172,8 @@ def _planned_context_request_for_check(
     request_file_paths = _unique_source_paths(
         [
             *contract_context_paths,
-            check.file_path,
-            *(task.target_files[:1] if not check.file_path else []),
+            *evidence_paths,
+            *(task.target_files[:1] if not evidence_paths else []),
         ]
     )
     if contract_context_paths:
@@ -1188,6 +1198,7 @@ def _planned_context_request_for_check(
         reason=(
             f"Gather missing evidence for review check {check.check_id} "
             f"at {check.file_path}:{check.line_start}-{check.line_end}; "
+            f"evidence_paths={evidence_paths}; "
             f"anchor={check.changed_code_anchor}; invariant={check.affected_invariant}; "
             f"missing={', '.join(missing_evidence[:2])}{contract_reason}"
         ),
@@ -1567,6 +1578,53 @@ def _seen_claim_digests_for_task(state: GraphState, task_id: str) -> List[Dict[s
     return [{"claim_digest": digest, "candidate_id": candidate_id} for digest, candidate_id in seen.items()][:24]
 
 
+def _source_evidence_for_check(
+    check: ReviewCheck,
+    slot: Mapping[str, Any],
+    *,
+    max_chars: int,
+) -> str:
+    """Render check-addressable source already collected from the repository."""
+    task_evidence = (
+        slot.get("task_evidence")
+        if isinstance(slot.get("task_evidence"), dict)
+        else {}
+    )
+    files = (
+        task_evidence.get("file_contents")
+        if isinstance(task_evidence.get("file_contents"), dict)
+        else {}
+    )
+    paths = [
+        path.strip().replace("\\", "/")
+        for path in (check.evidence_paths or [check.file_path])
+        if path and path.strip()
+    ]
+    if not paths or not files:
+        return ""
+
+    per_path = max(1500, max_chars // len(paths))
+    chunks: List[str] = []
+    for path in paths:
+        body = str(files.get(path) or files.get(path.replace("/", "\\")) or "")
+        if not body.strip():
+            continue
+        if path == check.file_path.strip().replace("\\", "/"):
+            excerpt = code_slice_from_task_evidence(
+                task_evidence,
+                path,
+                check.line_start,
+                check.line_end,
+                padding=80,
+            )
+            if not excerpt.strip():
+                excerpt = body
+        else:
+            excerpt = body
+        chunks.append(f"--- {path} ---\n{excerpt[:per_path]}")
+    return "\n\n".join(chunks)[:max_chars]
+
+
 def _contract_packet_for_check(check: ReviewCheck) -> Dict[str, Any]:
     """Compact, non-judgmental check packet for the executor LLM."""
     return {
@@ -1585,6 +1643,7 @@ def _contract_packet_for_check(check: ReviewCheck) -> Dict[str, Any]:
         "suppress_criteria": list(check.suppress_criteria[:4]),
         "report_criteria": list(check.report_criteria[:4]),
         "allowed_retrieval": list(check.allowed_retrieval[:4]),
+        "evidence_paths": list(check.evidence_paths[:5]),
         "budget": check.budget,
     }
 
@@ -1633,6 +1692,7 @@ def _render_executor_prompt(
         _EXECUTOR_COMPACT_FOCUSED_EVIDENCE_CHARS if compact_retry else _EXECUTOR_FOCUSED_EVIDENCE_CHARS
     )
     context_limit = _EXECUTOR_COMPACT_CONTEXT_CHARS
+    source_limit = 6000 if compact_retry else (30000 if len(checks) == 1 else 9000)
     mental_model_excerpt = str(slot.get("mental_model_excerpt") or "")
     review_kb_excerpt = str(slot.get("review_kb_excerpt") or "")
     mental_model_excerpt = mental_model_excerpt[:context_limit]
@@ -1652,6 +1712,17 @@ def _render_executor_prompt(
             _seen_claim_digests_for_task(state, task.id),
             max_chars=3000,
         ),
+        "Repository Source Evidence By Check": _json_for_prompt(
+            {
+                check.check_id: _source_evidence_for_check(
+                    check,
+                    slot,
+                    max_chars=source_limit,
+                )
+                for check in checks
+            },
+            max_chars=36000,
+        ),
         "Repository Code Evidence": str(slot.get("direct_context") or "")[:code_limit],
         "Focused Evidence By Check": _json_for_prompt(focused, max_chars=focused_limit),
         "Mental Model Excerpt": mental_model_excerpt,
@@ -1670,7 +1741,28 @@ def _missing_evidence_for_weak_no_finding(check: ReviewCheck) -> List[str]:
 
 
 def _check_batches(checks: Sequence[ReviewCheck]) -> List[List[ReviewCheck]]:
-    return [list(checks[index : index + _EXECUTOR_BATCH_SIZE]) for index in range(0, len(checks), _EXECUTOR_BATCH_SIZE)]
+    """Batch local checks; isolate cross-file checks so their evidence is not truncated."""
+    batches: List[List[ReviewCheck]] = []
+    pending: List[ReviewCheck] = []
+    for check in checks:
+        evidence_paths = {
+            path.strip().replace("\\", "/")
+            for path in check.evidence_paths
+            if path and path.strip()
+        }
+        if len(evidence_paths) > 1:
+            if pending:
+                batches.append(pending)
+                pending = []
+            batches.append([check])
+            continue
+        pending.append(check)
+        if len(pending) >= _EXECUTOR_BATCH_SIZE:
+            batches.append(pending)
+            pending = []
+    if pending:
+        batches.append(pending)
+    return batches
 
 
 def _executor_prompt_batches(
@@ -2452,6 +2544,8 @@ def _candidate_passes_gate(
     check: ReviewCheck,
     state: GraphState,
 ) -> tuple[bool, str]:
+    # audit_only is a compile-time softness signal, not a post-execution shredder:
+    # concrete candidates still face the same evidence gates below.
     if candidate.file_path.replace("\\", "/") != check.file_path.replace("\\", "/"):
         return False, "candidate_anchor_file_mismatch"
     if candidate.line_end < candidate.line_start or candidate.line_start < 1:
@@ -2517,6 +2611,8 @@ def _candidate_passes_gate(
         return False, "audit_only_check_not_promotable"
     if not (candidate.recommendation or "").strip():
         return False, "missing_recommendation"
+    if check.audit_only:
+        return True, "evidence_gate_passed_audit_only"
     return True, "evidence_gate_passed"
 
 

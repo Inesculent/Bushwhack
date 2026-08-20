@@ -33,6 +33,13 @@ When mock_heavy_deps is **disabled**, do not mock torch/PIL unless an import act
    - Prefer loading the cited target file by path with `importlib.util.spec_from_file_location` when the repro only needs one file or one class/function. Avoid importing package roots unless the target code cannot run by path.
    - Before calling target code: use `inspect.signature` and/or read `INPUT_TYPES` (or equivalent) from the **actual** module under test.
    - Import the **smallest** surface needed (one class or function), not whole package graphs when avoidable.
+   - If the disputed fact is standard-library behavior or a small pure expression visible in the
+     supplied source, prefer a tiny isolated repro of that exact operation. Do not import the full
+     repository merely to test language/library semantics. Clearly keep the candidate's claimed
+     input and expected/actual values in the assertions.
+   - When actual product control flow must be exercised but importing the file pulls unrelated heavy
+     dependencies, extract and execute the smallest cited function/class source with only its real
+     required imports. Do not rewrite the product logic into a different implementation.
    - If imports fail before product code is invoked, print `STATUS: HARNESS_ERROR` and exit 2; do not report these as product crashes.
    - On import failure: add **minimal** `sys.modules` stubs only for names appearing in the traceback (e.g. one missing attribute on a namespace — do not copy a fixed enum list for a specific framework).
 

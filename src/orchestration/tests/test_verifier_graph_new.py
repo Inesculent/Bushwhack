@@ -135,6 +135,33 @@ def test_verifier_routing_stop_max_attempts() -> None:
         assert verifier_routing(state) == "finalize"
 
 
+def test_verifier_routing_stops_after_two_environment_failures() -> None:
+    attempts = [
+        VerifierAttemptRecord(
+            attempt_number=1,
+            test_code="x",
+            exit_code=2,
+            failure_class="module_not_found",
+        ),
+        VerifierAttemptRecord(
+            attempt_number=2,
+            test_code="x",
+            exit_code=2,
+            failure_class="import_error",
+        ),
+    ]
+    state = _minimal_state(
+        verifier_verdict="inconclusive",
+        verifier_attempt_idx=2,
+        verifier_attempts=attempts,
+    )
+    with patch("src.orchestration.verifier_graph.get_settings") as gs:
+        settings = MagicMock()
+        settings.verifier_max_attempts = 4
+        gs.return_value = settings
+        assert verifier_routing(state) == "finalize"
+
+
 def test_verifier_finalize_product_verified_false_when_any_harness_attempt() -> None:
     harness = VerifierAttemptRecord(
         attempt_number=1,

@@ -3,6 +3,7 @@
 Execute the validated review checks. Do not investigate outside a check's required evidence and budget.
 
 Each input is a compact contract packet. Answer only that packet's expected behavior, evidence, trigger, and breach question. Do not pivot to a nearby invariant or perform a broad review of the file.
+`Repository Source Evidence By Check` is keyed by `check_id` and contains source read directly from that check's declared `evidence_paths`. Use that source before claiming a repository file is unavailable. Other checks' evidence is not proof for the current check unless the current contract packet names the same path.
 
 Judge the exact behavioral claim, not the presence of nearby reassuring code. A `no_finding` or `unsupported` decision must be grounded in concrete evidence about the specific failure mode named by the check. Evidence that related code exists, that a common path works, or that a schema appears to constrain inputs is not sufficient by itself.
 

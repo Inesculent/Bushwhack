@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Sequence
 
@@ -26,6 +27,8 @@ from src.domain.verifier_schemas import VerifierReport
 from src.infrastructure.llm.factory import Models
 from src.infrastructure.llm.token_usage import parse_structured_output
 from src.infrastructure.llm.trace import append_trace, trace_from_exception, trace_llm_call
+from src.infrastructure.sandbox import sandbox_runtime_available
+from src.orchestration.context.task_evidence import task_evidence_slot_from_state
 from src.orchestration.prompts.renderer import render_reviewer_prompt
 from src.orchestration.routing.finding_dedupe import (
     changed_files_from_diff,
@@ -408,27 +411,157 @@ def _compact_triage(item: ReviewEvidenceTriageItem) -> Dict[str, Any]:
     }
 
 
-def _source_line_snippet(state: GraphState, candidate: CandidateFinding, *, context: int = 4, max_chars: int = 1200) -> Dict[str, Any]:
-    repo_path = Path(str(state.get("repo_path") or ".")).resolve()
-    file_path = candidate.file_path.strip().replace("\\", "/").lstrip("/")
-    if not file_path or candidate.line_start <= 0:
-        return {"status": "unavailable"}
-    try:
-        target = (repo_path / file_path).resolve()
-        target.relative_to(repo_path)
-        lines = target.read_text(encoding="utf-8", errors="replace").splitlines()
-    except Exception:
-        return {"status": "unavailable", "file_path": file_path}
-    start = max(1, int(candidate.line_start) - context)
-    end = min(len(lines), int(candidate.line_end or candidate.line_start) + context)
-    text = "\n".join(f"{line_no}: {lines[line_no - 1]}" for line_no in range(start, end + 1))
+def _normalize_repo_path(file_path: str) -> str:
+    return str(file_path or "").strip().replace("\\", "/").lstrip("/")
+
+
+def _source_text_options(
+    state: GraphState,
+    candidate: CandidateFinding,
+    file_path: str,
+    focused_results: Sequence[FocusedContextResult],
+) -> List[tuple[str, str]]:
+    """Return exact file bodies already available to this run, in provenance order."""
+    normalized = _normalize_repo_path(file_path)
+    options: List[tuple[str, str]] = []
+
+    stored = task_evidence_slot_from_state(state, candidate.patch_task_id)
+    files = stored.get("file_contents") if isinstance(stored.get("file_contents"), dict) else {}
+    task_text = str(files.get(normalized) or files.get(file_path) or "")
+    if task_text.strip():
+        options.append(("task_evidence", task_text))
+
+    repo_value = str(state.get("repo_path") or "")
+    if repo_value and "://" not in repo_value:
+        try:
+            repo_path = Path(repo_value).resolve()
+            target = (repo_path / normalized).resolve()
+            target.relative_to(repo_path)
+            if repo_path.is_dir() and target.is_file():
+                options.append(("repo_path", target.read_text(encoding="utf-8", errors="replace")))
+        except Exception:
+            pass
+
+    for result in focused_results:
+        full_files = result.file_contents_full
+        focused_text = str(full_files.get(normalized) or full_files.get(file_path) or "")
+        if focused_text.strip():
+            options.append(("focused_context_full", focused_text))
+
+    return options
+
+
+def _numbered_source_slice(
+    text: str,
+    *,
+    file_path: str,
+    line_start: int,
+    line_end: int,
+    context: int,
+    max_chars: int,
+    origin: str,
+) -> Dict[str, Any] | None:
+    lines = text.splitlines()
+    if not lines or line_start <= 0 or line_start > len(lines):
+        return None
+    start = max(1, line_start - context)
+    end = min(len(lines), max(line_start, line_end) + context)
+    snippet = "\n".join(
+        f"{line_no}: {lines[line_no - 1]}"
+        for line_no in range(start, end + 1)
+    )
+    if not snippet:
+        return None
     return {
-        "status": "included" if text else "unavailable",
+        "status": "included",
+        "origin": origin,
         "file_path": file_path,
         "line_start": start,
         "line_end": end,
-        "snippet": _truncate(text, max_chars),
+        "snippet": _truncate(snippet, max_chars),
     }
+
+
+def _source_line_snippet(
+    state: GraphState,
+    candidate: CandidateFinding,
+    *,
+    file_path: str | None = None,
+    line_start: int | None = None,
+    line_end: int | None = None,
+    focused_results: Sequence[FocusedContextResult] = (),
+    context: int = 8,
+    max_chars: int = 1200,
+) -> Dict[str, Any]:
+    normalized = _normalize_repo_path(file_path or candidate.file_path)
+    start = int(line_start if line_start is not None else candidate.line_start)
+    end = int(line_end if line_end is not None else (candidate.line_end or start))
+    if not normalized or start <= 0:
+        return {"status": "unavailable"}
+
+    attempted_origins: List[str] = []
+    for origin, text in _source_text_options(state, candidate, normalized, focused_results):
+        attempted_origins.append(origin)
+        excerpt = _numbered_source_slice(
+            text,
+            file_path=normalized,
+            line_start=start,
+            line_end=end,
+            context=context,
+            max_chars=max_chars,
+            origin=origin,
+        )
+        if excerpt is not None:
+            return excerpt
+    return {
+        "status": "unavailable",
+        "file_path": normalized,
+        "attempted_origins": attempted_origins,
+    }
+
+
+_EVIDENCE_REF_PATTERN = re.compile(r"^(?P<path>.+?):L?(?P<start>\d+)(?:-L?(?P<end>\d+))?$")
+
+
+def _contract_line_snippet(
+    state: GraphState,
+    candidate: CandidateFinding,
+    *,
+    check_results: Sequence[ReviewCheckResult],
+    focused_results: Sequence[FocusedContextResult],
+) -> Dict[str, Any]:
+    primary_path = _normalize_repo_path(candidate.file_path)
+    primary_start = int(candidate.line_start)
+    primary_end = int(candidate.line_end or primary_start)
+    for result in check_results:
+        for evidence_ref in result.evidence_refs[:6]:
+            match = _EVIDENCE_REF_PATTERN.match(str(evidence_ref).strip())
+            if match is None:
+                continue
+            path = _normalize_repo_path(match.group("path"))
+            start = int(match.group("start"))
+            end = int(match.group("end") or start)
+            overlaps_primary = (
+                path == primary_path
+                and start <= primary_end
+                and end >= primary_start
+            )
+            if overlaps_primary:
+                continue
+            excerpt = _source_line_snippet(
+                state,
+                candidate,
+                file_path=path,
+                line_start=start,
+                line_end=end,
+                focused_results=focused_results,
+                context=2,
+                max_chars=900,
+            )
+            if excerpt.get("status") == "included":
+                excerpt["evidence_ref"] = evidence_ref
+                return excerpt
+    return {"status": "unavailable"}
 
 
 def _candidate_evidence_card(
@@ -438,6 +571,7 @@ def _candidate_evidence_card(
     check_results: Sequence[ReviewCheckResult],
     reflections: Sequence[ReflectionReport],
     source_facts: Sequence[SourceFact],
+    focused_results: Sequence[FocusedContextResult],
 ) -> Dict[str, Any]:
     accepted_reflections = [
         report.reflector_specialty
@@ -462,7 +596,17 @@ def _candidate_evidence_card(
         "claim": _truncate(candidate.content, 500),
         "expected_behavior": _truncate(candidate.expected_behavior, 500),
         "operation": candidate.root_operation or candidate.claim_digest or candidate.suspected_category,
-        "source_lines": _source_line_snippet(state, candidate),
+        "source_lines": _source_line_snippet(
+            state,
+            candidate,
+            focused_results=focused_results,
+        ),
+        "contract_lines": _contract_line_snippet(
+            state,
+            candidate,
+            check_results=check_results,
+            focused_results=focused_results,
+        ),
         "accepted_reflection_specialties": accepted_reflections,
         "rejecting_reflections": rejecting_reflections[:3],
         "contradiction_facts": contradiction_facts[:4],
@@ -502,6 +646,7 @@ def build_review_adjudication_packets(
                     check_results=checks.get(cid, []),
                     reflections=reflections.get(cid, []),
                     source_facts=source_facts.get(cid, []),
+                    focused_results=focused.get(cid, []),
                 ),
                 "candidate": _compact_candidate(candidate),
                 "originating_checks": [
@@ -536,6 +681,28 @@ def build_review_adjudication_packets(
             }
         )
     return packets
+
+
+def _packet_evidence_summary(packets: Sequence[Mapping[str, Any]]) -> Dict[str, Any]:
+    source_included = 0
+    contract_included = 0
+    source_origins: Dict[str, int] = {}
+    for packet in packets:
+        card = packet.get("evidence_card") if isinstance(packet.get("evidence_card"), Mapping) else {}
+        source = card.get("source_lines") if isinstance(card.get("source_lines"), Mapping) else {}
+        contract = card.get("contract_lines") if isinstance(card.get("contract_lines"), Mapping) else {}
+        if source.get("status") == "included":
+            source_included += 1
+            origin = str(source.get("origin") or "unknown")
+            source_origins[origin] = source_origins.get(origin, 0) + 1
+        if contract.get("status") == "included":
+            contract_included += 1
+    return {
+        "source_included": source_included,
+        "source_unavailable": len(packets) - source_included,
+        "contract_included": contract_included,
+        "source_origins": source_origins,
+    }
 
 
 def _packet_json(packet: Mapping[str, Any], *, max_candidate_chars: int) -> str:
@@ -737,14 +904,18 @@ def _normalize_adjudication_items(
     output: ReviewAdjudicationOutput | None,
     candidates: Mapping[str, CandidateFinding],
     changed_files: set[str],
-) -> tuple[List[ReviewFinding], Dict[str, Any], Dict[str, List[str]], List[str]]:
+    allow_verification: bool = False,
+    verifier_report_ids: set[str] | None = None,
+) -> tuple[List[ReviewFinding], Dict[str, Any], Dict[str, List[str]], List[str], List[str]]:
     warnings: List[str] = []
     lifecycle: Dict[str, Any] = {}
     merge_map: Dict[str, List[str]] = {}
     promoted: List[ReviewFinding] = []
+    verification_requested: List[str] = []
     seen: set[str] = set()
     items = list(output.items) if output is not None else []
     candidate_ids = set(candidates.keys())
+    verifier_report_ids = verifier_report_ids or set()
 
     def _record_promote(
         *,
@@ -827,6 +998,27 @@ def _normalize_adjudication_items(
             }
             continue
 
+        if item.decision == "verify":
+            if not allow_verification or cid in verifier_report_ids:
+                warnings.append(f"adjudication_verification_unavailable:{cid}")
+                lifecycle[cid] = {
+                    "decision": "dropped",
+                    "reason": "verification_unavailable",
+                    "rationale": item.rationale,
+                    "evidence_refs": list(item.evidence_refs),
+                    "warnings": list(item.warnings),
+                }
+                continue
+            verification_requested.append(cid)
+            lifecycle[cid] = {
+                "decision": "verification_requested",
+                "reason": "adjudicator_verify",
+                "rationale": item.rationale,
+                "evidence_refs": list(item.evidence_refs),
+                "warnings": list(item.warnings),
+            }
+            continue
+
         _record_promote(
             cid=cid,
             candidate=candidate,
@@ -837,16 +1029,20 @@ def _normalize_adjudication_items(
         )
 
     for cid in sorted(candidate_ids - seen):
-        warnings.append(f"adjudication_missing_candidate_promoted_fallback:{cid}")
-        _record_promote(
-            cid=cid,
-            candidate=candidates[cid],
-            finding=None,
-            rationale="No adjudication item was returned for this candidate; preserved via fallback finding.",
-            item_warnings=["adjudication_missing_candidate_promoted_fallback"],
-        )
+        warnings.append(f"adjudication_missing_candidate_dropped:{cid}")
+        lifecycle[cid] = {
+            "decision": "dropped",
+            "reason": "adjudication_item_missing",
+            "rationale": "The adjudicator did not return the required decision for this candidate.",
+        }
 
-    return ensure_unique_finding_ids(promoted), lifecycle, merge_map, warnings
+    return (
+        ensure_unique_finding_ids(promoted),
+        lifecycle,
+        merge_map,
+        warnings,
+        verification_requested,
+    )
 
 
 def _completion_cap(settings: Settings) -> int:
@@ -964,12 +1160,29 @@ def make_review_adjudicator_node(
         else:
             combined = None
 
-        findings, lifecycle, merge_map, norm_warnings = _normalize_adjudication_items(
+        prior_adjudicator = metadata.get(node_name) if isinstance(metadata.get(node_name), dict) else {}
+        verification_round = int(prior_adjudicator.get("verification_round", 0) or 0)
+        verifier_report_ids = set(_verifier_by_candidate(state))
+        verification_available = bool(
+            resolved_settings.verifier_enabled
+            and verification_round == 0
+            and (
+                not resolved_settings.verifier_skip_if_no_sandbox
+                or sandbox_runtime_available(resolved_settings)
+            )
+        )
+        findings, lifecycle, merge_map, norm_warnings, verification_requested = _normalize_adjudication_items(
             output=combined,
             candidates=candidates,
             changed_files=changed_files,
+            allow_verification=verification_available,
+            verifier_report_ids=verifier_report_ids,
         )
         warnings.extend(norm_warnings)
+
+        if verification_requested:
+            findings = []
+            verification_round += 1
 
         severity_rank = {"high": 0, "medium": 1, "low": 2}
         findings = sorted(
@@ -988,8 +1201,11 @@ def make_review_adjudicator_node(
             "promoted_count": len(findings),
             "candidate_lifecycle": lifecycle,
             "merge_map": merge_map,
+            "verification_requested_ids": verification_requested,
+            "verification_round": verification_round,
             "warnings": warnings,
             "packet_candidate_ids": _candidate_ids_from_packets(packets),
+            "packet_evidence_summary": _packet_evidence_summary(packets),
         }
 
         if _trace_enabled(state):

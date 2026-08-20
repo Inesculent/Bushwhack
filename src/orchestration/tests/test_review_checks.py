@@ -10,6 +10,7 @@ from src.domain.schemas import (
     CandidateFinding,
     ContractQuestion,
     FocusedContextRequest,
+    FocusedContextResult,
     ReviewCheck,
     ReviewCheckCompilerOutput,
     ReviewCheckExecutorOutput,
@@ -538,6 +539,50 @@ def test_executor_scope_variant_omission_becomes_unsupported() -> None:
     assert normalized[0].decision == "unsupported"
     assert "exact_question_mismatch:missing_owned_scope_variant" in normalized[0].warnings
     assert any("missing_owned_scope_variant" in item for item in warnings)
+
+
+def test_executor_cross_variant_displacement_becomes_unsupported() -> None:
+    check = _check(
+        lens="data_shape_consistency",
+        changed_code_anchor="extract_matches",
+        owned_contract_scope="extract_matches:All Matches",
+        issue_family="aggregation_cardinality",
+        behavioral_question=(
+            "When the pattern has capturing groups, does All Matches mode preserve full match data?"
+        ),
+        affected_invariant="All Matches mode preserves matched values without sibling-mode displacement.",
+        expected_behavior="All Matches mode returns the full matched substrings for each hit.",
+        report_criteria=["All Matches keeps only a partial group tuple element."],
+        suppress_criteria=["All Matches explicitly documents returning only the first group."],
+    )
+    result = ReviewCheckResult(
+        check_id=check.check_id,
+        patch_task_id=check.patch_task_id,
+        decision="no_finding",
+        evidence_refs=["src/app.py:3"],
+        suppressing_evidence=[
+            "Intentional design: All Groups mode exists for extracting capture groups."
+        ],
+        answer_scope="exact",
+        suppression_basis="All Groups mode covers capture-group extraction.",
+        reportable_reason="All Matches extracts m[0]; All Groups mode handles groups.",
+    )
+
+    normalized, warnings = normalize_executor_results(
+        state=_state(),
+        task=_task(),
+        slot=_state()["metadata"]["critique_pipeline"]["by_task"]["review-logic"],
+        checks=[check],
+        results=[result],
+        git_diff="",
+        check_budget_remaining=lambda _state, _check: True,
+        evidence_requirements_for_check=lambda item: list(item.required_evidence),
+        compiled_check_is_source_local=lambda _check: False,
+    )
+
+    assert normalized[0].decision == "unsupported"
+    assert "exact_question_mismatch:cross_variant_displacement" in normalized[0].warnings
+    assert any("cross_variant_displacement" in item for item in warnings)
 
 
 def test_executor_focused_context_no_hits_blocks_exact_suppression() -> None:
@@ -1526,6 +1571,26 @@ def test_normalize_compiled_checks_narrows_non_integration_multi_surface() -> No
     assert len(normalized[0].surface_ids) == 1
 
 
+def test_normalize_compiled_checks_assigns_cross_file_evidence_paths() -> None:
+    task = _task().model_copy(
+        update={
+            "title": "Integration: registry and implementation consistency",
+            "description": "Compare registry entries across both changed files.",
+            "target_files": ["src/registry.py", "src/app.py"],
+        }
+    )
+    check = _check(
+        file_path="src/registry.py",
+        behavioral_question="Do registry entries match implementations across both changed files?",
+        required_evidence=["registry declarations and implementation signatures"],
+    )
+
+    normalized = compiler_support.normalize_compiled_checks(_state(), task, [check])
+
+    assert set(normalized[0].evidence_paths) == {"src/registry.py", "src/app.py"}
+    assert normalized[0].evidence_paths[0] == normalized[0].file_path
+
+
 def test_review_check_compiler_carries_completeness_material_without_extra_check(monkeypatch) -> None:
     output = ReviewCheckCompilerOutput(
         summary="compiled",
@@ -1674,7 +1739,7 @@ def test_review_check_compiler_completeness_enrichment_does_not_expand_cap(monke
     compiled = task_meta["compiled_checks"]
     compiled_ids = [check["check_id"] for check in compiled]
     focused_check = next(check for check in compiled if check["check_id"] == focused.check_id)
-    assert task_meta["compiled_count"] == 12
+    assert task_meta["compiled_count"] == 10
     assert focused.check_id in compiled_ids
     assert any(
         item.startswith("mental-model completeness/cardinality contract:")
@@ -1812,9 +1877,9 @@ def test_review_check_compiler_keeps_focused_llm_check_ahead_of_surface_cap(monk
 
     task_meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
     compiled_ids = [check["check_id"] for check in task_meta["compiled_checks"]]
-    assert len(compiled_ids) == 16
+    assert len(compiled_ids) == 10
     assert compiled_ids[0] == "review-logic:regexextract-tuple-indexing"
-    assert task_meta["compiler_coverage_floor"]["adaptive_max_checks"] == 16
+    assert task_meta["compiler_coverage_floor"]["adaptive_max_checks"] == 10
     assert task_meta["compiler_coverage_floor"]["adaptive_cap_reason"] == "many_primary_owners"
     assert task_meta["compiler_coverage_floor"]["skipped_due_to_cap"]
 
@@ -2229,6 +2294,24 @@ def test_review_check_compiler_uses_source_order_without_relevance_signal(monkey
     assert compiled[0]["changed_code_anchor"] == "first_surface"
 
 
+def test_review_check_compiler_prompt_caps_stage_context() -> None:
+    task = _task()
+    state = _state(task_registry={task.id: task})
+    slot = {
+        "direct_context": "D" * 14_000 + "DIRECT_CONTEXT_TAIL",
+        "mental_model_excerpt": "M" * 3_000 + "MENTAL_MODEL_TAIL",
+        "review_kb_excerpt": "K" * 3_000 + "REVIEW_KB_TAIL",
+        "coverage_obligations": [],
+    }
+
+    prompt = compiler_support.render_compiler_prompt(state, task, slot)  # type: ignore[arg-type]
+
+    assert "DIRECT_CONTEXT_TAIL" not in prompt
+    assert "MENTAL_MODEL_TAIL" not in prompt
+    assert "REVIEW_KB_TAIL" not in prompt
+    assert len(prompt) < 40_000
+
+
 def test_review_check_compiler_floor_adds_high_relevance_obligation_first(monkeypatch) -> None:
     output = ReviewCheckCompilerOutput(summary="compiled", checks=[_check()])
     monkeypatch.setattr(
@@ -2553,9 +2636,9 @@ def test_review_check_compiler_coverage_floor_respects_cap(monkeypatch) -> None:
     out = make_review_check_compiler_node()(state)  # type: ignore[arg-type]
 
     floor = out["metadata"]["review_checks"]["by_task"]["review-logic"]["compiler_coverage_floor"]
-    assert out["metadata"]["review_checks"]["by_task"]["review-logic"]["compiled_count"] == 12
-    assert len(floor["added_checks"]) == 3
-    assert len(floor["skipped_due_to_cap"]) == 0
+    assert out["metadata"]["review_checks"]["by_task"]["review-logic"]["compiled_count"] == 10
+    assert len(floor["added_checks"]) == 1
+    assert len(floor["skipped_due_to_cap"]) == 2
 
 
 def test_review_check_compiler_fair_cap_keeps_later_surface_source_local_check(monkeypatch) -> None:
@@ -2631,8 +2714,8 @@ def test_review_check_compiler_fair_cap_keeps_later_surface_source_local_check(m
 
     task_meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
     compiled_ids = [check["check_id"] for check in task_meta["compiled_checks"]]
-    assert task_meta["compiled_count"] == 16
-    assert task_meta["compiler_coverage_floor"]["adaptive_max_checks"] == 16
+    assert task_meta["compiled_count"] == 10
+    assert task_meta["compiler_coverage_floor"]["adaptive_max_checks"] == 10
     assert task_meta["compiler_coverage_floor"]["adaptive_cap_reason"] == "eligible_non_audit_over_base_cap"
     assert "review-logic:beta:1" in compiled_ids
     assert "review-logic:alpha:16" in task_meta["compiler_coverage_floor"]["trimmed_existing_check_ids"]
@@ -2743,8 +2826,8 @@ def test_review_check_compiler_keeps_late_owner_high_signal_checks_under_adaptiv
     task_meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
     compiled_ids = [check["check_id"] for check in task_meta["compiled_checks"]]
     floor = task_meta["compiler_coverage_floor"]
-    assert task_meta["compiled_count"] == 16
-    assert floor["adaptive_max_checks"] == 16
+    assert task_meta["compiled_count"] == 10
+    assert floor["adaptive_max_checks"] == 10
     assert floor["adaptive_cap_reason"] == "many_primary_owners"
     assert "review-logic:owner4:tuple-cardinality" in compiled_ids
     assert "review-logic:owner4:join-none" in compiled_ids
@@ -2935,14 +3018,14 @@ def test_review_check_compiler_prioritizes_local_behavior_floor_over_broad_surfa
     task_meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
     compiled_ids = [check["check_id"] for check in task_meta["compiled_checks"]]
     floor = task_meta["compiler_coverage_floor"]
-    assert task_meta["compiled_count"] == 16
-    assert floor["adaptive_max_checks"] == 16
+    assert task_meta["compiled_count"] == 10
+    assert floor["adaptive_max_checks"] == 10
     assert floor["adaptive_cap_reason"] == "eligible_non_audit_over_base_cap"
     assert any(check_id.startswith("review-logic:coverage:") for check_id in compiled_ids)
     assert any(check_id.startswith("review-logic:surface:") for check_id in floor["trimmed_existing_check_ids"])
 
 
-def test_review_check_compiler_fans_out_omitted_file_check(monkeypatch) -> None:
+def test_review_check_compiler_records_omitted_file_without_inventing_check(monkeypatch) -> None:
     task = _task().model_copy(update={"target_files": ["src/app.py", "src/other.py"]})
     output = ReviewCheckCompilerOutput(summary="compiled", checks=[_check()])
     monkeypatch.setattr(
@@ -2974,13 +3057,11 @@ def test_review_check_compiler_fans_out_omitted_file_check(monkeypatch) -> None:
 
     task_meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
     compiled = task_meta["compiled_checks"]
-    omitted = [check for check in compiled if check["check_id"].startswith("review-logic:omitted-file:")]
-    assert omitted, compiled
-    assert omitted[0]["file_path"] == "src/other.py"
-    assert omitted[0]["allowed_retrieval"] == ["focused_context", "task_evidence"]
+    assert not any(check["check_id"].startswith("review-logic:omitted-file:") for check in compiled)
+    assert task_meta["compiler_coverage_floor"]["evidence_omitted_files"] == ["src/other.py"]
 
 
-def test_review_check_compiler_fans_out_omitted_changed_surfaces(monkeypatch) -> None:
+def test_review_check_compiler_does_not_expand_omitted_changed_surfaces(monkeypatch) -> None:
     one = ReviewSurface(
         surface_id="surface:one",
         name="first_changed",
@@ -3031,15 +3112,12 @@ def test_review_check_compiler_fans_out_omitted_changed_surfaces(monkeypatch) ->
     out = make_review_check_compiler_node()(state)  # type: ignore[arg-type]
 
     compiled = out["metadata"]["review_checks"]["by_task"]["review-logic"]["compiled_checks"]
-    omitted_surface_ids = [
-        check["surface_ids"][0]
-        for check in compiled
-        if check["check_id"].startswith("review-logic:omitted-surface:")
-    ]
-    assert omitted_surface_ids == ["surface:one", "surface:two"]
+    assert not any(check["check_id"].startswith("review-logic:omitted-surface:") for check in compiled)
+    floor = out["metadata"]["review_checks"]["by_task"]["review-logic"]["compiler_coverage_floor"]
+    assert floor["evidence_omitted_files"] == ["src/other.py"]
 
 
-def test_review_check_compiler_does_not_trim_mandatory_omitted_file_under_cap(monkeypatch) -> None:
+def test_review_check_compiler_keeps_real_cap_when_evidence_was_omitted(monkeypatch) -> None:
     task = _task().model_copy(update={"target_files": ["src/app.py", "src/other.py"]})
     llm_checks = [
         _check(check_id=f"review-logic:check:{idx}", changed_code_anchor="handle")
@@ -3075,12 +3153,10 @@ def test_review_check_compiler_does_not_trim_mandatory_omitted_file_under_cap(mo
 
     task_meta = out["metadata"]["review_checks"]["by_task"]["review-logic"]
     compiled_ids = [check["check_id"] for check in task_meta["compiled_checks"]]
-    skipped = task_meta["compiler_coverage_floor"]["skipped_due_to_cap"]
-    assert task_meta["compiled_count"] == 13
-    assert any(check_id.startswith("review-logic:omitted-file:") for check_id in compiled_ids), compiled_ids
-    assert not any(item.get("dimension") == "omitted prompt file" for item in skipped)
-    assert all(item.get("origin_kind") for item in skipped)
-    assert all("surface_already_selected" in item for item in skipped)
+    floor = task_meta["compiler_coverage_floor"]
+    assert task_meta["compiled_count"] <= floor["max_checks"]
+    assert not any(check_id.startswith("review-logic:omitted-file:") for check_id in compiled_ids)
+    assert floor["evidence_omitted_files"] == ["src/other.py"]
 
 
 def test_review_check_validator_moves_only_valid_checks_to_state() -> None:
@@ -3167,6 +3243,28 @@ def test_review_check_context_planner_creates_check_scoped_requests() -> None:
     assert isinstance(req, FocusedContextRequest)
     assert req.request_id == "check:review-logic:check:1:1"
     assert req.candidate_id == "review-logic:check:1"
+
+
+def test_review_check_context_planner_requests_all_declared_evidence_paths() -> None:
+    task = _task().model_copy(
+        update={"target_files": ["src/app.py", "src/registry.py"]}
+    )
+    check = _check(
+        evidence_paths=["src/app.py", "src/registry.py"],
+        required_evidence=["caller authorization guard"],
+    )
+    state = _state(
+        task_registry={task.id: task},
+        git_diff=(
+            "diff --git a/src/app.py b/src/app.py\n+++ b/src/app.py\n@@\n+def handle():\n"
+            "diff --git a/src/registry.py b/src/registry.py\n+++ b/src/registry.py\n@@\n+REGISTRY = {}\n"
+        ),
+        review_checks=[check],
+    )
+
+    out = make_review_check_context_planner_node()(state)  # type: ignore[arg-type]
+
+    assert out["focused_context_requests"][0].file_paths == ["src/app.py", "src/registry.py"]
 
 
 def test_review_check_context_planner_treats_descriptive_retrieval_as_focused() -> None:
@@ -4008,6 +4106,29 @@ def test_review_check_executor_compact_retry_uses_smaller_context() -> None:
     assert "x" * 5000 not in compact
 
 
+def test_review_check_executor_prompt_includes_cross_file_source_evidence() -> None:
+    from src.orchestration.nodes.application.review_checks import _render_executor_prompt
+
+    task = _task().model_copy(
+        update={"target_files": ["src/app.py", "src/registry.py"]}
+    )
+    check = _check(evidence_paths=["src/app.py", "src/registry.py"])
+    slot = {
+        "direct_context": "primary rendered context",
+        "task_evidence": {
+            "file_contents": {
+                "src/app.py": "def handle():\n    return 'ok'\n",
+                "src/registry.py": "REGISTRY = {'handle': handle}\n",
+            }
+        },
+    }
+
+    prompt = _render_executor_prompt(_state(), task, [check], slot)
+
+    assert "Repository Source Evidence By Check" in prompt
+    assert "REGISTRY = {'handle': handle}" in prompt
+
+
 def test_review_check_executor_canonicalizes_duplicate_results(monkeypatch) -> None:
     check = _check()
     candidate = CandidateFinding(
@@ -4794,7 +4915,7 @@ def test_review_check_evidence_gate_passed_duplicate_lifecycle_wins() -> None:
     }
 
 
-def test_review_check_evidence_gate_promotes_concrete_audit_only_defects() -> None:
+def test_review_check_evidence_gate_promotes_concrete_audit_only_candidates() -> None:
     candidate = CandidateFinding(
         candidate_id="review-logic:check:1:candidate",
         patch_task_id="review-logic",
@@ -4829,29 +4950,29 @@ def test_review_check_evidence_gate_promotes_concrete_audit_only_defects() -> No
         )
     )  # type: ignore[arg-type]
 
-    assert [item.candidate_id for item in out["candidate_findings"]] == [candidate.candidate_id]
+    assert len(out["candidate_findings"]) == 1
     result = out["review_check_results"][0]
     assert result.gate_decision == "passed"
-    assert result.gate_reason == "evidence_gate_passed"
+    assert result.gate_reason == "evidence_gate_passed_audit_only"
 
 
-def test_review_check_evidence_gate_drops_low_signal_audit_only_candidates() -> None:
+def test_review_check_evidence_gate_still_drops_weak_audit_only_candidates() -> None:
     candidate = CandidateFinding(
         candidate_id="review-logic:check:1:candidate",
         patch_task_id="review-logic",
         file_path="src/app.py",
         line_start=1,
         line_end=2,
-        content="The changed handler leaves an unused variable behind.",
+        content="Consider validating inputs more carefully.",
         claim_type="defect",
-        expected_behavior="handle initializes only values needed to compute the declared result.",
-        failure_mode="The extra value is initialized and ignored before handle returns the declared result.",
-        evidence_summary="Task evidence shows the variable is unused.",
-        evidence_for_contract="The declared handler contract only depends on the returned result.",
-        counterexample="Calling handle returns the declared result without reading the extra value.",
-        rejection_check="No path reads the extra value before return.",
-        recommendation="Remove the unused variable.",
-        suspected_category="other",
+        expected_behavior="Inputs should be validated.",
+        failure_mode="",
+        evidence_summary="",
+        evidence_for_contract="",
+        counterexample="",
+        rejection_check="",
+        recommendation="",
+        suspected_category="logic",
         reflection_specialties=["logic"],
     )
     out = make_review_check_evidence_gate_node()(
@@ -4863,7 +4984,7 @@ def test_review_check_evidence_gate_drops_low_signal_audit_only_candidates() -> 
                     patch_task_id="review-logic",
                     decision="candidate",
                     evidence_refs=["src/app.py:1"],
-                    reportable_reason="The changed path has unused code.",
+                    reportable_reason="Maybe validate.",
                     candidate=candidate,
                 )
             ],
@@ -4873,7 +4994,7 @@ def test_review_check_evidence_gate_drops_low_signal_audit_only_candidates() -> 
     assert out["candidate_findings"] == []
     result = out["review_check_results"][0]
     assert result.gate_decision == "dropped"
-    assert result.gate_reason == "audit_only_check_not_promotable"
+    assert result.gate_reason != "audit_only_check_not_promotable"
 
 
 def test_review_check_evidence_gate_drops_partial_context_uncertainty() -> None:
@@ -5647,6 +5768,7 @@ def test_coverage_audit_reports_stage_coverage_and_writes_json(tmp_path) -> None
 
     assert record["summary"]["positive_path_count"] == 2
     assert record["summary"]["compiled_path_count"] == 1
+    assert record["summary"]["focused_result_path_count"] == 1
     assert record["summary"]["candidate_path_count"] == 1
     paths = {item["path"]: item for item in record["paths"]}
     assert paths["src/app.py"]["reason_state"] == "dropped_by_cleanup"

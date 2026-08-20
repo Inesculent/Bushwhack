@@ -252,8 +252,34 @@ _CRITIQUE_PARENT_UPDATE_KEYS = frozenset(
 )
 
 
-def _critique_subgraph_parent_updates(full: Dict[str, Any]) -> Dict[str, Any]:
-    return {k: full[k] for k in _CRITIQUE_PARENT_UPDATE_KEYS if k in full}
+_CRITIQUE_ADDITIVE_LIST_KEYS = frozenset(
+    {
+        "node_history",
+        "llm_trace",
+        "exploration_ledger",
+        "candidate_findings",
+        "review_checks",
+        "invalid_review_checks",
+        "review_check_results",
+        "focused_context_requests",
+    }
+)
+
+
+def _critique_subgraph_parent_updates(
+    full: Dict[str, Any],
+    initial: GraphState | None = None,
+) -> Dict[str, Any]:
+    from src.orchestration.routing.send_payload import subgraph_parent_updates
+
+    return subgraph_parent_updates(
+        initial or {},
+        full,
+        keys=_CRITIQUE_PARENT_UPDATE_KEYS,
+        additive_lists=_CRITIQUE_ADDITIVE_LIST_KEYS,
+        additive_ints={"token_usage"},
+        union_dicts={"focused_context_results", "task_status_by_id"},
+    )
 
 
 def _route_after_mental_model_enricher(state: GraphState) -> str:
@@ -369,6 +395,6 @@ def build_critique_review_subgraph(
     inner = g.compile()
 
     def run_critique_review_subgraph(state: GraphState) -> Dict[str, Any]:
-        return _critique_subgraph_parent_updates(inner.invoke(state))
+        return _critique_subgraph_parent_updates(inner.invoke(state), state)
 
     return run_critique_review_subgraph

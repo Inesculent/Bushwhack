@@ -10,12 +10,26 @@
 #SBATCH --mem=128G
 #SBATCH --output=slurm_logs/bushwhack-full-%j.out
 #SBATCH --error=slurm_logs/bushwhack-full-%j.err
+#SBATCH --exclude=evc33
 
 set -euo pipefail
 
 REPO_ROOT="${BUSHWHACK_REPO:-${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}}"
 cd "${REPO_ROOT}"
 mkdir -p slurm_logs
+
+echo "Resolved repository root: ${REPO_ROOT}"
+echo "Resolved working directory: $(pwd -P)"
+if git -C "${REPO_ROOT}" rev-parse HEAD >/dev/null 2>&1; then
+  echo "Git commit: $(git -C "${REPO_ROOT}" rev-parse HEAD)"
+  if [[ -n "$(git -C "${REPO_ROOT}" status --porcelain)" ]]; then
+    echo "Git working tree dirty: true"
+  else
+    echo "Git working tree dirty: false"
+  fi
+else
+  echo "Git metadata: unavailable (source fingerprint will still be recorded)"
+fi
 
 # ==========================================
 # GPU DIAGNOSTICS & LOGGING
@@ -88,38 +102,10 @@ export APPTAINER_BIND="/lustre"
 export VLLM_ENGINE_READY_TIMEOUT_S="${VLLM_ENGINE_READY_TIMEOUT_S:-3600}"
 export APPTAINERENV_VLLM_ENGINE_READY_TIMEOUT_S="$VLLM_ENGINE_READY_TIMEOUT_S"
 
-# Start vLLM in the background
-echo "Starting vLLM with engine ready timeout ${VLLM_ENGINE_READY_TIMEOUT_S}s..."
-VLLM_ALLOW_LONG_MAX_MODEL_LEN=1 apptainer exec --nv "$CONTAINER_PATH" \
-    vllm serve "$MODEL_PATH" \
-    --host 0.0.0.0 \
-    --port 8000 \
-    --tensor-parallel-size 2 \
-    --quantization fp8 \
-    --kv-cache-dtype fp8 \
-    --dtype bfloat16 \
-    --gpu-memory-utilization 0.98 \
-    --max-model-len 262144 \
-    --max-num-seqs 32 \
-    --max-num-batched-tokens 8192 \
-    --enable-chunked-prefill \
-    --trust-remote-code > "slurm_logs/vllm-${SLURM_JOB_ID:-local}.log" 2>&1 &
-VLLM_PID=$!
-
-cleanup() {
-  if [[ -n "${VLLM_PID:-}" ]]; then
-    echo "Stopping vLLM (pid ${VLLM_PID})..."
-    kill "${VLLM_PID}" 2>/dev/null || true
-  fi
-}
-trap cleanup EXIT
-
-# Wait for vLLM to start up and respond to requests
-echo "Waiting for vLLM to respond..."
-until python3 -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/v1/models')" >/dev/null 2>&1; do
-  sleep 5
-done
-echo "vLLM is ready!"
+# Validate the allocation, start vLLM, and fail fast if startup dies or times out.
+# shellcheck source=vllm_runtime.sh
+source "${REPO_ROOT}/vllm_runtime.sh"
+start_and_wait_for_vllm "${MODEL_PATH}" "${CONTAINER_PATH}"
 
 # Strip leading "--" if passed by sbatch to separate script arguments
 if [ "${1:-}" = "--" ]; then

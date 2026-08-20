@@ -44,11 +44,7 @@ _DIFF_LOCAL_CORRECTNESS_PHRASES = (
     "within the changed",
     "changed hunks",
 )
-_MAX_PLANNER_TASKS = 10
 _CLASS_CHUNK_MIN_INVENTORY = 4
-_CLASS_CHUNK_DEFAULT_BATCH = 2
-_MULTI_SURFACE_SPLIT_MIN_INVENTORY = 8
-_MULTI_SURFACE_SPLIT_MIN_MENTIONED = 6
 _SURFACE_SCOPE_ISOLATION_PHRASE = "do not review any other surface"
 _CLASS_SCOPE_ISOLATION_PHRASE = _SURFACE_SCOPE_ISOLATION_PHRASE
 _TASK_SURFACE_NAME_RE = re.compile(r"\b([A-Z][a-zA-Z0-9_]{2,})\b")
@@ -104,7 +100,6 @@ _TASK_SURFACE_NOISE = frozenset(
         "Starts",
     }
 )
-_CLASS_INTRO_RE = re.compile(r"^\+\s*class\s+(\w+)", re.MULTILINE)
 _DIFF_CONTEXT_TERMS = re.compile(
     r"\b(diff|hunk|excerpt|snippet|visible|shown|displayed|truncated|partial)\b",
     re.IGNORECASE,
@@ -452,28 +447,8 @@ def _logic_covered_surface_ids(tasks: List[ReviewTask], by_id: dict[str, ReviewS
     return covered
 
 
-def _surface_fill_task(surface: ReviewSurface, *, index: int) -> ReviewTask:
-    line_hint = ""
-    if surface.line_start is not None:
-        line_hint = f" Anchor around line {surface.line_start}."
-    return ReviewTask(
-        id=f"review-logic-surface-fill-{index}",
-        title=f"Diff-local correctness: {surface.name}"[:80],
-        description=(
-            f"Diff-local correctness for {surface.name} only. Verify changed control flow, return "
-            "contracts, type/API consistency, state/resource effects, and reachable edge cases for this "
-            f"surface. {_CLASS_SCOPE_ISOLATION_PHRASE.capitalize()} in the target file.{line_hint}"
-        )[:500],
-        target_files=[surface.file_path],
-        surface_ids=[surface.surface_id],
-        specialty="logic",
-        review_dimension="diff_local_correctness",
-        depth=1,
-    )
-
-
 def surface_work_fill_tasks(tasks: List[ReviewTask], state: GraphState) -> tuple[List[ReviewTask], Dict[str, Any]]:
-    """Add deterministic per-surface logic tasks for high-confidence surfaces with no logic owner."""
+    """Report uncovered surfaces without inventing semantic task ownership."""
     ledger = surface_ledger_from_state(state)
     if not ledger:
         return tasks, {
@@ -485,8 +460,7 @@ def surface_work_fill_tasks(tasks: List[ReviewTask], state: GraphState) -> tuple
     required = _required_surfaces_for_plan(ledger, changed_files=changed_files)
     logic_covered = _logic_covered_surface_ids(tasks, by_id)
     uncovered = [surface for surface in required if surface.surface_id not in logic_covered]
-    added = [_surface_fill_task(surface, index=i + 1) for i, surface in enumerate(uncovered)]
-    return tasks + added, {
+    return tasks, {
         "surface_fill_uncovered_before": [
             {
                 "surface_id": surface.surface_id,
@@ -496,7 +470,8 @@ def surface_work_fill_tasks(tasks: List[ReviewTask], state: GraphState) -> tuple
             }
             for surface in uncovered
         ],
-        "surface_fill_added_tasks": [task.model_dump(mode="json") for task in added],
+        "surface_fill_added_tasks": [],
+        "surface_fill_requires_plan_repair": bool(uncovered),
     }
 
 
@@ -519,154 +494,16 @@ def _is_surface_scoped_logic_task(task: ReviewTask, inventory: List[str]) -> boo
     return _CLASS_SCOPE_ISOLATION_PHRASE in blob or " only " in f" {blob} " or blob.endswith(" only.")
 
 
-def _diff_region_for_class(blob: str, class_name: str) -> str:
-    """Added-lines region for one class name inside a diff or digest blob."""
-    if not blob.strip() or not class_name:
-        return ""
-    intro = re.search(rf"^\+\s*class\s+{re.escape(class_name)}\b", blob, re.MULTILINE)
-    if not intro:
-        return ""
-    after = blob[intro.end() :]
-    next_intro = _CLASS_INTRO_RE.search(after)
-    end = intro.end() + next_intro.start() if next_intro else len(blob)
-    return blob[intro.start() : end]
-
-
-def _surface_focus_description(surfaces: List[str], *, focus: str) -> str:
-    names = ", ".join(surfaces)
-    return (
-        f"Diff-local correctness for {names} only. Review the changed behavior, local contracts, "
-        "and directly visible interactions for each assigned surface. "
-        f"{_CLASS_SCOPE_ISOLATION_PHRASE.capitalize()} in the target file."
-    )
-
-
-def _surface_focus_title(surfaces: List[str], *, focus: str) -> str:
-    if len(surfaces) == 1:
-        return f"Diff-local correctness: {surfaces[0]}"
-    return f"Diff-local correctness: {', '.join(surfaces)}"
-
-
-def _logic_surface_focus_task(
-    files: List[str],
-    surfaces: List[str],
-    *,
-    focus: str,
-    shard_index: int,
-) -> ReviewTask:
-    slug = "-".join(s.lower() for s in surfaces[:2])
-    if len(surfaces) == 1:
-        task_id = f"review-logic-{surfaces[0]}"
-    else:
-        task_id = f"review-logic-batch-{shard_index + 1}-{slug}"
-    title = _surface_focus_title(surfaces, focus=focus)
-    if len(title) > 80:
-        title = title[:77] + "..."
-    description = _surface_focus_description(surfaces, focus=focus)
-    if len(description) > 500:
-        description = description[:497] + "..."
-    return ReviewTask(
-        id=task_id,
-        title=title,
-        description=description,
-        target_files=files,
-        specialty="logic",
-        review_dimension="diff_local_correctness",
-        depth=1,
-    )
-
-
-def _batch_surface_list(surfaces: List[str], batch_size: int) -> List[List[str]]:
-    if batch_size < 1:
-        batch_size = 1
-    return [surfaces[i : i + batch_size] for i in range(0, len(surfaces), batch_size)]
-
-
-def _build_surface_focus_shards(
-    surfaces: List[str],
-    state: GraphState,
-    *,
-    kept_task_count: int,
-) -> List[ReviewTask]:
-    max_shards = _MAX_PLANNER_TASKS - kept_task_count
-    if max_shards < 1 or not surfaces:
-        return []
-    files = _target_files(state)
-    planned: List[tuple[List[str], str]] = []
-    batch_size = _CLASS_CHUNK_DEFAULT_BATCH
-    while batch_size <= len(surfaces):
-        batches = _batch_surface_list(surfaces, batch_size)
-        if len(planned) + len(batches) <= max_shards:
-            for batch in batches:
-                planned.append((batch, "default"))
-            break
-        batch_size += 1
-    else:
-        if surfaces and len(planned) < max_shards:
-            planned.append((surfaces, "default"))
-
-    if len(planned) > max_shards:
-        combined: List[tuple[List[str], str]] = []
-        merged = _batch_surface_list(surfaces, max(1, (len(surfaces) + max_shards - 1) // max_shards))
-        planned = [(batch, "default") for batch in merged[:max_shards]]
-
-    shards: List[ReviewTask] = []
-    for index, (batch, focus) in enumerate(planned):
-        shards.append(
-            _attach_task_surface_ids(
-                _logic_surface_focus_task(files, batch, focus=focus, shard_index=index),
-                state,
-            )
-        )
-    return shards
-
-
-def _is_monolithic_logic_task(task: ReviewTask, inventory: List[str]) -> bool:
-    if task.specialty != "logic":
-        return False
-    if _is_surface_scoped_logic_task(task, inventory):
-        return False
-    if len(task.surface_ids) >= max(3, (len(inventory) + 1) // 2):
-        return True
-    if _task_covers_structured_extraction(task, inventory) and len(
-        _surfaces_mentioned_in_text(f"{task.title} {task.description}", inventory)
-    ) <= 2:
-        return False
-    mentioned = _surfaces_mentioned_in_text(f"{task.title} {task.description}", inventory)
-    if _task_is_diff_local_correctness(task):
-        return len(mentioned) >= 3 or len(mentioned) >= max(3, len(inventory) // 2)
-    return len(mentioned) >= max(3, (len(inventory) + 1) // 2)
-
-
-def _surfaces_covered_by_logic_tasks(
-    tasks: List[ReviewTask],
-    inventory: List[str],
-    state: GraphState,
-) -> set[str]:
-    covered: set[str] = set()
-    id_to_name = {
-        surface.surface_id: surface.name
-        for surface in surface_ledger_from_state(state)
-    }
-    for task in tasks:
-        if task.specialty != "logic":
-            continue
-        covered.update(id_to_name[sid] for sid in task.surface_ids if sid in id_to_name)
-        covered.update(_surfaces_mentioned_in_text(f"{task.title} {task.description}", inventory))
-    return covered
-
-
 def _surfaces_covered_by_scoped_logic_tasks(
     tasks: List[ReviewTask],
     inventory: List[str],
     state: GraphState,
 ) -> set[str]:
-    """Surfaces explicitly assigned to scoped logic shards (not mega-audit boilerplate)."""
     covered: set[str] = set()
+    id_to_name = {surface.surface_id: surface.name for surface in surface_ledger_from_state(state)}
     for task in tasks:
         if task.specialty != "logic" or not _is_surface_scoped_logic_task(task, inventory):
             continue
-        id_to_name = {surface.surface_id: surface.name for surface in surface_ledger_from_state(state)}
         covered.update(id_to_name[sid] for sid in task.surface_ids if sid in id_to_name)
         covered.update(_surfaces_mentioned_in_text(f"{task.title} {task.description}", inventory))
     return covered
@@ -768,7 +605,6 @@ def _should_split_monolithic_logic_task(task: ReviewTask, inventory: List[str]) 
 
 
 def _strip_mega_audit_suffix(description: str) -> str:
-    """Remove appended 'audit every entry point' checklist from shard task text."""
     lowered = description.lower()
     marker = "audit every changed entry point in:"
     idx = lowered.find(marker)
@@ -940,7 +776,6 @@ def _normalize_tasks(tasks: List[ReviewTask], state: GraphState) -> List[ReviewT
         normalized.append(candidate)
 
     normalized = normalized or _default_tasks(state)
-    normalized = _ensure_diff_local_correctness_task(normalized, state)
     return _ensure_structured_extraction_logic_task(normalized, state)
 
 
@@ -972,27 +807,21 @@ def _sanitize_batched_logic_task_description(
 
 
 def finalize_emitted_tasks(tasks: List[ReviewTask], state: GraphState) -> List[ReviewTask]:
-    """Apply baseline logic guards to actor-critic draft tasks before plan emit."""
+    """Normalize mechanical task fields without rewriting AI-authored scope."""
     if not tasks:
         return tasks
     fallback_files = _target_files(state)
-    inventory = surface_inventory_from_state(state)
     prepared: List[ReviewTask] = []
     for task in tasks:
         task = _attach_task_surface_ids(task, state)
-        description = _sanitize_batched_logic_task_description(task, state, inventory)
         prepared.append(
             task.model_copy(
                 update={
                     "target_files": _dedupe_preserve_order(task.target_files or fallback_files),
                     "subtasks": [],
-                    "description": description,
                 }
             )
         )
-    prepared = _amend_diff_narrowed_tasks(prepared, state)
-    prepared = _chunk_logic_tasks_by_surface(prepared, state)
-    prepared = _ensure_diff_local_correctness_task(prepared, state)
     prepared = _ensure_structured_extraction_logic_task(prepared, state)
     return [_attach_task_surface_ids(task, state) for task in prepared]
 
@@ -1053,7 +882,7 @@ def prepare_surface_first_tasks(
     tasks: List[ReviewTask],
     state: GraphState,
 ) -> tuple[List[ReviewTask], Dict[str, Any]]:
-    """Finalize planner output, add deterministic surface coverage, and dedupe exact task duplicates."""
+    """Finalize planner output, report coverage gaps, and dedupe exact task duplicates."""
     finalized = finalize_emitted_tasks(tasks, state)
     finalized, repair_meta = _repair_task_target_files_from_surfaces(finalized, state)
     finalized, prune_meta = _prune_non_changed_task_targets(finalized, state)
@@ -1121,7 +950,8 @@ def validate_surface_bound_plan(tasks: List[ReviewTask], state: GraphState) -> D
         if len(set(task_ids)) > 1
     ]
     diagnostics = {
-        "ok": not (uncovered or invalid_target_files),
+        "ok": not invalid_target_files,
+        "coverage_complete": not uncovered,
         "surface_count": len(ledger),
         "required_surface_count": len(required_surfaces),
         "covered_surface_ids": sorted(covered),
@@ -1168,8 +998,7 @@ def _review_dimension_for_task(task: ReviewTask) -> str:
 def _specificity_score(task: ReviewTask) -> tuple[int, int, int]:
     surface_count = len(task.surface_ids)
     single_surface = 1 if surface_count == 1 else 0
-    scoped = 1 if _CLASS_SCOPE_ISOLATION_PHRASE in f"{task.title} {task.description}".lower() else 0
-    return (single_surface, scoped, len(task.description or ""))
+    return (single_surface, -surface_count, len(task.description or ""))
 
 
 def _merge_duplicate_task(keeper: ReviewTask, challenger: ReviewTask) -> ReviewTask:

@@ -28,6 +28,7 @@ from src.domain.state import GraphState
 from src.infrastructure.mcp.client import MCPClient
 from src.infrastructure.redis_checkpoint import delete_checkpoint_thread
 from src.infrastructure.snapshot_loader import SnapshotLoader
+from src.infrastructure.source_provenance import collect_source_provenance
 from src.orchestration.reviewer_graph import run_reviewer
 
 DEFAULT_AACR_PROCESSED_PATH: Path = PROCESSED_DIR / "aacr_bench_graph_ready.csv"
@@ -436,10 +437,8 @@ def _paths_from_raw_stage(raw: dict[str, Any], final_findings: Iterable[Any]) ->
     focused_results = raw.get("focused_context_results", {}) or {}
     if isinstance(focused_results, dict):
         for result in focused_results.values():
-            if not isinstance(result, dict):
-                continue
             for key in ("file_snippets", "file_contents_full"):
-                values = result.get(key, {})
+                values = _field_from_mapping_or_model(result, key, {})
                 if isinstance(values, dict):
                     for path, content in values.items():
                         normalized = _normalize_source_ref_path(str(path))
@@ -447,7 +446,7 @@ def _paths_from_raw_stage(raw: dict[str, Any], final_findings: Iterable[Any]) ->
                             result_paths.add(normalized)
                         if isinstance(content, str):
                             result_paths.update(_source_paths_from_text_refs(content))
-            hits = result.get("search_hits", {})
+            hits = _field_from_mapping_or_model(result, "search_hits", {})
             if isinstance(hits, dict):
                 for hit_list in hits.values():
                     if not isinstance(hit_list, list):
@@ -1549,6 +1548,7 @@ def run_aacr_reviewer(
         "repo_root": str(repo_root) if repo_root is not None else "",
         "trace": trace,
         "cli_flags": dict(cli_flags) if cli_flags else {},
+        "source_provenance": collect_source_provenance(),
         "mcp_preflight": mcp_preflight,
         "run_warnings": sorted(run_warnings),
         "coverage_audit_path": str(coverage_audit_path.relative_to(run_dir)),

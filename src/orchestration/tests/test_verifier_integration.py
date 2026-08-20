@@ -104,6 +104,43 @@ def test_collect_verifier_send_payloads_eligible() -> None:
     assert sends[0].arg["token_usage"] == 0
 
 
+def test_collect_verifier_send_payloads_honors_adjudicator_request() -> None:
+    cid = "cand-adjudicator"
+    cand = CandidateFinding(
+        candidate_id=cid,
+        patch_task_id="t1",
+        file_path="pkg/mod.py",
+        line_start=1,
+        line_end=2,
+        content="The changed operation may select the wrong value.",
+        claim_type="defect",
+        failure_mode="wrong output",
+    )
+    state = _minimal_state(
+        candidate_findings=[cand],
+        metadata={
+            "review_adjudicator": {
+                "verification_requested_ids": [cid],
+                "verification_round": 1,
+            }
+        },
+    )
+    with patch("src.orchestration.routing.verifier_fanout.get_settings") as gs:
+        settings = MagicMock()
+        settings.verifier_enabled = True
+        settings.verifier_skip_if_no_sandbox = True
+        settings.verifier_run_on_defect = True
+        settings.verifier_run_on_security = False
+        settings.verifier_run_on_performance = False
+        settings.verifier_total_budget_per_pr = 10
+        settings.verifier_require_focused_evidence = True
+        gs.return_value = settings
+        with patch("src.orchestration.routing.verifier_fanout.sandbox_runtime_available", return_value=True):
+            sends = collect_verifier_send_payloads(state)
+
+    assert [send.arg["verifier_candidate"]["candidate_id"] for send in sends] == [cid]
+
+
 def test_source_only_verifier_updates_do_not_require_runtime_sandbox() -> None:
     cid = "cand-source-only"
     cand = CandidateFinding(

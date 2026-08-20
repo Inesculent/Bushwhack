@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Mapping, Sequence
 
 from src.config import get_settings
 from src.domain.schemas import ReviewFinding
@@ -74,6 +74,119 @@ def _canonicalize_duplicate_map(
     return canonical
 
 
+def _compact_reconciliation_card(finding: ReviewFinding) -> Dict[str, Any]:
+    def short(value: str, limit: int) -> str:
+        value = (value or "").strip()
+        return value if len(value) <= limit else value[: limit - 1] + "…"
+
+    return {
+        "id": finding.id,
+        "file_path": finding.file_path,
+        "line_start": finding.line_start,
+        "line_end": finding.line_end,
+        "content": short(finding.content, 320),
+        "expected_behavior": short(finding.expected_behavior, 220),
+        "evidence_for_contract": short(finding.evidence_for_contract, 220),
+        "counterexample": short(finding.counterexample, 220),
+        "behavioral_symptom": finding.behavioral_symptom,
+        "root_operation": finding.root_operation,
+        "claim_digest": short(finding.claim_digest, 220),
+    }
+
+
+def _reconciliation_batches(findings: Sequence[ReviewFinding]) -> List[Dict[str, Any]]:
+    """Bound AI context without using lexical semantics to choose comparison peers."""
+    by_file: Dict[str, List[ReviewFinding]] = {}
+    for finding in sorted(findings, key=lambda item: (item.file_path, item.line_start, item.id)):
+        by_file.setdefault(finding.file_path, []).append(finding)
+
+    batches: List[Dict[str, Any]] = []
+    for file_findings in by_file.values():
+        current: List[Dict[str, Any]] = []
+        current_chars = 0
+        for finding in file_findings:
+            card = _compact_reconciliation_card(finding)
+            card_chars = len(str(card))
+            if current and (len(current) >= 16 or current_chars + card_chars > 18000):
+                batches.append({"members": current})
+                current = []
+                current_chars = 0
+            current.append(card)
+            current_chars += card_chars
+        if current:
+            batches.append({"members": current})
+
+    for index, batch in enumerate(batches, start=1):
+        batch["cluster_id"] = f"cluster-{index}"
+        batch["selection_reason"] = (
+            "adjudicated findings from the same changed file; classify by behavioral claim"
+        )
+    return batches
+
+
+def _claim_cluster_classification_errors(
+    audit: Any,
+    expected_by_cluster: Mapping[str, set[str]],
+) -> List[str]:
+    errors: List[str] = []
+    decisions = {item.cluster_id: item for item in audit.clusters}
+    unknown_clusters = sorted(set(decisions) - set(expected_by_cluster))
+    if unknown_clusters:
+        errors.append(f"unknown_clusters={unknown_clusters}")
+    for cluster_id, expected_ids in expected_by_cluster.items():
+        decision = decisions.get(cluster_id)
+        if decision is None:
+            errors.append(f"{cluster_id}:missing_decision")
+            continue
+        counts: Dict[str, int] = {}
+
+        def record(candidate_id: str) -> None:
+            counts[candidate_id] = counts.get(candidate_id, 0) + 1
+
+        for group in decision.duplicate_groups:
+            record(group.keeper_id)
+            for candidate_id in group.absorbed_ids:
+                record(candidate_id)
+            for candidate_id in group.rejected_ids:
+                record(candidate_id)
+        for candidate_id in decision.distinct_ids:
+            record(candidate_id)
+        for candidate_id in decision.rejected_ids:
+            record(candidate_id)
+
+        missing = sorted(expected_ids - set(counts))
+        unknown = sorted(set(counts) - expected_ids)
+        repeated = sorted(candidate_id for candidate_id, count in counts.items() if count != 1)
+        if missing:
+            errors.append(f"{cluster_id}:missing_ids={missing}")
+        if unknown:
+            errors.append(f"{cluster_id}:unknown_ids={unknown}")
+        if repeated:
+            errors.append(f"{cluster_id}:multiply_classified={repeated}")
+    return errors
+
+
+def _apply_adjudicated_duplicate_audit(
+    findings: Sequence[ReviewFinding],
+    audit: Any,
+) -> tuple[List[ReviewFinding], Dict[str, List[str]], Dict[str, str], List[str]]:
+    by_id = {finding.id: finding for finding in findings}
+    duplicate_to_keeper: Dict[str, str] = {}
+    rejected_ids: List[str] = []
+    for decision in audit.clusters:
+        rejected_ids.extend(candidate_id for candidate_id in decision.rejected_ids if candidate_id in by_id)
+        for group in decision.duplicate_groups:
+            rejected_ids.extend(candidate_id for candidate_id in group.rejected_ids if candidate_id in by_id)
+            for duplicate_id in group.absorbed_ids:
+                if duplicate_id in by_id and group.keeper_id in by_id and duplicate_id != group.keeper_id:
+                    duplicate_to_keeper[duplicate_id] = group.keeper_id
+    duplicates: Dict[str, List[str]] = {}
+    for duplicate_id, keeper_id in duplicate_to_keeper.items():
+        duplicates.setdefault(keeper_id, []).append(duplicate_id)
+    reconciled = [finding for finding in findings if finding.id not in duplicate_to_keeper]
+    return reconciled, duplicates, duplicate_to_keeper, sorted(set(rejected_ids))
+
+
 def _reconcile_adjudicated_finding_duplicates(
     state: GraphState,
     findings: List[ReviewFinding],
@@ -84,55 +197,90 @@ def _reconcile_adjudicated_finding_duplicates(
     try:
         from src.orchestration.nodes.application.cleanup import (  # noqa: PLC0415
             SemanticClaimClusterOutput,
-            _apply_semantic_claim_cluster_audit,
             _render_semantic_claim_cluster_prompt,
-            _reports_by_candidate,
-            _semantic_claim_clusters,
         )
     except Exception as exc:  # noqa: BLE001
         return findings, {}, {"warnings": [f"claim_cluster_import_failed:{exc.__class__.__name__}: {exc}"]}, 0, []
 
-    raw_by_cand = _reports_by_candidate(state.get("reflection_reports", []) or [])
-    clusters = _semantic_claim_clusters(findings, raw_by_cand)
+    clusters = _reconciliation_batches(findings)
     if not clusters:
         return findings, {}, {"cluster_count": 0}, 0, []
 
     resolved = get_settings()
     selected_model = getattr(resolved, "reviewer_worker_model_key", None)
-    try:
-        llm = Models.worker(
-            SemanticClaimClusterOutput,
-            model_key=selected_model,
-            max_completion_tokens=1800,
-        )
-        traced = trace_llm_call(
-            llm,
-            _render_semantic_claim_cluster_prompt(clusters),
-            state=state,
-            node_name="review_synthesizer_claim_cluster_reconciliation",
-            model_key=selected_model,
-            schema_name="SemanticClaimClusterOutput",
-            input_summary={"cluster_count": len(clusters)},
-        )
-        audit = parse_structured_output(traced.result, SemanticClaimClusterOutput)
-        reconciled, duplicates, duplicate_to_keeper, rejected = _apply_semantic_claim_cluster_audit(
-            findings,
-            audit,
-        )
-        return ensure_unique_finding_ids(reconciled), duplicates, {
-            "cluster_count": len(clusters),
-            "claim_cluster_groups": clusters,
-            "claim_cluster_audits": [item.model_dump(mode="json") for item in audit.clusters],
-            "claim_cluster_warnings": list(audit.warnings),
-            "claim_cluster_duplicate_to_keeper": duplicate_to_keeper,
-            "claim_cluster_rejected": rejected,
-        }, traced.tokens, traced.trace_records
-    except Exception as exc:  # noqa: BLE001
-        return findings, {}, {
-            "cluster_count": len(clusters),
-            "claim_cluster_groups": clusters,
-            "warnings": [f"claim_cluster_reconciliation_failed:{exc.__class__.__name__}: {exc}"],
-        }, 0, trace_from_exception(exc)
+    audits = []
+    warnings: List[str] = []
+    llm_tokens = 0
+    llm_trace: List[Dict[str, Any]] = []
+    valid_cluster_ids: set[str] = set()
+    for cluster in clusters:
+        cluster_id = str(cluster["cluster_id"])
+        expected_ids = {str(member["id"]) for member in cluster["members"]}
+        try:
+            llm = Models.worker(
+                SemanticClaimClusterOutput,
+                model_key=selected_model,
+                max_completion_tokens=2200,
+            )
+            prompt = _render_semantic_claim_cluster_prompt([cluster])
+            batch_audit = None
+            errors: List[str] = []
+            for attempt in range(2):
+                traced = trace_llm_call(
+                    llm,
+                    prompt,
+                    state=state,
+                    node_name="review_synthesizer_claim_cluster_reconciliation",
+                    model_key=selected_model,
+                    schema_name="SemanticClaimClusterOutput",
+                    input_summary={
+                        "cluster_id": cluster_id,
+                        "finding_count": len(expected_ids),
+                        "attempt": attempt + 1,
+                    },
+                )
+                llm_tokens += traced.tokens
+                llm_trace.extend(traced.trace_records)
+                batch_audit = parse_structured_output(traced.result, SemanticClaimClusterOutput)
+                errors = _claim_cluster_classification_errors(
+                    batch_audit,
+                    {cluster_id: expected_ids},
+                )
+                if not errors:
+                    break
+                if attempt == 0:
+                    prompt = (
+                        f"{prompt}\n\nYour previous structured classification was invalid:\n"
+                        + "\n".join(f"- {error}" for error in errors)
+                        + "\nReturn a corrected classification. Every supplied candidate ID must appear exactly "
+                        "once across keeper_id, absorbed_ids, distinct_ids, and rejected_ids."
+                    )
+            if errors or batch_audit is None:
+                warnings.extend(f"claim_cluster_invalid:{error}" for error in errors)
+                continue
+            audits.extend(batch_audit.clusters)
+            warnings.extend(batch_audit.warnings)
+            valid_cluster_ids.add(cluster_id)
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"claim_cluster_reconciliation_failed:{cluster_id}:{exc.__class__.__name__}: {exc}")
+            llm_trace.extend(trace_from_exception(exc))
+
+    audit = SemanticClaimClusterOutput(clusters=audits, warnings=warnings)
+    reconciled, duplicates, duplicate_to_keeper, rejected_ids = _apply_adjudicated_duplicate_audit(
+        findings,
+        audit,
+    )
+    preserved_ids = sorted(set(rejected_ids))
+    return ensure_unique_finding_ids(reconciled), duplicates, {
+        "cluster_count": len(clusters),
+        "valid_cluster_count": len(valid_cluster_ids),
+        "claim_cluster_groups": clusters,
+        "claim_cluster_audits": [item.model_dump(mode="json") for item in audit.clusters],
+        "claim_cluster_warnings": warnings,
+        "claim_cluster_duplicate_to_keeper": duplicate_to_keeper,
+        "claim_cluster_rejected": {candidate_id: "preserved_after_adjudication" for candidate_id in rejected_ids},
+        "claim_cluster_preserved_after_adjudication": preserved_ids,
+    }, llm_tokens, llm_trace
 
 
 def synthesizer_node(state: GraphState) -> Dict[str, Any]:

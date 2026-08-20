@@ -86,7 +86,10 @@ class SemanticEquivalenceAuditOutput(BaseModel):
 class SemanticClaimDuplicateGroup(BaseModel):
     keeper_id: str
     absorbed_ids: List[str] = Field(default_factory=list)
-    rejected_ids: List[str] = Field(default_factory=list)
+    rejected_ids: List[str] = Field(
+        default_factory=list,
+        description="Only incoherent variants; never findings classified as distinct.",
+    )
     merged_contract: str = Field(default="", max_length=700)
     merged_counterexample: str = Field(default="", max_length=700)
     merged_impact: str = Field(default="", max_length=700)
@@ -96,7 +99,10 @@ class SemanticClaimDuplicateGroup(BaseModel):
 class SemanticClaimClusterDecision(BaseModel):
     cluster_id: str
     duplicate_groups: List[SemanticClaimDuplicateGroup] = Field(default_factory=list)
-    distinct_ids: List[str] = Field(default_factory=list)
+    distinct_ids: List[str] = Field(
+        default_factory=list,
+        description="Findings that express a separate actionable claim and must be preserved.",
+    )
     rejected_ids: List[str] = Field(default_factory=list)
     rationale: str = Field(default="", max_length=700)
 
@@ -1287,6 +1293,10 @@ def _render_semantic_claim_cluster_prompt(clusters: Sequence[Mapping[str, Any]])
         "that describe the same violated contract, counterexample family, and practical fix, and list distinct_ids "
         "for nearby findings that cover a different contract, mode, data element, trigger, or impact. Put internally "
         "contradictory or incoherent variants in rejected_ids rather than merging their text into the keeper.\n"
+        "Classify each candidate ID exactly once: keeper, absorbed, distinct, or rejected. Never place a distinct ID "
+        "inside a duplicate group\'s rejected_ids. `distinct_ids` must exclude every keeper_id, absorbed_id, and "
+        "rejected_id. When there are no duplicates, return no duplicate_groups and put every candidate ID in "
+        "distinct_ids.\n"
         "Do not merge two findings merely because they share a file or method. Same symbol plus different contract "
         "must remain distinct.\n\n"
         "Synthetic distinction example: `src/tool.py::Parser.run::variant=batch::contract=cardinality::impact=data_loss` "
@@ -1339,9 +1349,15 @@ def _apply_semantic_claim_cluster_audit(
     rejected: Dict[str, str] = {}
     merged: Dict[str, ReviewFinding] = {}
     dropped: set[str] = set()
+    distinct_ids = {
+        finding_id
+        for item in audit.clusters
+        for finding_id in item.distinct_ids
+        if finding_id in by_id
+    }
     for item in audit.clusters:
         for rejected_id in item.rejected_ids:
-            if rejected_id not in by_id or rejected_id in dropped:
+            if rejected_id not in by_id or rejected_id in dropped or rejected_id in distinct_ids:
                 continue
             dropped.add(rejected_id)
             rejected[rejected_id] = item.rationale or "claim_cluster_rejected"
@@ -1350,7 +1366,12 @@ def _apply_semantic_claim_cluster_audit(
             if keeper not in by_id or keeper in dropped:
                 continue
             for duplicate in group.absorbed_ids:
-                if duplicate not in by_id or duplicate == keeper or duplicate in dropped:
+                if (
+                    duplicate not in by_id
+                    or duplicate == keeper
+                    or duplicate in dropped
+                    or duplicate in distinct_ids
+                ):
                     continue
                 if not _merge_compatible_claims(by_id[keeper], by_id[duplicate]):
                     rejected[duplicate] = "claim_cluster_incompatible_merge"
@@ -1358,7 +1379,12 @@ def _apply_semantic_claim_cluster_audit(
                 dropped.add(duplicate)
                 duplicates.setdefault(keeper, []).append(duplicate)
             for rejected_id in group.rejected_ids:
-                if rejected_id not in by_id or rejected_id == keeper or rejected_id in dropped:
+                if (
+                    rejected_id not in by_id
+                    or rejected_id == keeper
+                    or rejected_id in dropped
+                    or rejected_id in distinct_ids
+                ):
                     continue
                 dropped.add(rejected_id)
                 rejected[rejected_id] = group.rationale or item.rationale or "claim_cluster_rejected"

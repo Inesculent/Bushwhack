@@ -11,7 +11,6 @@ from src.domain.schemas import (
 from src.orchestration.nodes.application.planner import (
     _amend_diff_narrowed_tasks,
     _baseline_diff_local_correctness_task,
-    _chunk_logic_tasks_by_surface,
     _diff_signals_structured_extraction,
     _ensure_diff_local_correctness_task,
     _ensure_structured_extraction_logic_task,
@@ -142,76 +141,6 @@ def test_mega_logic_checklist_does_not_block_structured_extraction_task() -> Non
     assert _task_covers_structured_extraction(mega) is False
 
 
-def test_chunk_monolithic_logic_into_surface_scoped_shards() -> None:
-    surfaces = [f"Node{i}" for i in range(10)]
-    state = {
-        "git_diff": "diff --git a/pkg/h.py b/pkg/h.py\n+++ b/pkg/h.py\n+import re\n+re.findall(x)\n",
-        "metadata": {"mental_model": {"diff_surface_inventory": surfaces}},
-    }
-    mega = ReviewTask(
-        id="task-1",
-        title="Diff-local correctness all nodes",
-        description="Audit each of: " + ", ".join(surfaces) + ".",
-        target_files=["pkg/h.py"],
-        specialty="logic",
-    )
-    out = _chunk_logic_tasks_by_surface(
-        [mega, ReviewTask(id="task-2", title="Security", description="ReDoS", target_files=["pkg/h.py"], specialty="security")],
-        state,
-    )
-    logic = [t for t in out if t.specialty == "logic"]
-    assert len(logic) >= 5
-    assert all("do not review any other surface" in t.description.lower() for t in logic)
-    mentioned = {name for t in logic for name in surfaces if name in t.description}
-    assert mentioned == set(surfaces)
-
-
-def test_chunk_comfy_like_inventory_signal_tasks() -> None:
-    surfaces = [
-        "StringConcatenate",
-        "StringSubstring",
-        "StringLength",
-        "CaseConverter",
-        "StringTrim",
-        "StringReplace",
-        "StringContains",
-        "StringCompare",
-        "RegexMatch",
-        "RegexExtract",
-    ]
-    diff = "\n".join(
-        [
-            "diff --git a/comfy_extras/nodes_string.py b/comfy_extras/nodes_string.py",
-            "+++ b/comfy_extras/nodes_string.py",
-            "+class StringCompare():",
-            "+    elif mode == 'Equal':",
-            "+        return a == b",
-            "+    elif mode == 'Ends With':",
-            "+        return a.endswith(b)",
-            "+class RegexExtract():",
-            "+    rows = re.findall(pat, s)",
-            "+    return join_delimiter.join(rows)",
-        ]
-    )
-    state = {"git_diff": diff, "metadata": {"mental_model": {"diff_surface_inventory": surfaces}}}
-    mega = ReviewTask(
-        id="task-1",
-        title="Diff-local correctness",
-        description="Diff-local correctness for all handlers: " + ", ".join(surfaces),
-        target_files=["comfy_extras/nodes_string.py"],
-        specialty="logic",
-    )
-    out = _chunk_logic_tasks_by_surface([mega], state)
-    logic = [t for t in out if t.specialty == "logic"]
-    assert len(logic) >= 4
-    regex_tasks = [t for t in logic if "RegexExtract" in t.description]
-    assert regex_tasks
-    assert any("changed behavior" in t.description.lower() for t in regex_tasks)
-    compare_tasks = [t for t in logic if "StringCompare" in t.description]
-    assert compare_tasks
-    assert any("changed behavior" in t.description.lower() for t in compare_tasks)
-
-
 def test_finalize_emitted_tasks_preserves_surface_ids_for_many_single_file_surfaces() -> None:
     surfaces = [f"Node{i}" for i in range(9)]
     diff = "\n".join(
@@ -234,16 +163,10 @@ def test_finalize_emitted_tasks_preserves_surface_ids_for_many_single_file_surfa
     out = finalize_emitted_tasks([mega], state)
 
     logic = [task for task in out if task.specialty == "logic"]
-    assert len(logic) >= 4
-    owners: dict[str, str] = {}
-    for task in logic:
-        assert task.surface_ids
-        for sid in task.surface_ids:
-            assert sid not in owners
-            owners[sid] = task.id
-        names_in_description = [name for name in surfaces if name in task.description]
-        assert len(names_in_description) < len(surfaces)
-    assert len(owners) == len(build_surface_ledger_from_diff(diff))
+    assert len(logic) == 1
+    assert logic[0].id == "logic-all"
+    assert len(logic[0].surface_ids) == len(build_surface_ledger_from_diff(diff))
+    assert all(name in logic[0].description for name in surfaces)
 
 
 def test_surface_plan_validation_rejects_non_changed_target_file() -> None:
@@ -512,7 +435,7 @@ def test_surface_plan_validation_reports_same_symbol_logic_overlap_without_block
     ]
 
 
-def test_surface_first_fill_adds_missing_load_image_set_node_tasks() -> None:
+def test_surface_first_reports_missing_logic_ownership_without_adding_tasks() -> None:
     diff = (
         "diff --git a/comfy_extras/nodes_train.py b/comfy_extras/nodes_train.py\n"
         "+++ b/comfy_extras/nodes_train.py\n"
@@ -557,10 +480,9 @@ def test_surface_first_fill_adds_missing_load_image_set_node_tasks() -> None:
     diagnostics = validate_surface_bound_plan(tasks, state)
 
     assert diagnostics["ok"] is True
-    assert {task.surface_ids[0] for task in tasks if task.id.startswith("review-logic-surface-fill")} == {
-        "surface:load-image-set",
-        "surface:load-image-set-folder",
-    }
+    assert [task.id for task in tasks] == ["general-train"]
+    assert meta["surface_fill_added_tasks"] == []
+    assert meta["surface_fill_requires_plan_repair"] is True
     assert [item["surface_id"] for item in meta["surface_fill_uncovered_before"]] == [
         "surface:load-image-set",
         "surface:load-image-set-folder",
@@ -772,7 +694,8 @@ def test_broad_surface_prose_does_not_create_surface_ownership() -> None:
 
     diagnostics = validate_surface_bound_plan([task], state)
 
-    assert diagnostics["ok"] is False
+    assert diagnostics["ok"] is True
+    assert diagnostics["coverage_complete"] is False
     assert {item["surface_id"] for item in diagnostics["uncovered_surfaces"]} == {
         "surface:load-image-set",
         "surface:load-image-set-folder",
@@ -812,7 +735,8 @@ def test_broad_cross_surface_task_does_not_satisfy_primary_surface_coverage() ->
 
     diagnostics = validate_surface_bound_plan([task], state)
 
-    assert diagnostics["ok"] is False
+    assert diagnostics["ok"] is True
+    assert diagnostics["coverage_complete"] is False
     assert {item["surface_id"] for item in diagnostics["uncovered_surfaces"]} == {
         "surface:first",
         "surface:second",
@@ -1027,7 +951,7 @@ def test_plan_emit_emits_surface_valid_plan_when_critic_misaligned_after_budget(
     ]
 
 
-def test_plan_emit_still_blocks_surface_invalid_plan_after_budget() -> None:
+def test_plan_emit_repairs_invalid_target_from_bound_surface_after_budget() -> None:
     diff = (
         "diff --git a/src/app.py b/src/app.py\n"
         "+++ b/src/app.py\n"
@@ -1057,12 +981,56 @@ def test_plan_emit_still_blocks_surface_invalid_plan_after_budget() -> None:
 
     out = make_plan_emit_node()(state)
 
+    assert out["next_step"] == "review"
+    emitted = [task for task_id, task in out["task_registry"].items() if task_id != out["root_task_id"]]
+    assert len(emitted) == 1
+    assert emitted[0].target_files == ["src/app.py"]
+    repaired = out["metadata"]["review_planner"]["plan_validation"][
+        "task_target_files_repaired_from_surfaces"
+    ]
+    assert repaired == [
+        {
+            "task_id": "logic-handle",
+            "dropped": ["tests/test_app.py"],
+            "repaired": ["src/app.py"],
+            "surface_ids": emitted[0].surface_ids,
+        }
+    ]
+
+
+def test_plan_emit_blocks_invalid_target_without_authoritative_surface_path() -> None:
+    diff = (
+        "diff --git a/src/app.py b/src/app.py\n"
+        "+++ b/src/app.py\n"
+        "@@ -0,0 +1,2 @@\n"
+        "+def handle():\n"
+        "+    return None\n"
+    )
+    task = ReviewTask(
+        id="unbound-review",
+        title="Review unrelated behavior",
+        description="No changed surface is assigned.",
+        target_files=["tests/test_app.py"],
+        surface_ids=["surface:missing"],
+        specialty="general",
+    )
+    state = {
+        "git_diff": diff,
+        "metadata": {
+            "actor_critic_planner": {
+                "draft_tasks": [task.model_dump(mode="json")],
+                "revision_count": 99,
+                "aligned": False,
+            },
+            "mental_model": {"coupled_loop": {"cycles": 99}},
+        },
+    }
+
+    out = make_plan_emit_node()(state)
+
     assert out["next_step"] == "blocked"
     assert out["metadata"]["review_planner"]["blocked"] is True
-    assert out["metadata"]["review_planner"]["plan_validation"]["blocked_reason"] == (
-        "surface_plan_validation_failed"
-    )
-    assert [task_id for task_id in out["task_registry"] if task_id != out["root_task_id"]] == []
+    assert out["metadata"]["review_planner"]["blocked_reason"] == "surface_plan_validation_failed"
 
 
 def test_plan_emit_drops_empty_pruned_task_when_other_task_remains() -> None:
@@ -1152,6 +1120,51 @@ def test_plan_emit_prunes_non_changed_context_target_when_changed_target_remains
     assert validation["task_target_files_pruned"] == [
         {"task_id": "test-coverage", "dropped": ["tests/"], "kept": ["src/app.py"]}
     ]
+
+
+def test_plan_emit_uses_bound_surface_files_instead_of_all_changed_targets() -> None:
+    diff = (
+        "diff --git a/src/app.py b/src/app.py\n"
+        "+++ b/src/app.py\n"
+        "@@ -0,0 +1,2 @@\n"
+        "+def handle():\n"
+        "+    return None\n"
+        "diff --git a/src/registry.py b/src/registry.py\n"
+        "+++ b/src/registry.py\n"
+        "@@ -0,0 +1 @@\n"
+        "+HANDLERS = [handle]\n"
+    )
+    surface = ReviewSurface(
+        surface_id="surface:handle",
+        name="handle",
+        kind="function",
+        file_path="src/app.py",
+        confidence=0.95,
+    )
+    task = ReviewTask(
+        id="logic-handle",
+        title="Handle diff-local correctness",
+        description="Review only the changed handle contract.",
+        target_files=["src/app.py", "src/registry.py"],
+        surface_ids=[surface.surface_id],
+        specialty="logic",
+        review_dimension="diff-local correctness",
+    )
+    state = {
+        "git_diff": diff,
+        "metadata": {
+            "mental_model": {"surface_ledger": [surface.model_dump()]},
+            "actor_critic_planner": {
+                "draft_tasks": [task.model_dump(mode="json")],
+                "revision_count": 99,
+                "aligned": True,
+            },
+        },
+    }
+
+    out = make_plan_emit_node()(state)
+
+    assert out["task_registry"]["logic-handle"].target_files == ["src/app.py"]
 
 
 def test_plan_emit_allows_aligned_surface_bound_plan() -> None:
