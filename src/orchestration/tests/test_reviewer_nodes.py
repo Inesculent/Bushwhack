@@ -1563,3 +1563,51 @@ def test_synthesizer_preserves_adjudicated_final_findings():
     assert result["final_findings"][0].expected_behavior == finding.expected_behavior
     assert result["metadata"]["review_synthesizer"]["raw_finding_count"] == 2
     assert result["metadata"]["review_synthesizer"]["final_finding_count"] == 2
+
+
+def test_surface_first_repairs_target_files_for_non_logic_tasks() -> None:
+    diff = (
+        "diff --git a/nodes.py b/nodes.py\n"
+        "+++ b/nodes.py\n"
+        "@@ -1 +1 @@\n"
+        "-extras = []\n"
+        "+extras = ['nodes_string.py']\n"
+        "diff --git a/comfy_extras/nodes_string.py b/comfy_extras/nodes_string.py\n"
+        "+++ b/comfy_extras/nodes_string.py\n"
+        "@@ -0,0 +1,3 @@\n"
+        "+class StringCompare:\n"
+        "+    def execute(self):\n"
+        "+        return None\n"
+    )
+    surface = ReviewSurface(
+        surface_id="surface:stringcompare",
+        name="StringCompare",
+        kind="class",
+        file_path="comfy_extras/nodes_string.py",
+        confidence=0.95,
+    )
+    state = {
+        "git_diff": diff,
+        "metadata": {"mental_model": {"surface_ledger": [surface.model_dump()]}},
+    }
+    task = ReviewTask(
+        id="security-strings",
+        title="All string nodes: injection and DoS risks",
+        description="Audit the string nodes for injection and denial-of-service risks.",
+        target_files=["nodes.py"],
+        surface_ids=[surface.surface_id],
+        specialty="security",
+    )
+
+    tasks, meta = prepare_surface_first_tasks([task], state)
+
+    repaired = next(item for item in tasks if item.id == "security-strings")
+    assert repaired.target_files == ["nodes.py", "comfy_extras/nodes_string.py"]
+    assert meta["task_target_files_repaired_from_surfaces"] == [
+        {
+            "task_id": "security-strings",
+            "surface_ids": ["surface:stringcompare"],
+            "original": ["nodes.py"],
+            "repaired": ["nodes.py", "comfy_extras/nodes_string.py"],
+        }
+    ]

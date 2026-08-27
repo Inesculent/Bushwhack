@@ -54,58 +54,6 @@ EXTERNAL_EVIDENCE_MARKERS = (
     "authorization",
 )
 
-CONTRACT_JUSTIFICATION_REQUIREMENT = (
-    "contract-justification evidence: old behavior, PR intent, schema, caller, "
-    "framework rule, repository convention, documentation, test pattern, or "
-    "representation invariant explaining why the expected behavior is correct"
-)
-
-_CONTRACT_JUSTIFICATION_MARKERS = (
-    "schema",
-    "input_types",
-    "input types",
-    "return_types",
-    "return types",
-    "mode",
-    "variant",
-    "option",
-    "enum",
-    "combo",
-    "caller",
-    "call site",
-    "consumer",
-    "downstream",
-    "integration",
-    "framework",
-    "repository convention",
-    "repo convention",
-    "project convention",
-    "convention",
-    "public api",
-    "representation",
-    "cardinality",
-    "aggregation",
-    "projection",
-    "selection",
-    "serialize",
-    "serialization",
-    "join",
-    "field",
-    "element",
-    "group",
-    "intentional narrowing",
-)
-
-_CONTRACT_JUSTIFICATION_LENSES: set[str] = set()
-
-_CONTRACT_JUSTIFICATION_FAMILIES = {
-    "data_preservation_cardinality",
-    "serialization_type_closure",
-    "aggregation_cardinality",
-    "contract_delta",
-}
-
-
 def looks_like_code_file(path: str) -> bool:
     lower = path.strip().lower()
     return any(lower.endswith(ext) for ext in _CODE_FILE_EXTENSIONS)
@@ -185,31 +133,6 @@ def requires_external_evidence(text: str) -> bool:
     return any(marker in lowered for marker in EXTERNAL_EVIDENCE_MARKERS)
 
 
-def check_requires_contract_justification(check: ReviewCheck) -> bool:
-    if check.audit_only:
-        return False
-    families = {
-        check.lens.strip().lower(),
-        check.issue_family.strip().lower(),
-        check.diff_signal_family.strip().lower(),
-    }
-    if families & (_CONTRACT_JUSTIFICATION_LENSES | _CONTRACT_JUSTIFICATION_FAMILIES):
-        return True
-    blob = " ".join(
-        [
-            check.owned_contract_scope,
-            check.changed_code_anchor,
-            check.behavioral_question,
-            check.affected_invariant,
-            check.expected_behavior,
-            " ".join(check.required_evidence),
-            " ".join(check.suppress_criteria),
-            " ".join(check.report_criteria),
-        ]
-    ).lower()
-    return any(marker in blob for marker in _CONTRACT_JUSTIFICATION_MARKERS)
-
-
 def evidence_requirements_for_check(check: ReviewCheck) -> list[str]:
     items: list[str] = []
     items.extend(str(item).strip() for item in check.required_evidence if str(item).strip())
@@ -219,8 +142,6 @@ def evidence_requirements_for_check(check: ReviewCheck) -> list[str]:
             items.append(text)
     if requires_external_evidence(check.affected_invariant):
         items.append(check.affected_invariant)
-    if check_requires_contract_justification(check):
-        items.append(CONTRACT_JUSTIFICATION_REQUIREMENT)
     return list(dict.fromkeys(items))
 
 
@@ -254,12 +175,7 @@ def compiled_check_is_source_local(
             if meta_path in task_files and not requires_external_evidence(meta_blob):
                 return True
 
-    external_requirements = [
-        requirement
-        for requirement in evidence_requirements
-        if str(requirement).strip() != CONTRACT_JUSTIFICATION_REQUIREMENT
-    ]
-    if any(requires_external_evidence(requirement) for requirement in external_requirements):
+    if any(requires_external_evidence(requirement) for requirement in evidence_requirements):
         return False
     if path in task_files:
         return True

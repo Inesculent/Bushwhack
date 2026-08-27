@@ -193,6 +193,44 @@ def _repo_dependency_fingerprint(sandbox: RepoSandbox, workdir: str) -> str:
 
 
 _MISSING_MODULE_RE = re.compile(r"No module named ['\"]([^'\"]+)['\"]")
+_TYPING_EXTENSIONS_SHIM = '''"""Verifier compatibility shim for minimal runtime imports."""
+from __future__ import annotations
+
+import typing as _typing
+
+for _name in dir(_typing):
+    if not _name.startswith("_"):
+        globals()[_name] = getattr(_typing, _name)
+
+
+class _Fallback:
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def __call__(self, target=None, *args, **kwargs):
+        if target is None:
+            return lambda value: value
+        return target
+
+    def __getitem__(self, item):
+        return self
+
+
+def _identity_decorator(*args, **kwargs):
+    if args and callable(args[0]) and len(args) == 1 and not kwargs:
+        return args[0]
+    return lambda value: value
+
+
+def __getattr__(name):
+    if name in {"override", "deprecated", "dataclass_transform"}:
+        return _identity_decorator
+    return getattr(_typing, name, _Fallback())
+
+
+__all__ = [name for name in globals() if not name.startswith("_")]
+'''
+_LIGHTWEIGHT_COMPAT_SHIMS = {"typing_extensions": _TYPING_EXTENSIONS_SHIM}
 
 
 def _module_name_for_path(file_path: str) -> str:
@@ -265,6 +303,80 @@ def _probe_target_imports(
     return probes, sorted(set(missing))
 
 
+def _venv_site_packages(
+    sandbox: RepoSandbox,
+    *,
+    python_path: str,
+    workdir: str,
+) -> str:
+    result = sandbox.execute_result(
+        [
+            python_path,
+            "-c",
+            (
+                "import site, sysconfig; "
+                "paths = site.getsitepackages() or [sysconfig.get_paths().get('purelib', '')]; "
+                "print(paths[0] if paths else '')"
+            ),
+        ],
+        workdir=workdir,
+    )
+    return result.stdout.strip() if result.exit_code == 0 else ""
+
+
+def _module_available(
+    sandbox: RepoSandbox,
+    *,
+    python_path: str,
+    workdir: str,
+    module_name: str,
+) -> bool:
+    result = sandbox.execute_result(
+        [python_path, "-c", f"import importlib; importlib.import_module({module_name!r})"],
+        workdir=workdir,
+    )
+    return result.exit_code == 0
+
+
+def _ensure_lightweight_compat_shims(
+    sandbox: RepoSandbox,
+    *,
+    python_path: str,
+    workdir: str,
+    metadata: Dict[str, Any],
+) -> None:
+    site_packages = ""
+    for module_name, shim_source in _LIGHTWEIGHT_COMPAT_SHIMS.items():
+        if _module_available(
+            sandbox,
+            python_path=python_path,
+            workdir=workdir,
+            module_name=module_name,
+        ):
+            continue
+        if not site_packages:
+            site_packages = _venv_site_packages(sandbox, python_path=python_path, workdir=workdir)
+        attempt: Dict[str, Any] = {
+            "target": module_name,
+            "action": "compat_shim",
+            "exit_code": 1,
+        }
+        if not site_packages:
+            attempt["failure_reason"] = "site_packages_unavailable"
+            metadata["install_attempts"].append(attempt)
+            continue
+        dest = f"{site_packages.rstrip('/')}/{module_name}.py"
+        sandbox.write_file_in_container(dest, shim_source.encode("utf-8"))
+        ok = _module_available(
+            sandbox,
+            python_path=python_path,
+            workdir=workdir,
+            module_name=module_name,
+        )
+        attempt["exit_code"] = 0 if ok else 1
+        metadata["install_attempts"].append(attempt)
+
+
 def _prepare_verifier_env(
     sandbox: RepoSandbox,
     *,
@@ -297,6 +409,12 @@ def _prepare_verifier_env(
     if existing_probe.exit_code == 0:
         metadata["status"] = "usable"
         metadata["reused"] = True
+        _ensure_lightweight_compat_shims(
+            sandbox,
+            python_path=python_path,
+            workdir=workdir,
+            metadata=metadata,
+        )
         probes, missing = _probe_target_imports(
             sandbox,
             python_path=python_path,
@@ -342,6 +460,12 @@ def _prepare_verifier_env(
     metadata["target_import_probes"] = probes
     metadata["missing_modules"] = missing
 
+    _ensure_lightweight_compat_shims(
+        sandbox,
+        python_path=python_path,
+        workdir=workdir,
+        metadata=metadata,
+    )
     metadata["status"] = "usable"
     return metadata
 

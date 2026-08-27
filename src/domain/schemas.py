@@ -151,6 +151,39 @@ ContractQuestionDimension = Literal[
 ]
 
 
+ContractSourceKind = Literal[
+    "pr_intent",
+    "old_behavior",
+    "schema",
+    "caller",
+    "framework",
+    "convention",
+    "doc",
+    "test",
+    "representation",
+]
+
+ContractStatus = Literal["supported", "missing", "contradicted"]
+
+
+class ContractSourceRef(BaseModel):
+    """The source that makes an expected behavior a contract rather than a preference."""
+
+    kind: ContractSourceKind
+    ref: str = Field(
+        description=(
+            "Locator for the source: repository path with line(s), symbol, focused_context:<request_id>, "
+            "diff, or pr_intent."
+        ),
+        max_length=240,
+    )
+    note: str = Field(
+        default="",
+        description="What the source states that establishes the contract.",
+        max_length=300,
+    )
+
+
 class ContractQuestion(BaseModel):
     """Narrow reviewer question derived from a changed contract."""
 
@@ -160,6 +193,13 @@ class ContractQuestion(BaseModel):
     dimension: ContractQuestionDimension = "other"
     expected_behavior: str = Field(default="", max_length=500)
     contract_evidence: str = Field(default="", max_length=500)
+    contract_source_kind: Optional[ContractSourceKind] = Field(
+        default=None,
+        description=(
+            "Kind of evidence behind contract_evidence. Leave unset when the contract is inferred "
+            "from a name or general practice rather than evidenced."
+        ),
+    )
     trigger_variant: str = Field(default="", max_length=300)
     operation: str = Field(default="", max_length=240)
     breach_question: str = Field(default="", max_length=500)
@@ -376,6 +416,13 @@ class ReviewCheck(BaseModel):
         description="What the changed code is intended or contracted to do for this check.",
         max_length=500,
     )
+    contract_source: Optional[ContractSourceRef] = Field(
+        default=None,
+        description=(
+            "Source that makes expected_behavior a contract. Leave unset when no source can be named; "
+            "required_evidence must then say what would establish it."
+        ),
+    )
     required_evidence: List[str] = Field(default_factory=list)
     suppress_criteria: List[str] = Field(default_factory=list)
     report_criteria: List[str] = Field(default_factory=list)
@@ -407,10 +454,8 @@ ReviewCheckDecision = Literal[
     "no_finding",
     "candidate",
     "unsupported",
-    "suppressed",
     "budget_exhausted",
 ]
-ReviewCheckGateDecision = Literal["pending", "passed", "dropped"]
 
 
 class ReviewCheckResult(BaseModel):
@@ -439,6 +484,27 @@ class ReviewCheckResult(BaseModel):
         ),
         max_length=500,
     )
+    contract_status: ContractStatus = Field(
+        default="missing",
+        description=(
+            "Relation between the contract and the implementation: supported (a named source establishes "
+            "the expected behavior and the implementation satisfies it), contradicted (a named source "
+            "establishes it and the implementation violates it), or missing (no source in the packet "
+            "establishes it). no_finding requires supported; candidate requires contradicted."
+        ),
+    )
+    contract_source: Optional[ContractSourceRef] = Field(
+        default=None,
+        description="Source that establishes the contract; required for supported and contradicted.",
+    )
+    missing_contract_source: str = Field(
+        default="",
+        description=(
+            "For contract_status=missing: the specific declaration, caller, doc, test, old code, or "
+            "convention that would establish the contract, with a path or symbol when known."
+        ),
+        max_length=300,
+    )
     counterexample: str = Field(
         default="",
         description="Concrete input, state, path, mode, record shape, lifecycle path, or interleaving that triggers it.",
@@ -464,12 +530,10 @@ class ReviewCheckResult(BaseModel):
     )
     suppression_basis: str = Field(
         default="",
-        description="For no_finding/suppressed decisions, the concrete fact that directly satisfies suppress criteria.",
+        description="For no_finding decisions, the concrete fact that directly satisfies suppress criteria.",
         max_length=500,
     )
     candidate: Optional["CandidateFinding"] = None
-    gate_decision: ReviewCheckGateDecision = "pending"
-    gate_reason: str = ""
     warnings: List[str] = Field(default_factory=list)
 
 

@@ -447,8 +447,34 @@ def _logic_covered_surface_ids(tasks: List[ReviewTask], by_id: dict[str, ReviewS
     return covered
 
 
+def _surface_fill_task(surface: ReviewSurface, *, index: int) -> ReviewTask:
+    line_hint = ""
+    if surface.line_start is not None:
+        line_hint = f" Anchor around line {surface.line_start}."
+    return ReviewTask(
+        id=f"review-logic-surface-fill-{index}",
+        title=f"Diff-local correctness: {surface.name}"[:80],
+        description=(
+            f"Diff-local correctness for {surface.name} only. Verify changed control flow, return "
+            "contracts, type/API consistency, state/resource effects, and reachable edge cases for this "
+            f"surface. {_CLASS_SCOPE_ISOLATION_PHRASE.capitalize()} in the target file.{line_hint}"
+        )[:500],
+        target_files=[surface.file_path],
+        surface_ids=[surface.surface_id],
+        specialty="logic",
+        review_dimension="diff_local_correctness",
+        depth=1,
+    )
+
+
+def _surface_can_be_filled_with_logic_task(surface: ReviewSurface) -> bool:
+    if surface.kind == "file":
+        return _is_source_review_file(surface.file_path)
+    return surface.name.rsplit(".", 1)[-1].lower() in _PRIMARY_OWNER_SUFFIXES
+
+
 def surface_work_fill_tasks(tasks: List[ReviewTask], state: GraphState) -> tuple[List[ReviewTask], Dict[str, Any]]:
-    """Report uncovered surfaces without inventing semantic task ownership."""
+    """Add deterministic per-surface logic tasks for high-confidence surfaces with no logic owner."""
     ledger = surface_ledger_from_state(state)
     if not ledger:
         return tasks, {
@@ -460,7 +486,10 @@ def surface_work_fill_tasks(tasks: List[ReviewTask], state: GraphState) -> tuple
     required = _required_surfaces_for_plan(ledger, changed_files=changed_files)
     logic_covered = _logic_covered_surface_ids(tasks, by_id)
     uncovered = [surface for surface in required if surface.surface_id not in logic_covered]
-    return tasks, {
+    fillable = [surface for surface in uncovered if _surface_can_be_filled_with_logic_task(surface)]
+    unfillable = [surface for surface in uncovered if surface not in fillable]
+    added = [_surface_fill_task(surface, index=i + 1) for i, surface in enumerate(fillable)]
+    return tasks + added, {
         "surface_fill_uncovered_before": [
             {
                 "surface_id": surface.surface_id,
@@ -470,8 +499,8 @@ def surface_work_fill_tasks(tasks: List[ReviewTask], state: GraphState) -> tuple
             }
             for surface in uncovered
         ],
-        "surface_fill_added_tasks": [],
-        "surface_fill_requires_plan_repair": bool(uncovered),
+        "surface_fill_added_tasks": [task.model_dump(mode="json") for task in added],
+        "surface_fill_requires_plan_repair": bool(unfillable),
     }
 
 
@@ -563,12 +592,44 @@ def _repair_task_target_files_from_surfaces(
     ledger = surface_ledger_from_state(state)
     by_id = surface_by_id(ledger)
     if not by_id:
-        return tasks, {"task_target_files_repaired_from_surfaces": []}
+        changed_files = _target_files(state)
+        if len(changed_files) != 1:
+            return tasks, {"task_target_files_repaired_from_surfaces": []}
+        changed_file = changed_files[0]
+        repaired: List[ReviewTask] = []
+        repair_rows: List[Dict[str, Any]] = []
+        for task in tasks:
+            original = _dedupe_preserve_order(task.target_files)
+            if (
+                task.specialty == "logic"
+                and not task.surface_ids
+                and _task_is_diff_local_correctness(task)
+                and original
+                and changed_file not in original
+            ):
+                repair_rows.append(
+                    {
+                        "task_id": task.id,
+                        "dropped": original,
+                        "repaired": [changed_file],
+                        "surface_ids": list(task.surface_ids),
+                    }
+                )
+                repaired.append(task.model_copy(update={"target_files": [changed_file]}))
+                continue
+            repaired.append(task)
+        return repaired, {"task_target_files_repaired_from_surfaces": repair_rows}
 
     repaired: List[ReviewTask] = []
     repair_rows: List[Dict[str, Any]] = []
     for task in tasks:
+        inferred_ids = False
         explicit_ids = _explicit_surface_ids(task, by_id)
+        if not explicit_ids and task.specialty == "logic":
+            explicit_ids = _dedupe_preserve_order(
+                sid for sid in surface_ids_for_text(f"{task.title} {task.description}", ledger) if sid in by_id
+            )
+            inferred_ids = bool(explicit_ids)
         surface_files = _dedupe_preserve_order(
             by_id[sid].file_path for sid in explicit_ids if by_id[sid].file_path
         )
@@ -577,21 +638,25 @@ def _repair_task_target_files_from_surfaces(
             continue
 
         original = _dedupe_preserve_order(task.target_files)
-        original_has_owner_file = any(path in surface_files for path in original)
-        if original_has_owner_file:
-            next_files = _dedupe_preserve_order([*original, *surface_files])
-        else:
+        if task.specialty == "logic":
             next_files = surface_files
+        else:
+            # Non-logic tasks keep their declared targets; every explicit
+            # surface's file is added so compiled checks on those surfaces
+            # are not rejected as outside the task targets.
+            next_files = _dedupe_preserve_order([*original, *surface_files])
         if next_files != original:
-            repair_rows.append(
-                {
-                    "task_id": task.id,
-                    "surface_ids": explicit_ids,
-                    "original": original,
-                    "repaired": next_files,
-                }
-            )
-        repaired.append(task.model_copy(update={"target_files": next_files}))
+            row = {
+                "task_id": task.id,
+                "surface_ids": explicit_ids,
+                "repaired": next_files,
+            }
+            if inferred_ids:
+                row["dropped"] = original
+            else:
+                row["original"] = original
+            repair_rows.append(row)
+        repaired.append(task.model_copy(update={"target_files": next_files, "surface_ids": explicit_ids}))
     return repaired, {"task_target_files_repaired_from_surfaces": repair_rows}
 
 

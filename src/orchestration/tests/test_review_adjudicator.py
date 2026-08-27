@@ -16,7 +16,7 @@ from src.domain.schemas import (
     ReviewCheckResult,
     ReviewFinding,
 )
-from src.domain.verifier_schemas import VerifierReport
+from src.domain.verifier_schemas import VerifierAttemptRecord, VerifierReport
 from src.orchestration.nodes.application.review_adjudicator import (
     _normalize_adjudication_items,
     _packet_evidence_summary,
@@ -349,6 +349,50 @@ def test_adjudication_explicit_drop_records_obvious_drop_reason() -> None:
     assert warnings == []
     assert lifecycle["c1"]["decision"] == "dropped"
     assert lifecycle["c1"]["reason"] == "adjudicator_drop_obvious"
+
+
+def test_adjudication_does_not_drop_on_inconclusive_harness_error_verifier() -> None:
+    candidates = {"c1": _candidate("c1")}
+    output = ReviewAdjudicationOutput(
+        items=[
+            ReviewAdjudicationItem(
+                candidate_id="c1",
+                decision="drop",
+                rationale="Verifier was inconclusive due to harness errors, and the claim may be standard behavior.",
+            )
+        ]
+    )
+    verifier = VerifierReport(
+        run_id="run",
+        candidate_id="c1",
+        verdict="inconclusive",
+        attempts=[
+            VerifierAttemptRecord(
+                attempt_number=1,
+                exit_code=2,
+                stdout="STATUS: HARNESS_ERROR | Import error: No module named 'typing_extensions'",
+                failure_class="module_not_found",
+            )
+        ],
+        metadata={"harness_error": True},
+    )
+
+    findings, lifecycle, merge_map, warnings, requested = _normalize_adjudication_items(
+        output=output,
+        candidates=candidates,
+        changed_files={"pkg/mod.py"},
+        verifier_report_ids={"c1"},
+        verifier_reports_by_candidate={"c1": [verifier]},
+    )
+
+    assert [finding.id for finding in findings] == ["c1"]
+    assert merge_map == {}
+    assert requested == []
+    assert lifecycle["c1"]["decision"] == "promoted"
+    assert lifecycle["c1"]["warnings"] == [
+        "adjudication_drop_overridden_inconclusive_harness_error:c1"
+    ]
+    assert warnings == ["adjudication_drop_overridden_inconclusive_harness_error:c1"]
 
 
 def test_adjudication_can_request_one_runtime_verification() -> None:

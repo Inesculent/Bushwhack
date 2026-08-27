@@ -9,7 +9,12 @@ Judge the exact behavioral claim, not the presence of nearby reassuring code. A 
 
 Guards, bounds checks, defaults, type declarations, or validation branches are not suppressing evidence unless they preserve the exact value, variant, state, or output contract named by the check. Explain what behavior the guard produces, not merely that the guard exists.
 
-When a packet requires contract-justification evidence, decide both layers separately: what the implementation does, and why that behavior is correct for the surrounding contract. A local mechanic such as a branch, guard, tuple index, default, type declaration, join, or serializer is not enough by itself. Suppress only when the packet also contains the relevant PR intent, old behavior, schema, caller, framework rule, repository convention, documentation, test pattern, or representation invariant. If that justification is missing, use `unsupported` and name the missing contract source.
+Decide two layers for every check and report them separately. Implementation evidence shows what the changed code does; the contract source shows why that behavior is required. Set `contract_status` on every result:
+- `supported`: a source in the packet establishes the expected behavior and the implementation evidence shows it holds. Required for `no_finding`.
+- `contradicted`: a source in the packet establishes the expected behavior and the implementation evidence shows it is violated. Required for `candidate`.
+- `missing`: no source in the packet establishes the expected behavior. Use `unsupported` (or `budget_exhausted`) and name in `missing_contract_source` the specific declaration, caller, documentation, test, old code, or convention that would establish it, with a path or symbol when known.
+
+For `supported` and `contradicted`, fill `contract_source` with the source's kind (`pr_intent`, `old_behavior`, `schema`, `caller`, `framework`, `convention`, `doc`, `test`, `representation`), its locator (`path:line`, symbol, `focused_context:<request_id>`, `diff`, or `pr_intent`), and what it states. The packet's `contract_source` is the source the compiler relied on: confirm it against the evidence, replace it with a better one, or report `missing` if it is not actually in the packet. A guard, branch, default, type declaration, or library semantics is implementation evidence, not a contract source; a name, a plausible user expectation, or general practice is not a contract source either. A result whose `contract_status` does not fit its decision is recorded as `unsupported`.
 
 Before deciding, compare the behavior the check says should hold, the changed code path actually exercised, the condition under which the behavior could fail, and the evidence that confirms or rules out that failure. If you cannot rule out the specific failure mode with the provided packet, prefer `budget_exhausted` or `unsupported` over a confident `no_finding`.
 
@@ -21,16 +26,14 @@ For each check, decide one of:
 - `no_finding`: concrete evidence shows the concern is false or suppress criteria are met.
 - `candidate`: required evidence supports a concrete reachable violation.
 - `unsupported`: required evidence is missing or incomplete.
-- `suppressed`: suppressing evidence exists.
 - `budget_exhausted`: retrieval budget is spent and the check still cannot be answered.
 
-Populate `answer_scope` for every `no_finding` or `suppressed` result:
+Populate `answer_scope` for every `no_finding` result:
 - use "exact" only when the suppressing evidence answers the same expected behavior, trigger/variant, operation, and impact named by the check;
 - use "neighboring invariant" when the evidence answers a nearby but different obligation;
 - use "operation-only" when the evidence merely repeats that the alleged risky operation occurs.
-When using "exact", include the check's `owned_contract_scope` in `answer_scope`, `suppression_basis`, or `claim_digest` so downstream routing can verify that the answer belongs to the same contract identity.
 
-Populate `suppression_basis` for every `no_finding` or `suppressed` result with the concrete fact that directly satisfies the check's suppress criteria. If no such fact exists, do not return `no_finding`; use `unsupported`.
+Populate `suppression_basis` for every `no_finding` result with the concrete fact that directly satisfies the check's suppress criteria. If no such fact exists, do not return `no_finding`; use `unsupported`.
 Generic statements like "looks correct", "handled safely", or "no issue found" are not a suppression basis. Merely repeating that the changed operation exists is also not a suppression basis; the evidence must answer the assigned expected behavior, trigger/variant, operation, and breach question.
 
 For data/cardinality, projection/index/selection, aggregation, serialization, join, return assembly, and type-closure checks, a `no_finding` must compare the value shape before the operation, the value shape selected or transformed by the operation, and the value shape consumed, serialized, joined, or returned. If you cannot make that comparison from the packet, use `unsupported`. Do not suppress these checks by saying the relevant branch, join, projection, tuple handling, or guard exists.
@@ -53,6 +56,7 @@ Every candidate must also justify the claim from a changed contract:
 - `counterexample`: concrete input, state, path, mode, record shape, lifecycle path, or interleaving that triggers the violation.
 - `rejection_check`: why this is not merely style, speculation, intentional narrowing, or impossible under caller guarantees.
 - `claim_digest`: compact root-claim marker for the violated contract, including file/symbol plus branch/mode/variant, contract dimension, and impact when known.
+- `contract_status: contradicted` with `contract_source`: the source that establishes the contract the candidate says is violated.
 
 If you cannot fill those fields from the check evidence, return `unsupported` and list the missing fact instead of creating a candidate. Answer the check's specific `expected_behavior`; do not pivot to a nearby easier invariant.
 

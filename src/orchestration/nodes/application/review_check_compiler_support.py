@@ -1,4 +1,4 @@
-"""Compiler and coverage-floor support for review-check nodes."""
+"""Compiler support for review-check nodes."""
 
 from __future__ import annotations
 
@@ -7,7 +7,14 @@ import re
 from typing import Any, Dict, Iterable, List, Mapping, Sequence
 
 from src.config import Settings, get_settings
-from src.domain.schemas import BehavioralSpec, ContractQuestion, ReviewCheck, ReviewSurface, ReviewTask
+from src.domain.schemas import (
+    BehavioralSpec,
+    ContractQuestion,
+    ContractSourceRef,
+    ReviewCheck,
+    ReviewSurface,
+    ReviewTask,
+)
 from src.domain.state import GraphState
 from src.infrastructure.behavioral_spec_store import BehavioralSpecStore
 from src.orchestration.context.contract_vocabulary import (
@@ -29,11 +36,8 @@ from src.orchestration.context.surface_ledger import (
 )
 from src.orchestration.routing.claim_digest import owned_contract_scope_for_check
 from src.orchestration.nodes.application.review_check_source_scope import (
-    CONTRACT_JUSTIFICATION_REQUIREMENT,
     changed_task_files,
-    check_requires_contract_justification,
     compiled_check_is_source_local,
-    coverage_meta_relevance,
     evidence_requirements_for_check,
     meaningful_tokens,
     requires_external_evidence,
@@ -69,12 +73,6 @@ _HIGH_SIGNAL_FAMILY_ORDER = (
     "index_bounds",
     "aggregation",
 )
-_HIGH_SIGNAL_SWAP_FAMILIES = {
-    "index_bounds",
-    "data_cardinality",
-    "serialization_type",
-    "aggregation",
-}
 _STRUCTURED_SIGNAL_FAMILY_ALIASES = {
     "return_output_totality": "return_totality",
     "return_totality": "return_totality",
@@ -270,18 +268,6 @@ def _task_owns_contract_question(
         return (explicit_surface_owner, exact_surface, specialty_match, baseline, candidate.id)
 
     return min(candidates, key=rank).id == task.id
-
-
-def _contract_question_surface_ids(spec: BehavioralSpec | None) -> set[str]:
-    if spec is None:
-        return set()
-    return {
-        question.surface_id
-        for question in spec.contract_questions
-        if question.surface_id
-        and question.expected_behavior.strip()
-        and question.breach_question.strip()
-    }
 
 
 def check_origin(
@@ -583,81 +569,6 @@ def fallback_checks(state: GraphState, task: ReviewTask, slot: Mapping[str, Any]
     ]
 
 
-def surface_coverage_check(state: GraphState, task: ReviewTask, surface: ReviewSurface, index: int) -> ReviewCheck:
-    line_start = surface.line_start or 1
-    line_end = surface.line_end or line_start
-    return ReviewCheck(
-        check_id=f"{task.id}:surface-coverage:{index}",
-        patch_task_id=task.id,
-        surface_ids=[surface.surface_id],
-        lens="api_compatibility" if task.specialty == "general" else dimension_to_lens(task.review_dimension),
-        file_path=surface.file_path,
-        line_start=line_start,
-        line_end=line_end,
-        changed_code_anchor=surface.name,
-        owned_contract_scope=f"{surface.name}:audit_surface_coverage",
-        issue_family="surface_fallback",
-        diff_signal_family="surface_fallback",
-        diff_signal="broad surface coverage fallback",
-        audit_only=True,
-        behavioral_question=f"Does the changed {surface.name} preserve its assigned surface behavior?",
-        affected_invariant=(
-            f"{surface.name} in {surface.file_path} preserves the behavior targeted by {task.title}."
-        ),
-        expected_behavior=f"{surface.name} preserves the behavior targeted by {task.title}.",
-        required_evidence=[
-            f"changed implementation for {surface.name}",
-            "repository contract or local caller evidence when the local code is insufficient",
-        ],
-        suppress_criteria=[
-            f"Repository evidence shows {surface.name} preserves the assigned behavior."
-        ],
-        report_criteria=[
-            f"The changed {surface.name} violates the assigned behavior on a reachable path."
-        ],
-        allowed_retrieval=["task_evidence", "focused_context"],
-        budget=2,
-    )
-
-
-def coverage_check_for_file(state: GraphState, task: ReviewTask, file_path: str, index: int) -> ReviewCheck:
-    surface_ids = surface_ids_for_check_context(
-        task=task,
-        file_path=file_path,
-        anchor=file_path,
-        state=state,
-    )[:1]
-    anchor_update = surface_anchor_update(surface_ids, state)
-    return ReviewCheck(
-        check_id=f"{task.id}:coverage:{index}",
-        patch_task_id=task.id,
-        surface_ids=surface_ids,
-        lens="other",
-        file_path=str(anchor_update.get("file_path") or file_path),
-        line_start=int(anchor_update.get("line_start") or 1),
-        line_end=int(anchor_update.get("line_end") or anchor_update.get("line_start") or 1),
-        changed_code_anchor=str(anchor_update.get("changed_code_anchor") or file_path),
-        owned_contract_scope=f"{file_path}:audit_file_coverage",
-        issue_family="file_fallback",
-        diff_signal_family="file_fallback",
-        diff_signal="broad file coverage fallback",
-        audit_only=True,
-        behavioral_question=(
-            f"Does the changed code in {file_path} preserve the task-specific behavior for {task.title}?"
-        ),
-        affected_invariant=task.description[:400] or task.title,
-        expected_behavior=(task.description or task.title)[:500],
-        required_evidence=[
-            f"changed behavior in {file_path}",
-            "caller, contract, or runtime path needed to decide the changed behavior",
-        ],
-        suppress_criteria=[f"Repository evidence shows the changed behavior in {file_path} is preserved."],
-        report_criteria=[f"The changed behavior in {file_path} creates a concrete reachable regression."],
-        allowed_retrieval=["task_evidence", "focused_context"],
-        budget=2,
-    )
-
-
 def coverage_obligations(slot: Mapping[str, Any]) -> List[Dict[str, Any]]:
     raw_obligations = slot.get("coverage_obligations")
     if not isinstance(raw_obligations, list):
@@ -944,433 +855,6 @@ def check_covers_obligation(check: ReviewCheck, obligation: Mapping[str, Any]) -
     return True
 
 
-def coverage_obligation_is_concrete(obligation: Mapping[str, Any]) -> bool:
-    file_path = str(obligation.get("file_path") or "").strip()
-    surface = str(obligation.get("surface") or "").strip()
-    dimension = str(obligation.get("dimension") or "").strip()
-    evidence = str(obligation.get("evidence") or "").strip()
-    operation_markers = obligation.get("operation_markers")
-    material = obligation.get("mental_model_contract_material")
-    has_contract_material = (
-        isinstance(operation_markers, list) and any(str(item).strip() for item in operation_markers)
-    ) or (
-        isinstance(material, list) and any(str(item).strip() for item in material)
-    )
-    signal = " ".join(
-        str(obligation.get(key) or "")
-        for key in ("diff_signal_family", "issue_family", "diff_signal")
-    )
-    blob = " ".join([dimension, evidence, signal, surface]).lower()
-    concrete_terms = (
-        "declared",
-        "schema",
-        "mode",
-        "option",
-        "return",
-        "output",
-        "field",
-        "element",
-        "group",
-        "serialize",
-        "caller",
-        "contract",
-        "branch",
-        "type",
-    )
-    if obligation.get("files_complete") and file_path and surface and dimension and evidence:
-        return True
-    return bool(file_path and surface and dimension and evidence and (has_contract_material or signal.strip())) and any(
-        term in blob for term in concrete_terms
-    )
-
-
-def _obligation_needs_integration_bridge(obligation: Mapping[str, Any]) -> bool:
-    blob = " ".join(
-        str(obligation.get(key) or "")
-        for key in (
-            "dimension",
-            "evidence",
-            "diff_signal",
-            "diff_signal_family",
-            "issue_family",
-            "expected_behavior",
-        )
-    )
-    if isinstance(obligation.get("operation_markers"), list):
-        blob = f"{blob} {' '.join(str(item) for item in obligation['operation_markers'])}"
-    if isinstance(obligation.get("mental_model_contract_material"), list):
-        blob = f"{blob} {' '.join(str(item) for item in obligation['mental_model_contract_material'])}"
-    lowered = blob.lower()
-    return any(
-        marker in lowered
-        for marker in (
-            "caller",
-            "call site",
-            "call path",
-            "consumer",
-            "downstream",
-            "integration",
-            "migration",
-            "reconstruct",
-            "pipeline",
-        )
-    )
-
-
-def coverage_check_for_obligation(
-    state: GraphState,
-    task: ReviewTask,
-    obligation: Mapping[str, Any],
-    index: int,
-) -> ReviewCheck:
-    file_path = str(obligation.get("file_path") or (task.target_files[0] if task.target_files else ""))
-    surface = str(obligation.get("surface") or file_path or "changed code")
-    dimension = str(obligation.get("dimension") or "task contract")
-    evidence = str(obligation.get("evidence") or f"repository evidence for {dimension}")
-    signal_family = str(obligation.get("diff_signal_family") or obligation.get("issue_family") or "").strip()
-    issue_family = signal_family
-    diff_signal = str(obligation.get("diff_signal") or evidence).strip()
-    operation_markers = [
-        str(item).strip()
-        for item in obligation.get("operation_markers", [])
-        if str(item).strip()
-    ] if isinstance(obligation.get("operation_markers"), list) else []
-    surface_ids = surface_ids_for_check_context(
-        task=task,
-        file_path=file_path,
-        anchor=surface,
-        state=state,
-    )[:1]
-    anchor_update = surface_anchor_update(surface_ids, state)
-    file_path = str(anchor_update.get("file_path") or file_path)
-    surface = str(anchor_update.get("changed_code_anchor") or surface)
-    line_start = int(
-        anchor_update.get("line_start")
-        or obligation.get("line_start")
-        or 1
-    )
-    line_end = int(
-        anchor_update.get("line_end")
-        or obligation.get("line_end")
-        or line_start
-    )
-    contract_material = [
-        f"mental model/KB contract hypothesis to verify: {item}"
-        for item in obligation.get("mental_model_contract_material", [])
-        if str(item).strip()
-    ][:2]
-    value_flow_terms = (
-        "aggregation",
-        "cardinality",
-        "structured",
-        "field",
-        "element",
-        "group",
-        "projection",
-        "selection",
-        "serialize",
-        "serialization",
-        "join",
-        "return shape",
-        "output shape",
-        "type closure",
-        "type-closure",
-    )
-    cardinality = signal_family in {
-        "aggregation_cardinality",
-        "data_preservation_cardinality",
-        "serialization_type_closure",
-    } or any(term in dimension.lower() for term in value_flow_terms)
-    integration_bridge = _obligation_needs_integration_bridge(obligation)
-    if cardinality and integration_bridge:
-        expected_behavior = (
-            f"{surface} preserves the intended value/cardinality contract at both the changed owner and its "
-            "reachable consumer or caller path."
-        )
-        question = (
-            f"Does the changed {surface} preserve the value/cardinality contract through the reachable "
-            "caller or downstream integration path?"
-        )
-        report = (
-            f"The changed {surface} appears locally plausible but drops, narrows, skips, or mis-shapes a "
-            "value that a reachable caller/downstream path still relies on."
-        )
-        suppress = (
-            f"Concrete evidence shows both {surface} and the reachable caller/downstream path preserve the "
-            "same value/cardinality contract."
-        )
-    elif cardinality:
-        expected_behavior = (
-            f"{surface} preserves each intended field, element, group, nested value, and cardinality "
-            "for this aggregation/cardinality path unless the changed contract intentionally narrows it."
-        )
-        question = (
-            f"Does the changed {surface} preserve each intended field, element, group, or nested value "
-            "for this aggregation/cardinality path?"
-        )
-        report = (
-            f"The changed {surface} selects, skips, drops, truncates, or serializes only part of the "
-            "intended structured value without an intentional narrowing contract."
-        )
-        suppress = (
-            f"Concrete evidence shows {surface} preserves the relevant fields/elements/groups, "
-            "or documents an intentional narrowing at the changed contract."
-        )
-    else:
-        expected_behavior = f"{surface} preserves {dimension}."
-        if integration_bridge:
-            question = (
-                f"Does the changed {surface} preserve {dimension} through the reachable caller or "
-                "downstream integration path?"
-            )
-            report = (
-                f"The changed {surface} violates {dimension} when exercised through a concrete caller or "
-                "downstream integration path."
-            )
-            suppress = (
-                f"Concrete repository evidence shows both {surface} and the reachable caller/downstream "
-                f"path preserve {dimension}."
-            )
-        else:
-            question = f"Does the changed {surface} preserve {dimension}?"
-            report = f"The changed {surface} violates {dimension} on a concrete reachable path."
-            suppress = f"Concrete repository evidence shows {surface} preserves {dimension}."
-    return ReviewCheck(
-        check_id=f"{task.id}:coverage:{index}",
-        patch_task_id=task.id,
-        surface_ids=surface_ids,
-        lens=dimension_to_lens(dimension),  # type: ignore[arg-type]
-        file_path=file_path,
-        line_start=max(1, line_start),
-        line_end=max(max(1, line_start), line_end),
-        changed_code_anchor=surface,
-        owned_contract_scope=(
-            f"{surface}:{'integration:' if integration_bridge else ''}{issue_family or dimension}:{diff_signal}"
-        )[:240],
-        issue_family=issue_family,
-        diff_signal_family=signal_family,
-        diff_signal=diff_signal[:240],
-        audit_only=not coverage_obligation_is_concrete(obligation),
-        behavioral_question=question,
-        affected_invariant=dimension,
-        expected_behavior=expected_behavior,
-        required_evidence=[
-            evidence,
-            *(operation_markers[:4] if operation_markers else []),
-            *contract_material,
-            f"changed behavior of {surface} in {file_path}",
-            "caller, contract, framework, or repository-convention evidence if the local code is not enough",
-            *(
-                ["reachable caller/downstream integration path for the same contract"]
-                if integration_bridge
-                else []
-            ),
-        ],
-        suppress_criteria=[suppress],
-        report_criteria=[report],
-        allowed_retrieval=["task_evidence", "focused_context"],
-        budget=2,
-    )
-
-
-def migration_context_present(state: GraphState, task: ReviewTask, slot: Mapping[str, Any]) -> bool:
-    git_diff = str(state.get("git_diff") or "")
-    if not _diff_has_removed_or_renamed_evidence(git_diff):
-        return False
-    blob = "\n".join(
-        [
-            git_diff,
-            task.title,
-            task.description,
-            str(slot.get("mental_model_excerpt") or ""),
-            str(slot.get("review_kb_excerpt") or ""),
-        ]
-    ).lower()
-    markers = (
-        "migration",
-        "migrate",
-        "merged",
-        "merge",
-        "replace",
-        "removed",
-        "removal",
-        "rename",
-    )
-    return any(marker in blob for marker in markers)
-
-
-def _diff_has_removed_or_renamed_evidence(git_diff: str) -> bool:
-    for raw in (git_diff or "").splitlines():
-        line = raw.rstrip()
-        if line.startswith(("rename from ", "rename to ", "deleted file mode ")):
-            return True
-        if line.startswith("-") and not line.startswith("---") and line[1:].strip():
-            return True
-    return False
-
-
-def check_covers_dimension(check: ReviewCheck, dimension: str) -> bool:
-    blob = " ".join(
-        [
-            check.lens,
-            check.behavioral_question,
-            check.affected_invariant,
-            " ".join(check.required_evidence),
-        ]
-    ).lower()
-    lower_dimension = dimension.lower()
-    if "migration" in lower_dimension:
-        return "migration" in blob and ("reliance" in blob or "old-path" in blob or "old path" in blob)
-    if "maintainability" in lower_dimension:
-        return check.affected_invariant.strip().lower() == "maintainability contract"
-    tokens = sorted(meaningful_tokens(dimension))
-    return bool(tokens) and all(token in blob for token in tokens[:2])
-
-
-def surface_check_for_dimension(
-    *,
-    state: GraphState,
-    task: ReviewTask,
-    surface: ReviewSurface,
-    dimension: str,
-    index: int,
-) -> ReviewCheck:
-    line_start = surface.line_start or 1
-    line_end = surface.line_end or line_start
-    if "state/cache" in dimension:
-        required_evidence = [
-            f"changed state/cache lifecycle code for {surface.name}",
-            "old-path lifecycle ordering from deleted diff or repository precedent",
-            "caller evidence for which state objects are passed, released, reused, or invalidated",
-        ]
-        question = f"Does the migrated {surface.name} preserve state/cache lifecycle ordering?"
-    else:
-        required_evidence = [
-            f"changed implementation or call-site evidence for {surface.name}",
-            "old or deleted-path contract evidence for the behavior being migrated",
-            "new callee signature and required arguments/state inputs",
-            "caller reliance on preconditions, computed state, exception behavior, and lifecycle order",
-        ]
-        question = f"Does the migrated {surface.name} preserve caller-reliance and old-vs-new contract behavior?"
-    return ReviewCheck(
-        check_id=f"{task.id}:coverage:{index}",
-        patch_task_id=task.id,
-        surface_ids=[surface.surface_id],
-        lens=dimension_to_lens(dimension),  # type: ignore[arg-type]
-        file_path=surface.file_path,
-        line_start=line_start,
-        line_end=line_end,
-        changed_code_anchor=surface.name,
-        behavioral_question=question,
-        affected_invariant=dimension,
-        expected_behavior=f"{surface.name} preserves {dimension}.",
-        required_evidence=required_evidence,
-        suppress_criteria=[
-            f"Concrete repository evidence shows {surface.name} preserves {dimension}.",
-        ],
-        report_criteria=[
-            f"The changed {surface.name} violates {dimension} on a concrete reachable path.",
-        ],
-        allowed_retrieval=["task_evidence", "focused_context"],
-        budget=2,
-    )
-
-
-def migration_floor_checks(
-    state: GraphState,
-    task: ReviewTask,
-    slot: Mapping[str, Any],
-    checks: Sequence[ReviewCheck],
-    start_index: int,
-) -> List[ReviewCheck]:
-    if not migration_context_present(state, task, slot):
-        return []
-    if any(check_covers_dimension(check, "migration caller-reliance contract") for check in checks):
-        return []
-    ledger = surface_ledger_from_state(state)
-    by_id = surface_by_id(ledger)
-    surfaces = [by_id[sid] for sid in surface_ids_for_task(task, ledger) if sid in by_id]
-    if not surfaces:
-        target_files = {path.replace("\\", "/") for path in task.target_files}
-        surfaces = [surface for surface in ledger if surface.file_path in target_files and surface.kind != "file"]
-    added: List[ReviewCheck] = []
-    for surface in surfaces[:2]:
-        added.append(
-            surface_check_for_dimension(
-                state=state,
-                task=task,
-                surface=surface,
-                dimension="migration caller-reliance contract",
-                index=start_index + len(added),
-            )
-        )
-        lower = f"{surface.name} {surface.file_path}".lower()
-        if any(token in lower for token in ("cache", "block", "slot", "state", "queue", "resource")):
-            added.append(
-                surface_check_for_dimension(
-                    state=state,
-                    task=task,
-                    surface=surface,
-                    dimension="state/cache lifecycle migration contract",
-                    index=start_index + len(added),
-                )
-            )
-    return added
-
-
-def maintainability_floor_checks(
-    state: GraphState,
-    task: ReviewTask,
-    slot: Mapping[str, Any],
-    checks: Sequence[ReviewCheck],
-    start_index: int,
-) -> List[ReviewCheck]:
-    if any(check_covers_dimension(check, "maintainability contract") for check in checks):
-        return []
-    blob = "\n".join(
-        [
-            str(state.get("git_diff") or ""),
-            task.title,
-            task.description,
-            str(slot.get("mental_model_excerpt") or ""),
-            str(slot.get("review_kb_excerpt") or ""),
-        ]
-    ).lower()
-    if not any(marker in blob for marker in ("maintainability", "readability", "doc", "comment", "typo", "spelling")):
-        return []
-    if not re.search(r"^\+.*(#|//|/\*|'''|\"\"\"|doc|string|comment|typo|spelling)", blob, re.MULTILINE):
-        return []
-    ledger = surface_ledger_from_state(state)
-    by_id = surface_by_id(ledger)
-    surface = next((by_id[sid] for sid in surface_ids_for_task(task, ledger) if sid in by_id), None)
-    if surface is None:
-        return []
-    line_start = surface.line_start or 1
-    return [
-        ReviewCheck(
-            check_id=f"{task.id}:coverage:{start_index}",
-            patch_task_id=task.id,
-            surface_ids=[surface.surface_id],
-            lens="other",
-            file_path=surface.file_path,
-            line_start=line_start,
-            line_end=surface.line_end or line_start,
-            changed_code_anchor=surface.name,
-            behavioral_question=f"Does the changed {surface.name} avoid concrete docs/comment/readability regressions?",
-            affected_invariant="maintainability contract",
-            expected_behavior=f"{surface.name} keeps changed docs/comments/text correct, consistent, and non-misleading.",
-            required_evidence=[
-                f"changed docs/comment/readability evidence for {surface.name}",
-                "repository naming or documentation convention evidence when needed",
-            ],
-            suppress_criteria=["The changed text is correct, consistent, and non-misleading."],
-            report_criteria=["The changed text is concretely wrong or misleading on the changed surface."],
-            allowed_retrieval=["task_evidence"],
-            budget=1,
-        )
-    ]
-
-
 _BROAD_SURFACE_INVARIANTS = (
     "preserves its existing observable contract",
     "preserve changed-surface behavior",
@@ -1383,14 +867,6 @@ _BROAD_SURFACE_INVARIANTS = (
 _IMPLEMENTATION_EXPECTATION_RE = re.compile(
     r"(`[^`]+`|\bif\b|\belif\b|\belse\b|\bfor\b|\bwhile\b|[A-Za-z_][A-Za-z0-9_]*\s*\(|[=!<>]=|:=|\[[^\]]*\])"
 )
-
-
-def _invariant_check_is_audit_only(invariant: Any) -> bool:
-    dimension = str(getattr(invariant, "dimension", "") or "").strip().lower()
-    expected = str(getattr(invariant, "expected_behavior", "") or "").strip().lower()
-    return dimension in {"changed-surface behavior", "api contract"} or any(
-        marker in expected for marker in _BROAD_SURFACE_INVARIANTS
-    )
 
 
 def _expected_behavior_is_implementation_shaped(check: ReviewCheck) -> bool:
@@ -1433,9 +909,6 @@ def check_is_concrete_source_local_behavior(
 
 
 def check_has_concrete_behavior_terms(check: ReviewCheck) -> bool:
-    cid = check.check_id.lower()
-    if ":surface:" in cid or ":surface-coverage:" in cid:
-        return False
     blob = " ".join(
         [
             check.behavioral_question,
@@ -1467,85 +940,6 @@ def check_has_concrete_behavior_terms(check: ReviewCheck) -> bool:
     )
 
 
-def uncovered_surface_behavior_checks(
-    state: GraphState,
-    task: ReviewTask,
-    slot: Mapping[str, Any],
-    checks: Sequence[ReviewCheck],
-    start_index: int,
-    task_surface_ids: Sequence[str],
-    by_id: Mapping[str, ReviewSurface],
-) -> List[ReviewCheck]:
-    task_files = {path.replace("\\", "/") for path in changed_task_files(state, task)}
-    concrete_surface_ids: set[str] = set()
-    for check in checks:
-        source_local = check_is_concrete_source_local_behavior(check, slot=slot, task_files=task_files)
-        if not source_local and not check_has_concrete_behavior_terms(check):
-            continue
-        if source_local:
-            concrete_surface_ids.update(sid for sid in check.surface_ids if sid in by_id)
-        check_file = check.file_path.strip().replace("\\", "/")
-        check_anchor = check.changed_code_anchor.lower()
-        for sid, surface in by_id.items():
-            if surface.file_path.strip().replace("\\", "/") != check_file:
-                continue
-            surface_name = surface.name.lower()
-            line_start = surface.line_start or 1
-            line_end = surface.line_end or line_start
-            lines_overlap = check.line_start <= line_end and check.line_end >= line_start
-            names_overlap = bool(surface_name) and (
-                surface_name in check_anchor or check_anchor in surface_name
-            )
-            if lines_overlap or names_overlap:
-                concrete_surface_ids.add(sid)
-    added: List[ReviewCheck] = []
-    for sid in task_surface_ids:
-        if sid in concrete_surface_ids:
-            continue
-        surface = by_id.get(sid)
-        if surface is None:
-            continue
-        line_start = surface.line_start or 1
-        line_end = surface.line_end or line_start
-        added.append(
-            ReviewCheck(
-                check_id=f"{task.id}:uncovered-behavior:{start_index + len(added)}",
-                patch_task_id=task.id,
-                surface_ids=[surface.surface_id],
-                lens="data_shape_consistency",
-                file_path=surface.file_path,
-                line_start=line_start,
-                line_end=line_end,
-                changed_code_anchor=surface.name,
-                audit_only=True,
-                behavioral_question=(
-                    f"Does the changed {surface.name} have any reachable mismatch between declared "
-                    "inputs/options and branch behavior, return shape, data shape, or local side effects?"
-                ),
-                affected_invariant="source-local changed behavior consistency",
-                expected_behavior=(
-                    f"{surface.name} keeps declared inputs/options, reachable branch behavior, "
-                    "return shape, data shape, and local side effects internally consistent."
-                ),
-                required_evidence=[
-                    f"changed implementation for {surface.name}",
-                    "declared inputs/options, branch bodies, return shape, data shape, and local side effects",
-                ],
-                suppress_criteria=[
-                    "Concrete source evidence shows declared inputs/options and reachable behavior are consistent."
-                ],
-                report_criteria=[
-                    "Concrete source evidence shows a reachable wrong output, crash, data loss, or contract mismatch."
-                ],
-                allowed_retrieval=["task_evidence", "focused_context"],
-                budget=2,
-            )
-        )
-        if len(added) >= 2:
-            break
-    return added
-
-
 def omitted_prompt_files(slot: Mapping[str, Any], coverage_files: Sequence[str]) -> List[str]:
     te = slot.get("task_evidence") if isinstance(slot.get("task_evidence"), dict) else {}
     raw = te.get("omitted_prompt_files") if isinstance(te.get("omitted_prompt_files"), list) else []
@@ -1567,154 +961,36 @@ def _origin_reason(origin_kind: str) -> str:
     return {
         "llm_compiled": "compiled_by_review_check_llm",
         "contract_question": "derived_from_behavioral_contract_question",
-        "surface_invariant": "derived_from_behavioral_surface_invariant",
         "deterministic_fallback": "deterministic_fallback_from_task_evidence",
-        "coverage_obligation": "added_for_uncovered_coverage_obligation",
-        "deterministic_floor": "added_by_deterministic_review_floor",
-        "uncovered_surface_behavior": "added_for_uncovered_source_local_surface_behavior",
-        "surface_coverage": "added_for_missing_primary_surface_coverage",
-        "file_coverage": "added_for_changed_file_without_check",
     }.get(origin_kind, origin_kind)
 
 
-def ensure_compiler_coverage_floor(
+def cap_compiled_checks(
     *,
     state: GraphState,
     task: ReviewTask,
     checks: List[ReviewCheck],
     check_origins: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> tuple[List[ReviewCheck], Dict[str, Any], Dict[str, Dict[str, Any]]]:
+    """Bound the compiled checks for one task and report what they leave uncovered.
+
+    Nothing is added here. Obligations, primary surfaces, and changed files
+    without a compiled check are recorded as diagnostics so misses stay
+    observable without forcing speculative checks into the executor.
+    """
     slot = pipeline_slot(state, task.id)
     obligations = ranked_coverage_obligations(task, slot)
-    uncovered_obligations = [
-        obligation
-        for obligation in obligations
-        if not any(check_covers_obligation(check, obligation) for check in checks)
-    ]
-    uncovered_for_floor = rotate_tied_obligations(uncovered_obligations)
-    added_candidates: List[tuple[ReviewCheck, Dict[str, Any], str]] = []
-    for obligation in uncovered_for_floor:
-        check = coverage_check_for_obligation(
-            state,
-            task,
-            obligation,
-            len(checks) + len(added_candidates) + 1,
-        )
-        added_candidates.append((check, dict(obligation), "coverage_obligation"))
-
-    deterministic_floor = [
-        *migration_floor_checks(
-            state,
-            task,
-            slot,
-            [*checks, *(check for check, _meta, _kind in added_candidates)],
-            len(checks) + len(added_candidates) + 1,
-        ),
-        *maintainability_floor_checks(
-            state,
-            task,
-            slot,
-            [*checks, *(check for check, _meta, _kind in added_candidates)],
-            len(checks) + len(added_candidates) + 1,
-        ),
-    ]
-    for check in deterministic_floor:
-        if any(
-            existing.check_id == check.check_id
-            for existing in [*checks, *(candidate for candidate, _meta, _kind in added_candidates)]
-        ):
-            check = check.model_copy(update={"check_id": f"{check.check_id}:{len(added_candidates) + 1}"})
-        added_candidates.append(
-            (
-                check,
-                {
-                    "file_path": check.file_path,
-                    "surface": check.changed_code_anchor,
-                    "dimension": check.affected_invariant,
-                },
-                "deterministic_floor",
-            )
-        )
-
     coverage_files = changed_task_files(state, task)
     ledger = surface_ledger_from_state(state)
     by_id = surface_by_id(ledger)
     task_surface_ids = [
-        sid for sid in surface_ids_for_task(task, ledger)
+        sid
+        for sid in surface_ids_for_task(task, ledger)
         if sid in by_id and by_id[sid].confidence >= 0.75 and by_id[sid].kind != "file"
     ]
     evidence_omitted_files = omitted_prompt_files(slot, coverage_files)
-    behavior_floor = uncovered_surface_behavior_checks(
-        state,
-        task,
-        slot,
-        [*checks, *(candidate for candidate, _meta, _kind in added_candidates)],
-        len(checks) + len(added_candidates) + 1,
-        task_surface_ids,
-        by_id,
-    )
-    for check in behavior_floor:
-        added_candidates.append(
-            (
-                check,
-                {"file_path": check.file_path, "surface": check.changed_code_anchor, "dimension": "uncovered behavior"},
-                "uncovered_surface_behavior",
-            )
-        )
-    covered_surface_ids = {
-        sid
-        for check in [*checks, *(candidate for candidate, _meta, _kind in added_candidates)]
-        for sid in check.surface_ids
-        if sid in by_id
-    }
-    missing_surface_ids = [sid for sid in task_surface_ids if sid not in covered_surface_ids]
-    for sid in missing_surface_ids:
-        surface = by_id[sid]
-        check = surface_coverage_check(state, task, surface, len(checks) + len(added_candidates) + 1)
-        added_candidates.append(
-            (
-                check,
-                {"file_path": surface.file_path, "surface": surface.name, "dimension": "surface coverage"},
-                "surface_coverage",
-            )
-        )
 
-    checked_files = {
-        check.file_path.strip().replace("\\", "/")
-        for check in [*checks, *(candidate for candidate, _meta, _kind in added_candidates)]
-        if check.file_path.strip()
-    }
-    missing_files = [path for path in coverage_files if path not in checked_files]
-    for file_path in missing_files:
-        check = coverage_check_for_file(state, task, file_path, len(checks) + len(added_candidates) + 1)
-        added_candidates.append(
-            (
-                check,
-                {"file_path": file_path, "surface": file_path, "dimension": "file coverage"},
-                "file_coverage",
-            )
-        )
-
-    original_ids = {check.check_id for check in checks}
-    added_origin_by_id = {
-        check.check_id: check_origin(check, kind, _origin_reason(kind), meta)
-        for check, meta, kind in added_candidates
-    }
-    added_by_id = {
-        check.check_id: {**meta, "origin_kind": kind, "origin_reason": _origin_reason(kind)}
-        for check, meta, kind in added_candidates
-    }
-    ranking_meta_by_id = {
-        check.check_id: {**meta, "_floor_kind": kind, "origin_kind": kind}
-        for check, meta, kind in added_candidates
-    }
-    ranked = prioritize_compiled_checks(
-        dedupe_checks([*checks, *(check for check, _meta, _kind in added_candidates)]),
-        task=task,
-        slot=slot,
-        coverage_meta_by_id=ranking_meta_by_id,
-        task_files=coverage_files,
-    )
+    ranked = prioritize_compiled_checks(dedupe_checks(checks))
     primary_by_group, _label_by_key = _primary_owner_maps(by_id)
     primary_owner_keys = _task_primary_owner_keys(
         task_surface_ids,
@@ -1725,7 +1001,6 @@ def ensure_compiler_coverage_floor(
         ranked,
         primary_owner_count=len(primary_owner_keys),
     )
-    mandatory_ids: set[str] = set()
     capped, cap_diagnostics = surface_fair_cap_checks(
         ranked,
         task_surface_ids=task_surface_ids,
@@ -1734,98 +1009,50 @@ def ensure_compiler_coverage_floor(
         task_files=coverage_files,
         max_checks=max_checks,
     )
-    capped, high_signal_swaps = preserve_trimmed_high_signal_checks(
-        capped,
-        ranked,
-        original_ids=original_ids,
-        mandatory_ids=mandatory_ids,
-        by_id=by_id,
-        slot=slot,
-        task_files=coverage_files,
-    )
-    if high_signal_swaps:
-        cap_diagnostics["high_signal_swaps"] = high_signal_swaps
-    cap_diagnostics["protected_existing_check_ids"] = [
-        check_id
-        for check_id in cap_diagnostics.get("protected_existing_check_ids", [])
-        if check_id in original_ids
-    ]
-    final_checks = list(capped)
-    final_ids = {check.check_id for check in final_checks}
-    selected_surface_ids = {
-        sid
-        for check in final_checks
-        for sid in check.surface_ids
-        if sid in by_id
-    }
-    added_check_by_id = {check.check_id: check for check, _meta, _kind in added_candidates}
-    added = [check for check in final_checks if check.check_id not in original_ids]
-    trimmed_existing: List[str] = [
-        check.check_id for check in checks if check.check_id not in final_ids
-    ]
-    origin_lookup: Dict[str, Dict[str, Any]] = {
-        **{key: dict(value) for key, value in dict(check_origins or {}).items()},
-        **added_origin_by_id,
-    }
-    check_by_id = {
-        check.check_id: check
-        for check in [*checks, *(check for check, _meta, _kind in added_candidates)]
-    }
-    trimmed_by_origin_family: Dict[str, List[str]] = {}
-    for check_id in trimmed_existing:
-        check = check_by_id.get(check_id)
-        origin = origin_lookup.get(check_id, {})
-        origin_kind = str(origin.get("origin_kind") or "unknown")
-        family = _check_signal_family(check) if check is not None else "unknown"
-        trimmed_by_origin_family.setdefault(f"{origin_kind}:{family}", []).append(check_id)
-    skipped_due_to_cap: List[Dict[str, Any]] = [
-        {
-            **dict(added_by_id[check_id]),
-            "check_id": check_id,
-            "surface_already_selected": any(
-                sid in selected_surface_ids
-                for sid in (added_check_by_id.get(check_id).surface_ids if added_check_by_id.get(check_id) else [])
-            ),
-        }
-        for check_id in added_by_id
-        if check_id not in final_ids
-    ]
+    final_ids = {check.check_id for check in capped}
+    trimmed_check_ids = [check.check_id for check in checks if check.check_id not in final_ids]
 
-    final_origins: Dict[str, Dict[str, Any]] = {}
+    uncovered_obligations = [
+        obligation
+        for obligation in obligations
+        if not any(check_covers_obligation(check, obligation) for check in capped)
+    ]
+    covered_surface_ids = {sid for check in capped for sid in check.surface_ids if sid in by_id}
+    missing_surface_ids = [sid for sid in task_surface_ids if sid not in covered_surface_ids]
+    checked_files = {
+        check.file_path.strip().replace("\\", "/")
+        for check in capped
+        if check.file_path.strip()
+    }
+    missed_files = [path for path in coverage_files if path not in checked_files]
+
     incoming_origins = {key: dict(value) for key, value in dict(check_origins or {}).items()}
-    for check in final_checks:
-        if check.check_id in added_origin_by_id:
-            final_origins[check.check_id] = dict(added_origin_by_id[check.check_id])
-        elif check.check_id in incoming_origins:
-            final_origins[check.check_id] = incoming_origins[check.check_id]
-        else:
-            final_origins[check.check_id] = check_origin(check, "llm_compiled", _origin_reason("llm_compiled"))
-
-    warnings = [f"compiler_coverage_floor_added:{check.check_id}" for check in added]
-    if skipped_due_to_cap:
-        warnings.append(f"compiler_coverage_floor_cap_reached:{len(skipped_due_to_cap)}")
-    return final_checks, {
+    final_origins = {
+        check.check_id: incoming_origins.get(check.check_id)
+        or check_origin(check, "llm_compiled", _origin_reason("llm_compiled"))
+        for check in capped
+    }
+    warnings: List[str] = []
+    if trimmed_check_ids:
+        warnings.append(f"compiler_check_cap_trimmed:{len(trimmed_check_ids)}")
+    if missed_files:
+        warnings.append(f"compiler_coverage_missed_files:{len(missed_files)}")
+    if missing_surface_ids:
+        warnings.append(f"compiler_coverage_missing_primary_surfaces:{len(missing_surface_ids)}")
+    if uncovered_obligations:
+        warnings.append(f"compiler_coverage_uncovered_obligations:{len(uncovered_obligations)}")
+    return capped, {
         "coverage_files": coverage_files,
         "evidence_omitted_files": evidence_omitted_files,
-        "missed_files": missing_files,
+        "missed_files": missed_files,
         "ranked_obligations": [dict(item) for item in obligations],
         "uncovered_obligations": [dict(item) for item in uncovered_obligations],
         "primary_surface_ids": task_surface_ids,
         "missing_primary_surface_ids": missing_surface_ids,
-        "added_checks": [check.model_dump(mode="json") for check in added],
-        "added_coverage_checks": [check.check_id for check in added],
-        "added_check_origins": {
-            check.check_id: added_origin_by_id[check.check_id]
-            for check in added
-            if check.check_id in added_origin_by_id
-        },
-        "adaptive_max_checks": max_checks,
+        "max_checks": max_checks,
         "adaptive_cap_reason": adaptive_reason,
         "owner_fair_cap": cap_diagnostics,
-        "skipped_due_to_cap": skipped_due_to_cap,
-        "trimmed_existing_check_ids": trimmed_existing,
-        "trimmed_existing_by_origin_family": trimmed_by_origin_family,
-        "max_checks": max_checks,
+        "trimmed_check_ids": trimmed_check_ids,
         "warnings": warnings,
     }, final_origins
 
@@ -1878,6 +1105,13 @@ def _check_from_contract_question(
                 "returned, consumed, joined, or serialized value shape after the operation",
             ]
         )
+    contract_source = None
+    if question.contract_source_kind and question.contract_evidence.strip():
+        contract_source = ContractSourceRef(
+            kind=question.contract_source_kind,
+            ref=f"{surface.file_path}:{line_start}-{line_end}",
+            note=question.contract_evidence.strip()[:300],
+        )
     owned_parts = [
         question.owner or surface.name,
         question.dimension,
@@ -1900,6 +1134,7 @@ def _check_from_contract_question(
         behavioral_question=report[:400],
         affected_invariant=question.breach_question[:400] or question.expected_behavior[:400],
         expected_behavior=question.expected_behavior[:500],
+        contract_source=contract_source,
         required_evidence=list(dict.fromkeys(required))[:8],
         suppress_criteria=(
             [
@@ -2020,64 +1255,6 @@ def checks_from_contract_questions(
     return checks
 
 
-def checks_from_surface_invariants(
-    state: GraphState,
-    task: ReviewTask,
-    *,
-    settings: Settings,
-    exclude_surface_ids: Iterable[str] = (),
-) -> List[ReviewCheck]:
-    spec = behavioral_spec_from_state(state, settings)
-    if spec is None or not spec.surface_invariants:
-        return []
-    ledger = spec.surfaces or surface_ledger_from_state(state)
-    by_id = surface_by_id(ledger)
-    task_surface_ids = surface_ids_for_task(task, ledger)
-    excluded = set(exclude_surface_ids) | _contract_question_surface_ids(spec)
-    checks: List[ReviewCheck] = []
-    for invariant in spec.surface_invariants:
-        if invariant.surface_id in excluded:
-            continue
-        if invariant.surface_id not in task_surface_ids:
-            continue
-        surface = by_id.get(invariant.surface_id)
-        if surface is None:
-            continue
-        line_start = surface.line_start or 1
-        line_end = surface.line_end or line_start
-        checks.append(
-            ReviewCheck(
-                check_id=f"{task.id}:surface:{len(checks) + 1}",
-                patch_task_id=task.id,
-                surface_ids=[surface.surface_id],
-                lens=dimension_to_lens(invariant.dimension),  # type: ignore[arg-type]
-                file_path=surface.file_path,
-                line_start=line_start,
-                line_end=line_end,
-                changed_code_anchor=surface.name,
-                audit_only=_invariant_check_is_audit_only(invariant),
-                behavioral_question=(
-                    f"Does the changed {surface.name} preserve {invariant.dimension}?"
-                ),
-                affected_invariant=invariant.expected_behavior[:400] or invariant.dimension,
-                expected_behavior=invariant.expected_behavior[:500] or invariant.dimension,
-                required_evidence=invariant.required_evidence
-                or [f"changed implementation for {surface.name}"],
-                suppress_criteria=[
-                    f"Repository evidence shows {surface.name} preserves {invariant.dimension}."
-                ],
-                report_criteria=[
-                    f"The changed {surface.name} violates {invariant.dimension} on a reachable path."
-                ],
-                allowed_retrieval=["task_evidence", "focused_context"],
-                budget=2,
-            )
-        )
-        if len(checks) >= MAX_CHECKS_PER_TASK:
-            break
-    return checks
-
-
 def dedupe_checks(checks: Iterable[ReviewCheck]) -> List[ReviewCheck]:
     seen: set[str] = set()
     out: List[ReviewCheck] = []
@@ -2089,47 +1266,15 @@ def dedupe_checks(checks: Iterable[ReviewCheck]) -> List[ReviewCheck]:
     return out
 
 
-def prioritize_compiled_checks(
-    checks: Iterable[ReviewCheck],
-    *,
-    task: ReviewTask | None = None,
-    slot: Mapping[str, Any] | None = None,
-    coverage_meta_by_id: Mapping[str, Mapping[str, Any]] | None = None,
-    task_files: Iterable[str] = (),
-) -> List[ReviewCheck]:
-    """Keep focused/task-local checks ahead of broad deterministic coverage checks."""
-
-    meta_by_id = coverage_meta_by_id or {}
-    local_task_files = {path.strip().replace("\\", "/") for path in task_files if path and path.strip()}
-    if task is not None:
-        local_task_files.update(
-            path.strip().replace("\\", "/") for path in task.target_files if path and path.strip()
+def prioritize_compiled_checks(checks: Iterable[ReviewCheck]) -> List[ReviewCheck]:
+    """Keep executable checks ahead of audit-only checks; otherwise preserve compile order."""
+    return [
+        check
+        for _index, check in sorted(
+            enumerate(checks),
+            key=lambda item: (1 if item[1].audit_only else 0, item[0]),
         )
-    evidence_blob = task_evidence_text(slot or {}) if slot is not None else None
-
-    def rank(check: ReviewCheck) -> tuple[int, int, int, int]:
-        cid = check.check_id
-        meta = meta_by_id.get(cid)
-        added = meta is not None
-        if check.audit_only:
-            return (9, 0, 1, 1)
-        source_local = compiled_check_is_source_local(
-            check,
-            meta,
-            evidence_blob,
-            local_task_files,
-            evidence_requirements_for_check(check),
-        )
-        relevance = coverage_meta_relevance(meta)
-        if added and source_local:
-            return (1, -relevance, 0 if check.surface_ids else 1, 0)
-        if ":surface:" in cid:
-            return (2 if source_local else 4, -relevance, 0 if check.surface_ids else 1, 1)
-        if added:
-            return (3 if source_local else 5, -relevance, 0 if check.surface_ids else 1, 1)
-        return (0, -relevance, 0 if check.surface_ids else 1, 0)
-
-    return [check for _, check in sorted(enumerate(checks), key=lambda item: (*rank(item[1]), item[0]))]
+    ]
 
 
 def _check_signal_family(check: ReviewCheck) -> str:
@@ -2143,30 +1288,16 @@ def _check_signal_family(check: ReviewCheck) -> str:
     return "other"
 
 
-def _check_is_broad_floor(check: ReviewCheck) -> bool:
-    cid = check.check_id.lower()
-    return any(
-        marker in cid
-        for marker in (
-            ":surface-coverage:",
-            ":file-coverage:",
-            ":uncovered-behavior:",
-            ":coverage:",
-            ":surface:",
-        )
-    )
-
-
 def _eligible_for_owner_protection(
     check: ReviewCheck,
     *,
     slot: Mapping[str, Any],
     task_files: set[str],
 ) -> bool:
-    return (
-        not check.audit_only
-        and not _check_is_broad_floor(check)
-        and check_is_concrete_source_local_behavior(check, slot=slot, task_files=task_files)
+    return not check.audit_only and check_is_concrete_source_local_behavior(
+        check,
+        slot=slot,
+        task_files=task_files,
     )
 
 
@@ -2174,7 +1305,7 @@ def _owner_candidate_priority(
     check: ReviewCheck,
     *,
     ranked_index: Mapping[str, int],
-) -> tuple[int, int, int, int]:
+) -> tuple[int, int, int]:
     family = _check_signal_family(check)
     family_rank = (
         _HIGH_SIGNAL_FAMILY_ORDER.index(family)
@@ -2183,7 +1314,6 @@ def _owner_candidate_priority(
     )
     return (
         1 if check.diff_signal_family == "contract_question" else 0,
-        1 if _check_is_broad_floor(check) else 0,
         family_rank,
         ranked_index.get(check.check_id, 10**9),
     )
@@ -2200,68 +1330,6 @@ def adaptive_check_cap(
     if len(eligible_non_audit) > MAX_CHECKS_PER_TASK:
         return ADAPTIVE_MAX_CHECKS_PER_TASK, "eligible_non_audit_over_base_cap"
     return MAX_CHECKS_PER_TASK, "base"
-
-
-def preserve_trimmed_high_signal_checks(
-    selected: Sequence[ReviewCheck],
-    ranked: Sequence[ReviewCheck],
-    *,
-    original_ids: set[str],
-    mandatory_ids: set[str],
-    by_id: Mapping[str, ReviewSurface],
-    slot: Mapping[str, Any],
-    task_files: Sequence[str],
-) -> tuple[List[ReviewCheck], List[Dict[str, Any]]]:
-    if not selected:
-        return list(selected), []
-    out = list(selected)
-    selected_ids = {check.check_id for check in out}
-    local_task_files = {path.strip().replace("\\", "/") for path in task_files if path and path.strip()}
-    primary_by_group, label_by_key = _primary_owner_maps(by_id)
-
-    def owner_keys(check: ReviewCheck) -> List[str]:
-        return _primary_owner_keys_for_check(check, by_id=by_id, primary_by_group=primary_by_group)
-
-    swaps: List[Dict[str, Any]] = []
-    for incoming in ranked:
-        if incoming.check_id in selected_ids or incoming.check_id not in original_ids:
-            continue
-        incoming_family = _check_signal_family(incoming)
-        if incoming_family not in _HIGH_SIGNAL_SWAP_FAMILIES:
-            continue
-        if not _eligible_for_owner_protection(incoming, slot=slot, task_files=local_task_files):
-            continue
-        incoming_owners = set(owner_keys(incoming))
-        if not incoming_owners:
-            continue
-        replacement_index: int | None = None
-        for index in range(len(out) - 1, -1, -1):
-            current = out[index]
-            if current.check_id in mandatory_ids:
-                continue
-            if not incoming_owners.intersection(owner_keys(current)):
-                continue
-            if _check_is_broad_floor(current) or current.audit_only or current.check_id not in original_ids:
-                replacement_index = index
-                break
-        if replacement_index is None:
-            continue
-        replaced = out[replacement_index]
-        out[replacement_index] = incoming
-        selected_ids.remove(replaced.check_id)
-        selected_ids.add(incoming.check_id)
-        swaps.append(
-            {
-                "incoming_check_id": incoming.check_id,
-                "replaced_check_id": replaced.check_id,
-                "family": incoming_family,
-                "primary_owner_labels": [
-                    label_by_key.get(owner, owner)
-                    for owner in owner_keys(incoming)
-                ],
-            }
-        )
-    return out, swaps
 
 
 def surface_fair_cap_checks(
@@ -2475,19 +1543,13 @@ def normalize_compiled_checks(
             current = current.model_copy(
                 update={"owned_contract_scope": owned_contract_scope_for_check(current)}
             )
-        if check_requires_contract_justification(current):
-            required_evidence = list(dict.fromkeys([
-                *current.required_evidence,
-                CONTRACT_JUSTIFICATION_REQUIREMENT,
-            ]))
-            allowed_retrieval = list(dict.fromkeys([
-                *current.allowed_retrieval,
-                "focused_context",
-            ]))
+        if current.contract_source is None and not current.audit_only:
+            # The compiler could not name the contract source; the executor may retrieve it.
             current = current.model_copy(
                 update={
-                    "required_evidence": required_evidence,
-                    "allowed_retrieval": allowed_retrieval,
+                    "allowed_retrieval": list(
+                        dict.fromkeys([*current.allowed_retrieval, "focused_context"])
+                    ),
                 }
             )
         normalized.append(current)

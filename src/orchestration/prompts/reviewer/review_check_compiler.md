@@ -49,7 +49,7 @@ Prefer a small set of high-signal checks over broad coverage, but "small" does n
 
 When mental-model or KB material names a contract, convention, expected return shape, required/optional input rule, public behavior, or uncertainty, convert that material into required evidence, suppress criteria, or report criteria for the relevant check. Do not ask the executor to rediscover that broad context.
 
-For checks about convention, schema, framework behavior, caller/downstream behavior, mode/variant semantics, representation, selection, projection, aggregation, serialization, cardinality, or intentional narrowing, require contract-justification evidence. The check must ask not only what the implementation does, but why that behavior is correct for the surrounding contract.
+Name the contract source for every check in `contract_source`: the kind (`pr_intent`, `old_behavior`, `schema`, `caller`, `framework`, `convention`, `doc`, `test`, `representation`), a locator (`path:line`, symbol, `diff`, or `pr_intent`), and what it states. This is what makes `expected_behavior` a contract rather than a preference, and it is what the executor must confirm before suppressing or reporting. If no source in the assigned evidence establishes the expected behavior, leave `contract_source` unset and put the source that would establish it into `required_evidence` (the declaration, caller, documentation, test, old code, or convention to look for). Do not invent a source. A check whose contract rests only on a name or a general expectation is audit context, not an executable check, unless the executor can retrieve the source.
 
 Reject generic checklist thinking: do not emit checks like "look for security bugs", "review edge cases", or "check error handling".
 

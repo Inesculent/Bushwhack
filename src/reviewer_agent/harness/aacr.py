@@ -11,7 +11,7 @@ import sys
 import time
 import uuid
 from collections import Counter, defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional
@@ -19,7 +19,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional
 import pandas as pd
 
 from src.config import get_settings
-from src.data.research_pipeline.constants import AACR_BENCH_CONFIG, LOG_DIR, PROCESSED_DIR
+from src.data.research_pipeline.constants import AACR_BENCH_CONFIG, LOG_DIR, PROCESSED_DIR, RAW_DIR
 from src.data.research_pipeline.github_api import GitHubPullRequestEnricher, PullRequestContext
 from src.data.research_pipeline.logging_utils import configure_logger
 from src.data.research_pipeline.utils import ensure_directories, parse_pr_number, parse_repo_from_pr_url
@@ -30,10 +30,14 @@ from src.infrastructure.redis_checkpoint import delete_checkpoint_thread
 from src.infrastructure.snapshot_loader import SnapshotLoader
 from src.infrastructure.source_provenance import collect_source_provenance
 from src.orchestration.reviewer_graph import run_reviewer
+from src.reviewer_agent.harness import aacr_eval
 
 DEFAULT_AACR_PROCESSED_PATH: Path = PROCESSED_DIR / "aacr_bench_graph_ready.csv"
 EXPERIMENT_TAG = "reviewer_graph_parallel"
 DEFAULT_POSITIVE_SAMPLES_PATH = Path(__file__).resolve().parents[3] / "documentation" / "dataset" / "positive_samples.json"
+# Annotated dataset with label 0/1 (Hugging Face revision recorded in aacr_eval); used only for the
+# negative-comment diagnostic, never fed to the reviewer.
+DEFAULT_NEGATIVE_SAMPLES_PATH: Path = RAW_DIR / "aacr_bench_raw.csv"
 
 
 def _utc_now_iso() -> str:
@@ -65,6 +69,20 @@ class DatasetRange:
             raise ValueError("Dataset range start must be >= 1.")
         if self.end is not None and self.end < self.start:
             raise ValueError("Dataset range end must be >= start.")
+
+
+def _pinned_review_commits(
+    reference_entries_by_pr: dict[str, dict[str, Any]],
+    pr_url: str,
+) -> Optional[dict[str, str]]:
+    """Base/head commits the benchmark references were annotated on, in official mapping."""
+    entry = reference_entries_by_pr.get(aacr_eval.canonical_pr_key(pr_url)) or {}
+    instance = entry.get("instance") or {}
+    base_commit = str(instance.get("base_commit") or "").strip()
+    head_commit = str(instance.get("head_commit") or "").strip()
+    if not base_commit or not head_commit:
+        return None
+    return {"base_commit": base_commit, "head_commit": head_commit}
 
 
 def _slug_for_pr_url(pr_url: str) -> str:
@@ -380,6 +398,7 @@ def _load_positive_samples_by_pr(path: Path) -> dict[str, list[dict[str, Any]]]:
                     "to_line": comment.get("to_line"),
                     "category": comment.get("category"),
                     "is_ai_comment": comment.get("is_ai_comment"),
+                    "side": comment.get("side"),
                 }
             )
         if labels:
@@ -576,8 +595,8 @@ def _coverage_audit_for_pr(
         for task_meta in by_task.values():
             if not isinstance(task_meta, dict):
                 continue
-            floor = task_meta.get("compiler_coverage_floor", {})
-            obligations = floor.get("ranked_obligations", []) if isinstance(floor, dict) else []
+            coverage = task_meta.get("compiler_coverage", {})
+            obligations = coverage.get("ranked_obligations", []) if isinstance(coverage, dict) else []
             for obligation in obligations if isinstance(obligations, list) else []:
                 if not isinstance(obligation, dict):
                     continue
@@ -587,7 +606,6 @@ def _coverage_audit_for_pr(
                     path_obligation_families[path].add(family)
     gate_dropped_paths: set[str] = set()
     gate_passed_paths: set[str] = set()
-    false_suppression_paths: set[str] = set()
     path_decision_counts: dict[str, Counter[str]] = defaultdict(Counter)
     path_gate_reason_counts: dict[str, Counter[str]] = defaultdict(Counter)
     for result in raw.get("review_check_results", []) or []:
@@ -598,17 +616,6 @@ def _coverage_audit_for_pr(
         decision = str(_field_from_mapping_or_model(result, "decision") or "").strip()
         if decision:
             path_decision_counts[path][decision] += 1
-        gate_decision = str(_field_from_mapping_or_model(result, "gate_decision") or "")
-        gate_reason = str(_field_from_mapping_or_model(result, "gate_reason") or "").strip()
-        if gate_reason:
-            path_gate_reason_counts[path][gate_reason] += 1
-        if gate_decision == "dropped":
-            gate_dropped_paths.add(path)
-        if gate_decision == "passed" or "evidence_gate_passed" in gate_reason:
-            gate_passed_paths.add(path)
-        warnings = _field_from_mapping_or_model(result, "warnings", []) or []
-        if isinstance(warnings, list) and any("suppression_audit_insufficient" in str(item) for item in warnings):
-            false_suppression_paths.add(path)
     cleanup_meta = metadata.get("adversarial_cleanup", {}) if isinstance(metadata.get("adversarial_cleanup"), dict) else {}
     candidate_path_by_id: dict[str, str] = {}
     for candidate in raw.get("candidate_findings", []) or []:
@@ -622,6 +629,29 @@ def _coverage_audit_for_pr(
         path = _path_from_mapping_or_model(candidate)
         if cid and path:
             candidate_path_by_id.setdefault(cid, path)
+    for task_meta in by_task.values():
+        if not isinstance(task_meta, dict):
+            continue
+        gate = task_meta.get("gate", {})
+        lifecycle = gate.get("candidate_lifecycle", {}) if isinstance(gate, dict) else {}
+        if not isinstance(lifecycle, dict):
+            continue
+        for candidate_id, row in lifecycle.items():
+            if not isinstance(row, dict):
+                continue
+            check_id = str(row.get("check_id") or "")
+            check = checks_by_id.get(check_id)
+            path = candidate_path_by_id.get(str(candidate_id)) or _path_from_mapping_or_model(check)
+            if not path:
+                continue
+            decision = str(row.get("decision") or "")
+            reason = str(row.get("reason") or "").strip()
+            if reason:
+                path_gate_reason_counts[path][reason] += 1
+            if decision == "dropped":
+                gate_dropped_paths.add(path)
+            if decision == "passed":
+                gate_passed_paths.add(path)
     merged_duplicate_paths: set[str] = set()
     rejected_cluster_paths: set[str] = set()
     duplicate_equivalents: dict[str, str] = {}
@@ -659,8 +689,6 @@ def _coverage_audit_for_pr(
             reason_state = "passed_gate_dropped_afterward"
         elif path in gate_dropped_paths:
             reason_state = "dropped_by_gate"
-        elif path in false_suppression_paths:
-            reason_state = "false_suppression"
         elif path in stage_paths["candidate"]:
             reason_state = "dropped_by_cleanup"
         elif path in stage_paths["executed"]:
@@ -745,6 +773,33 @@ def _write_coverage_audit(path: Path, records: List[dict[str, Any]]) -> dict[str
     payload = {"schema_version": "1", "summary": totals, "prs": records}
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
     return payload
+
+
+_LENGTH_LIMIT_USAGE_RE = re.compile(
+    r"completion_tokens=(\d+),\s*prompt_tokens=(\d+),\s*total_tokens=(\d+)"
+)
+
+
+def _length_limit_failure_metrics(result: dict[str, Any]) -> dict[str, int]:
+    """Count LLM calls that hit the completion-token cap and what they cost."""
+    count = 0
+    tokens = 0
+    elapsed_ms = 0
+    for entry in result.get("llm_trace", []) or []:
+        if not isinstance(entry, dict) or entry.get("event") != "llm_error":
+            continue
+        if "LengthFinishReasonError" not in str(entry.get("error_type") or ""):
+            continue
+        count += 1
+        elapsed_ms += int(entry.get("elapsed_ms") or 0)
+        match = _LENGTH_LIMIT_USAGE_RE.search(str(entry.get("error") or ""))
+        if match:
+            tokens += int(match.group(3))
+    return {
+        "length_limit_failure_count": count,
+        "length_limit_failure_tokens": tokens,
+        "length_limit_failure_ms": elapsed_ms,
+    }
 
 
 def _review_check_metrics(result: dict[str, Any]) -> dict[str, Any]:
@@ -851,9 +906,6 @@ def _review_check_metrics(result: dict[str, Any]) -> dict[str, Any]:
         ),
         "unsupported_check_count": sum(
             1 for item in latest_results if _decision(item) == "unsupported"
-        ),
-        "suppressed_check_count": sum(
-            1 for item in latest_results if _decision(item) == "suppressed"
         ),
         "budget_exhausted_check_count": sum(
             1 for item in latest_results if _decision(item) == "budget_exhausted"
@@ -1084,6 +1136,8 @@ def _invoke_for_pr(
     snapshot_data: Optional[Dict[str, Any]] = None,
     mcp_preflight: Optional[dict[str, Any]] = None,
     effective_reviewer_mode: Optional[dict[str, Any]] = None,
+    review_commits: Optional[Dict[str, str]] = None,
+    code_version: str = "live_head",
 ) -> dict[str, Any]:
     # Determine repo_path and graph_run_id
     graph_run_id = _graph_thread_id(run_id, pr_url, snapshot_data)
@@ -1175,6 +1229,16 @@ def _invoke_for_pr(
             "pr_number": context.number,
             "review_repo_url": repo_url,
             "review_pr_number": context.number,
+            "review_code_version": code_version,
+            "review_base_commit": (review_commits or {}).get("base_commit", ""),
+            "review_head_commit": (review_commits or {}).get("head_commit", ""),
+            # The review context checks this ref out in the sandbox; without it the live
+            # PR head (pull/N/head) is reviewed, which may not be the annotated version.
+            **(
+                {"review_checkout_ref": review_commits["head_commit"]}
+                if review_commits and code_version == "annotated_head"
+                else {}
+            ),
             "review_trace_enabled": trace,
             "mcp_preflight": dict(mcp_preflight or {}),
             "effective_reviewer_mode": dict(effective_reviewer_mode or {}),
@@ -1308,8 +1372,31 @@ def run_aacr_reviewer(
     # Preserve CLI filter before the loop shadows `pr_url` with each row's URL.
     pr_url_filter_for_meta = pr_url.strip() if pr_url else ""
     logger.info("Reviewer-graph AACR run will process %s unique PR URLs", len(selected_pr_urls))
+    dataset_pin = aacr_eval.ensure_reference_file(DEFAULT_POSITIVE_SAMPLES_PATH, download=True)
     positive_samples_by_pr = _load_positive_samples_by_pr(DEFAULT_POSITIVE_SAMPLES_PATH)
     run_warnings: set[str] = set()
+    if not dataset_pin.get("exists"):
+        run_warnings.add("positive_samples_missing")
+        logger.warning(
+            "AACR positive samples unavailable at %s (%s); evaluation will score against no references.",
+            DEFAULT_POSITIVE_SAMPLES_PATH,
+            dataset_pin.get("error") or "not found",
+        )
+    elif dataset_pin.get("matches_upstream_meta") is False:
+        run_warnings.add("positive_samples_sha256_differs_from_upstream_meta")
+    reference_entries_by_pr = (
+        aacr_eval.references_by_pr(aacr_eval.load_reference_records(DEFAULT_POSITIVE_SAMPLES_PATH))
+        if dataset_pin.get("exists") and not dataset_pin.get("error")
+        else {}
+    )
+    negatives_by_pr = (
+        aacr_eval.load_negative_comments(DEFAULT_NEGATIVE_SAMPLES_PATH)
+        if DEFAULT_NEGATIVE_SAMPLES_PATH.exists()
+        else {}
+    )
+    semantic_judge = aacr_eval.judge_from_env()
+    evaluation_results: List[dict[str, Any]] = []
+    evaluation_dir = run_dir / "evaluation"
     if settings.reviewer_check_mode == "log_only" and any(
         _positive_labels_for_pr(positive_samples_by_pr, url) for url in selected_pr_urls
     ):
@@ -1329,6 +1416,7 @@ def run_aacr_reviewer(
     failed = 0
     run_started = time.perf_counter()
     total_llm_tokens = 0
+    length_limit_totals = {"count": 0, "tokens": 0, "elapsed_ms": 0}
     coverage_records: List[dict[str, Any]] = []
 
     for idx, pr_url in enumerate(selected_pr_urls, start=1):
@@ -1348,13 +1436,15 @@ def run_aacr_reviewer(
             "error": "",
             "redis_checkpoints_cleaned": False,
             "token_usage": 0,
+            "length_limit_failure_count": 0,
+            "length_limit_failure_tokens": 0,
+            "length_limit_failure_ms": 0,
             "compiled_check_count": 0,
             "valid_check_count": 0,
             "invalid_check_count": 0,
             "check_candidate_count": 0,
             "no_finding_check_count": 0,
             "unsupported_check_count": 0,
-            "suppressed_check_count": 0,
             "budget_exhausted_check_count": 0,
             "evidence_gate_pass_count": 0,
             "evidence_gate_drop_count": 0,
@@ -1369,6 +1459,15 @@ def run_aacr_reviewer(
             "positive_valid_path_count": 0,
             "positive_candidate_path_count": 0,
             "positive_final_path_count": 0,
+            "line_match_count": 0,
+            "line_match_rate": 0.0,
+            "line_recall_rate": 0.0,
+            "semantic_match_count": 0,
+            "semantic_status": "not_run",
+            "negative_line_match_count": 0,
+            "reference_lost_at": "{}",
+            "evaluation_path": "",
+            "reviewed_code_version": "",
         }
 
         context = enricher.fetch_pr_context(pr_url)
@@ -1414,6 +1513,29 @@ def run_aacr_reviewer(
                 )
                 continue
 
+        # Review the commit range the references were annotated on when it is still
+        # resolvable; otherwise fall back to the live PR head and say so.
+        review_commits = _pinned_review_commits(reference_entries_by_pr, pr_url)
+        code_version = "live_head"
+        if review_commits and not snapshot_data:
+            pinned_diff = enricher.fetch_compare_diff(
+                context.repo,
+                review_commits["base_commit"],
+                review_commits["head_commit"],
+            )
+            if pinned_diff and pinned_diff.strip():
+                context = replace(context, unified_diff=pinned_diff)
+                code_version = "annotated_head"
+            else:
+                run_warnings.add("annotated_head_unresolvable")
+                logger.warning(
+                    "[%s/%s] annotated head %s for %s is not resolvable on GitHub; reviewing the live PR head",
+                    idx,
+                    len(selected_pr_urls),
+                    review_commits["head_commit"][:7],
+                    pr_url,
+                )
+        row["reviewed_code_version"] = code_version
         graph_run_id = _graph_thread_id(resolved_run_id, pr_url, snapshot_data)
         started = time.perf_counter()
         try:
@@ -1430,6 +1552,8 @@ def run_aacr_reviewer(
                 snapshot_data=snapshot_data,
                 mcp_preflight=mcp_preflight,
                 effective_reviewer_mode=effective_reviewer_mode,
+                review_commits=review_commits,
+                code_version=code_version,
             )
         except Exception as exc:  # noqa: BLE001 - per-PR isolation; harness continues
             elapsed_ms = int((time.perf_counter() - started) * 1000)
@@ -1467,22 +1591,44 @@ def run_aacr_reviewer(
         findings = result.get("final_findings") or result.get("findings", []) or []
         raw_path = _write_raw(raw_dir, slug, result)
         findings_path = _write_findings(findings_dir, slug, findings)
+        raw_artifacts = {
+            "metadata": result.get("metadata", {}) or {},
+            "review_checks": result.get("review_checks", []) or [],
+            "invalid_review_checks": result.get("invalid_review_checks", []) or [],
+            "review_check_results": result.get("review_check_results", []) or [],
+            "focused_context_requests": result.get("focused_context_requests", []) or [],
+            "focused_context_results": result.get("focused_context_results", {}) or {},
+            "candidate_findings": result.get("candidate_findings", []) or [],
+            "llm_trace": result.get("llm_trace", []) or [],
+        }
         coverage_record = _coverage_audit_for_pr(
             pr_url=pr_url,
             slug=slug,
-            raw={
-                "metadata": result.get("metadata", {}) or {},
-                "review_checks": result.get("review_checks", []) or [],
-                "invalid_review_checks": result.get("invalid_review_checks", []) or [],
-                "review_check_results": result.get("review_check_results", []) or [],
-                "focused_context_requests": result.get("focused_context_requests", []) or [],
-                "focused_context_results": result.get("focused_context_results", {}) or {},
-                "candidate_findings": result.get("candidate_findings", []) or [],
-            },
+            raw=raw_artifacts,
             final_findings=findings,
             labels=positive_labels,
         )
         coverage_records.append(coverage_record)
+        # Self-scoring against the official references happens only here, after final findings exist.
+        pr_key = aacr_eval.canonical_pr_key(pr_url)
+        evaluation = aacr_eval.evaluate_pr(
+            pr_url=pr_url,
+            findings=findings,
+            references=reference_entries_by_pr.get(pr_key, {}).get("comments", []),
+            raw=raw_artifacts,
+            negatives=negatives_by_pr.get(pr_key),
+            k=aacr_eval.DEFAULT_LINE_K,
+            judge=semantic_judge,
+            code_version=code_version,
+        )
+        prompt_tokens, completion_tokens = aacr_eval.token_split_from_raw(raw_artifacts)
+        evaluation["slug"] = slug
+        evaluation["findings"] = findings
+        evaluation["duration_seconds"] = elapsed_ms / 1000.0
+        evaluation["input_tokens"] = prompt_tokens
+        evaluation["output_tokens"] = completion_tokens
+        evaluation_results.append(evaluation)
+        evaluation_path = aacr_eval.write_pr_evaluation(evaluation_dir, slug, evaluation)
 
         row["status"] = "ok"
         row["finished_at"] = pr_finished_at
@@ -1491,6 +1637,11 @@ def run_aacr_reviewer(
         row["finding_count"] = len(findings)
         check_metrics = _review_check_metrics(result)
         row.update(check_metrics)
+        length_metrics = _length_limit_failure_metrics(result)
+        row.update(length_metrics)
+        length_limit_totals["count"] += length_metrics["length_limit_failure_count"]
+        length_limit_totals["tokens"] += length_metrics["length_limit_failure_tokens"]
+        length_limit_totals["elapsed_ms"] += length_metrics["length_limit_failure_ms"]
         row["positive_compiled_path_count"] = coverage_record["summary"]["compiled_path_count"]
         row["positive_valid_path_count"] = coverage_record["summary"]["valid_path_count"]
         row["positive_candidate_path_count"] = coverage_record["summary"]["candidate_path_count"]
@@ -1500,6 +1651,14 @@ def run_aacr_reviewer(
         if positive_labels and settings.reviewer_check_mode == "log_only":
             _add_review_check_health_warning(row, "positive_eval_check_mode_log_only")
         row["final_finding_count"] = len(findings)
+        row["line_match_count"] = evaluation["statistics"]["line_match_count"]
+        row["line_match_rate"] = evaluation["statistics"]["line_match_rate"]
+        row["line_recall_rate"] = evaluation["statistics"]["line_recall_rate"]
+        row["semantic_match_count"] = evaluation["statistics"]["semantic_match_count"]
+        row["semantic_status"] = evaluation["semantic_status"]
+        row["negative_line_match_count"] = evaluation["negative_line_match_count"]
+        row["reference_lost_at"] = json.dumps(evaluation["lost_at_counts"], sort_keys=True)
+        row["evaluation_path"] = evaluation_path.relative_to(run_dir).as_posix()
         row["elapsed_ms"] = elapsed_ms
         row["token_usage"] = pr_tokens
         row["redis_checkpoints_cleaned"] = _cleanup_pr_checkpoints(
@@ -1524,6 +1683,21 @@ def run_aacr_reviewer(
     manifest_df = _write_manifest(manifest_path, manifest_rows)
     coverage_audit_path = run_dir / "coverage_audit.json"
     coverage_audit = _write_coverage_audit(coverage_audit_path, coverage_records)
+    official_export = aacr_eval.export_official(
+        run_dir,
+        evaluation_results,
+        reference_entries_by_pr,
+        run_id=resolved_run_id,
+    )
+    evaluation_payload = aacr_eval.run_evaluation_payload(
+        run_id=resolved_run_id,
+        pr_results=evaluation_results,
+        dataset_pin=dataset_pin,
+        official_export=official_export,
+        k=aacr_eval.DEFAULT_LINE_K,
+        judge=semantic_judge,
+    )
+    evaluation_path = aacr_eval.write_run_evaluation(run_dir, evaluation_payload)
 
     run_meta_path = run_dir / "run_meta.json"
     run_finished_at = _utc_now_iso()
@@ -1561,6 +1735,11 @@ def run_aacr_reviewer(
         "succeeded": succeeded,
         "failed": failed,
         "total_llm_tokens": total_llm_tokens,
+        "length_limit_failures": length_limit_totals,
+        "dataset_pin": dataset_pin,
+        "evaluation_path": evaluation_path.relative_to(run_dir).as_posix(),
+        "evaluation_summary": evaluation_payload["summary"],
+        "official_export": official_export,
         "elapsed_ms": int((time.perf_counter() - run_started) * 1000),
     }
     run_meta_path.write_text(json.dumps(run_meta, indent=2), encoding="utf-8")

@@ -135,8 +135,9 @@ Target files are converted to importable module names when possible:
 2. Reuse `.verifier_venv_<fingerprint>` if its Python executable already works.
 3. Otherwise create the venv and probe `python -c "import sys"`.
 4. Probe only the target modules needed by the current verifier candidate.
-5. Record missing modules from those target import probes.
-6. Run the generated verifier script with the prepared `python_path` only if the venv is usable; otherwise fall back to `python`.
+5. Ensure tiny verifier-local compatibility shims for known lightweight backports such as `typing_extensions` when absent.
+6. Record missing modules from those target import probes.
+7. Run the generated verifier script with the prepared `python_path` only if the venv is usable; otherwise fall back to `python`.
 
 This is deliberately narrower than "install the whole repo." In theory, the verifier only needs dependencies reachable from the review target and test harness. Broad dependency installation is avoided because it is expensive, network-sensitive, and can make unrelated repo dependencies look like verifier blockers.
 
@@ -156,7 +157,7 @@ Important fields:
 | `target_files` | Candidate-scoped files used for import probes. |
 | `target_import_probes` | One record per importable target module, including status, exit code, stdout/stderr, and missing modules. |
 | `missing_modules` | Union of missing modules from target import probes. |
-| `install_attempts` | Reserved for targeted dependency installation attempts. It should stay empty unless a future targeted installer is added. |
+| `install_attempts` | Targeted verifier environment repair attempts, such as local compatibility shims. Broad requirements installs are not recorded here because they are not part of normal prep. |
 | `dependency_install_policy` | Currently `targeted_only`; broad `pip install -r requirements*.txt` is intentionally not part of normal prep. |
 | `failure_reason` | Setup failure class such as `venv_create_failed` or `python_probe_failed`. |
 
@@ -168,6 +169,7 @@ That means:
 
 - The prep loop identifies missing imports by probing the candidate target module(s).
 - It records missing modules instead of treating them as product behavior.
+- It may add tiny venv-local compatibility shims for known lightweight import-only backports, currently `typing_extensions`.
 - It does not install every requirements file as a default recovery step.
 - If targeted installation is added later, it should map a missing target import to the narrowest dependency candidate and record each attempt in `install_attempts`.
 

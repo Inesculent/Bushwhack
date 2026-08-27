@@ -34,13 +34,12 @@ from src.orchestration.context.task_evidence import code_slice_from_task_evidenc
 from src.orchestration.context.surface_ledger import (
     changed_files_from_diff,
     changed_file_sources_from_state,
-    compact_surface_ledger_json,
     surface_by_id,
     surface_ledger_from_state,
 )
 from src.orchestration.nodes.application.review_check_executor_support import (
     file_contents_from_slot,
-    missing_evidence_for_weak_no_finding as _support_missing_evidence_for_weak_no_finding,
+    missing_evidence_for_unanswered_check as _support_missing_evidence_for_unanswered_check,
     normalize_executor_results as _support_normalize_executor_results,
 )
 from src.orchestration.nodes.application import review_check_compiler_support as compiler_support
@@ -91,7 +90,7 @@ _SPECULATIVE_MARKERS = (
     "might be",
     "maybe",
 )
-_TERMINAL_CHECK_DECISIONS = {"candidate", "no_finding", "suppressed", "budget_exhausted"}
+_TERMINAL_CHECK_DECISIONS = {"candidate", "no_finding", "budget_exhausted"}
 _AFFECTED_PATH_MARKERS = (
     "caller",
     "call path",
@@ -106,15 +105,6 @@ _AFFECTED_PATH_MARKERS = (
     "if ",
 )
 _GENERIC_QUERY_TOKENS = {"changed", "code", "behavior", "repository", "evidence", "context"}
-_CONTRACT_CONTEXT_MARKERS = (
-    "contract-justification",
-    "contract justification",
-    "why the expected behavior",
-    "why expected behavior",
-    "repository convention",
-    "framework rule",
-    "representation invariant",
-)
 _SOURCE_CONTEXT_EXTENSIONS = (
     ".py",
     ".pyi",
@@ -152,8 +142,6 @@ _EXECUTOR_COMPACT_CODE_EVIDENCE_CHARS = 4000
 _EXECUTOR_COMPACT_FOCUSED_EVIDENCE_CHARS = 3000
 _EXECUTOR_COMPACT_CONTEXT_CHARS = 8000
 _EXECUTOR_MAX_MULTI_CHECK_PROMPT_CHARS = 44000
-_COVERAGE_CRITIC_MAX_EMITTED_CHECKS = 3
-_COVERAGE_CRITIC_MAX_WARNINGS = 5
 _EXECUTOR_COMPACT_RETRY_APPENDIX = (
     "\n\n## OUTPUT BUDGET (retry - required)\n"
     "Your previous response exceeded the length limit. This retry contains exactly one input check. "
@@ -168,9 +156,6 @@ _GENERIC_QUERY_PHRASES = (
     "confirm explicit bounds",
     "confirm unexpected behavior",
 )
-_BROAD_DIFF_SIGNAL_FAMILIES = {"", "broad_fallback", "surface_fallback", "file_fallback"}
-
-
 def _trace_enabled(state: GraphState) -> bool:
     metadata = state.get("metadata", {}) or {}
     return bool(metadata.get("review_trace_enabled"))
@@ -258,144 +243,6 @@ def _text_contains_recursive(value: Any, needle: str) -> bool:
     return needle in str(value)
 
 
-def _coverage_critic_should_run(
-    state: GraphState,
-    task: ReviewTask,
-    slot: Mapping[str, Any],
-    checks: Sequence[ReviewCheck],
-) -> tuple[bool, str]:
-    if not checks:
-        return True, "no_initial_checks"
-    if all(check.audit_only for check in checks):
-        return True, "all_checks_audit_only"
-    non_audit_paths = {
-        check.file_path.strip().replace("\\", "/")
-        for check in checks
-        if not check.audit_only and check.file_path.strip()
-    }
-    task_paths = {
-        path.strip().replace("\\", "/")
-        for path in (_changed_task_files(state, task) or task.target_files)
-        if str(path).strip()
-    }
-    if task_paths and not task_paths.issubset(non_audit_paths):
-        return True, "missing_changed_surface_check"
-    metadata = state.get("metadata", {}) or {}
-    fc = metadata.get("focused_context", {}) if isinstance(metadata, Mapping) else {}
-    diagnostics = fc.get("diagnostics", []) if isinstance(fc, Mapping) else []
-    check_ids = {check.check_id for check in checks}
-    for row in diagnostics if isinstance(diagnostics, list) else []:
-        if not isinstance(row, Mapping):
-            continue
-        if str(row.get("candidate_id") or "") not in check_ids:
-            continue
-        outcomes = {str(item) for item in row.get("outcomes", []) or []}
-        reason = str(row.get("reason") or "")
-        if reason:
-            outcomes.add(reason)
-        if outcomes & {"no_hits", "tool_unavailable", "path_mismatch"}:
-            return True, "focused_context_evidence_gap"
-    previous_missing = slot.get("missing_evidence_by_check")
-    if isinstance(previous_missing, Mapping) and any(previous_missing.values()):
-        return True, "explicit_evidence_gap"
-    return False, ""
-
-
-def _render_coverage_critic_prompt(
-    state: GraphState,
-    task: ReviewTask,
-    slot: Mapping[str, Any],
-    checks: Sequence[ReviewCheck],
-    *,
-    compact_retry: bool = False,
-) -> str:
-    ledger = surface_ledger_from_state(state)
-    direct_limit = 12000 if compact_retry else 60000
-    mental_limit = 4000 if compact_retry else 12000
-    kb_limit = 4000 if compact_retry else 12000
-    check_limit = 12000 if compact_retry else 30000
-    max_records = 24 if compact_retry else 60
-    sections = {
-        "Assigned Task": (
-            f"Task ID: {task.id}\n"
-            f"Title: {task.title}\n"
-            f"Description: {task.description[:1000 if compact_retry else 2000]}\n"
-            f"Target files: {task.target_files}\n"
-            f"Specialty: {task.specialty}"
-        ),
-        "Changed Code And Direct Context": str(slot.get("direct_context") or "")[:direct_limit],
-        "Mental Model Excerpt": str(slot.get("mental_model_excerpt") or "")[:mental_limit],
-        "Review KB Context": str(slot.get("review_kb_excerpt") or "")[:kb_limit],
-        "Surface Ledger": compact_surface_ledger_json(ledger, max_records=max_records) if ledger else "[]",
-        "Compiled Checks": _json_for_prompt(
-            [check.model_dump(mode="json") for check in checks],
-            max_chars=check_limit,
-        ),
-    }
-    body = render_reviewer_prompt("review_check_compiler.md", sections)
-    return (
-        f"{body}\n\n"
-        "## COVERAGE CRITIC MODE\n"
-        "You are not looking for memorized bug classes. Identify missing contract variants in the existing checks.\n"
-        "For each changed owner, compare the compiled checks against the changed code and contract context. "
-        "If a materially distinct trigger/default/boundary/empty/null/optional/multi-item/error/fallback/"
-        "return/serialization path is not represented, emit one additional ReviewCheck for that variant.\n"
-        "Only emit checks tied to changed code, concrete expected behavior, a trigger variant, an operation, "
-        "and a possible impact. Put the trigger and operation into owned_contract_scope. "
-        "If the current checks cover the material variants, return an empty checks list. "
-        f"Emit at most {_COVERAGE_CRITIC_MAX_EMITTED_CHECKS} checks and at most "
-        f"{_COVERAGE_CRITIC_MAX_WARNINGS} concise warnings."
-    )
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-_BROAD_SURFACE_INVARIANTS = (
-    "preserves its existing observable contract",
-    "preserve changed-surface behavior",
-    "preserve api contract",
-    "preserves caller-visible inputs, outputs, and exception behavior",
-    "assigned surface behavior",
-)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 def make_review_check_compiler_node(
     model_key: str | None = None,
     use_llm: bool = True,
@@ -425,11 +272,6 @@ def make_review_check_compiler_node(
             task,
             settings=resolved,
         )
-        covered_by_questions = {
-            sid
-            for check in checks
-            for sid in check.surface_ids
-        }
         check_origins = compiler_support.origins_for_checks(
             checks,
             "contract_question",
@@ -437,22 +279,6 @@ def make_review_check_compiler_node(
         )
         if checks:
             warnings.append(f"contract_question_checks_added:{len(checks)}")
-        invariant_checks: List[ReviewCheck] = compiler_support.checks_from_surface_invariants(
-            state,
-            task,
-            settings=resolved,
-            exclude_surface_ids=covered_by_questions,
-        )
-        invariant_origins = compiler_support.origins_for_checks(
-            invariant_checks,
-            "surface_invariant",
-            "derived_from_behavioral_surface_invariant",
-        )
-        checks = [*checks, *invariant_checks]
-        check_origins = {**check_origins, **invariant_origins}
-        if invariant_checks:
-            warnings.append(f"surface_invariant_checks_added:{len(invariant_checks)}")
-
         if use_llm:
             selected_model = model_key or resolved.reviewer_worker_model_key
             try:
@@ -490,11 +316,7 @@ def make_review_check_compiler_node(
                     compiler_support.dedupe_checks([*llm_checks, *checks]),
                     slot=slot,
                 )
-                checks = compiler_support.prioritize_compiled_checks(
-                    checks,
-                    task=task,
-                    slot=slot,
-                )
+                checks = compiler_support.prioritize_compiled_checks(checks)
                 check_origins = {
                     check.check_id: merged_origins.get(
                         check.check_id,
@@ -513,124 +335,6 @@ def make_review_check_compiler_node(
                 warnings.append(f"{node_name}_llm_fallback:{exc.__class__.__name__}: {exc}")
                 logger.warning("%s failed for task_id=%s: %s", node_name, task.id, exc)
 
-        coverage_critic_meta: Dict[str, Any] = {"status": "not_run"}
-        run_critic, critic_reason = _coverage_critic_should_run(state, task, slot, checks)
-        if use_llm and run_critic:
-            selected_model = model_key or resolved.reviewer_worker_model_key
-            def _invoke_coverage_critic(*, compact_retry: bool = False) -> tuple[ReviewCheckCompilerOutput, Any]:
-                critic_llm = Models.worker(
-                    ReviewCheckCompilerOutput,
-                    model_key=selected_model,
-                    max_completion_tokens=resolved.reviewer_critiquer_max_completion_tokens,
-                )
-                critic_prompt = _render_coverage_critic_prompt(
-                    state,
-                    task,
-                    slot,
-                    checks,
-                    compact_retry=compact_retry,
-                )
-                critic_traced = trace_llm_call(
-                    critic_llm,
-                    critic_prompt,
-                    state=state,
-                    node_name=node_name,
-                    model_key=selected_model,
-                    schema_name="ReviewCheckCompilerOutput",
-                    request_label="coverage_critic_compact_retry" if compact_retry else "coverage_critic",
-                    input_summary={
-                        "task_id": task.id,
-                        "reason": critic_reason,
-                        "compact_retry": compact_retry,
-                    },
-                )
-                critic_response = parse_structured_output(
-                    critic_traced.result,
-                    ReviewCheckCompilerOutput,
-                )
-                return critic_response, critic_traced
-
-            try:
-                compact_retry_used = False
-                try:
-                    critic_response, critic_traced = _invoke_coverage_critic()
-                except Exception as exc:  # noqa: BLE001
-                    if not _is_length_finish_error(exc):
-                        raise
-                    llm_trace.extend(trace_from_exception(exc))
-                    warnings.append("coverage_critic_length_retry")
-                    compact_retry_used = True
-                    try:
-                        critic_response, critic_traced = _invoke_coverage_critic(compact_retry=True)
-                    except Exception as retry_exc:  # noqa: BLE001
-                        if _is_length_finish_error(retry_exc):
-                            llm_trace.extend(trace_from_exception(retry_exc))
-                            warnings.append("coverage_critic_degraded_length")
-                            coverage_critic_meta = {
-                                "status": "degraded_length",
-                                "reason": critic_reason,
-                                "emitted_count": 0,
-                                "emitted_check_ids": [],
-                                "compact_retry": True,
-                                "error": f"{retry_exc.__class__.__name__}: {retry_exc}",
-                            }
-                            raise RuntimeError("coverage_critic_degraded_length") from retry_exc
-                        raise
-                llm_tokens += critic_traced.tokens
-                llm_trace.extend(critic_traced.trace_records)
-                critic_checks = compiler_support.normalize_compiled_checks(
-                    state,
-                    task,
-                    critic_response.checks[:_COVERAGE_CRITIC_MAX_EMITTED_CHECKS],
-                )
-                critic_checks = compiler_support.enrich_checks_with_completeness_contracts(
-                    critic_checks,
-                    slot=slot,
-                )
-                critic_origins = compiler_support.origins_for_checks(
-                    critic_checks,
-                    "coverage_critic",
-                    f"coverage_critic_missing_contract_variants:{critic_reason}",
-                )
-                checks = compiler_support.prioritize_compiled_checks(
-                    compiler_support.dedupe_checks([*checks, *critic_checks]),
-                    task=task,
-                    slot=slot,
-                )
-                check_origins = {
-                    **check_origins,
-                    **{
-                        check.check_id: critic_origins.get(check.check_id)
-                        for check in critic_checks
-                        if check.check_id in critic_origins
-                    },
-                }
-                critic_warnings = list(critic_response.warnings)[:_COVERAGE_CRITIC_MAX_WARNINGS]
-                if len(critic_response.warnings) > len(critic_warnings):
-                    critic_warnings.append(
-                        f"coverage_critic_warnings_truncated:{len(critic_response.warnings) - len(critic_warnings)}"
-                    )
-                warnings.extend(critic_warnings)
-                coverage_critic_meta = {
-                    "status": "ok",
-                    "reason": critic_reason,
-                    "emitted_count": len(critic_checks),
-                    "emitted_check_ids": [check.check_id for check in critic_checks],
-                    "warnings": critic_warnings,
-                    "compact_retry": compact_retry_used,
-                }
-                if critic_checks:
-                    warnings.append(f"coverage_critic_checks_added:{len(critic_checks)}")
-            except Exception as exc:  # noqa: BLE001
-                llm_trace.extend(trace_from_exception(exc))
-                if coverage_critic_meta.get("status") != "degraded_length":
-                    warnings.append(f"coverage_critic_failed:{exc.__class__.__name__}: {exc}")
-                    coverage_critic_meta = {
-                        "status": "failed",
-                        "reason": critic_reason,
-                        "error": f"{exc.__class__.__name__}: {exc}",
-                    }
-
         if not checks:
             checks = compiler_support.fallback_checks(state, task, slot)
             check_origins = compiler_support.origins_for_checks(
@@ -643,17 +347,14 @@ def make_review_check_compiler_node(
             warnings.append("review_check_compiler_fallback_used")
 
         checks = compiler_support.enrich_checks_with_completeness_contracts(checks, slot=slot)
-        checks, coverage_floor, check_origins = compiler_support.ensure_compiler_coverage_floor(
+        checks, coverage, check_origins = compiler_support.cap_compiled_checks(
             state=state,
             task=task,
             checks=checks,
             check_origins=check_origins,
         )
-        # Normalize the final set as well as LLM-authored checks. Deterministic
-        # coverage-floor checks are added above and need the same evidence-path
-        # contract before validation and execution.
         checks = compiler_support.normalize_compiled_checks(state, task, checks)
-        warnings.extend(coverage_floor.get("warnings", []))
+        warnings.extend(coverage.get("warnings", []))
         lens_counts = compiler_support.checks_per_selected_lens(
             checks,
             lens_selection.get("selected_keys", []) if isinstance(lens_selection, dict) else [],
@@ -667,8 +368,7 @@ def make_review_check_compiler_node(
                 "compiled_checks": [check.model_dump(mode="json") for check in checks],
                 "compiled_check_origins": check_origins,
                 "compiled_count": len(checks),
-                "compiler_coverage_floor": coverage_floor,
-                "coverage_critic": coverage_critic_meta,
+                "compiler_coverage": coverage,
                 "compiler_warnings": warnings,
                 "contract_lens_selection": lens_selection,
                 "checks_per_selected_lens": lens_counts,
@@ -718,6 +418,33 @@ def _is_vague_question(question: str) -> bool:
     return len(words) < 5
 
 
+def _check_file_scope_reason(
+    check: ReviewCheck,
+    *,
+    state: GraphState | None = None,
+    task: ReviewTask | None = None,
+) -> str:
+    """Name the scope gate a check's file fails, or return "" when the file is in scope."""
+    if state is None and task is None:
+        return ""
+    file_path = check.file_path.replace("\\", "/")
+    task_files = {path.replace("\\", "/") for path in (task.target_files if task else [])}
+    if task_files and file_path not in task_files:
+        return "file_not_in_task_targets"
+    changed_files = (
+        {
+            path
+            for paths in changed_file_sources_from_state(state or {}).values()
+            for path in paths
+        }
+        if state is not None
+        else set()
+    ) or set(changed_files_from_diff(str((state or {}).get("git_diff") or "")))
+    if changed_files and file_path not in changed_files:
+        return "file_not_in_changed_code"
+    return ""
+
+
 def _anchor_matches_changed_surface(
     check: ReviewCheck,
     *,
@@ -728,26 +455,25 @@ def _anchor_matches_changed_surface(
     if state is None and task is None:
         return True
     file_path = check.file_path.replace("\\", "/")
-    task_files = {path.replace("\\", "/") for path in (task.target_files if task else [])}
-    changed_files = (
-        {
-            path
-            for paths in changed_file_sources_from_state(state or {}).values()
-            for path in paths
-        }
-        if state is not None
-        else set()
-    ) or set(changed_files_from_diff(str((state or {}).get("git_diff") or "")))
-    if task_files and file_path not in task_files:
-        return False
-    if changed_files and file_path not in changed_files:
-        return False
-
     anchor = check.changed_code_anchor.strip().lower()
     if not anchor:
         return False
     if file_path.lower() in anchor or anchor in file_path.lower():
         return True
+
+    ledger = _explicit_surface_ledger_from_state(state) if state is not None else []
+    if ledger and check.surface_ids:
+        by_id = surface_by_id(ledger)
+        anchor_tokens = set(_meaningful_tokens(anchor))
+        for surface_id in check.surface_ids:
+            surface = by_id.get(surface_id)
+            if surface is None:
+                continue
+            if surface.file_path != file_path or surface.line_start is None:
+                continue
+            surface_name = surface.name.strip().lower()
+            if anchor == surface_name or anchor_tokens.intersection(_meaningful_tokens(surface_name)):
+                return True
 
     evidence_blob = ""
     if state is not None:
@@ -788,11 +514,16 @@ def validate_review_check(
                 reasons.append("surface_file_mismatch")
             if surface.line_start is None:
                 reasons.append("missing_surface_line_anchor")
+    scope_reason = ""
     if not check.file_path.strip():
         reasons.append("missing_file_path")
+    else:
+        scope_reason = _check_file_scope_reason(check, state=state, task=task)
+        if scope_reason:
+            reasons.append(scope_reason)
     if not check.changed_code_anchor.strip():
         reasons.append("missing_changed_code_anchor")
-    elif not _anchor_matches_changed_surface(check, state=state, task=task, slot=slot):
+    elif not scope_reason and not _anchor_matches_changed_surface(check, state=state, task=task, slot=slot):
         reasons.append("anchor_not_in_changed_code")
     if _is_vague_question(check.behavioral_question):
         reasons.append("vague_behavioral_question")
@@ -1012,93 +743,38 @@ def _source_context_paths_from_text(text: str) -> List[str]:
     return paths
 
 
-def _missing_evidence_requests_contract_context(missing_evidence: Sequence[str]) -> bool:
-    blob = " ".join(str(item or "") for item in missing_evidence).lower()
-    if any(marker in blob for marker in _CONTRACT_CONTEXT_MARKERS):
-        return True
-    return "contract" in blob and any(
-        marker in blob
-        for marker in (
-            "schema",
-            "caller",
-            "documentation",
-            "test pattern",
-            "convention",
-            "invariant",
-        )
-    )
-
-
 def _contract_context_paths_for_check(
     *,
-    state: GraphState,
-    slot: Mapping[str, Any],
     check: ReviewCheck,
+    missing_evidence: Sequence[str] = (),
+    max_paths: int = 4,
 ) -> List[str]:
+    """Source paths the check or the executor explicitly named as needed contract evidence.
+
+    Only text written for this check is scanned: its own evidence requirements,
+    its allowed retrieval list, and the executor's latest missing-evidence list.
+    Mental-model and repository-KB text is not mined for paths; doing so pulled
+    whole unrelated files into focused context.
+    """
     paths: List[str] = []
     seen: set[str] = set()
     check_path = _normalize_source_context_path(check.file_path)
-
-    def add(path: str) -> None:
-        normalized = _normalize_source_context_path(path)
-        if (
-            normalized
-            and normalized != check_path
-            and normalized not in seen
-            and _looks_like_source_context_path(normalized)
-        ):
+    evidence_paths = {_normalize_source_context_path(str(path)) for path in check.evidence_paths}
+    for text in (*check.required_evidence, *check.allowed_retrieval, *missing_evidence):
+        for path in _source_context_paths_from_text(str(text or "")):
+            normalized = _normalize_source_context_path(path)
+            if (
+                not normalized
+                or normalized == check_path
+                or normalized in evidence_paths
+                or normalized in seen
+                or not _looks_like_source_context_path(normalized)
+            ):
+                continue
             seen.add(normalized)
             paths.append(normalized)
-
-    def scan(value: Any, depth: int = 0) -> None:
-        if len(paths) >= 8 or depth > 4:
-            return
-        if isinstance(value, str):
-            for path in _source_context_paths_from_text(value):
-                add(path)
-                if len(paths) >= 8:
-                    return
-            return
-        if isinstance(value, Mapping):
-            for key in (
-                "file",
-                "path",
-                "file_path",
-                "source_file",
-                "target_file",
-                "source_ref",
-                "target_ref",
-                "source",
-                "target",
-                "ref",
-            ):
-                raw = value.get(key)
-                if isinstance(raw, str):
-                    for path in _source_context_paths_from_text(raw) or [raw]:
-                        add(path)
-                        if len(paths) >= 8:
-                            return
-            for nested in value.values():
-                scan(nested, depth + 1)
-                if len(paths) >= 8:
-                    return
-            return
-        if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
-            for item in value:
-                scan(item, depth + 1)
-                if len(paths) >= 8:
-                    return
-
-    metadata = state.get("metadata", {}) if isinstance(state.get("metadata"), Mapping) else {}
-    for value in (
-        metadata.get("snapshot_diagnostics"),
-        metadata.get("mental_model"),
-        slot.get("mental_model_excerpt"),
-        slot.get("review_kb_excerpt"),
-    ):
-        scan(value)
-        if len(paths) >= 8:
-            break
+            if len(paths) >= max_paths:
+                return paths
     return paths
 
 
@@ -1164,15 +840,14 @@ def _planned_context_request_for_check(
         for path in (check.evidence_paths or [check.file_path])
         if path and path.strip()
     ]
-    contract_context_paths = (
-        _contract_context_paths_for_check(state=state, slot=slot, check=check)
-        if _missing_evidence_requests_contract_context(missing_evidence)
-        else []
+    contract_context_paths = _contract_context_paths_for_check(
+        check=check,
+        missing_evidence=missing_evidence,
     )
     request_file_paths = _unique_source_paths(
         [
-            *contract_context_paths,
             *evidence_paths,
+            *contract_context_paths,
             *(task.target_files[:1] if not evidence_paths else []),
         ]
     )
@@ -1637,6 +1312,9 @@ def _contract_packet_for_check(check: ReviewCheck) -> Dict[str, Any]:
         "changed_code_anchor": check.changed_code_anchor,
         "owned_contract_scope": check.owned_contract_scope,
         "expected_behavior": check.expected_behavior,
+        "contract_source": (
+            check.contract_source.model_dump(mode="json") if check.contract_source is not None else None
+        ),
         "behavioral_question": check.behavioral_question,
         "affected_invariant": check.affected_invariant,
         "required_evidence": list(check.required_evidence[:5]),
@@ -1681,7 +1359,6 @@ def _render_executor_prompt(
     slot: Mapping[str, Any],
     *,
     compact_retry: bool = False,
-    appendix: str = "",
 ) -> str:
     focused = {
         check.check_id: _focused_context_for_check(state, check.check_id)
@@ -1731,13 +1408,11 @@ def _render_executor_prompt(
     prompt = render_reviewer_prompt("review_check_executor.md", sections)
     if compact_retry:
         prompt = f"{prompt}{_EXECUTOR_COMPACT_RETRY_APPENDIX}"
-    if appendix:
-        prompt = f"{prompt}{appendix}"
     return prompt
 
 
-def _missing_evidence_for_weak_no_finding(check: ReviewCheck) -> List[str]:
-    return _support_missing_evidence_for_weak_no_finding(check, _evidence_requirements_for_check)
+def _missing_evidence_for_unanswered_check(check: ReviewCheck) -> List[str]:
+    return _support_missing_evidence_for_unanswered_check(check, _evidence_requirements_for_check)
 
 
 def _check_batches(checks: Sequence[ReviewCheck]) -> List[List[ReviewCheck]]:
@@ -1793,8 +1468,6 @@ def _executor_prompt_batches(
 def _executor_result_rank(result: ReviewCheckResult) -> int:
     if result.decision == "candidate" and result.candidate is not None:
         return 50
-    if result.decision == "no_finding" and "llm_suppression_audit_sufficient" in result.warnings:
-        return 40
     if result.decision == "no_finding":
         return 30
     if result.decision == "unsupported":
@@ -1823,127 +1496,6 @@ def _canonicalize_executor_results(
             best[check_id] = (rank, index, result)
     duplicates = [check_id for check_id, count in counts.items() if count > 1]
     return [best[check_id][2] for check_id in order], duplicates
-
-
-def _executor_continuation_targets(
-    checks: Sequence[ReviewCheck],
-    results: Sequence[ReviewCheckResult],
-) -> List[ReviewCheck]:
-    checks_by_id = {check.check_id: check for check in checks}
-    candidate_files: set[str] = set()
-    candidate_surfaces: set[str] = set()
-    for result in results:
-        if result.decision != "candidate" or result.candidate is None:
-            continue
-        check = checks_by_id.get(result.check_id)
-        candidate_files.add(result.candidate.file_path.replace("\\", "/"))
-        if check is not None:
-            candidate_files.add(check.file_path.replace("\\", "/"))
-            candidate_surfaces.update(check.surface_ids)
-    if not candidate_files and not candidate_surfaces:
-        return []
-    targets: List[ReviewCheck] = []
-    seen_scopes: set[str] = set()
-    for result in results:
-        if result.decision not in {"no_finding", "unsupported"}:
-            continue
-        check = checks_by_id.get(result.check_id)
-        if check is None:
-            continue
-        same_file = check.file_path.replace("\\", "/") in candidate_files
-        same_surface = bool(candidate_surfaces.intersection(check.surface_ids))
-        if same_file or same_surface:
-            scope = check.owned_contract_scope.strip() or check.check_id
-            if scope in seen_scopes:
-                continue
-            seen_scopes.add(scope)
-            targets.append(check)
-        if len(targets) >= 2:
-            break
-    return targets
-
-
-def _executor_result_summary(result: ReviewCheckResult) -> Dict[str, Any]:
-    candidate = result.candidate
-    return {
-        "check_id": result.check_id,
-        "decision": result.decision,
-        "candidate": (
-            {
-                "candidate_id": candidate.candidate_id,
-                "file_path": candidate.file_path,
-                "line_start": candidate.line_start,
-                "line_end": candidate.line_end,
-                "content": candidate.content[:300],
-                "failure_mode": candidate.failure_mode[:240],
-            }
-            if candidate is not None
-            else None
-        ),
-        "reportable_reason": result.reportable_reason[:400],
-        "missing_evidence": list(result.missing_evidence[:4]),
-    }
-
-
-def _executor_continuation_appendix(
-    *,
-    batch_results: Sequence[ReviewCheckResult],
-    target_checks: Sequence[ReviewCheck],
-) -> str:
-    target_ids = [check.check_id for check in target_checks]
-    candidate_summaries = [
-        _executor_result_summary(result)
-        for result in batch_results
-        if result.decision == "candidate" and result.candidate is not None
-    ][:6]
-    return (
-        "\n\n## SAME-BATCH CONTINUATION (required)\n"
-        "The same batch already produced the candidate results below. Do not repeat or rephrase them.\n"
-        "Reconsider only the listed target check_ids from this same batch for distinct reachable failures "
-        "that may have been overshadowed. Return exactly one ReviewCheckResult for each target check_id. "
-        "Do not return any check_id outside this list and do not invent new checks.\n\n"
-        f"Target check_ids: {json.dumps(target_ids, ensure_ascii=False)}\n"
-        "Existing candidate results:\n"
-        f"{json.dumps(candidate_summaries, indent=2, ensure_ascii=False)}"
-    )
-
-
-def _merge_executor_continuation_results(
-    batch_results: Sequence[ReviewCheckResult],
-    continuation_results: Sequence[ReviewCheckResult],
-    target_ids: set[str],
-) -> tuple[List[ReviewCheckResult], List[str]]:
-    merged: List[ReviewCheckResult] = list(batch_results)
-    index_by_check = {result.check_id: index for index, result in enumerate(merged)}
-    revised: List[str] = []
-    for result in continuation_results:
-        if result.check_id not in target_ids:
-            continue
-        old_index = index_by_check.get(result.check_id)
-        if old_index is None:
-            merged.append(result)
-            index_by_check[result.check_id] = len(merged) - 1
-            revised.append(result.check_id)
-            continue
-        old = merged[old_index]
-        if old.model_dump(mode="json") != result.model_dump(mode="json"):
-            merged[old_index] = result
-            revised.append(result.check_id)
-    return merged, revised
-
-
-def _audit_no_finding_suppressions(
-    *,
-    state: GraphState,
-    task: ReviewTask,
-    checks: Sequence[ReviewCheck],
-    results: List[ReviewCheckResult],
-    selected_model: str,
-    llm_tokens: int,
-    llm_trace: List[Dict[str, Any]],
-    warnings: List[str],
-) -> tuple[List[ReviewCheckResult], int, List[Dict[str, Any]], List[str], Dict[str, Dict[str, Any]]]:
-    return results, llm_tokens, llm_trace, warnings, {}
 
 
 def make_review_check_executor_node(
@@ -1977,14 +1529,10 @@ def make_review_check_executor_node(
         result_count_before_canonicalization = 0
         executor_retry_count = 0
         executor_retry_success_count = 0
-        suppression_audits: Dict[str, Dict[str, Any]] = {}
         length_limit_batch_failures: List[Dict[str, Any]] = []
         length_limit_retry_count = 0
         length_limit_retry_success_count = 0
         length_limit_retry_failed_check_ids: List[str] = []
-        executor_continuation_count = 0
-        executor_continuation_revised_check_ids: List[str] = []
-        executor_continuation_failed_batches: List[int] = []
         executor_batches, executor_oversized_batch_splits = _executor_prompt_batches(
             state,
             task,
@@ -2065,23 +1613,6 @@ def make_review_check_executor_node(
                     result_count_before_canonicalization += len(retry_results)
                     retry_results, retry_duplicate_ids = _canonicalize_executor_results(retry_results)
                     duplicate_result_check_ids.extend(retry_duplicate_ids)
-                    (
-                        retry_results,
-                        llm_tokens,
-                        llm_trace,
-                        warnings,
-                        retry_audits,
-                    ) = _audit_no_finding_suppressions(
-                        state=state,
-                        task=task,
-                        checks=[check],
-                        results=retry_results,
-                        selected_model=selected_model,
-                        llm_tokens=llm_tokens,
-                        llm_trace=llm_trace,
-                        warnings=warnings,
-                    )
-                    suppression_audits.update(retry_audits)
                     warnings.extend(retry_response.warnings)
                     warnings.extend(retry_warnings)
                     length_limit_retry_success_count += 1
@@ -2096,7 +1627,7 @@ def make_review_check_executor_node(
                             check_id=check.check_id,
                             patch_task_id=task.id,
                             decision="unsupported",
-                            missing_evidence=_missing_evidence_for_weak_no_finding(check),
+                            missing_evidence=_missing_evidence_for_unanswered_check(check),
                             warnings=["executor_length_limit_retry_failed"],
                         )
                     ], False
@@ -2159,105 +1690,6 @@ def make_review_check_executor_node(
                     result_count_before_canonicalization += len(batch_results)
                     batch_results, batch_duplicate_ids = _canonicalize_executor_results(batch_results)
                     duplicate_result_check_ids.extend(batch_duplicate_ids)
-                    continuation_targets = _executor_continuation_targets(batch, batch_results)
-                    if continuation_targets:
-                        executor_continuation_count += 1
-                        try:
-                            continuation_llm = Models.worker(
-                                ReviewCheckExecutorOutput,
-                                model_key=selected_model,
-                                max_completion_tokens=resolved.reviewer_critiquer_max_completion_tokens,
-                            )
-                            continuation_prompt = _render_executor_prompt(
-                                state,
-                                task,
-                                continuation_targets,
-                                slot,
-                                appendix=_executor_continuation_appendix(
-                                    batch_results=batch_results,
-                                    target_checks=continuation_targets,
-                                ),
-                            )
-                            continuation_traced = trace_llm_call(
-                                continuation_llm,
-                                continuation_prompt,
-                                state=state,
-                                node_name=node_name,
-                                model_key=selected_model,
-                                schema_name="ReviewCheckExecutorOutput",
-                                request_label="same_batch_continuation",
-                                input_summary={
-                                    "task_id": task.id,
-                                    "batch": batch_index,
-                                    "target_check_ids": [
-                                        check.check_id for check in continuation_targets
-                                    ],
-                                },
-                            )
-                            continuation_response = parse_structured_output(
-                                continuation_traced.result,
-                                ReviewCheckExecutorOutput,
-                            )
-                            llm_tokens += continuation_traced.tokens
-                            llm_trace.extend(continuation_traced.trace_records)
-                            continuation_results, continuation_warnings = _support_normalize_executor_results(
-                                state=state,
-                                task=task,
-                                slot=slot,
-                                checks=continuation_targets,
-                                results=continuation_response.results,
-                                git_diff=state.get("git_diff", "") or "",
-                                check_budget_remaining=_check_budget_remaining,
-                                evidence_requirements_for_check=_evidence_requirements_for_check,
-                                compiled_check_is_source_local=lambda check: _compiled_check_is_source_local(
-                                    check,
-                                    None,
-                                    slot,
-                                    changed_task_files,
-                                ),
-                                include_missing_results=False,
-                            )
-                            target_ids = {check.check_id for check in continuation_targets}
-                            batch_results, revised_ids = _merge_executor_continuation_results(
-                                batch_results,
-                                continuation_results,
-                                target_ids,
-                            )
-                            executor_continuation_revised_check_ids.extend(revised_ids)
-                            result_count_before_canonicalization += len(continuation_results)
-                            warnings.extend(continuation_response.warnings)
-                            warnings.extend(continuation_warnings)
-                            if revised_ids:
-                                warnings.append(
-                                    "executor_same_batch_continuation_revised:"
-                                    + ",".join(sorted(set(revised_ids)))
-                                )
-                        except Exception as continuation_exc:  # noqa: BLE001
-                            llm_trace.extend(trace_from_exception(continuation_exc))
-                            executor_continuation_failed_batches.append(batch_index)
-                            warnings.append(
-                                "executor_same_batch_continuation_failed:"
-                                f"{batch_index}:{continuation_exc.__class__.__name__}: {continuation_exc}"
-                            )
-                        batch_results, continuation_duplicate_ids = _canonicalize_executor_results(batch_results)
-                        duplicate_result_check_ids.extend(continuation_duplicate_ids)
-                    (
-                        batch_results,
-                        llm_tokens,
-                        llm_trace,
-                        warnings,
-                        batch_audits,
-                    ) = _audit_no_finding_suppressions(
-                        state=state,
-                        task=task,
-                        checks=batch,
-                        results=batch_results,
-                        selected_model=selected_model,
-                        llm_tokens=llm_tokens,
-                        llm_trace=llm_trace,
-                        warnings=warnings,
-                    )
-                    suppression_audits.update(batch_audits)
                     results.extend(batch_results)
                     warnings.extend(response.warnings)
                     warnings.extend(norm_warnings)
@@ -2292,7 +1724,7 @@ def make_review_check_executor_node(
                             check_id=check.check_id,
                             patch_task_id=task.id,
                             decision="unsupported",
-                            missing_evidence=_missing_evidence_for_weak_no_finding(check),
+                            missing_evidence=_missing_evidence_for_unanswered_check(check),
                             warnings=[f"review_check_executor_batch_failed:{batch_index}"],
                         )
                         for check in batch
@@ -2322,33 +1754,34 @@ def make_review_check_executor_node(
             results=results,
         )
         warnings.extend(terminal_warnings)
-        synthesized_candidate_check_ids = [
-            warning.split(":", 1)[1]
-            for warning in warnings
-            if warning.startswith("executor_candidate_payload_synthesized:")
-        ]
         missing_candidate_payload_check_ids = [
             warning.split(":", 1)[1]
             for warning in warnings
             if warning.startswith("executor_candidate_missing_payload:")
         ]
-        contract_backfill_events = []
+        missing_contract_proof_events = []
         for warning in warnings:
-            if not warning.startswith("executor_contract_proof_backfilled:"):
+            if not warning.startswith("executor_candidate_missing_contract_proof:"):
                 continue
             _prefix, rest = warning.split(":", 1)
             check_id, raw_fields = (rest.rsplit(":", 1) + [""])[:2]
-            contract_backfill_events.append(
+            missing_contract_proof_events.append(
                 {
                     "check_id": check_id,
                     "fields": [field for field in raw_fields.split(",") if field],
                 }
             )
-        source_only_override_check_ids = [
-            warning.split(":", 1)[1]
-            for warning in warnings
-            if warning.startswith("executor_source_only_no_finding_overridden:")
-        ]
+        candidate_contract_unbacked_events = []
+        for warning in warnings:
+            if not warning.startswith("executor_candidate_contract_unbacked:"):
+                continue
+            _prefix, rest = warning.split(":", 1)
+            check_id, reason = (rest.rsplit(":", 1) + [""])[:2]
+            candidate_contract_unbacked_events.append({"check_id": check_id, "reason": reason})
+        contract_status_counts = {
+            status: sum(1 for result in results if result.contract_status == status)
+            for status in sorted({result.contract_status for result in results})
+        }
         executor_claim_digests = {
             result.candidate.candidate_id: result.candidate.claim_digest
             for result in results
@@ -2382,27 +1815,20 @@ def make_review_check_executor_node(
                 "executor_result_count_before_canonicalization": result_count_before_canonicalization,
                 "executor_retry_count": executor_retry_count,
                 "executor_retry_success_count": executor_retry_success_count,
-                "executor_candidate_payload_synthesized_check_ids": list(
-                    dict.fromkeys(synthesized_candidate_check_ids)
-                ),
                 "executor_candidate_missing_payload_check_ids": list(
                     dict.fromkeys(missing_candidate_payload_check_ids)
                 ),
-                "executor_contract_proof_backfills": contract_backfill_events,
-                "executor_contract_proof_backfill_count": len(contract_backfill_events),
-                "executor_source_only_override_check_ids": list(dict.fromkeys(source_only_override_check_ids)),
+                "executor_candidate_missing_contract_proof": missing_contract_proof_events,
+                "executor_candidate_missing_contract_proof_count": len(missing_contract_proof_events),
+                "executor_contract_status_counts": contract_status_counts,
+                "executor_candidate_contract_unbacked": candidate_contract_unbacked_events,
+                "executor_candidate_contract_unbacked_count": len(candidate_contract_unbacked_events),
                 "executor_length_limit_batch_failures": length_limit_batch_failures,
                 "executor_length_limit_retry_count": length_limit_retry_count,
                 "executor_length_limit_retry_success_count": length_limit_retry_success_count,
                 "executor_length_limit_retry_failed_check_ids": list(
                     dict.fromkeys(length_limit_retry_failed_check_ids)
                 ),
-                "executor_same_batch_continuation_count": executor_continuation_count,
-                "executor_same_batch_continuation_revised_check_ids": list(
-                    dict.fromkeys(executor_continuation_revised_check_ids)
-                ),
-                "executor_same_batch_continuation_failed_batches": executor_continuation_failed_batches,
-                "suppression_audits": suppression_audits,
             },
         )
         if _trace_enabled(state):
@@ -2627,22 +2053,21 @@ def make_review_check_evidence_gate_node():
         promoted: List[CandidateFinding] = []
         promoted_ids: set[str] = set()
         lifecycle: Dict[str, Any] = {}
-        gated_results: List[ReviewCheckResult] = []
         gate_reason_counts: Dict[str, int] = {}
         malformed_candidate_result_check_ids: List[str] = []
         missing_contract_proof_candidate_ids: List[str] = []
         weak_contract_proof_candidate_ids: List[str] = []
         dropped = 0
-        for result in _results_for_task(state, task.id):
+        gate_evaluated_count = 0
+        latest_results = list(_latest_result_by_check(state, task.id).values())
+        for result in latest_results:
             check = checks.get(result.check_id)
             candidate = result.candidate
             if result.decision == "candidate" and candidate is None:
                 reason = "candidate_payload_missing"
                 malformed_candidate_result_check_ids.append(result.check_id)
                 dropped += 1
-                gated_results.append(
-                    result.model_copy(update={"gate_decision": "dropped", "gate_reason": reason})
-                )
+                gate_evaluated_count += 1
                 lifecycle[result.check_id] = {
                     "decision": "dropped",
                     "check_id": result.check_id,
@@ -2652,14 +2077,12 @@ def make_review_check_evidence_gate_node():
                 continue
             if result.decision != "candidate" or check is None:
                 continue
+            gate_evaluated_count += 1
             passed, reason = _candidate_passes_gate(candidate, result, check, state)
             if passed:
                 if candidate.candidate_id not in promoted_ids:
                     promoted.append(candidate)
                     promoted_ids.add(candidate.candidate_id)
-                gated_results.append(
-                    result.model_copy(update={"gate_decision": "passed", "gate_reason": reason})
-                )
                 lifecycle[candidate.candidate_id] = {
                     "decision": "passed",
                     "check_id": result.check_id,
@@ -2676,9 +2099,6 @@ def make_review_check_evidence_gate_node():
                     missing_contract_proof_candidate_ids.append(candidate.candidate_id)
                 elif reason == "weak_contract_proof":
                     weak_contract_proof_candidate_ids.append(candidate.candidate_id)
-                gated_results.append(
-                    result.model_copy(update={"gate_decision": "dropped", "gate_reason": reason})
-                )
                 existing_lifecycle = lifecycle.get(candidate.candidate_id)
                 if not (
                     isinstance(existing_lifecycle, dict)
@@ -2691,12 +2111,10 @@ def make_review_check_evidence_gate_node():
                     }
             gate_reason_counts[reason] = gate_reason_counts.get(reason, 0) + 1
 
-        latest_results = list(_latest_result_by_check(state, task.id).values())
         candidate_decision_count = sum(1 for result in latest_results if result.decision == "candidate")
         gate_expected_count = candidate_decision_count
-        gate_evaluated_count = len(gated_results)
         health_warnings: List[str] = []
-        if checks and candidate_decision_count and not gated_results:
+        if checks and candidate_decision_count and not gate_evaluated_count:
             health_warnings.append("evidence_gate_not_exercised")
         focused_health = []
         metadata = state.get("metadata", {}) or {}
@@ -2744,7 +2162,7 @@ def make_review_check_evidence_gate_node():
                 "gate": {
                     "promoted_count": len(promoted),
                     "dropped_count": dropped,
-                    "evaluated_count": len(gated_results),
+                    "evaluated_count": gate_evaluated_count,
                     "candidate_decision_count": candidate_decision_count,
                     "gate_expected_count": gate_expected_count,
                     "gate_evaluated_count": gate_evaluated_count,
@@ -2774,114 +2192,9 @@ def make_review_check_evidence_gate_node():
             )
         return {
             "candidate_findings": promoted,
-            "review_check_results": gated_results,
             "task_status_by_id": {task.id: "completed"},
             "metadata": metadata,
             "node_history": [node_name],
         }
 
     return review_check_evidence_gate_node
-
-
-def should_run_review_check_scout(state: GraphState) -> bool:
-    task = _task_from_state(state)
-    if task is None:
-        return False
-    metadata = state.get("metadata", {}) or {}
-    block = metadata.get("review_checks", {}) if isinstance(metadata, dict) else {}
-    by_task = block.get("by_task", {}) if isinstance(block, dict) else {}
-    slot = by_task.get(task.id, {}) if isinstance(by_task, dict) else {}
-    if not isinstance(slot, dict):
-        return False
-    scout = slot.get("scout") if isinstance(slot.get("scout"), dict) else {}
-    if scout.get("status") in {"emitted", "not_needed", "no_concrete_obligations"}:
-        return False
-    gate = slot.get("gate") if isinstance(slot.get("gate"), dict) else {}
-    if int(gate.get("promoted_count") or 0) > 0:
-        return False
-    unsupported = gate.get("unsupported_high_confidence_surface_ids")
-    if not isinstance(unsupported, list) or not unsupported:
-        return False
-    coverage_floor = slot.get("compiler_coverage_floor") if isinstance(slot.get("compiler_coverage_floor"), dict) else {}
-    obligations = coverage_floor.get("uncovered_obligations")
-    if not isinstance(obligations, list):
-        return False
-    return any(
-        isinstance(item, Mapping) and _obligation_is_concrete_contract_delta(item)
-        for item in obligations
-    )
-
-
-def _obligation_is_concrete_contract_delta(obligation: Mapping[str, Any]) -> bool:
-    family = str(obligation.get("diff_signal_family") or obligation.get("issue_family") or "").strip()
-    if family in _BROAD_DIFF_SIGNAL_FAMILIES:
-        return False
-    if family == "contract_delta":
-        return bool(
-            str(obligation.get("diff_signal") or "").strip()
-            or str(obligation.get("evidence") or "").strip()
-        )
-    return True
-
-
-def make_review_check_scout_node():
-    node_name = "review_check_scout"
-
-    def review_check_scout_node(state: GraphState) -> Dict[str, Any]:
-        task = _task_from_state(state)
-        if task is None:
-            return {"node_history": [f"{node_name}:skipped"]}
-        metadata = state.get("metadata", {}) or {}
-        block = metadata.get("review_checks", {}) if isinstance(metadata, dict) else {}
-        by_task = block.get("by_task", {}) if isinstance(block, dict) else {}
-        slot = by_task.get(task.id, {}) if isinstance(by_task, dict) else {}
-        slot = dict(slot) if isinstance(slot, dict) else {}
-        coverage_floor = slot.get("compiler_coverage_floor") if isinstance(slot.get("compiler_coverage_floor"), dict) else {}
-        raw_obligations = coverage_floor.get("uncovered_obligations")
-        obligations = [item for item in raw_obligations if isinstance(item, Mapping)] if isinstance(raw_obligations, list) else []
-        existing_ids = {check.check_id for check in _checks_for_task(state, task.id)}
-        concrete = [
-            item
-            for item in obligations
-            if _obligation_is_concrete_contract_delta(item)
-        ][:2]
-        checks: List[ReviewCheck] = []
-        for index, obligation in enumerate(concrete, start=1):
-            check = compiler_support.coverage_check_for_obligation(
-                state,
-                task,
-                obligation,
-                900 + index,
-            )
-            check_id = f"{task.id}:scout:{index}"
-            if check_id in existing_ids:
-                continue
-            checks.append(
-                check.model_copy(
-                    update={
-                        "check_id": check_id,
-                        "allowed_retrieval": ["task_evidence"],
-                        "budget": 1,
-                        "audit_only": False,
-                    }
-                )
-            )
-        status = "emitted" if checks else "no_concrete_obligations"
-        metadata = _set_task_review_checks_meta(
-            state,
-            task.id,
-            {
-                "scout": {
-                    "status": status,
-                    "emitted_check_ids": [check.check_id for check in checks],
-                    "source": "unsupported_high_confidence_surface_gap",
-                }
-            },
-        )
-        return {
-            "review_checks": checks,
-            "metadata": metadata,
-            "node_history": [node_name if checks else f"{node_name}:skipped"],
-        }
-
-    return review_check_scout_node

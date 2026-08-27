@@ -145,6 +145,22 @@ class GitHubPullRequestEnricher:
         self._pr_context_cache[pr_url] = context
         return context
 
+    def fetch_compare_diff(self, repo: str, base_commit: str, head_commit: str) -> str | None:
+        """Unified diff between two pinned commits via the compare API; None when unavailable.
+
+        Benchmark references are annotated on a specific PR head. The live PR diff can
+        differ from it (later pushes, force-pushes, squash merges), so runs that need
+        line-accurate scoring must review the pinned range instead.
+        """
+        if not repo or not base_commit or not head_commit:
+            return None
+        api_url = f"https://api.github.com/repos/{repo}/compare/{base_commit}...{head_commit}"
+        return self._request_text(
+            api_url,
+            context=f"compare diff {repo} {base_commit[:7]}...{head_commit[:7]}",
+            accept="application/vnd.github.v3.diff",
+        )
+
     def fetch_pr_context_bulk(self, pr_urls: Iterable[str]) -> dict[str, PullRequestContext]:
         unique_urls = sorted({url for url in pr_urls if isinstance(url, str) and url.strip()})
         contexts: dict[str, PullRequestContext] = {}

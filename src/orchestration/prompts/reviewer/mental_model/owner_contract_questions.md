@@ -12,6 +12,7 @@ For each primary owner:
 - If the owner transforms data through distinct steps, ask separate questions for distinct action obligations: produced value, selected/projected/indexed value, aggregated/serialized/joined value, and returned/consumed value.
 - Boundary, default, invalid-input, or fallback questions are appropriate only when declarations, caller evidence, or owner source show they are part of the central action contract.
 - Do not copy questions across owners. Attach each question to the most specific owner in this partition.
+- Set `contract_source_kind` to the kind of evidence behind `contract_evidence` (`schema` for declarations, `caller`, `doc`, `test`, `old_behavior`, `pr_intent`, `framework`, `convention`, or `representation`). Leave it unset when the contract is inferred from a name or general practice rather than evidenced.
 - Leave `direct_suppressor` empty if no concrete suppressing fact is known.
 
 Use only the existing `ContractQuestion` fields and generic dimensions. Do not add fields.

@@ -357,9 +357,12 @@ def _compact_check_result(result: ReviewCheckResult, check: ReviewCheck | None =
         "evidence_for_contract": _truncate(result.evidence_for_contract, 500),
         "counterexample": _truncate(result.counterexample, 500),
         "rejection_check": _truncate(result.rejection_check, 500),
+        "contract_status": result.contract_status,
+        "contract_source": (
+            result.contract_source.model_dump(mode="json") if result.contract_source is not None else None
+        ),
+        "missing_contract_source": _truncate(result.missing_contract_source, 300),
         "claim_digest": result.claim_digest,
-        "gate_decision": result.gate_decision,
-        "gate_reason": result.gate_reason,
         "warnings": list(result.warnings[:6]),
     }
     if check is not None:
@@ -368,6 +371,9 @@ def _compact_check_result(result: ReviewCheckResult, check: ReviewCheck | None =
             "behavioral_question": _truncate(check.behavioral_question, 400),
             "affected_invariant": _truncate(check.affected_invariant, 400),
             "expected_behavior": _truncate(check.expected_behavior, 500),
+            "contract_source": (
+                check.contract_source.model_dump(mode="json") if check.contract_source is not None else None
+            ),
             "required_evidence": [_truncate(item, 180) for item in check.required_evidence[:4]],
             "suppress_criteria": [_truncate(item, 180) for item in check.suppress_criteria[:4]],
             "report_criteria": [_truncate(item, 180) for item in check.report_criteria[:4]],
@@ -899,6 +905,25 @@ def _fallback_finding(candidate: CandidateFinding) -> ReviewFinding:
     )
 
 
+def _verifier_is_inconclusive_harness_error(report: VerifierReport) -> bool:
+    if report.verdict != "inconclusive":
+        return False
+    if bool(report.metadata.get("harness_error")):
+        return True
+    return any(
+        bool(attempt.env_metadata.get("harness_error"))
+        or str(attempt.failure_class or "").strip() in {"module_not_found", "harness_error", "import_error"}
+        or "STATUS: HARNESS_ERROR" in attempt.stdout
+        for attempt in report.attempts
+    )
+
+
+def _only_inconclusive_harness_error_verifier(
+    reports: Sequence[VerifierReport],
+) -> bool:
+    return bool(reports) and all(_verifier_is_inconclusive_harness_error(report) for report in reports)
+
+
 def _normalize_adjudication_items(
     *,
     output: ReviewAdjudicationOutput | None,
@@ -906,6 +931,7 @@ def _normalize_adjudication_items(
     changed_files: set[str],
     allow_verification: bool = False,
     verifier_report_ids: set[str] | None = None,
+    verifier_reports_by_candidate: Mapping[str, Sequence[VerifierReport]] | None = None,
 ) -> tuple[List[ReviewFinding], Dict[str, Any], Dict[str, List[str]], List[str], List[str]]:
     warnings: List[str] = []
     lifecycle: Dict[str, Any] = {}
@@ -916,6 +942,7 @@ def _normalize_adjudication_items(
     items = list(output.items) if output is not None else []
     candidate_ids = set(candidates.keys())
     verifier_report_ids = verifier_report_ids or set()
+    verifier_reports_by_candidate = verifier_reports_by_candidate or {}
 
     def _record_promote(
         *,
@@ -966,6 +993,19 @@ def _normalize_adjudication_items(
         candidate = candidates[cid]
 
         if item.decision == "drop":
+            reports = list(verifier_reports_by_candidate.get(cid, []))
+            if _only_inconclusive_harness_error_verifier(reports):
+                warning = f"adjudication_drop_overridden_inconclusive_harness_error:{cid}"
+                warnings.append(warning)
+                _record_promote(
+                    cid=cid,
+                    candidate=candidate,
+                    finding=item.finding,
+                    rationale=item.rationale,
+                    evidence_refs=item.evidence_refs,
+                    item_warnings=[*item.warnings, warning],
+                )
+                continue
             lifecycle[cid] = {
                 "decision": "dropped",
                 "reason": "adjudicator_drop_obvious",
@@ -1162,7 +1202,8 @@ def make_review_adjudicator_node(
 
         prior_adjudicator = metadata.get(node_name) if isinstance(metadata.get(node_name), dict) else {}
         verification_round = int(prior_adjudicator.get("verification_round", 0) or 0)
-        verifier_report_ids = set(_verifier_by_candidate(state))
+        verifier_reports_by_candidate = _verifier_by_candidate(state)
+        verifier_report_ids = set(verifier_reports_by_candidate)
         verification_available = bool(
             resolved_settings.verifier_enabled
             and verification_round == 0
@@ -1177,6 +1218,7 @@ def make_review_adjudicator_node(
             changed_files=changed_files,
             allow_verification=verification_available,
             verifier_report_ids=verifier_report_ids,
+            verifier_reports_by_candidate=verifier_reports_by_candidate,
         )
         warnings.extend(norm_warnings)
 
